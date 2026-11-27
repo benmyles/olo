@@ -304,8 +304,12 @@ fn send_input_batch_to(client: &mut Option<Client>, pinned: &PinnedSession, name
             // viewer killed with a key down left it down). One that
             // doesn't know the request says so, and things are as they
             // were.
+            // (A compositor from before it answers "unknown request":
+            // that is an answer, and the connection is good. Taken for
+            // a failure, a screen started before an upgrade took no
+            // input at all. A code review, 2026-11-27.)
             if let Some(fresh) = client.as_mut()
-                && fresh.request(&Request::OwnInput).is_err()
+                && matches!(fresh.request(&Request::OwnInput), Err(e) if !matches!(e, olo_protocol::ClientError::Server(_)))
             {
                 *client = None;
             }

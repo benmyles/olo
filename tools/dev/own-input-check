@@ -13,7 +13,9 @@ does:
   a connection that says nothing, presses Shift and ends: Shift stays down
   (a tool that presses in one connection and lets go in the next, `tsession
   down … up`, keeps what it holds), until another connection lets it go;
-  a key let go by another connection is no longer the first's to let go.
+  a key let go by another connection is no longer the first's to let go;
+  a key down already by another hand when an owner presses it is not the
+  owner's; and what a connection wrote whole before it ended is taken.
 
 `Request::OwnInput` (crates/protocol), `AnvilState::input_closed`
 (crates/app_server/src/power.rs). A viewer or a host's helper killed with
@@ -28,8 +30,9 @@ import json, os, shutil, socket, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TS = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
-N = "owninput"
-SCRATCH = f"/var/tmp/olo-own-input-{os.getpid()}"
+# (A name and a folder of this run's own: two runs at once don't stop each other's desktop.)
+N = f"owninput-{os.getpid()}"
+SCRATCH = f"/var/tmp/olo-own-input-{os.getpid()}-{time.time_ns()}"
 SHIFT, A = 42, 30
 
 
@@ -38,7 +41,17 @@ def ts(*a):
 
 
 class Conn:
+    # (The test desktop's socket as it was when the desktop was started: its
+    # file's own number. A name alone could be another desktop's by now, the
+    # person's among them, and keys would be typed there.)
+    pinned = None
+
     def __init__(self, path):
+        at = os.stat(path)
+        if Conn.pinned is None:
+            Conn.pinned = (at.st_dev, at.st_ino)
+        elif Conn.pinned != (at.st_dev, at.st_ino):
+            sys.exit("own-input-check: FAILED: the test desktop's socket is another's now: nothing more is sent")
         self.s = socket.socket(socket.AF_UNIX)
         self.s.settimeout(10)
         self.s.connect(path)
@@ -54,10 +67,22 @@ class Conn:
             if said.get("type") != "event":
                 return said
 
+    def ok(self, req):
+        said = self.ask(req)
+        if said.get("type") != "ok":
+            sys.exit(f"own-input-check: FAILED: {req} was answered {said}")
+
     def end(self):
-        # (As a process killed outright ends its connection: no word, the
-        # socket gone. The reader made of it holds it open until it is
-        # closed too.)
+        # (No word, as a process killed outright ends its connection; and
+        # not gone on until the compositor has seen it end: it closes its
+        # side once it has let go of what the connection kept.)
+        try:
+            self.s.shutdown(socket.SHUT_WR)
+            self.s.settimeout(5)
+            while self.s.recv(4096):
+                pass
+        except OSError:
+            pass
         self.f.close()
         self.s.close()
 
@@ -67,8 +92,7 @@ def key(code, pressed):
 
 
 def main():
-    os.makedirs(os.path.join(SCRATCH, "home"), exist_ok=True)
-    ts("stop", N)
+    os.makedirs(os.path.join(SCRATCH, "home"))
     started = ts("start", N, "1280x800", "--home", os.path.join(SCRATCH, "home"), "--owner", "none")
     try:
         env = {}
@@ -79,7 +103,7 @@ def main():
         sock = env.get("OLO_SOCKET")
         # (The test desktop's own, never the person's: this shell may have theirs in its environment.)
         theirs = (os.environ.get("OLO_SOCKET"), os.environ.get("WAYLAND_DISPLAY"))
-        if not sock or sock == theirs[0] or env.get("WAYLAND_DISPLAY") in (None, theirs[1]):
+        if started.returncode != 0 or not sock or sock == theirs[0] or env.get("WAYLAND_DISPLAY") in (None, theirs[1]):
             sys.exit(f"own-input-check: no test desktop of its own ({sock!r}): {started.stdout}{started.stderr}")
 
         def shift_down():
@@ -88,14 +112,6 @@ def main():
                 return c.ask({"type": "held_modifiers"})["shift"]
             finally:
                 c.end()
-
-        def settled(want, what):
-            until = time.monotonic() + 5
-            while time.monotonic() < until:
-                if shift_down() == want:
-                    return
-                time.sleep(0.05)
-            sys.exit(f"own-input-check: FAILED: {what}")
 
         if "--cost" in sys.argv:
             n = int(sys.argv[sys.argv.index("--cost") + 1])
@@ -111,7 +127,7 @@ def main():
                     batch = {"type": "synthetic", "events": [{"type": "key", "key": A, "pressed": True}, {"type": "key", "key": A, "pressed": False}]}
                     t0 = time.perf_counter()
                     for _ in range(n):
-                        c.ask(batch)
+                        c.ok(batch)
                     took = (time.perf_counter() - t0) * 1e6 / n
                     c.end()
                     best = took if best is None else min(best, took)
@@ -126,40 +142,68 @@ def main():
         said = owner.ask({"type": "own_input"})
         if said.get("type") != "ok":
             sys.exit(f"own-input-check: FAILED: this app_server doesn't know own_input: {said}")
-        owner.ask(key(SHIFT, True))
-        settled(True, "Shift pressed through a connection wasn't down")
+        owner.ok(key(SHIFT, True))
+        if not shift_down():
+            sys.exit("own-input-check: FAILED: Shift pressed through a connection wasn't down")
         owner.end()
-        settled(False, "a connection that owned its input ended with Shift down, and Shift stayed down")
+        if shift_down():
+            sys.exit("own-input-check: FAILED: a connection that owned its input ended with Shift down, and Shift stayed down")
         print("ok: a connection that owns its input ends with a key down: the key is let go")
 
         # 2. Not owned: stays, until somebody lets it go.
         plain = Conn(sock)
-        plain.ask(key(SHIFT, True))
+        plain.ok(key(SHIFT, True))
         plain.end()
-        time.sleep(0.4)
         if not shift_down():
             sys.exit("own-input-check: FAILED: a connection that said nothing ended, and its key was let go (a tool that lets go in its next connection would be broken)")
         other = Conn(sock)
-        other.ask(key(SHIFT, False))
+        other.ok(key(SHIFT, False))
         other.end()
-        settled(False, "Shift wasn't let go by another connection")
+        if shift_down():
+            sys.exit("own-input-check: FAILED: Shift wasn't let go by another connection")
         print("ok: a connection that says nothing keeps what it pressed, as before")
 
         # 3. Owned and pressed; another connection lets it go and presses it again; the owner ends: not let go twice.
         owner = Conn(sock)
-        owner.ask({"type": "own_input"})
-        owner.ask(key(SHIFT, True))
+        owner.ok({"type": "own_input"})
+        owner.ok(key(SHIFT, True))
         other = Conn(sock)
-        other.ask(key(SHIFT, False))
-        other.ask(key(SHIFT, True))
+        other.ok(key(SHIFT, False))
+        other.ok(key(SHIFT, True))
         owner.end()
-        time.sleep(0.4)
         if not shift_down():
             sys.exit("own-input-check: FAILED: a key another connection had let go and pressed again was let go by the first's end")
-        other.ask(key(SHIFT, False))
+        other.ok(key(SHIFT, False))
         other.end()
-        settled(False, "Shift wasn't let go at the end")
+        if shift_down():
+            sys.exit("own-input-check: FAILED: Shift wasn't let go at the end")
         print("ok: what another connection let go is no longer the first's to let go")
+
+        # 4. A key down already by another hand (here another connection's; the person's own key on a real
+        #    keyboard is the same to the compositor) when an owner presses it: not the owner's, and its end
+        #    doesn't let go of it.
+        hand = Conn(sock)
+        hand.ok(key(SHIFT, True))
+        owner = Conn(sock)
+        owner.ok({"type": "own_input"})
+        owner.ok(key(SHIFT, True))
+        owner.end()
+        if not shift_down():
+            sys.exit("own-input-check: FAILED: a key somebody else held was let go by the end of a connection that had pressed it too")
+        hand.ok(key(SHIFT, False))
+        hand.end()
+        if shift_down():
+            sys.exit("own-input-check: FAILED: Shift wasn't let go by the hand that held it")
+        print("ok: a key down already by another hand is not an owner's to let go")
+
+        # 5. Its last word written and the connection ended at once, no answer waited for: still taken.
+        quick = Conn(sock)
+        quick.ok(key(SHIFT, True))
+        quick.s.sendall((json.dumps(key(SHIFT, False)) + "\n").encode())
+        quick.end()
+        if shift_down():
+            sys.exit("own-input-check: FAILED: a letting go written just before its connection ended was dropped")
+        print("ok: what a connection wrote whole before it ended is taken")
     finally:
         ts("stop", N)
         shutil.rmtree(SCRATCH, ignore_errors=True)

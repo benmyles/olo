@@ -23294,17 +23294,32 @@ Rex).
   left the key down in the screen for good (a code review, 2026-11-27).
   Not the rule for every connection: a tool that presses in one
   connection and lets go in the next (`tsession down … up`, a drag in
-  steps) keeps what it holds; and what another connection has let go is
-  no longer the first's to let go. Nothing is looked up or kept while
-  nobody owns input (real input never passes there). Tried against a
-  real headless app_server by `tools/dev/own-input-check` (its three
-  cases), and measured with it on release builds (`--cost 3000`): a
-  batch of a key pressed and let go, asked and answered, 33.5 and 35.9
-  µs before; 32.1 and 37.9 µs through a connection that owns its input,
-  32.4 and 43.6 µs through one that doesn't (two runs each, a host
-  under a load of sixty: no difference that can be told from the
-  runs'). An app_server from before answers with an error, and things
-  are as they were.
+  steps) keeps what it holds. What an owner holds is what *its* press
+  put down: a key down already by another hand when it pressed it (the
+  person's own Shift, held on a real keyboard; another sender's) is
+  not its own, and another connection's press or letting go of the
+  same thing takes its claim away (whoever pressed last has it). No
+  more than 256 are kept for one connection, and a finger on a touch
+  screen is not kept at all (lifting one for a connection that has
+  gone can click whatever is under the pointer by then: TODO). Nothing
+  is looked up or kept while nobody owns input (real input never
+  passes there), and registering wakes no display. A connection's end
+  has one way out in app_server now (`accept`'s closure): what it
+  wrote whole before its end is taken first, in its order (a last
+  line written and the socket closed at once was dropped unread), and
+  an end found by an answer that couldn't be written lets go of what
+  the connection kept as an end read does (it didn't: its keys taken,
+  what it kept awake, stayed for good). An app_server from before
+  answers "unknown request", and the pane keeps its connection and
+  goes on as before. Tried against a real headless app_server by
+  `tools/dev/own-input-check` (five cases, each connection's end
+  waited for, no sleeps; the fourth fails on the build before the
+  review's fixes), and measured with it on release builds (`--cost
+  3000`): a batch of a key pressed and let go, asked and answered,
+  33.5 and 35.9 µs before; 28.9 and 39.4 µs through a connection that
+  owns its input, 29.9 and 33.9 µs through one that doesn't (two runs
+  each, a host under a load of sixty: no difference that can be told
+  from the runs').
 - **`screen history-stream NAME`** and **`screen export NAME`**: the
   recorded history (its actions and its frames' index, then a frame at
   a time on request, as tile deltas) and an MP4 made on the host and

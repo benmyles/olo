@@ -99,47 +99,57 @@ pub enum HeldInput {
     Key(u32),
     Keysym(u32),
     Button(u32),
-    Touch(u32),
 }
+
+/// The most one connection is kept as holding (a keyboard has fewer
+/// keys): past it nothing more is kept for it.
+pub const OWNED_MOST: usize = 256;
 
 impl HeldInput {
     /// What a synthetic event presses or lets go: which, and whether it
     /// goes down (true) or up.
     pub fn of(event: &olo_protocol::SyntheticEvent) -> Option<(Self, bool)> {
-        use olo_protocol::{SyntheticEvent as S, TouchPhase};
+        use olo_protocol::SyntheticEvent as S;
         match event {
             S::Key { key, pressed } => Some((Self::Key(*key), *pressed)),
             S::Keysym { keysym, pressed } => Some((Self::Keysym(*keysym), *pressed)),
             S::Button { button, pressed } => Some((Self::Button(*button), *pressed)),
-            S::Touch { slot, phase: TouchPhase::Down, .. } => Some((Self::Touch(*slot), true)),
-            S::Touch { slot, phase: TouchPhase::Up, .. } => Some((Self::Touch(*slot), false)),
+            // (Not a finger on a touch screen: lifting one for a
+            // connection that has gone can press and let go the button
+            // under the pointer, wherever that is by then, and a finger
+            // put down twice is two to the client. Left as it was, down:
+            // TODO.)
             _ => None,
         }
     }
 
     /// The event that lets it go.
     pub fn release(self) -> olo_protocol::SyntheticEvent {
-        use olo_protocol::{SyntheticEvent as S, TouchPhase};
+        use olo_protocol::SyntheticEvent as S;
         match self {
             Self::Key(key) => S::Key { key, pressed: false },
             Self::Keysym(keysym) => S::Keysym { keysym, pressed: false },
             Self::Button(button) => S::Button { button, pressed: false },
-            Self::Touch(slot) => S::Touch { slot, phase: TouchPhase::Up, x: 0.0, y: 0.0, window: None },
         }
     }
 }
 
-/// What a batch of synthetic events leaves down of what was down before
-/// it (`held`), in the order pressed: each press added once, each
-/// letting go taking its press away, in the batch's own order (a key let
-/// go and pressed again in one batch is down after it).
-pub fn held_after(held: &mut Vec<HeldInput>, events: &[olo_protocol::SyntheticEvent]) {
-    for event in events {
-        match HeldInput::of(event) {
-            Some((what, true)) if !held.contains(&what) => held.push(what),
-            Some((what, false)) => held.retain(|h| *h != what),
-            _ => {}
+/// What one synthetic event makes of what a connection that owns its
+/// input holds (`held`). Its own (`own`): a press is kept once, unless
+/// it was down already by another hand (`down_already`: the person's own
+/// key held on the keyboard, another sender's), which it then does not
+/// own; a letting go takes its press away. Another connection's: its
+/// press or its letting go of the same thing takes it away too (whoever
+/// pressed last has it; the first's end is not to let go of it).
+pub fn held_after(held: &mut Vec<HeldInput>, event: &olo_protocol::SyntheticEvent, own: bool, down_already: bool) {
+    let Some((what, down)) = HeldInput::of(event) else { return };
+    match (own, down) {
+        (true, true) => {
+            if !held.contains(&what) && !down_already && held.len() < OWNED_MOST {
+                held.push(what);
+            }
         }
+        _ => held.retain(|h| *h != what),
     }
 }
 
@@ -347,21 +357,24 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
     let mut buf = Vec::<u8>::new();
     let res = state.handle.insert_source(Generic::new(read_half, Interest::READ, Mode::Level), move |_, stream: &mut NoIoDrop<UnixStream>, state| {
         let mut chunk = [0u8; 4096];
+        // (Its end, read here: what it wrote whole before that is still
+        // taken, below, in its order. A last line written and the socket
+        // closed at once was dropped unread: a tool's final letting go
+        // of a key, lost. A code review, 2026-11-27.)
+        let mut ended = false;
         loop {
             // SAFETY: we only read; the fd stays registered until we return Remove.
             let s = unsafe { stream.get_mut() };
             match s.read(&mut chunk) {
                 Ok(0) => {
-                    *conn.dead.borrow_mut() = true;
-                    state.ipc_closed(&conn);
-                    return Ok(PostAction::Remove);
+                    ended = true;
+                    break;
                 }
                 Ok(n) => buf.extend_from_slice(&chunk[..n]),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => break,
                 Err(_) => {
-                    *conn.dead.borrow_mut() = true;
-                    state.ipc_closed(&conn);
-                    return Ok(PostAction::Remove);
+                    ended = true;
+                    break;
                 }
             }
         }
@@ -385,7 +398,19 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
                 Err(e) => conn.send(&Reply::Error { message: format!("bad request: {e}") }),
             }
         }
-        Ok(if conn.is_dead() { PostAction::Remove } else { PostAction::Continue })
+        // One way out for a connection that has ended, however it was
+        // found to have (its end read; an answer that couldn't be
+        // written): what it kept is let go of (`ipc_closed`: what it
+        // kept awake, the keys it took, the input it owned). A
+        // connection found dead by a failed answer was dropped here
+        // with none of that: a viewer killed before its answer came
+        // left its key down for good. A code review, 2026-11-27.
+        if ended || conn.is_dead() {
+            *conn.dead.borrow_mut() = true;
+            state.ipc_closed(&conn);
+            return Ok(PostAction::Remove);
+        }
+        Ok(PostAction::Continue)
     });
     if let Err(e) = res {
         warn!(?e, "could not register IPC client");
@@ -401,6 +426,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let asks = matches!(
             req,
             Request::Ping
+                | Request::OwnInput
                 | Request::ListWindows
                 | Request::LayerClients
                 | Request::Subscribe
@@ -1015,20 +1041,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                 // kept while nobody does. And what one such connection
                 // had down that another's events let go is no longer
                 // its to let go.)
-                if !self.ipc.owned_input.is_empty() {
-                    for (who, held) in &mut self.ipc.owned_input {
-                        if Rc::ptr_eq(who, conn) {
-                            held_after(held, &events);
-                        } else {
-                            for event in &events {
-                                if let Some((what, false)) = HeldInput::of(event) {
-                                    held.retain(|h| *h != what);
-                                }
-                            }
+                for e in events {
+                    if !self.ipc.owned_input.is_empty() {
+                        // (As things stand before this event: a key down
+                        // already is the keyboard's own or another's.)
+                        let down_already = match &e {
+                            olo_protocol::SyntheticEvent::Key { key, pressed: true } => self.seat.get_keyboard().is_some_and(|k| k.pressed_keys().iter().any(|c| c.raw() == key + 8)),
+                            _ => false,
+                        };
+                        for (who, held) in &mut self.ipc.owned_input {
+                            held_after(held, &e, Rc::ptr_eq(who, conn), down_already);
                         }
                     }
-                }
-                for e in events {
                     self.synthetic_input(e);
                 }
                 Reply::Ok
@@ -1187,34 +1211,44 @@ mod tests {
 
 #[cfg(test)]
 mod owned_input_tests {
-    use super::{HeldInput, held_after};
+    use super::{HeldInput, OWNED_MOST, held_after};
     use olo_protocol::{SyntheticEvent as S, TouchPhase};
 
-    /// What a connection that owns its input has down after each batch,
+    /// What a connection that owns its input has down after each event,
     /// and what lets each go (`Request::OwnInput`).
     #[test]
-    fn what_a_batch_leaves_down() {
+    fn what_an_owner_holds() {
         let mut held = Vec::new();
-        held_after(&mut held, &[S::Key { key: 42, pressed: true }, S::Key { key: 30, pressed: true }, S::Key { key: 30, pressed: false }, S::Move { x: 1.0, y: 2.0 }]);
+        let own = |held: &mut Vec<HeldInput>, events: &[S]| events.iter().for_each(|e| held_after(held, e, true, false));
+        own(&mut held, &[S::Key { key: 42, pressed: true }, S::Key { key: 30, pressed: true }, S::Key { key: 30, pressed: false }, S::Move { x: 1.0, y: 2.0 }]);
         assert_eq!(held, [HeldInput::Key(42)]);
-        // Let go and pressed again in one batch: down after it. Pressed twice: held once.
-        held_after(&mut held, &[S::Key { key: 42, pressed: false }, S::Key { key: 42, pressed: true }, S::Key { key: 42, pressed: true }]);
+        // Let go and pressed again: down. Pressed twice: held once.
+        own(&mut held, &[S::Key { key: 42, pressed: false }, S::Key { key: 42, pressed: true }, S::Key { key: 42, pressed: true }]);
         assert_eq!(held, [HeldInput::Key(42)]);
-        held_after(
-            &mut held,
-            &[
-                S::Button { button: 0x110, pressed: true },
-                S::Keysym { keysym: 0xffe1, pressed: true },
-                S::Touch { slot: 2, phase: TouchPhase::Down, x: 5.0, y: 5.0, window: None },
-                S::Touch { slot: 2, phase: TouchPhase::Motion, x: 6.0, y: 5.0, window: None },
-                S::Wheel { dx: 0, dy: 1 },
-            ],
-        );
-        assert_eq!(held, [HeldInput::Key(42), HeldInput::Button(0x110), HeldInput::Keysym(0xffe1), HeldInput::Touch(2)]);
+        own(&mut held, &[S::Button { button: 0x110, pressed: true }, S::Keysym { keysym: 0xffe1, pressed: true }, S::Wheel { dx: 0, dy: 1 }]);
+        assert_eq!(held, [HeldInput::Key(42), HeldInput::Button(0x110), HeldInput::Keysym(0xffe1)]);
+        // A finger on a touch screen is not kept (lifting it for a connection that has gone can click).
+        own(&mut held, &[S::Touch { slot: 2, phase: TouchPhase::Down, x: 5.0, y: 5.0, window: None }]);
+        assert_eq!(held.len(), 3);
+        // A key that was down already when it pressed it (the person's own Shift, held on the keyboard) is
+        // not its own, and its end doesn't let go of it. One it holds already stays its own.
+        held_after(&mut held, &S::Key { key: 29, pressed: true }, true, true);
+        assert!(!held.contains(&HeldInput::Key(29)));
+        held_after(&mut held, &S::Key { key: 42, pressed: true }, true, true);
+        assert!(held.contains(&HeldInput::Key(42)));
+        // Another connection's letting go, or its own press of the same, takes it away: whoever pressed
+        // last has it.
+        held_after(&mut held, &S::Key { key: 42, pressed: false }, false, false);
+        held_after(&mut held, &S::Button { button: 0x110, pressed: true }, false, true);
+        assert_eq!(held, [HeldInput::Keysym(0xffe1)]);
         // Each is let go by its own event.
         let let_go: Vec<S> = held.iter().rev().map(|h| h.release()).collect();
-        held_after(&mut held, &let_go);
+        own(&mut held, &let_go);
         assert!(held.is_empty(), "{held:?}");
-        assert!(matches!(let_go[0], S::Touch { slot: 2, phase: TouchPhase::Up, .. }));
+        // No more than a keyboard's worth is kept.
+        for key in 0..1000 {
+            held_after(&mut held, &S::Key { key, pressed: true }, true, false);
+        }
+        assert_eq!(held.len(), OWNED_MOST);
     }
 }

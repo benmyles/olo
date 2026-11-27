@@ -978,6 +978,34 @@ something nobody here has is in "Blocked", with what it waits for.
     quoted; "a legend rendered across two rows also fails the one-line
     match". To check against a capture of the real box.
 
+- **Left by the code review of `Request::OwnInput`** (Astra 6.2,
+  2026-11-27, `/var/tmp/olo-reviews/astra-6e79d82c80/astra-review.md`,
+  16 findings, "hold for fixes"; fixed: its 1, 2, 3 for another's
+  press, 7, 9, 11, 12, 14, 15's first half, 16; touches taken out
+  for its 5, 6 and 13; its words for the rest):
+  - 3, for buttons: an owner's press of a button already down by
+    another hand is still kept as its own (the seat's keys are asked,
+    its buttons are not: `PointerHandle` doesn't say).
+  - 4: "A owns keysym `Shift_L`. B sends raw key 42 up and down. The
+    raw up misses A's keysym entry, so A's disconnect releases B's new
+    Shift … Press keysym `y` on US QWERTY, switch to German QWERTZ,
+    then disconnect. Cleanup resolves `y` again and releases evdev 44,
+    leaving the original 21 down." (Keep what a keysym pressed, not
+    the keysym.)
+  - 5, 6, 13 (a finger on a touch screen, not kept now): "An unshown
+    window can leave a touch drag's mouse button down"; "A repeated
+    touch-down can leave the grab active after close"; "Losing a touch
+    connection can click a different control … Cancel a pending
+    emulated tap on disconnect."
+  - 10: "A controller presses Shift. A second connection releases and
+    re-presses it. The server forgets the first claim, but the helper
+    and pane still have Shift on their own lists. Stopping control
+    sends an explicit up from that stale list." (The helper's and the
+    pane's own lists at an orderly end.)
+  - 15, its second half: "If an owner disappears with Shift held after
+    the display has gone dark, the cleanup calls `power_activity`,
+    turns the display on, resets idle time, and can dismiss the saver."
+
 - **Agent Screens for a host's screens: what is next, and what its
   reviews left** (Ben, 2026-11-27; HACKING, "A screen's pane, and a
   host's screens served live"; the design and the builders' reports are
