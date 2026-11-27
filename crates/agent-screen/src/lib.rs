@@ -747,6 +747,32 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
         let num = num_s.parse::<u32>().ok()?;
         Some((selected, num, label.trim().to_owned()))
     };
+    // The same, with the column its number stands at: a chooser's
+    // answers stand in one column, marked or not ("> 1." and "  2.",
+    // " ❯ 1." and "   2."), and what a choice quotes of a command does
+    // not ("3. Read the log" at the line's start, inside a script an
+    // "always allow" choice shows): only a line at the answers' own
+    // column is an answer. Before its number: spaces, and one mark at
+    // most.
+    let numbered_at = |raw: &str| -> Option<(bool, u32, String, usize)> {
+        let lead: Vec<char> = raw.chars().take_while(|c| !c.is_ascii_digit()).collect();
+        if !lead.iter().all(|c| c.is_whitespace() || marks.contains(c)) || lead.iter().filter(|c| marks.contains(c)).count() > 1 {
+            return None;
+        }
+        let (selected, num, label) = parse_numbered(raw)?;
+        Some((selected, num, label, lead.len()))
+    };
+    // What ends a chooser: the line under its answers.
+    let footer_marker = |l: &str| {
+        let tl = l.trim().to_ascii_lowercase();
+        tl.starts_with("esc to cancel")
+            || tl.starts_with("press enter to confirm")
+            || tl.starts_with("press enter to continue")
+            || tl.starts_with("↑/↓ navigate")
+            || tl.starts_with("enter to select")
+            || tl.starts_with("tab to amend")
+            || tl.starts_with("ctrl+")
+    };
 
     let is_known_question = |q: &str| -> bool {
         let t = q.trim().to_ascii_lowercase();
@@ -776,14 +802,17 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     let rest = &lines[q_idx + 1..];
     // Find `1. ...` strictly belonging to the chooser (not a numbered line inside a command preview:
     // require it to be the last `1. ` block or followed by another choice + cursor mark).
-    let first_choice_rel = rest.iter().enumerate().rev().find_map(|(idx, l)| {
-        let (_, num, _) = parse_numbered(l)?;
+    let (first_choice_rel, choice_col) = rest.iter().enumerate().rev().find_map(|(idx, l)| {
+        let (_, num, _, col) = numbered_at(l)?;
         if num != 1 {
             return None;
         }
-        // Confirm at least one choice in this trailing block has a live cursor mark.
-        let has_cursor = rest[idx..].iter().take(12).any(|cl| parse_numbered(cl).is_some_and(|(sel, _, _)| sel));
-        has_cursor.then_some(idx)
+        // Confirm at least one choice in this trailing block has a live cursor mark: looked for to the
+        // chooser's foot (within twelve lines, a mark on the last answer of a chooser whose answers each
+        // quote a command over several lines was never found: the box read as no question at all once
+        // the mark had been moved there, which is what `approve --no` does before it presses Return).
+        let has_cursor = rest[idx..].iter().take(200).take_while(|cl| !footer_marker(cl)).any(|cl| numbered_at(cl).is_some_and(|(sel, _, _, c)| sel && c == col));
+        has_cursor.then_some((idx, col))
     })?;
     if rest[..first_choice_rel].iter().map(|l| l.trim()).any(|l| l.ends_with('?') && !l.starts_with("Reason:")) {
         return None;
@@ -797,18 +826,10 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     let mut choices: Vec<ApprovalChoice> = Vec::new();
     let mut last_num = 0u32;
     let mut wrap_lines_for_last = 0u8;
-    let footer_marker = |l: &str| {
-        let tl = l.trim().to_ascii_lowercase();
-        tl.starts_with("esc to cancel")
-            || tl.starts_with("press enter to confirm")
-            || tl.starts_with("press enter to continue")
-            || tl.starts_with("↑/↓ navigate")
-            || tl.starts_with("enter to select")
-            || tl.starts_with("tab to amend")
-            || tl.starts_with("ctrl+")
-    };
     let is_rule_or_chrome =
         |t: &str| t.starts_with('─') || t.starts_with('╌') || t.starts_with('═') || t.starts_with('━') || t.starts_with('❯') || t.starts_with('›') || t.starts_with("> ") || t.starts_with("? for ");
+    // An answer: a numbered line at the answers' own column.
+    let answer = |raw: &str| numbered_at(raw).filter(|(_, _, _, col)| *col == choice_col).map(|(selected, num, label, _)| (selected, num, label));
     // Whether a choice that goes on the sequence (`after`'s next numbers)
     // stands further down, before the box's foot. A choice's label may
     // quote the command it would allow, and a command of several lines
@@ -817,11 +838,10 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     // box whose "always allow" choices quoted `python3 -c '` and a
     // script was read as two choices, its "No" never seen, and `olo
     // agent approve --no` found no "No" to choose: a minder's report,
-    // 2026-11-27.)
+    // 2026-11-27. Marked or not: the mark is moved onto the answer
+    // before Return, and the box is read again with it there.)
     let block = &rest[first_choice_rel..];
-    let goes_on = |from: usize, after: u32| {
-        block[from..].iter().take_while(|l| !footer_marker(l.trim())).any(|l| !is_rule_or_chrome(l.trim()) && parse_numbered(l).is_some_and(|(_, num, _)| num > after && num <= after + 3))
-    };
+    let goes_on = |from: usize, after: u32| block[from..].iter().take_while(|l| !footer_marker(l)).any(|l| answer(l).is_some_and(|(_, num, _)| num > after && num <= after + 3));
     for (at, line) in block.iter().enumerate() {
         let t = line.trim();
         if footer_marker(t) {
@@ -836,28 +856,38 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
             }
             continue;
         }
-        if let Some((selected, num, label)) = parse_numbered(line) {
+        if let Some((selected, num, label)) = answer(line) {
             if (choices.is_empty() && num == 1) || (!choices.is_empty() && num > last_num && num <= last_num + 3) {
                 let kind = classify_choice_kind(&label);
                 let idx = choices.len();
                 choices.push(ApprovalChoice { index: idx, number: Some(num), label, selected, kind });
                 last_num = num;
                 wrap_lines_for_last = 0;
+                continue;
             } else if !choices.is_empty() {
-                // Out-of-order numbered line: NEVER merge into previous choice!
+                // A number out of order at the answers' own column: which lines are answers can't be
+                // told (a list quoted inside one of them, indented as they are). Not read as a
+                // question at all: half its answers would be worse.
+                return None;
+            }
+        }
+        if let Some(last) = choices.last_mut() {
+            let inside = goes_on(at + 1, last_num);
+            if is_rule_or_chrome(t) && !inside {
                 break;
             }
-        } else if let Some(last) = choices.last_mut()
-            && !is_rule_or_chrome(t)
-            && (wrap_lines_for_last < 3 || goes_on(at + 1, last_num))
-        {
-            last.label.push(' ');
-            last.label.push_str(t);
-            last.kind = classify_choice_kind(&last.label);
-            wrap_lines_for_last = wrap_lines_for_last.saturating_add(1);
-        } else if !choices.is_empty() {
-            break;
+            if wrap_lines_for_last < 3 || inside {
+                last.label.push(' ');
+                last.label.push_str(t);
+                wrap_lines_for_last = wrap_lines_for_last.saturating_add(1);
+            } else {
+                break;
+            }
         }
+    }
+    // (Each answer's kind once, from its whole label.)
+    for c in &mut choices {
+        c.kind = classify_choice_kind(&c.label);
     }
     if choices.len() < 2 {
         return None;
@@ -885,11 +915,17 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     let mut cmd_lines: Vec<String> = Vec::new();
     let mut folded_lines: Option<usize> = None;
 
+    // A line that says lines are folded away, and how many: the mark
+    // (an ellipsis) and its count, alone on their line, "⋯ 28 lines
+    // hidden" or, as Antigravity writes it, "⋯ (19 lines hidden)"; the
+    // count was read only without the brackets, and a folded command was
+    // told as a whole one (seen on two boxes, 2026-11-27). Never words
+    // inside a command: `python3 -c 'print("lines hidden")'` is whole.
     let parse_folded = |t: &str| -> Option<usize> {
-        let low = t.to_ascii_lowercase();
-        // (Antigravity's own words have it in brackets, "⋯ (19 lines hidden)": the count was read only without
-        // them, and a folded command was told as a whole one. Seen on two boxes, 2026-11-27.)
-        if low.contains("lines hidden") { low.split_whitespace().find_map(|w| w.trim_matches(|c: char| !c.is_ascii_digit()).parse::<usize>().ok()) } else { None }
+        let said = t.trim().strip_prefix('⋯').or_else(|| t.trim().strip_prefix('…'))?.trim();
+        let said = said.strip_prefix('(').and_then(|s| s.strip_suffix(')')).unwrap_or(said);
+        let (count, words) = said.split_once(' ')?;
+        matches!(words.trim().to_ascii_lowercase().as_str(), "lines hidden" | "line hidden" | "more lines hidden").then(|| count.parse::<usize>().ok()).flatten()
     };
 
     // Detect dashed command block (Claude Code 2.1.331: `╌╌╌╌` ... `╌╌╌╌`).
@@ -1310,9 +1346,15 @@ mod tests {
     /// read as two choices, and `olo agent approve --no` found no "No".)
     #[test]
     fn a_choice_that_quotes_a_command_of_several_lines_hides_no_choice() {
-        let boxed = |quoted: &str| {
+        // (`marked`: which answer the mark stands on, as it does after `approve` has moved it there.)
+        let boxed = |quoted: &str, marked: usize| {
+            let m = |n: usize| if n == marked { ">" } else { " " };
             agy(&format!(
-                "● Bash(/usr/bin/python3 -c ')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   /usr/bin/python3 -c '\n   import subprocess\n   pairs = [\n       (\"clip.rs\", [\"crates/screen-pane/src/clip.rs\"]),\n   ⋯ (19 lines hidden)\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with '/usr/bin/python3 -c '\n{quoted}'\n  3. Yes, and always allow for commands that start with '/usr/bin/python3 -c '\n{quoted}' (Persist to settings.json)\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                    accept-edits · Gemini 4 Neon · xhigh\n"
+                "● Bash(/usr/bin/python3 -c ')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   /usr/bin/python3 -c '\n   import subprocess\n   pairs = [\n       (\"clip.rs\", [\"crates/screen-pane/src/clip.rs\"]),\n   ⋯ (19 lines hidden)\nRun this command?\n{} 1. Yes, run command\n{} 2. Yes, and always allow in this conversation for commands that start with '/usr/bin/python3 -c '\n{quoted}'\n{} 3. Yes, and always allow for commands that start with '/usr/bin/python3 -c '\n{quoted}' (Persist to settings.json)\n{} 4. No, cancel\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                    accept-edits · Gemini 4 Neon · xhigh\n",
+                m(1),
+                m(2),
+                m(3),
+                m(4)
             ))
         };
         for (what, quoted) in [
@@ -1320,20 +1362,55 @@ mod tests {
             ("a blank line in the script", "import subprocess\n\npairs = [\n    (\"clip.rs\", [\"crat..."),
             ("two blank lines", "import subprocess\n\n\npairs = [..."),
             ("more lines than a label wraps to", "a=1\nb=2\nc=3\nd=4\ne=5\nprint(a..."),
+            // (A list in the script, numbered on from the answer it stands in, at the line's start:
+            // not an answer, which stands at the answers' own column.)
+            ("a numbered list in the script", "cat <<EOF\n\n3. Read the log\n4. Write it up\nEOF..."),
+            ("a line of the script that begins as the mark does", "cat > out <<EOF\n> quoted\n\n> more\nEOF..."),
         ] {
-            let ap = parse_approval(Agent::Antigravity, &boxed(quoted)).unwrap_or_else(|| panic!("{what}: no box read"));
-            let kinds: Vec<ChoiceKind> = ap.choices.iter().map(|c| c.kind).collect();
-            assert_eq!(kinds, [ChoiceKind::Once, ChoiceKind::AllowSession, ChoiceKind::DontAskAgain, ChoiceKind::No], "{what}: {:?}", ap.choices.iter().map(|c| c.label.as_str()).collect::<Vec<_>>());
-            assert_eq!((ap.selected_index, ap.choices[3].number, ap.choices[3].label.as_str()), (Some(0), Some(4), "No, cancel"), "{what}");
-            assert_eq!(ap.tool.as_deref(), Some("Bash"), "{what}");
-            assert_eq!(ap.folded_lines, Some(19), "{what}: that the command is folded is said");
+            // Wherever the mark stands: on the first answer as the box comes, and on each other as
+            // `approve` moves it before it presses Return (it reads the box again with the mark there;
+            // read as no question then, nothing was pressed).
+            for marked in 1..=4 {
+                let ap = parse_approval(Agent::Antigravity, &boxed(quoted, marked)).unwrap_or_else(|| panic!("{what}, the mark on answer {marked}: no box read"));
+                let kinds: Vec<ChoiceKind> = ap.choices.iter().map(|c| c.kind).collect();
+                assert_eq!(
+                    kinds,
+                    [ChoiceKind::Once, ChoiceKind::AllowSession, ChoiceKind::DontAskAgain, ChoiceKind::No],
+                    "{what}, the mark on answer {marked}: {:?}",
+                    ap.choices.iter().map(|c| c.label.as_str()).collect::<Vec<_>>()
+                );
+                assert_eq!((ap.selected_index, ap.choices[3].number, ap.choices[3].label.as_str()), (Some(marked - 1), Some(4), "No, cancel"), "{what}, the mark on answer {marked}");
+                assert_eq!(ap.tool.as_deref(), Some("Bash"), "{what}");
+                assert_eq!(ap.folded_lines, Some(19), "{what}: that the command is folded is said");
+            }
         }
-        // (What ends the choices still ends them: a blank line with no choice after it, then other words.)
-        let ended = agy(&format!(
-            "● Bash(cargo test)\nCommand\n{AGY_RULE}\nRequesting permission for:\n   cargo test\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\n\n  3 tests ran before this.\n  ↑/↓ Navigate\nesc to cancel\n"
+        // (What ends the choices still ends them: a blank line with no choice after it, then other words,
+        // numbered or not.)
+        for after in ["  3 tests ran before this.", "3. tests ran before this."] {
+            let ended = agy(&format!(
+                "● Bash(cargo test)\nCommand\n{AGY_RULE}\nRequesting permission for:\n   cargo test\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\n\n{after}\n  ↑/↓ Navigate\nesc to cancel\n"
+            ));
+            let ap = parse_approval(Agent::Antigravity, &ended).expect("a box of two");
+            assert_eq!(ap.choices.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["Yes, run command", "No, cancel"], "{after}");
+        }
+        // An answer's number seen twice at the answers' own column: which lines are answers can't be told.
+        // Not read as a question at all (half its answers, with no "No" among them, was worse).
+        let twice = agy(&format!(
+            "● Bash(sh -c ')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   sh -c '…'\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'sh -c '\n\n  3. a line of the script, indented as the answers are\n...'\n  3. Yes, and always allow for commands that start with 'sh' (Persist to settings.json)\n  4. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n"
         ));
-        let ap = parse_approval(Agent::Antigravity, &ended).expect("a box of two");
-        assert_eq!(ap.choices.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["Yes, run command", "No, cancel"]);
+        assert!(parse_approval(Agent::Antigravity, &twice).is_none());
+        // Words in a command are not the mark that says lines are folded: a command shown whole is whole.
+        let whole = agy(&format!(
+            "● Bash(python3 -c 'print(\"3 lines hidden\")')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   python3 -c 'print(\"3 lines hidden\")'\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n"
+        ));
+        let ap = parse_approval(Agent::Antigravity, &whole).expect("a box of two");
+        assert_eq!((ap.folded_lines, ap.command.as_deref()), (None, Some("python3 -c 'print(\"3 lines hidden\")'")));
+        for (said, n) in [("⋯ 28 lines hidden", 28), ("⋯ (19 lines hidden)", 19), ("⋯ (1 line hidden)", 1)] {
+            let folded = agy(&format!(
+                "● Bash(cargo test)\nCommand\n{AGY_RULE}\nRequesting permission for:\n   cargo test --workspace\n   {said}\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n"
+            ));
+            assert_eq!(parse_approval(Agent::Antigravity, &folded).expect("a box of two").folded_lines, Some(n), "{said}");
+        }
     }
 
     fn agy_idle() -> String {

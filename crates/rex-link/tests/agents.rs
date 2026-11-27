@@ -2556,7 +2556,10 @@ fn leave_is_given_by_a_list_and_what_it_names_is_asked() {
     let at = Instant::now();
     rig.show("worker", &asking("cd /w && cargo test -p olo-kit > test.log", 0));
     assert!(gone.join().unwrap(), "the service didn't answer it\n{}", rig.said());
-    assert!(at.elapsed() < Duration::from_secs(4), "{:?}", at.elapsed());
+    // (At once, by its list: not after any wait for a minder or a parent, which are a minute and more. The
+    // bound was four seconds, and on a machine with eighty runnable tasks for thirty-two processors the
+    // service's own answer took longer once, 2026-11-27: it tells "at once" from "waited for someone", no more.)
+    assert!(at.elapsed() < Duration::from_secs(12), "{:?}", at.elapsed());
     rig.typed_since("worker", before, b"\r", "Return on Yes, the first choice: once, and nothing else");
     let (code, out, _) = woken(from, "1");
     assert_eq!(code, 124, "the parent was told of a question its list answers: {out}");
