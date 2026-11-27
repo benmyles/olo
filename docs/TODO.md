@@ -883,6 +883,40 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Rex's Host window and its confirmations, as two reviewers saw them
+  beside the limits tweak** (2026-11-27; there before it; their words).
+  Opus: "All three confirmations: the 30 pt alert stripe is empty. The
+  content is indented 32 pt past it, as if for an icon that isn't
+  drawn, and the bare stripe then runs down 250–320 pt of empty pane.
+  Either draw the 32 pt alert icon straddling the stripe's right edge,
+  with its top on the title's cap height as a BeOS alert does, or
+  remove the stripe"; "Header, every picture: a blank 44 pt slot.
+  'dev-box' and its status line start at 60 pt, but the line under them
+  starts at 16 pt … Put the 32 pt host icon there, or move the name and
+  status to 16 pt"; "confirm-limits table: weak group headings … the
+  same weight and colour as the rows, and while scrolling they're the
+  only landmarks … Set headings semibold in the primary text colour …
+  Give SSH a child row with its key … Set 'open files' as its real key,
+  in mono"; "Default-button ring (Apply, Put Back): it overhangs the
+  well's right edge by 3 pt"; "'Kernel limits · 4 of 7 settings to
+  change' is the only 'x of y' status"; "Brush shell goes from 'not
+  installed' to 'applied'. Say 'installed'"; and "Amber vs green is
+  distinguished by hue alone, on an 8 pt dot … Draw both amber states
+  as a ring: 8 pt outer, 2 pt amber stroke, hollow centre" (the kit's
+  `Light::Waiting`, wherever it is used). Gemini: buttons and links end
+  in three full stops beside typographic apostrophes ("check whether
+  `...` is the intended … convention or should be `…`").
+- **Deskbar's bar, as two reviewers saw it beside the Clear All button**
+  (2026-11-27; there before it; their words). Opus: "Dark depth is
+  upside down"; "The small card cuts the news away … 'morning-cre…'
+  keeps the source and drops 'Agent finished'. Elide in the middle so
+  the end survives"; "The title leaves a widow … Prefer a break after
+  the '·'"; "The hover plate is faint and flat … Light grey on white
+  barely shows at 1x"; on a waiting card "the bell badge says 2 while
+  the counter says '1 of 3'". Gemini: "Tooltips: bottom border slices
+  across the top of the 'Workspace 1' label" (a tip opened from the
+  card's foot lies over the widget under it).
+
 - **The agents' own helpers, told from an agent's tasks** (Astra's
   second review, its 16, and its review of the fix,
   `/var/tmp/olo-reviews/astra-201b04c4f4/astra-review.md`, 8 to 12). The
