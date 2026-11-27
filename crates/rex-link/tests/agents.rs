@@ -803,6 +803,29 @@ fn a_drafted_feedback_report_is_told_and_never_answered() {
     std::thread::sleep(Duration::from_millis(900));
     let _ = rig.status("drafted");
     assert_eq!(rig.keys("drafted").len(), before, "the service pressed a key into the box by itself: {:?}", &rig.keys("drafted")[before..]);
+    // The box gone and the survey still there: set aside now, as any survey (kept back, it was marked as
+    // one that stays and never was. The confirming review).
+    let agent = rig.when_typed("drafted", b"0", idle("Done."));
+    rig.show("drafted", &format!("● Done.\n● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n{0}\n❯ \n{0}\n  ⏸ manual mode on · ? for shortcuts\n", rule()));
+    rig.wait("the survey to be set aside", || {
+        let _ = rig.status("drafted");
+        rig.keys("drafted").len() > before
+    });
+    assert!(agent.join().unwrap(), "the survey's 0 was pressed");
+    // (Its own key and no other: pressed again while it still shows, three times at most, as for any
+    // survey; the stand-in is slow to draw on a busy computer.)
+    std::thread::sleep(Duration::from_millis(700));
+    let pressed = rig.keys("drafted")[before..].to_vec();
+    assert!((1..=3).contains(&pressed.len()) && pressed.iter().all(|k| *k == b'0'), "the survey's own 0 and nothing else: {pressed:?}");
+    // A question still on the screen above the box: no yes is written through the box, by a list or by hand.
+    let before = rig.keys("drafted").len();
+    rig.show("drafted", &format!("{}{boxed}", asking("ls", 0)));
+    rig.wait("the box to be seen over the question", || rig.status("drafted")["feedback_draft"].is_string());
+    let under = rig.status("drafted");
+    assert!(under["state"] != "waiting_approval" && under["approval"].is_null(), "a question is offered from under the box: {under}");
+    let (code, out, err) = rig.olo(&["approve", "drafted", "--json"]);
+    assert!(code != 0, "a yes went through the box: {out}{err}");
+    assert_eq!(rig.keys("drafted").len(), before, "a yes was typed into the box: {:?}", &rig.keys("drafted")[before..]);
     // The box's words printed in what the agent wrote are not the box: a message goes through.
     rig.show("drafted", &format!("● The box says:\n● 1 to review · 2 to send · 0 to dismiss\n✻ Crunched for 2s\n{0}\n❯ \n{0}\n  ⏸ manual mode on · ? for shortcuts\n", rule()));
     rig.wait("the box to be gone", || rig.status("drafted")["feedback_draft"].is_null());
@@ -850,8 +873,26 @@ fn a_failed_turn_says_why_and_all_that_failed_are_told_at_once() {
         let (code, _, err) = rig.olo(refused);
         assert!(code == 2 && err.contains("only a message"), "{refused:?}: {err}");
     }
+    // (Nor from a pane the service doesn't know, one closed since, in a session it does: it would answer
+    // for the tab in front, another lead's where several share the session.)
+    let stale = rig
+        .helper()
+        .args(["agent", "send", "--all-errored", "continue", "--enter"])
+        .env("REX_BLOCK", "block:00000000-0000-7000-8000-000000000000")
+        .env("REX_SESSION", &rig.session)
+        .output()
+        .expect("the helper");
+    assert!(stale.status.code() == Some(2) && String::from_utf8_lossy(&stale.stderr).contains("isn't certain"), "{stale:?}");
+    // (No file is opened for it: a FIFO nobody writes to would hang it.)
+    let (code, _, err) = rig.olo(&["send", "--all-errored", "--file", "/proc/self/fd/0", "--enter"]);
+    assert!(code == 2 && err.contains("only a message"), "{err}");
+    assert_eq!(["one", "two", "well"].iter().map(|n| rig.keys(n).len()).collect::<Vec<_>>(), before, "something was typed by a refused command");
+    // (Each takes it up: the test plays the agents.)
+    let took: Vec<_> = ["one", "two"].iter().map(|n| rig.when_typed(n, b"go on where you were.", working())).collect();
     let sent = rig.json(&["send", "--all-errored", "--enter", "--json", "--", "The outage is over: go on where you were."]);
+    assert!(took.into_iter().all(|t| t.join().unwrap()), "{sent}");
     assert_eq!((&sent["ok"], &sent["count"]), (&json!(true), &json!(2)), "{sent}");
+    assert!(sent["sent"].as_array().unwrap().iter().all(|s| s["delivered"] == true), "{sent}");
     assert!(sent["sent"].as_array().unwrap().iter().all(|s| s["was"].as_str().is_some_and(|w| w.starts_with("API Error"))), "{sent}");
     let names: Vec<&str> = sent["sent"].as_array().unwrap().iter().filter_map(|s| s["name"].as_str()).collect();
     assert!(names.contains(&"one") && names.contains(&"two") && !names.contains(&"well"), "{sent}");
@@ -861,12 +902,19 @@ fn a_failed_turn_says_why_and_all_that_failed_are_told_at_once() {
     }
     assert_eq!(rig.keys("well").len(), before[2], "the child that is well was told too");
     // None left standing at an error (they work again): nothing to send, and said so.
-    rig.show("one", &working());
-    rig.show("two", &working());
     rig.wait_state("one", "working");
     rig.wait_state("two", "working");
     let none = rig.json(&["send", "--all-errored", "Again.", "--enter", "--json"]);
     assert_eq!((&none["ok"], &none["count"]), (&json!(true), &json!(0)), "{none}");
+    // One that is sent the message and doesn't take it up (its screen as it was, the words in its
+    // field or gone nowhere) is not said to have been told (the confirming review: "bulk still reports
+    // unverified submissions as taken").
+    rig.show("one", &failed("API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"));
+    rig.wait_state("one", "error");
+    let (code, out, _) = rig.olo(&["send", "--all-errored", "Once more.", "--enter", "--json"]);
+    let not_taken: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{e}: {out}"));
+    assert_eq!((code, &not_taken["ok"], &not_taken["count"]), (1, &json!(false), &json!(0)), "{not_taken}");
+    assert_eq!(not_taken["sent"][0]["delivered"], false, "{not_taken}");
 }
 
 /// Forty children under one tab: started side by side, all there, and
@@ -2343,6 +2391,22 @@ fn a_turn_before_is_not_this_turn_and_a_files_word_is_looked_for() {
     assert_eq!(code, 0, "a question standing before the watch waited behind a child turned down: {out}{err}");
     let told: Value = serde_json::from_str(out.trim()).unwrap();
     assert_eq!((&told["name"], &told["state"]), (&json!("asks"), &json!("waiting_approval")), "{told}");
+
+    // 4. A Codex whose turn the person cut short: its notice reads as an error on its screen, and it is at
+    //    rest by its file. A watch for errors alone is not answered with that rest (the confirming review:
+    //    "The watcher returns immediately with `event=idle` and success").
+    const CUT: &str = "5f0c1f0e-aaaa-4aaa-8aaa-2f8f0e0a000a";
+    let file = rollout(CUT);
+    add(&file, &[meta(CUT)]);
+    rig.start_child("codex", "cut", &["--resume", CUT, "--cwd", &work]);
+    rig.show("cut", "› Do the thing.\n\n■ Conversation interrupted - use /feedback if something went wrong\n\n› Ask Codex to do anything\n\n  GPT-6.2-Astra max · /var/tmp/x · Context 52% left\n  ← for agents · ? for shortcuts\n");
+    add(&file, &[started_at(&ago(0)), json!({ "timestamp": ago(0), "type": "event_msg", "payload": { "type": "turn_aborted", "reason": "interrupted" } })]);
+    rig.wait("its conversation to be found, and its rest", || {
+        let status = rig.status("cut");
+        status["transcript_path"].is_string() && status["state"] == "idle"
+    });
+    let (code, out, _) = rig.olo(&["watch", "cut", "--on", "error", "--timeout", "2", "--json"]);
+    assert_eq!(code, 124, "a watch for errors was answered with a rest: {out}");
 }
 
 #[test]

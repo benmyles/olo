@@ -71,6 +71,13 @@ mod tests {
         assert_eq!(error_cause("Read 1529 lines of main.rs and 200 of lib.rs"), ("other", None));
         assert_eq!(error_cause("Read 500 lines"), ("other", None));
         assert_eq!(error_cause("Connection to proxy:443 failed (HTTP 401)"), ("account", Some(401)));
+        // The Token Pool's own two, as it words them (`crates/pool`, `unavailable`): none to use is the
+        // account's though it comes as a 503, and all out of quota is a wait though it speaks of a sign-in.
+        assert_eq!(error_cause("API Error: 503 There are no Claude Code accounts in the pool to use (open Token Pool to add one)."), ("account", Some(503)));
+        assert_eq!(error_cause("API Error: 429 Every Claude Code account in the pool is out of quota for now. A reset credit waits on the pool that keeps its sign-in."), ("rate_limit", Some(429)));
+        // The first status said, in the words' own order, and with a colon.
+        assert_eq!(error_cause("unexpected status 502 (upstream HTTP 401)"), ("provider", Some(502)));
+        assert_eq!(error_cause("HTTP status code: 503"), ("provider", Some(503)));
         // Whose fault by its words first: a pool with nobody signed in answers 503; no credit comes as a 400.
         assert_eq!(error_cause("API Error: 503 no account is signed in: add an account in Token Pool"), ("account", Some(503)));
         assert_eq!(error_cause("API Error: 400 Credit balance is too low"), ("account", Some(400)));

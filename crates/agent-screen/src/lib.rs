@@ -473,6 +473,9 @@ pub fn approvable(screen: &str) -> Option<Ask> {
 /// that yes already: anywhere else, someone moved it and it is theirs.
 /// [`Ask::down`] says how far below the mark the yes is.
 pub fn approvable_for(agent: Agent, screen: &str) -> Option<Ask> {
+    if feedback_draft_in_front(agent, screen) {
+        return None;
+    }
     if let Some(trust) = parse_folder_trust(screen) {
         return trust_ask(&trust);
     }
@@ -582,6 +585,24 @@ pub fn parse_survey(agent: Agent, screen: &str) -> Option<Survey> {
 /// from the words the lead quoted, not yet from a capture of the box:
 /// where it is drawn otherwise it isn't seen, which is today's state.)
 pub fn feedback_draft(agent: Agent, screen: &str) -> Option<String> {
+    feedback_draft_at(agent, screen).map(|(_, keys)| keys)
+}
+
+/// The drafted feedback report's box stands in front of whatever else
+/// `screen` shows: no question is asked under its line of keys, so a
+/// question still on the screen above it (a permission's, a folder's
+/// trust) is not what a Return would answer. Nobody says yes through
+/// it: [`approvable_for`], the agents service's reading of a screen.
+/// (A code review, 2026-11-27: "With `ls` allowed … `approve` writes
+/// Return into the foreground draft.")
+pub fn feedback_draft_in_front(agent: Agent, screen: &str) -> bool {
+    let Some((at, _)) = feedback_draft_at(agent, screen) else { return false };
+    let below = screen.lines().skip(at).collect::<Vec<_>>().join("\n");
+    parse_folder_trust(&below).is_none() && parse_approval(agent, &below).is_none()
+}
+
+/// [`feedback_draft`], and the line its keys are on.
+fn feedback_draft_at(agent: Agent, screen: &str) -> Option<(usize, String)> {
     if agent != Agent::Claude {
         return None;
     }
@@ -605,7 +626,7 @@ pub fn feedback_draft(agent: Agent, screen: &str) -> Option<String> {
         // (Between them: the middle key and what divides the three, nothing more.)
         let middle = rest.trim_matches(|c: char| !c.is_alphanumeric());
         let over_the_field = lines[i + 1..].iter().find(|l| !l.trim().is_empty()).is_some_and(|l| rule(l) || field(l));
-        (middle == "2 to send" && over_the_field).then(|| keys.to_owned())
+        (middle == "2 to send" && over_the_field).then(|| (i, keys.to_owned()))
     })
 }
 
@@ -2377,6 +2398,18 @@ mod tests {
         // not the box, though they stand near the foot.
         let printed = format!("● The box says:\n● 1 to review · 2 to send · 0 to dismiss\n✻ Crunched for 2s\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
         assert!(feedback_draft(Agent::Claude, &printed).is_none() && at_prompt(Agent::Claude, &printed));
+        // A question still on the screen above the box is not what a Return answers: nobody says yes through the box.
+        let dashed = "╌".repeat(40);
+        let asked = format!(
+            "{rule}\n Bash command\n Make it so\n{dashed}\n │ ls\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: ls\n   3. No\n Esc to cancel · Tab to amend\n"
+        );
+        assert!(approvable_for(Agent::Claude, &format!("● Bash(ls)\n{asked}")).is_some() && !feedback_draft_in_front(Agent::Claude, &format!("● Bash(ls)\n{asked}")));
+        let under_the_box = format!("● Bash(ls)\n{asked}{boxed}");
+        assert!(parse_approval(Agent::Claude, &under_the_box).is_some(), "the case is one where the question is still read");
+        assert!(feedback_draft_in_front(Agent::Claude, &under_the_box) && approvable_for(Agent::Claude, &under_the_box).is_none());
+        // (A question asked under the box's keys is the one in front: answered as ever.)
+        let over_the_question = format!("● Done.\n\n  1 to review · 2 to send · 0 to dismiss\n{asked}");
+        assert!(!feedback_draft_in_front(Agent::Claude, &over_the_question) && approvable_for(Agent::Claude, &over_the_question).is_some());
         let listed = format!("  1 to review · 2 to send · 0 to dismiss\n  and then it goes away.\n{rule}\n❯ \n{rule}\n");
         assert!(feedback_draft(Agent::Claude, &listed).is_none());
         // Over a field with several lines typed in it: still the box.

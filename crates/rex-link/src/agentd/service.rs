@@ -687,8 +687,9 @@ impl Service {
             (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq))
         };
         let mut survey = false;
+        let mut survey_tried = false;
         let mut live_read = false;
-        let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), &mut survey).await {
+        let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), &mut survey, &mut survey_tried).await {
             Ok(screen) => {
                 live_read = true;
                 let mut cls = classify_screen_rich(entry.cli, activity, &screen, true);
@@ -737,7 +738,7 @@ impl Service {
             if live_read && cls.approval.is_none() {
                 live.box_now = None;
             }
-            live.survey_stays = survey;
+            live.survey_stays = survey && survey_tried;
             (out, chg, pid, reports, expects) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported, live.expects);
         }
         // (And a screen that wasn't read takes up nothing.)
@@ -749,7 +750,13 @@ impl Service {
     /// never a question for whoever looks after the agent, and a
     /// permission prompt may lie under it). Three times at most; one
     /// that stays is said (`survey`) and left alone until it has gone.
-    async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, survey: &mut bool) -> Result<String, RexErr> {
+    ///
+    /// `tried`: its dismissal was pressed (now, or before: it is known
+    /// to stay). One only kept back, behind a drafted feedback report,
+    /// is not one that stays: marked so, it was never dismissed after
+    /// the draft had gone, and the next digit meant for the agent rated
+    /// it (the confirming review).
+    async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, survey: &mut bool, tried: &mut bool) -> Result<String, RexErr> {
         let mut screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
         let Some(agent) = entry.cli.screen_agent() else { return Ok(screen) };
         let stays = self.lock().live.get(&entry.id).is_some_and(|l| l.survey_stays);
@@ -760,6 +767,7 @@ impl Service {
             };
             *survey = true;
             if stays {
+                *tried = true;
                 break;
             }
             // (Never while a drafted feedback report is offered: the
@@ -771,6 +779,7 @@ impl Service {
                 break;
             }
             self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await?;
+            *tried = true;
             tokio::time::sleep(Duration::from_millis(300)).await;
             screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
         }

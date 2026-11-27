@@ -227,19 +227,32 @@ pub fn error_cause(text: &str) -> (&'static str, Option<u16>) {
     // 401", "status 503"), three digits alone, 400 to 599: not any such
     // number ("Connection to proxy:443 failed (HTTP 401)" was 443; "Read
     // 500 lines" a server's error. A code review, 2026-11-27).
-    let status = ["api error: ", "api error (", "api error ", "http ", "http/1.1 ", "http/2 ", "status code ", "status: ", "status ", "error code: "].iter().find_map(|mark| {
-        low.match_indices(mark).find_map(|(at, _)| {
-            let rest = &low[at + mark.len()..];
-            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-            let alone = !rest[digits.len()..].starts_with(|c: char| c.is_ascii_alphanumeric());
-            (digits.len() == 3 && alone).then(|| digits.parse::<u16>().ok()).flatten().filter(|n| (400..600).contains(n))
+    // The first said, in the words' own order: "unexpected status 502
+    // (upstream HTTP 401)" is a 502 (the way they were listed here made
+    // it a 401; "HTTP status code: 503" was none. The confirming review).
+    let status = ["api error: ", "api error (", "api error ", "http ", "http/1.1 ", "http/2 ", "status code: ", "status code ", "status: ", "status ", "error code: "]
+        .iter()
+        .filter_map(|mark| {
+            low.match_indices(mark).find_map(|(at, _)| {
+                let rest = &low[at + mark.len()..];
+                let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+                let alone = !rest[digits.len()..].starts_with(|c: char| c.is_ascii_alphanumeric());
+                (digits.len() == 3 && alone).then(|| digits.parse::<u16>().ok()).flatten().filter(|n| (400..600).contains(n)).map(|n| (at, n))
+            })
         })
-    });
+        .min_by_key(|(at, _)| *at)
+        .map(|(_, n)| n);
     let has = |words: &[&str]| words.iter().any(|w| low.contains(w));
     // Whose fault by its words first, where they say: a pool with no
     // account signed in answers 503 "add an account", and a credit that
     // has run out comes as a 400.
-    let kind = if has(&[
+    // (The Token Pool's own two, by its words: every account out of
+    // quota is a wait, though its message speaks of a "sign-in"; none
+    // to use is the account's, though it comes as a 503.)
+    let kind = if has(&["out of quota"]) {
+        "rate_limit"
+    } else if has(&[
+        "accounts in the pool to use",
         "credit balance",
         "billing",
         "authentication",
@@ -466,8 +479,12 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
     };
     let usage = olo_agent_screen::parse_usage(screen_text);
 
+    // (No question is offered from under a drafted feedback report's
+    // box: the box takes the keys, and a yes would be written into it.)
+    let draft_in_front = olo_agent_screen::feedback_draft_in_front(agent, screen_text);
+
     // 1. Folder-trust prompt (never misclassified as tool approval).
-    if let Some(trust) = olo_agent_screen::parse_folder_trust(screen_text) {
+    if let Some(trust) = olo_agent_screen::parse_folder_trust(screen_text).filter(|_| !draft_in_front) {
         let sum = match &trust.folder {
             Some(f) => format!("Trust folder {f}?"),
             None => "Trust this folder?".into(),
@@ -485,7 +502,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
     }
 
     // 2. Structured tool approval prompt (requires real choices + live cursor mark).
-    if let Some(ap) = olo_agent_screen::parse_approval(agent, screen_text) {
+    if let Some(ap) = olo_agent_screen::parse_approval(agent, screen_text).filter(|_| !draft_in_front) {
         let sum = ap.command.clone().or_else(|| Some(ap.question.clone()));
         return ScreenClassification {
             state: SubagentLiveState::WaitingApproval,

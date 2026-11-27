@@ -945,6 +945,63 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Left by the confirming code review of the feedback-draft box and of
+  "why a turn failed"** (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/
+  astra-296aa23a9d/astra-review.md`, 19 findings, "hold the release";
+  fixed after it, with no further review: its 1, 3, 9's failed check,
+  11, 12, 13, 15, 16, 17; its words for the rest):
+  - 2: "On a tall Claude screen, put the single-line legend above the
+    opening rule and `❯`, with exactly 30 rows below the legend … Rex
+    and Terminal pass only those 30 rows to `at_prompt`. Both see an
+    idle field. Keep It Going writes a message beginning with `2`
+    directly to the draft. At 40 rows below the legend, the service's
+    own reader misses it."
+  - 4: "The last reason check reads a clear field, then awaits the
+    terminal's paste mode. If the draft opens during that call and
+    bracketed paste is off, the first byte of `2 checks remain` is
+    written to it … Rex and Terminal each send their Keep It Going
+    Return after 150 ms without reading again."
+  - 5: "Let an answer quote the legend on its own unbulleted line,
+    followed by a `╭`-headed example box, more prose, and finally the
+    real idle field. The reader treats any `╭` line as the field. It
+    also accepts any line containing twenty `─` characters … every
+    ordinary send is refused."
+  - 6: "A project launcher started with `--command` can exec Claude
+    and show the exact tested draft. The registry still says `Command`,
+    so `send` skips the guard."
+  - 7: "A successful `format` reply missing `content` becomes an empty
+    screen. With a chunked reply, eight nonfinal chunks also produce
+    `Ok` … `look(true)` marks either result live."
+  - 8: "Add the recognized draft to the existing Claude fixture with a
+    finished turn and one background shell. The pane still reports
+    `Working` … Now `at_prompt` is false, so the service reports
+    `Working`, suppresses a transcript error, and a watch for
+    completion or failure can time out while the draft stays up … Keep
+    the input veto and use a separate test for whether" the field is
+    there.
+  - 9, the rest: "After `list` sees an error, let the child start
+    working before `status`. If that screen read fails, `status` can
+    reuse the old error. The subsequent `send` can read the working
+    screen successfully and still type."
+  - 10: "Without a readable rollout, `■ Conversation interrupted` still
+    becomes a screen error and bulk can resume the stopped turn …
+    start a new turn by hand after an abort. If the screen already
+    shows a genuine `■ unexpected status 503` while the file still
+    ends in the prior" abort, it is hidden.
+  - 14: "Start with a confirmed idle child and a visible draft. The
+    early `0` return omits the usual event-deduplication reset. On
+    dismissal the raw state is still idle and its dedupe key is still
+    empty, so a watch from the send cursor can time out."
+  - 18: "A healthy Claude can be bulk-retried after answering `❯ Ask
+    the maintainer`. With the preceding turn's 401 still visible, the
+    strict reader exempts all messages beginning with `ask ` as
+    placeholders … With a bare transcript error, place the current 529
+    above `❯ next question` in the editable field. Both screen readers
+    stop at that unsent text, losing the 529."
+  - 19: "A minder has a bare transcript `API Error` and a current 529
+    found only by the fallback. Its recorded event gets the 529, but
+    each worker's escalation uses the copy made before the fallback.
+    Rex followers also receive the old screen summary."
 - **Left by the code review of the feedback-draft box and of "why a turn
   failed"** (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/
   astra-76c32cf0da/astra-review.md`, 20 findings, "hold both"; fixed:

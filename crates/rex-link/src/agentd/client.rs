@@ -126,7 +126,10 @@ pub fn run(mut args: Vec<String>) -> i32 {
             print_answer(ask(&server, &paths, &req, false))
         }
         _ => {
-            let args = match with_files(&sub, rest) {
+            // (`send --all-errored` takes a message and nothing made into
+            // one on the way: no file is opened for it, a FIFO least of all.)
+            let bulk = sub == "send" && rest.first().is_some_and(|a| a == "--all-errored");
+            let args = match if bulk { Ok(rest) } else { with_files(&sub, rest) } {
                 Ok(args) => args,
                 Err(e) => {
                     eprintln!("olo agent {sub}: {e}");
@@ -178,9 +181,16 @@ fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> R
         }
     }
     let text = text.join(" ");
-    if text.trim().is_empty() {
+    // (As it would be typed: a message of control bytes alone is none,
+    // and its `--enter` would be a bare Return to every child.)
+    if olo_rex_link::agents::spec::sanitize_paste_text(&text).trim().is_empty() {
         eprintln!("usage: olo agent send --all-errored TEXT… [--enter] [--paste] [--json]: what to send is missing");
         return 2;
+    }
+    // (Submitted, each is seen to be taken before it is said to be.)
+    let submits = flags.iter().any(|f| f == "--enter");
+    if submits {
+        flags.push("--verify".into());
     }
     // From a tab's own pane: whose children they are is that tab's to
     // say, never the tab that happens to be in front.
@@ -191,6 +201,13 @@ fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> R
     let listed = asked("list", vec!["--json".into()]);
     if !listed.ok {
         return print_answer(listed);
+    }
+    // (And the pane must be one the service knows: for one it doesn't, a
+    // pane closed since, it answers for the tab in front, which may be
+    // another lead's. The confirming review.)
+    if listed.data["parent_certain"] != true {
+        eprintln!("olo agent send --all-errored: the agents service doesn't know this pane (REX_BLOCK), so whose children these are isn't certain: nothing sent");
+        return 2;
     }
     // The asking tab's own children: its direct ones, and those minded
     // for it under a minder of its own; not a child's children (theirs
@@ -208,7 +225,13 @@ fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> R
         // (As it stands now: one that has gone on meanwhile, by itself or
         // by somebody's hand, is not told to go on in the middle of it.)
         let now = asked("status", vec![id.clone(), "--json".into()]);
-        if !now.ok || now.data["state"] != "error" {
+        // (A check that failed is not a child that recovered.)
+        if !now.ok {
+            all_went = false;
+            sent.push(json!({ "id": id, "name": name, "ok": false, "error": format!("its state couldn't be read ({}): not sent", now.stderr.trim()) }));
+            continue;
+        }
+        if now.data["state"] != "error" {
             sent.push(json!({ "id": id, "name": name, "ok": true, "skipped": "no longer at an error", "state": now.data["state"] }));
             continue;
         }
@@ -217,12 +240,13 @@ fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> R
         args.extend(flags.iter().cloned());
         args.extend(["--json".to_owned(), "--".to_owned(), text.clone()]);
         let answer = asked("send", args);
-        // (Sent, and taken: text left in its field unsubmitted is not.)
-        let went = answer.ok && answer.data["delivered"] != false;
+        // (Sent, and taken: text left in its field unsubmitted is not, and
+        // an answer that doesn't say is not a yes.)
+        let went = answer.ok && if submits { answer.data["delivered"] == true } else { answer.data["delivered"] != false };
         all_went &= went;
         sent.push(json!({
             "id": id, "name": name, "was": was, "error_kind": now.data["error_kind"], "error_status": now.data["error_status"],
-            "ok": went, "delivered": answer.data["delivered"], "cursor": answer.data["cursor"],
+            "ok": went, "delivered": answer.data["delivered"], "submitted": submits, "cursor": answer.data["cursor"],
             "error": (!went).then(|| if answer.ok { "sent, and not seen to be taken: look at it".to_owned() } else { answer.stderr.trim().to_owned() }),
         }));
     }
@@ -237,6 +261,7 @@ fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> R
             match (one["skipped"].as_str(), one["error"].as_str()) {
                 (Some(why), _) => println!("{who}: {why}"),
                 (None, Some(why)) => println!("{who}: not sent ({why})"),
+                (None, None) if one["submitted"] == false => println!("{who}: typed into its field, not submitted (no --enter)"),
                 (None, None) => println!("{who}: sent"),
             }
         }

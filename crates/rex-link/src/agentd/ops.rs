@@ -2141,7 +2141,10 @@ impl Service {
                 ex.effective_session_id().map(|s| format!("  session={s}")).unwrap_or_default()
             ));
         }
-        let payload = json!({ "ok": true, "session_id": sid, "parent_window_id": caller_win, "cursor": self.cursor(), "subagents": items });
+        // (`parent_certain`: the asking tab is the one the asker's own pane
+        // is in, not the tab in front taken in its place for a pane that
+        // isn't known: what acts on "my children" at once goes by it.)
+        let payload = json!({ "ok": true, "session_id": sid, "parent_window_id": caller_win, "parent_certain": caller.window_from_block, "cursor": self.cursor(), "subagents": items });
         let stdout = if as_json {
             format!("{payload}\n")
         } else if text.is_empty() {
@@ -2912,7 +2915,13 @@ impl Service {
                             // by its conversation's file: not the rest that
                             // was waited for. `state::turn_on`.)
                             let in_turn_yet = !is_text && first.state == SubagentLiveState::Idle && state == SubagentLiveState::Working;
-                            if !in_turn_yet {
+                            // (Nor a state that, settled with its conversation's
+                            // file, is not one that was asked for: an interrupted
+                            // Codex's "■ …" reads as an error on its screen and is
+                            // at rest by its file, and `--on error` was answered
+                            // with `idle`. The confirming review.)
+                            let not_asked = !is_text && !spec.matches_state(state);
+                            if !in_turn_yet && !not_asked {
                                 // (Answered from what stands, not written into the
                                 // log: the log is what happened, once each.)
                                 let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());

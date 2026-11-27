@@ -32009,7 +32009,16 @@ agents through the night, could not move to it.
   three keys on a line of their own **directly over the field**: the
   same words printed in what the agent wrote are not it (every message
   to a healthy agent was refused, and the `0` it was told to press
-  typed into its field: a code review, 2026-11-27). Read from the
+  typed into its field: a code review, 2026-11-27). **Nobody says yes
+  through it**: a question still on the screen above the box (a
+  permission's, a folder's trust) is not what a Return there answers,
+  so while the box stands in front (`feedback_draft_in_front`: no
+  question under its line of keys) the service offers no approval and
+  Auto Approve in Rex and Terminal finds none (`approvable_for`); a
+  question asked *under* the keys is the one in front and is answered
+  as ever. And a survey kept back behind the box is not one that was
+  tried: it is set aside when the box has gone (it was marked as one
+  that stays, and the next digit meant for the agent rated it). Read from the
   words the lead quoted, not yet from a capture of the box.
   Into a question a character
   is an answer by its number, so it is refused there as text is, without
@@ -32442,8 +32451,29 @@ agents through the night, could not move to it.
   not a child's children) that stands at an error, each checked again
   just before it is told, each as `send` would, and says which, what
   each had failed with and whether each took it. From a tab's own
-  pane only, and only a message (`--enter`, `--paste`, `--json`). Tried:
-  `a_failed_turn_says_why_and_all_that_failed_are_told_at_once`.
+  pane only, and only a message (`--enter`, `--paste`, `--json`; no
+  file is opened for it). **The pane must be one the service knows**
+  (`list`'s `parent_certain`): for a pane closed since, in a session
+  it knows, the service answers for the tab in front, and the message
+  went to that tab's children, another lead's where several share a
+  session. A message with `--enter` is **seen to be taken** before it
+  is said to be (`send --verify`: the child works, or asks, or its
+  screen changed and the words have left its field; `delivered`), a
+  check of a child that failed is not a child that recovered, and
+  without `--enter` the answer says "typed into its field, not
+  submitted". The Token Pool's own two are read by its words: "There
+  are no … accounts in the pool to use" is `account` (it comes as a
+  503), "Every … account in the pool is out of quota" is `rate_limit`
+  (though it speaks of a "sign-in"); a status is the first said, in
+  the words' order ("unexpected status 502 (upstream HTTP 401)" is a
+  502). And a watch's standing event is one that was asked for, of the
+  state as settled with the conversation's file (`--on error` was
+  answered with `idle` for an interrupted Codex). Tried:
+  `a_failed_turn_says_why_and_all_that_failed_are_told_at_once`,
+  `a_drafted_feedback_report_is_told_and_never_answered`,
+  `a_turn_before_is_not_this_turn_and_a_files_word_is_looked_for`
+  (its fourth case), `an_errors_words_say_whose_fault_it_is`: each
+  fails with the fix it is for taken out.
 - *A reading takes up what stood when it began* (`state::takes_up`,
   `Looked::expected`; a code review, 2026-11-27). A reading of a
   screen that sees a turn on takes up what the child had been given
