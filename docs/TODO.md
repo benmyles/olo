@@ -271,20 +271,17 @@ something nobody here has is in "Blocked", with what it waits for.
   helper made (`~/.agents/skills`, `~/.gemini/config/rules`) stay when
   it is removed.
 - **What the builder of the agents' section found in the bridge's skill
-  and source** (2026-11-27, its report; none fixed yet, each to check):
-  - "Disallowed bridge commands exit `1` instead of `69`": the skill
-    says a command that isn't allowed fails with status 69, and
-    `bridge_shim.sh` falls back to the host's own command only on 69;
-    in the code a disabled `olo.run`, a child's refusal and the
-    clipboard's `None` answers come back as 1. Which is right is to
-    settle (the section says no number meanwhile).
-  - "Default download/screenshot directory mismatch": the skill says
-    `olo get` and `olo screen look` save to `/var/tmp/olo-rex-bridge`;
-    `bridge_olo.sh` uses `$XDG_RUNTIME_DIR/olo-rex-bridge-UID` where
-    that is set.
-  - The skill introduces its command only as
-    `~/.claude/skills/olo-rex-bridge/olo`, though both install scripts
-    also link `~/.local/bin/olo`.
+  and source** (2026-11-27, its report; the first three fixed, the rest to check):
+  - ~~"Disallowed bridge commands exit `1` instead of `69`"~~: right,
+    and fixed 2026-11-27 (`BridgeResponse::refused`, the hub's send,
+    sync and forward): the skill and the stand-ins' own comment both
+    promised 69, and with a permission off a host's `xdg-open`, `op`
+    or `olo-screen` failed where it should have been the host's own.
+  - ~~"Default download/screenshot directory mismatch"~~: the skill
+    says the session's own runtime folder now.
+  - ~~The skill introduces its command only as
+    `~/.claude/skills/olo-rex-bridge/olo`~~: it says `olo`, and where
+    that is.
   - `crates/rex/src/carry.rs` carries `.gemini/GEMINI.md` and
     `.gemini/AGENTS.md` and not Antigravity's global folder
     (`~/.gemini/config/`: rules, skills); and Olo's own rule file there

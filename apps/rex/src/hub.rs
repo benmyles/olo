@@ -8824,7 +8824,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
                         .unwrap_or_default();
                     if !policy.allow_send_files {
-                        return Some(json!({ "ok": false, "stderr": "olo: this host may not send files to the Olo desktop (Preferences ▸ Rex: Send files to Downloads on this computer)\n" }));
+                        return Some(
+                            json!({ "ok": false, "stderr": "olo: this host may not send files to the Olo desktop (Preferences ▸ Rex: Send files to Downloads on this computer)\n", "data": { "code": bridge::REFUSED } }),
+                        );
                     }
                     if is_local {
                         return Some(json!({ "ok": true, "stdout": "These are the Olo desktop's own files: nothing to send.\n" }));
@@ -8842,7 +8844,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
                         .unwrap_or_default();
                     if !policy.allow_send_files {
-                        return Some(json!({ "ok": false, "stderr": "olo: this host may not send files to the Olo desktop (Preferences ▸ Rex: Send files to Downloads on this computer)\n" }));
+                        return Some(
+                            json!({ "ok": false, "stderr": "olo: this host may not send files to the Olo desktop (Preferences ▸ Rex: Send files to Downloads on this computer)\n", "data": { "code": bridge::REFUSED } }),
+                        );
                     }
                     if is_local {
                         return Some(json!({ "ok": true, "stdout": "These are the Olo desktop's own folders: nothing to keep in step.\n" }));
@@ -8860,7 +8864,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
                         .unwrap_or_default();
                     if !policy.allow_localhost_autoforward {
-                        return Some(json!({ "ok": false, "stderr": "olo: this host may not reach its servers from the Olo desktop (Preferences ▸ Rex: Reach its local servers)\n" }));
+                        return Some(
+                            json!({ "ok": false, "stderr": "olo: this host may not reach its servers from the Olo desktop (Preferences ▸ Rex: Reach its local servers)\n", "data": { "code": bridge::REFUSED } }),
+                        );
                     }
                     return Some(self.bridge_forward(host_key, is_local, session_id, &given).await);
                 }

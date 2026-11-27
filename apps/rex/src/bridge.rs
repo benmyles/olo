@@ -157,7 +157,24 @@ impl BridgeResponse {
     pub fn err(msg: impl Into<String>) -> Self {
         Self { ok: false, stdout: None, stderr: Some(msg.into()), data: None, carried: Vec::new() }
     }
+
+    /// Not something this host may do (its permission is off in
+    /// Preferences ▸ Rex): said, with status 69 ([`REFUSED`]), as when no
+    /// Olo desktop is connected. It is what the skill tells agents, and
+    /// what the host's stand-ins wait for (`bridge_shim.sh`: on 69 the
+    /// host's own `xdg-open`, `op` or `olo-screen` is run instead). A
+    /// refusal came back as 1 until 2026-11-27, so with a permission off
+    /// a host's `xdg-open` failed where it should have been the host's
+    /// own again.
+    pub fn refused(msg: impl Into<String>) -> Self {
+        Self { data: Some(json!({ "code": REFUSED })), ..Self::err(msg) }
+    }
 }
+
+/// The status of a command the desktop couldn't be asked, here or for
+/// this: no Olo desktop connected, or not something this host may do
+/// (sysexits' `EX_UNAVAILABLE`).
+pub const REFUSED: i32 = 69;
 
 /// What a host's `op` is given here, so that nothing of this computer's
 /// is its to name: the files its flags read are the host's, sent with
@@ -469,7 +486,7 @@ pub async fn handle_bridge_request(
     match req.cmd.as_str() {
         "open" => {
             if !policy.allow_open_url {
-                return BridgeResponse::err(format!("Olo Bridge: URL opening is disabled for host '{host_label}' (see Preferences ▸ Rex)"));
+                return BridgeResponse::refused(format!("Olo Bridge: URL opening is disabled for host '{host_label}' (see Preferences ▸ Rex)"));
             }
             let Some(target) = req.args.first().cloned() else {
                 return BridgeResponse::err("missing URL/path argument");
@@ -481,7 +498,7 @@ pub async fn handle_bridge_request(
         }
         "op" => {
             if !policy.allow_passwords_op {
-                return BridgeResponse::err(format!("Olo Bridge: Passwords (`op`) forwarding is disabled for host '{host_label}'"));
+                return BridgeResponse::refused(format!("Olo Bridge: Passwords (`op`) forwarding is disabled for host '{host_label}'"));
             }
             // Olo's `olo-op` answers it here, asking Passwords (which asks
             // the person, naming the host), with nothing of this
@@ -502,7 +519,7 @@ pub async fn handle_bridge_request(
         }
         "screen" => {
             if !policy.allow_agent_screens {
-                return BridgeResponse::err(format!("Olo Bridge: Agent Screens (`olo-screen`) is disabled for host '{host_label}'"));
+                return BridgeResponse::refused(format!("Olo Bridge: Agent Screens (`olo-screen`) is disabled for host '{host_label}'"));
             }
             let Some(screen_bin) = program("olo-screen") else {
                 return BridgeResponse::err("olo-screen is not installed on this Olo desktop");
@@ -593,7 +610,7 @@ pub fn resolve_desktop_path(raw: &str) -> Result<PathBuf, String> {
 
 async fn handle_get_local_file(host_label: &str, policy: &HostBridgePolicy, args: &[String]) -> BridgeResponse {
     if !policy.allow_send_files {
-        return BridgeResponse::err(format!("Olo Bridge: file access is disabled for host '{host_label}' (Preferences ▸ Rex: Send files to Downloads on this computer)"));
+        return BridgeResponse::refused(format!("Olo Bridge: file access is disabled for host '{host_label}' (Preferences ▸ Rex: Send files to Downloads on this computer)"));
     }
     let mut as_json = false;
     let mut dest: Option<String> = None;
@@ -658,7 +675,7 @@ async fn handle_get_local_file(host_label: &str, policy: &HostBridgePolicy, args
 
 async fn handle_ls_local_dir(host_label: &str, policy: &HostBridgePolicy, args: &[String]) -> BridgeResponse {
     if !policy.allow_send_files {
-        return BridgeResponse::err(format!("Olo Bridge: file access is disabled for host '{host_label}' (Preferences ▸ Rex: Send files to Downloads on this computer)"));
+        return BridgeResponse::refused(format!("Olo Bridge: file access is disabled for host '{host_label}' (Preferences ▸ Rex: Send files to Downloads on this computer)"));
     }
     let mut as_json = false;
     let mut show_all = false;
@@ -1046,15 +1063,25 @@ mod tests {
         assert_eq!(delivered.try_recv().unwrap(), (Some("work".into()), Some("two".into()), payload));
     }
 
-    /// What isn't granted is refused, by name, and nothing is run.
+    /// What isn't granted is refused, by name, and nothing is run; and
+    /// with the status the skill promises and the host's stand-ins wait
+    /// for (69: then the host's own program is run), not a plain failure.
     #[tokio::test]
     async fn what_a_host_isnt_granted_is_refused() {
         let forward: LocalhostForwardFn = Arc::new(|_, _| Box::pin(async { unreachable!() }));
+        let refused = |answer: &BridgeResponse| !answer.ok && serde_json::to_value(answer).unwrap()["data"]["code"] == 69;
         for (cmd, word) in [("open", "URL opening"), ("op", "Passwords"), ("screen", "Agent Screens")] {
             let req = BridgeRequest { cmd: cmd.into(), args: vec!["x".into()], ..Default::default() };
             let answer = handle_bridge_request("build", &HostBridgePolicy::remote_default(), req, &forward, &|_| {}).await;
-            assert!(!answer.ok && answer.stderr.as_deref().is_some_and(|e| e.contains(word) && e.contains("build")), "{cmd}: {answer:?}");
+            assert!(refused(&answer) && answer.stderr.as_deref().is_some_and(|e| e.contains(word) && e.contains("build")), "{cmd}: {answer:?}");
         }
+        let none = HostBridgePolicy::default();
+        assert!(refused(&handle_get_local_file("build", &none, &["/etc/hostname".into()]).await));
+        assert!(refused(&handle_ls_local_dir("build", &none, &["/etc".into()]).await));
+        // (A failure that isn't a refusal stays one: the host's own program isn't its answer.)
+        let allowed = HostBridgePolicy { allow_open_url: true, ..Default::default() };
+        let answer = handle_bridge_request("build", &allowed, BridgeRequest { cmd: "open".into(), ..Default::default() }, &forward, &|_| {}).await;
+        assert!(!answer.ok && answer.data.is_none(), "{answer:?}");
     }
 
     /// A command that answers in time is answered at once; one that

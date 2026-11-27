@@ -30397,7 +30397,11 @@ Rex server, as every Rex client offers its own
   connected, or not what the host may do: `olo` exits 69 then), each is
   the host's own command of its name, given what it was given, its input
   too; where the desktop answered, its answer and status are the
-  command's. Kept in step at each connection as the skill is
+  command's. (Every refusal for a permission that is off carries that
+  status: `BridgeResponse::refused`, `bridge::REFUSED`, and the hub's
+  for send, sync and forward. Until 2026-11-27 those for links,
+  passwords, screens and files came back as 1, so with the permission
+  off a host's `xdg-open` failed instead of being the host's own.) Kept in step at each connection as the skill is
   (`bridge::commands_there`, `.olo-commands`). Tried on the rig: copied
   on the host and pasted back through this computer's clipboard; a
   host's picture opened in Viewer here; with the clipboard not granted,

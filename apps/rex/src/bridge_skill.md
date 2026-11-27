@@ -9,7 +9,11 @@ This host is used through **Rex** from a computer running the **Olo**
 desktop. One command here asks that desktop for things, and answers as
 if it had run here:
 
-    ~/.claude/skills/olo-rex-bridge/olo COMMAND [ARGUMENT…]
+    olo COMMAND [ARGUMENT…]
+
+(`olo` is on the `PATH` as `~/.local/bin/olo`, unless a file of the
+account's own already had that name; the command itself is
+`~/.claude/skills/olo-rex-bridge/olo`.)
 
 It works in a Rex session that is open in Olo's Rex, and only for what
 the person has allowed this host (Olo's Preferences ▸ Rex): a command
