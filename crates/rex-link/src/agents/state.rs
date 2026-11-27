@@ -577,7 +577,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
         Activity::Working if agent != olo_agent_screen::Agent::Codex && olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some(AT_PROMPT.into())),
         Activity::Working => (SubagentLiveState::Working, doing_line(screen_text)),
         Activity::Blocked => {
-            if screen_text.trim().is_empty() {
+            if screen_text.trim().is_empty() || (agent == olo_agent_screen::Agent::Antigravity && olo_agent_screen::is_agy_signing_in(screen_text)) {
                 (SubagentLiveState::Working, Some(STARTING.into()))
             } else {
                 (SubagentLiveState::WaitingQuestion, Some("needs input (unrecognised dialog)".into()))
@@ -587,7 +587,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
         // (Done at its own prompt: said as that, not by its footer's last line.)
         Activity::Done => (SubagentLiveState::Done, if olo_agent_screen::at_prompt(agent, screen_text) { Some(AT_PROMPT.into()) } else { last_nonempty() }),
         Activity::Idle => {
-            if screen_text.trim().is_empty() {
+            if screen_text.trim().is_empty() || (agent == olo_agent_screen::Agent::Antigravity && olo_agent_screen::is_agy_signing_in(screen_text)) {
                 (SubagentLiveState::Working, Some(STARTING.into()))
             } else {
                 let summary = if olo_agent_screen::at_prompt(agent, screen_text) { Some(AT_PROMPT.into()) } else { last_nonempty() };

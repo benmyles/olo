@@ -32384,6 +32384,36 @@ agents through the night, could not move to it.
   of its own that came meanwhile. (The confirming code review of this
   change, and `a_turn_before_is_not_this_turn_and_a_files_word_is_
   looked_for`, whose cases each fail with their fix taken out.)
+- *Antigravity signing in is not a turn* (`olo_agent_screen::classify`,
+  `agy_input_box`, `is_agy_signing_in`; `classify_screen_rich`; the
+  ShiftUp lead's item 47, 2026-11-27: "`olo agent run agy …` still
+  comes to rest in seconds with 'never took its prompt up' about one
+  start in eight"). Found with the real agy (1.5.18) against the live
+  suite's made-up model by a second investigator, six such ends of
+  thirty-six caught with every reading of the screen: as it starts,
+  agy shows "⣷  Signing in..." under its welcome, before its field is
+  drawn, and says of itself `blocked:kind=auth`. A braille figure at a
+  line's start in the screen's last eight lines was "at work", so that
+  reading **took the prompt up**; agy then stood at its empty prompt
+  for half a second and more (it asks for its models again and looks
+  at the folder's git before it begins), and that rest "answered" the
+  prompt, with nothing said: `run` ended "silent", exit 1, and closed
+  the tab on an agy that began the turn a moment later. (Taken up
+  again with `--resume`, the same rest read the old conversation's
+  last words: the previous turn's answer, exit 0.) Antigravity's
+  words of work are now read **around its field** alone (the rules
+  with `>` between them: "esc to cancel" or the queue's line in the
+  foot under it, its spinner in the four lines over it); a screen
+  with no field is not at work, and the signing-in splash is
+  "starting" whatever agy says of itself meanwhile (said `blocked`
+  for longer than a quarter of a second, it would have been "needs
+  input"). Tried: `agy_signing_in_splash_does_not_take_up_prompt_or_
+  fail_silent` (the suite, agy's own sequence replayed: fails before,
+  "Signing in... splash must NOT take up prompt expectation") and the
+  classifier's cases; the live suite with the real agy. The lead had
+  asked whether `run` could hand the prompt over once more: the
+  prompt *is* taken, a moment later, so a second hand-over would have
+  run it twice.
 - *Why a turn failed, and all that failed told at once*
   (`state::error_cause`, `olo_agent_screen::error_line`;
   `client::send_to_all_errored`; the ShiftUp lead's item 49,

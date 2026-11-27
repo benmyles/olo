@@ -609,6 +609,17 @@ mod tests {
         let loading = "$ agy --mode auto 'read this'\n\n  Antigravity CLI\n  loading…\n";
         let cls = classify_screen_rich(AgentCli::Agy, Activity::Working, loading, true);
         assert_eq!((cls.state, cls.in_turn), (SubagentLiveState::Working, false), "{:?}", cls.summary);
+        // Antigravity's pre-chat "Signing in..." splash (with either Blocked/auth or Idle activity):
+        // still starting, never in_turn, and never a false WaitingQuestion.
+        let signing_in = "\n     ▄▀▀▄\n    ▀▀▀▀▀▀\n   ▀▀▀▀▀▀▀▀\n  ▄▀▀    ▀▀▄\n ▄▀▀      ▀▀▄\n\n Welcome to the Antigravity CLI. You are currently not signed in.\n\n ⣷  Signing in...\n";
+        for act in [Activity::Blocked, Activity::Idle] {
+            let cls = classify_screen_rich(AgentCli::Agy, act, signing_in, true);
+            assert_eq!((cls.state, cls.in_turn, cls.summary.as_deref()), (SubagentLiveState::Working, false, Some(crate::agents::state::STARTING)), "act={act:?}");
+        }
+        // Genuine unauthenticated login chooser still surfaces as WaitingQuestion.
+        let login_chooser = "\n     ▄▀▀▄\n    ▀▀▀▀▀▀\n   ▀▀▀▀▀▀▀▀\n  ▄▀▀    ▀▀▄\n ▄▀▀      ▀▀▄\n\n Welcome to the Antigravity CLI. You are currently not signed in.\n\n Select login method:\n > 1. Google OAuth\n   2. Use a Google Cloud project\n\n   ↑/↓ Navigate · enter Select\n";
+        let cls = classify_screen_rich(AgentCli::Agy, Activity::Blocked, login_chooser, true);
+        assert_eq!((cls.state, cls.in_turn, cls.recognized_question), (SubagentLiveState::WaitingQuestion, false, true));
         // At its own empty prompt, the pane still "at work": at rest, and no turn.
         let prompt = "────────────────────\n>\n────────────────────\n? for shortcuts\n";
         let cls = classify_screen_rich(AgentCli::Agy, Activity::Working, prompt, true);

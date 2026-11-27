@@ -2694,6 +2694,82 @@ fn a_prompt_is_taken_up_by_a_turn_and_by_nothing_before_it() {
     assert!(code == 0 && matches!(told["state"].as_str(), Some("idle" | "done")) && told["answers"].as_u64().map(|a| a.to_string()) == Some(cursor.clone()), "{told}");
 }
 
+/// Real `agy 1.5.18` startup race: while `ChainedAuth` resolves, `agy` draws its pre-chat
+/// `"Welcome to the Antigravity CLI ... ⣷  Signing in..."` splash (with NO chat input box) and
+/// emits `OSC 7501;state=blocked:kind=auth`. Once auth finishes, `agy` draws its empty prompt
+/// (`──── / > / ──── / ? for shortcuts`) with `OSC 7501;state=idle` for 300-1200ms while
+/// `model_discovery` runs, before finally taking up `-i PROMPT` (`state=working`, `⣷ Generating...`).
+///
+/// The `"Signing in..."` splash must NEITHER take up the pending prompt expectation (which would
+/// let the subsequent pre-turn empty prompt emit `idle` with `answers: Some(cursor)` and fail
+/// `olo agent run` as `"silent"`), NOR fail as `waiting_question` if sign-in persists >= 250ms.
+/// Meanwhile, a genuine unauthenticated `"Select login method:"` chooser MUST still be reported
+/// as `waiting_question`.
+#[test]
+fn agy_signing_in_splash_does_not_take_up_prompt_or_fail_silent() {
+    let Some(rig) = Rig::start("agysign") else { return };
+    rig.stand_in("agy");
+    let agy_signing_in = concat!(
+        "\x1b]7501;state=blocked:kind=auth:app=antigravity:msg=U2lnbiBpbiByZXF1aXJlZA==\x07",
+        "\n     ▄▀▀▄\n    ▀▀▀▀▀▀\n   ▀▀▀▀▀▀▀▀\n  ▄▀▀    ▀▀▄\n ▄▀▀      ▀▀▄\n\n",
+        " Welcome to the Antigravity CLI. You are currently not signed in.\n\n",
+        " ⣷  Signing in...\n"
+    );
+    let agy_empty_prompt = format!(
+        "\x1b]7501;state=idle:app=antigravity\x07\n      ▄▀▀▄        Antigravity CLI 1.5.18\n     ▀▀▀▀▀▀       Enterprise Gateway\n    ▀▀▀▀▀▀▀▀      {1}\n   ▄▀▀    ▀▀▄\n  ▄▀▀      ▀▀▄\n\n{0}\n>\n{0}\n? for shortcuts\n",
+        rule(),
+        rig.work()
+    );
+    let agy_generating =
+        format!("\x1b]7501;state=working:app=antigravity\x07\n      ▄▀▀▄        Antigravity CLI 1.5.18\n\n{0}\n> Check the file.\n⣷  Generating...\n{0}\n>\n{0}\nesc to cancel\n", rule());
+    let agy_done = format!(
+        "\x1b]7501;state=done:app=antigravity:msg=QUxMX0dPT0Q=\x07\n      ▄▀▀▄        Antigravity CLI 1.5.18\n\n{0}\n> Check the file.\n\n  ALL_GOOD\n\n{0}\n>\n{0}\n? for shortcuts\n",
+        rule()
+    );
+    let started = rig.start_child("agy", "signer", &["--prompt", "Check the file."]);
+    let cursor = started["cursor"].as_u64().unwrap_or_else(|| panic!("{started}")).to_string();
+    let rests = |within: &str| rig.olo(&["watch", "signer", "--since", &cursor, "--on", "idle,done,question", "--timeout", within, "--json"]);
+
+    // 1. Pre-chat "Signing in..." splash held for 450ms (> CONFIRM=250ms): must neither take up
+    //    `expects` (`answers` must stay null) nor trigger `waiting_question`.
+    rig.show("signer", agy_signing_in);
+    std::thread::sleep(Duration::from_millis(450));
+    let st_signing = rig.status("signer");
+    assert!(st_signing["answers"].is_null(), "Signing in... splash must NOT take up prompt expectation: {st_signing}");
+    assert_eq!(st_signing["state"], "working", "Signing in... splash must NOT trip waiting_question: {st_signing}");
+
+    // 2. Post-auth empty prompt (`state=idle`) during `model_discovery`: held for 700ms (> CONFIRM).
+    //    Must NOT be told as a rest answering the prompt!
+    rig.show("signer", &agy_empty_prompt);
+    let (code, out, err) = rests("1");
+    assert_eq!(code, 124, "pre-turn rest after Signing in... was wrongly told: {code}: {out}{err}\n{}", rig.said());
+    assert!(rig.status("signer")["answers"].is_null(), "answers must still be null at pre-turn empty prompt: {}", rig.status("signer"));
+
+    // 3. Real turn starts (`Generating...` above input box + `esc to cancel` below) -> takes up expectation.
+    rig.show("signer", &agy_generating);
+    rig.wait("real turn takes up prompt", || rig.status("signer")["answers"].as_u64().map(|a| a.to_string()) == Some(cursor.clone()));
+
+    // 4. Real turn finishes -> told as done answering the start.
+    rig.show("signer", &agy_done);
+    let (code, out, err) = rests("15");
+    let told: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{code}: {e}: {out}{err}"));
+    assert!(code == 0 && matches!(told["state"].as_str(), Some("idle" | "done")) && told["answers"].as_u64().map(|a| a.to_string()) == Some(cursor.clone()), "{told}");
+
+    // 5. Genuine unauthenticated login chooser MUST still surface as `waiting_question`.
+    let agy_login_chooser = concat!(
+        "\x1b]7501;state=blocked:kind=auth:app=antigravity:msg=U2lnbiBpbiByZXF1aXJlZA==\x07",
+        "\n     ▄▀▀▄\n    ▀▀▀▀▀▀\n   ▀▀▀▀▀▀▀▀\n  ▄▀▀    ▀▀▄\n ▄▀▀      ▀▀▄\n\n",
+        " Welcome to the Antigravity CLI. You are currently not signed in.\n\n",
+        " Select login method:\n > 1. Google OAuth\n   2. Use a Google Cloud project\n\n",
+        "   ↑/↓ Navigate · enter Select\n"
+    );
+    let unauth = rig.start_child("agy", "unauth", &["--prompt", "Check."]);
+    let ucur = unauth["cursor"].as_u64().unwrap().to_string();
+    rig.show("unauth", agy_login_chooser);
+    let (code, out, err) = rig.olo(&["watch", "unauth", "--since", &ucur, "--on", "question", "--timeout", "10", "--json"]);
+    assert_eq!(code, 0, "genuine login chooser must emit waiting_question: {out}{err}");
+}
+
 /// `olo agent run`: one agent for one prompt, start to finish (the ShiftUp lead's item 36). What comes in a
 /// turn's place is said, with a status of its own, and the tab kept where somebody is to answer it. (Its
 /// last message whole, and its file, are tried with Claude Code itself: `agents_live.rs`.)

@@ -164,6 +164,46 @@ fn codex_at_work(screen: &str) -> bool {
         .any(|l| codex_status(l) || l.trim().eq_ignore_ascii_case("shift+← edit last queued message"))
 }
 
+/// Locates Antigravity's chat input field (`────` / `> …` / `────`) at the
+/// bottom of `lines`, returning `(top_rule, bottom_rule)`. Pre-chat screens
+/// (such as its `"Welcome to the Antigravity CLI ... ⣷  Signing in..."`
+/// startup splash) have no input field and return `None`.
+fn agy_input_box(lines: &[&str]) -> Option<(usize, usize)> {
+    let is_rule = |l: &str| {
+        let t = l.trim();
+        t.contains("────") && (t.starts_with('─') || t.ends_with('─'))
+    };
+    let bottom = lines.iter().rposition(|l| is_rule(l))?;
+    if lines[bottom + 1..].iter().filter(|l| !l.trim().is_empty()).count() > 4 {
+        return None;
+    }
+    let top = lines[..bottom].iter().rposition(|l| is_rule(l))?;
+    let first_inside = lines[top + 1..bottom].iter().map(|l| l.trim_start()).find(|l| !l.is_empty())?;
+    first_inside.starts_with('>').then_some((top, bottom))
+}
+
+/// Whether `screen` is Antigravity's pre-chat `"Signing in..."` splash
+/// (before its chat input field is drawn, and before any interactive
+/// `"Select login method:"` chooser appears). `agy` emits
+/// `OSC 7501;state=blocked:kind=auth` while this splash is on screen, which
+/// must neither take up a pending prompt expectation nor fail as an
+/// unrecognised `waiting_question` dialog while automatic sign-in completes.
+pub fn is_agy_signing_in(screen: &str) -> bool {
+    let lines: Vec<&str> = screen.lines().collect();
+    if agy_input_box(&lines).is_some() {
+        return false;
+    }
+    let non_empty: Vec<&str> = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let tail = &non_empty[non_empty.len().saturating_sub(8)..];
+    if tail.iter().any(|l| l.to_ascii_lowercase().contains("↑/↓ navigate")) {
+        return false;
+    }
+    tail.iter().any(|l| {
+        let mut chars = l.chars();
+        chars.next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)) && l.to_ascii_lowercase().contains("signing in")
+    })
+}
+
 /// What the agent is doing, from the bottom of its screen (where its
 /// prompt, dialogs and status line are). Antigravity's words are its
 /// own: "esc to cancel" is under its field while it works (Claude
@@ -184,14 +224,23 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     if agent == Agent::Antigravity {
         // Check only the bottom 8 non-empty chrome lines (banner art / scrollback prose ignored).
         let bottom8 = tail_joined(8);
-        let spinning = || non_empty.iter().rev().take(8).any(|l| l.chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)));
-        return if bottom8.contains("↑/↓ navigate") || parse_approval(agent, screen).is_some() {
-            State::Blocked
-        } else if bottom8.contains("esc to cancel") || bottom8.contains("press up to edit queued messages") || spinning() {
-            State::Working
-        } else {
-            State::Idle
+        if bottom8.contains("↑/↓ navigate") || parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
+            return State::Blocked;
+        }
+        // Working chrome lives strictly around Antigravity's chat input field
+        // (`────` / `> …` / `────`): `"esc to cancel"` / `"Press up to edit
+        // queued messages"` in the footer beneath the lower rule, or a braille
+        // spinner immediately above the upper rule (up to 4 non-empty lines,
+        // allowing a `└ Tip:` line between the spinner and the rule). Pre-chat
+        // screens such as `"⣷  Signing in..."` have no input field and must
+        // never read as `State::Working`.
+        let lines: Vec<&str> = screen.lines().collect();
+        let Some((top, bottom)) = agy_input_box(&lines) else {
+            return State::Idle;
         };
+        let footer = lines[bottom + 1..].iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n").to_ascii_lowercase();
+        let spinning = lines[..top].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(4).any(|l| l.chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)));
+        return if footer.contains("esc to cancel") || footer.contains("press up to edit queued messages") || spinning { State::Working } else { State::Idle };
     }
     if parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
         return State::Blocked;
@@ -1902,6 +1951,21 @@ mod tests {
         // (Braille art far above, in a banner, isn't a spinner.)
         let banner = format!("⣿⣿⣿ agy\n{}\n\n\n\n\n\n\n\n{}", "⣿⣿⣿⣿", agy_idle());
         assert_eq!(classify(Agent::Antigravity, &banner), State::Idle);
+        // (Pre-chat "Signing in..." splash has a braille spinner with no chat
+        // input box: never Working, so it cannot take up a prompt's turn.)
+        let signing_in = "\n     ▄▀▀▄\n    ▀▀▀▀▀▀\n   ▀▀▀▀▀▀▀▀\n  ▄▀▀    ▀▀▄\n ▄▀▀      ▀▀▄\n\n Welcome to the Antigravity CLI. You are currently not signed in.\n\n ⣷  Signing in...\n";
+        assert_eq!(classify(Agent::Antigravity, signing_in), State::Idle);
+        assert!(is_agy_signing_in(signing_in));
+        // (A genuine login chooser has "↑/↓ Navigate": Blocked, and not signing_in.)
+        let login_chooser = "\n     ▄▀▀▄\n    ▀▀▀▀▀▀\n   ▀▀▀▀▀▀▀▀\n  ▄▀▀    ▀▀▄\n ▄▀▀      ▀▀▄\n\n Welcome to the Antigravity CLI. You are currently not signed in.\n\n Select login method:\n > 1. Google OAuth\n   2. Use a Google Cloud project\n\n   ↑/↓ Navigate · enter Select\n";
+        assert_eq!(classify(Agent::Antigravity, login_chooser), State::Blocked);
+        assert!(!is_agy_signing_in(login_chooser));
+        // (A spinner with a Tip line between it and the upper rule is still Working.)
+        let with_tip = agy(&format!("⡿  Generating...\n└ Tip: Use /help to see all commands.\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\nesc to cancel\n"));
+        assert_eq!(classify(Agent::Antigravity, &with_tip), State::Working);
+        // (Prose mentioning "esc to cancel" right above the idle input box is Idle.)
+        let prose_near_box = agy(&format!("● Press esc to cancel to abort.\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\n? for shortcuts\n"));
+        assert_eq!(classify(Agent::Antigravity, &prose_near_box), State::Idle);
         // Keep It Going types at its prompt, and nowhere else: not into
         // a question (whose chosen answer begins with ">" too), nor
         // while it works.
