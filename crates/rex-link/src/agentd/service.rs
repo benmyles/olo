@@ -607,6 +607,19 @@ pub struct Service {
     pub text_watchers: AtomicUsize,
     /// The registry or the log has something to write.
     save: Notify,
+    /// One write of the registry at a time, each of what is newest when
+    /// it begins: held from before its copy is taken until its file is
+    /// in its place, by the thread that writes it (a write whose asker
+    /// went away is finished all the same, and nothing overtakes it).
+    /// Without it a write begun earlier landed after a later one: the
+    /// writer's own, slow on a busy host, over a new child's
+    /// (`begin_attached`), or over the last write of a service handing
+    /// over, after its successor had been let go: the successor then
+    /// knew nothing of the children started in between ("subagent
+    /// `sa-…` not found", once in a suite under a load of 90; found by
+    /// a second investigator with the write made slow on purpose,
+    /// 2026-11-27).
+    write_lock: Arc<tokio::sync::Mutex<()>>,
     /// The service has become idle, or stopped being so.
     idle: Notify,
     /// Set to end the service once what it has is written.
@@ -2580,17 +2593,33 @@ impl Service {
 
     // ---- What is written down ----
 
-    /// Writes the registry whenever there is something of it to write:
-    /// one writer, so what is written last is what is newest. (An
-    /// event's line is written as it is recorded, `record`.)
-    async fn writer(self: Arc<Self>) {
+    /// Writes the registry whenever there is something of it to write,
+    /// until it is told to stop (a service at its end: its last write
+    /// is `serve`'s own, after this task is over). One write at a time
+    /// with the others that write it (`write_lock`), so what is written
+    /// last is what is newest. (An event's line is written as it is
+    /// recorded, `record`.)
+    async fn writer(self: Arc<Self>, mut stop: tokio::sync::oneshot::Receiver<()>) {
         loop {
-            self.save.notified().await;
-            self.write_now().await;
+            tokio::select! {
+                biased;
+                _ = &mut stop => return,
+                _ = self.save.notified() => self.write(true).await,
+            }
         }
     }
 
     async fn write_now(&self) {
+        self.write(false).await;
+    }
+
+    /// `the_writers`: the writer task's own write (which a test can make
+    /// slow: `OLO_REX_AGENTS_TEST_WRITER_DELAY_MS`, five seconds at most).
+    async fn write(&self, the_writers: bool) {
+        // (Its turn first, then the copy: what is written is what is
+        // newest when the write before it has landed.)
+        let held = self.write_lock.clone().lock_owned().await;
+        let slow = if the_writers { std::env::var("OLO_REX_AGENTS_TEST_WRITER_DELAY_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).map(|ms| ms.min(5000)) } else { None };
         let (reg, minder_state) = {
             let st = self.lock();
             let ms = MinderStateDisk::from_state(&st);
@@ -2598,6 +2627,10 @@ impl Service {
         };
         let paths = self.paths.clone();
         let _ = tokio::task::spawn_blocking(move || {
+            let _held = held;
+            if let Some(ms) = slow {
+                std::thread::sleep(Duration::from_millis(ms));
+            }
             reg.save_to(&paths.registry);
             minder_state.save_to(&paths.dir.join("minder-state.json"));
             // (The log's file kept to the last of it: read whole by the next service.)
@@ -2606,7 +2639,7 @@ impl Service {
             {
                 let keep: Vec<&str> = all.lines().rev().take(2000).collect();
                 let kept: String = keep.into_iter().rev().map(|l| format!("{l}\n")).collect();
-                let tmp = paths.events.with_extension("jsonl.tmp");
+                let tmp = paths.events.with_extension(format!("jsonl.tmp.{}", std::process::id()));
                 if std::fs::write(&tmp, kept).is_ok() {
                     let _ = std::fs::rename(&tmp, &paths.events);
                 }
@@ -3164,8 +3197,10 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
         minder_gate: tokio::sync::Mutex::new(()),
         worker_locks: Mutex::new(HashMap::new()),
         began_ms: now_unix_ms(),
+        write_lock: Arc::new(tokio::sync::Mutex::new(())),
     });
-    tokio::spawn(service.clone().writer());
+    let (stop_writer, writer_stops) = tokio::sync::oneshot::channel();
+    let writer = tokio::spawn(service.clone().writer(writer_stops));
     service.reconcile().await;
 
     // What ends it: the server going, being asked to hand over, a
@@ -3299,6 +3334,11 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
             _ = tokio::time::sleep(Duration::from_millis(100)) => {}
         }
     }
+    // (The writer over first, the write it may be in the middle of
+    // landed: then the last write, with nothing of this service's left
+    // to land after it, before its successor is let go.)
+    let _ = stop_writer.send(());
+    let _ = writer.await;
     service.write_now().await;
     logged!("olo agents: ending ({why})");
     0

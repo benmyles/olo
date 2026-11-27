@@ -549,11 +549,6 @@ something nobody here has is in "Blocked", with what it waits for.
   always there, or the panel less tall by as much.
 - **The agents service under a busy host, after "a question is
   answered once"** (2026-11-27; HACKING has what was fixed). Left:
-  - `round2_12_13_14_15_16_17_launch_move_timer_and_rules_races`
-    failed once in a whole run under a load of ninety-three with
-    "olo agent status: subagent `sa-…` not found" for a child it had
-    just used (the run ended in 35 s); six runs alone and five more
-    whole ones didn't bring it back. Not explained.
   - A child started with nothing to do whose program takes more than
     fifteen seconds to draw (`UNDRAWN_MS`) is told at rest with its
     tab's shell on its screen. The suite's case of the rule

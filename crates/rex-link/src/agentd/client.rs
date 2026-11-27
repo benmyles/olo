@@ -911,6 +911,7 @@ fn start_service(server: &Path, paths: &Paths) -> std::io::Result<std::process::
         "OLO_REX_AGENTS_TAKEN_UP_MS",
         "OLO_REX_AGENTS_TEST_START_HOLD_MS",
         "OLO_REX_AGENTS_TEST_MIND_HOLD_MS",
+        "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS",
     ] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);

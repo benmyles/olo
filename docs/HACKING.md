@@ -32040,7 +32040,22 @@ agents through the night, could not move to it.
   answers, and an event's line (`events.jsonl`) before any watcher is
   told of it (a watcher was once told an event a few milliseconds before
   it was written, the service was killed in between, and the cursor
-  went backwards: the kill test found it on a fifth run). A new service
+  went backwards: the kill test found it on a fifth run). **The
+  registry is written one write at a time, what is newest last**
+  (`Service::write_lock`, held from before a write's copy is taken
+  until its file is in its place, by the thread that writes it), and a
+  service at its end stops its writer and waits for it before it
+  writes last: three wrote it with nothing between them (the writer
+  task, `begin_attached`, `serve` at its end), each renaming its own
+  temporary file into place, and a write of the writer's that was slow
+  on a busy host landed over a new child's, or after a retiring
+  service's last write and after its successor had been let go, which
+  then knew nothing of the children started in between ("subagent
+  `sa-…` not found", once in a suite under a load of 90; made to
+  happen ten times of ten by a second investigator with
+  `OLO_REX_AGENTS_TEST_WRITER_DELAY_MS`, which
+  `a_slow_write_of_the_registry_never_lands_over_a_newer_one` uses).
+  A new service
   reads both, asks the server which tabs are there, watches those and
   takes the rest as exited (after a restart of the Rex server every one,
   each with its conversation's id, for `start --resume`); it goes on

@@ -6049,3 +6049,44 @@ fn repro_case2_trust_presses_down_twice_on_slow_redraw() {
     assert_eq!(typed_c, "\x1b[B\r", "claude trust typed: {typed_c:?}");
     assert_eq!(typed_a, "\r", "agy trust typed: {typed_a:?}");
 }
+
+/// The registry is written one write at a time, what is newest last: a
+/// write of the writer's that is slow (a busy host: here by
+/// `OLO_REX_AGENTS_TEST_WRITER_DELAY_MS`) never lands over a later one.
+/// It did, two ways: over the last write of a service handing over,
+/// whose successor then knew nothing of the children started in
+/// between ("subagent `sa-…` not found", once in a suite under load);
+/// and over a new child's own write, the file a child short until the
+/// next. Found by a second investigator, 2026-11-27.
+#[test]
+fn a_slow_write_of_the_registry_never_lands_over_a_newer_one() {
+    let Some(rig) = Rig::start_with_env("writer-race", &[("OLO_REX_AGENTS_TEST_WRITER_DELAY_MS", "900"), ("OLO_REX_AGENTS_MINDER_REPORTS_MS", "8000")]) else {
+        return;
+    };
+    rig.stand_in("claude");
+    // A child's end has the writer write (slowly); a worker and its
+    // minder are started at once, the worker ends, the service is
+    // handed over: the next one knows both.
+    let prev = rig.start_child("claude", "prev", &[]);
+    rig.json(&["stop", prev["id"].as_str().unwrap(), "--force", "--json"]);
+    Minding::expect(&rig, "em-hand");
+    let hw = rig.start_child("claude", "hw", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=em-hand"]);
+    let (minder, worker) = (hw["minder"]["id"].as_str().unwrap().to_owned(), hw["id"].as_str().unwrap().to_owned());
+    rig.tell("hw", "exit 0");
+    rig.wait_state("hw", "exited");
+    let old = rig.service_pid().expect("a service");
+    assert!(rig.helper().args(["agent", "retire"]).output().unwrap().status.success());
+    rig.wait("the retired service to be gone", || !Path::new(&format!("/proc/{old}")).exists());
+    let (code, out, said) = rig.olo(&["status", &minder, "--json"]);
+    assert_eq!(code, 0, "the service that took over doesn't know a child started before the handover: {out} {said}\n{}", rig.said());
+    assert_eq!(rig.status(&worker)["running"], json!(false));
+    // And with no handover: the file has a child from the moment it is
+    // started, whatever the writer was in the middle of.
+    rig.json(&["stop", &minder, "--force", "--json"]);
+    let fresh = rig.start_child("claude", "fresh", &[]);
+    std::thread::sleep(Duration::from_millis(1300));
+    let file = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path().join("registry.json")).find(|p| p.exists()).expect("the registry's file");
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert!(written["entries"].as_array().unwrap().iter().any(|e| e["id"] == fresh["id"]), "a slow write landed over a newer one: the file has no `fresh`\n{written}");
+    rig.json(&["stop", "fresh", "--force", "--json"]);
+}
