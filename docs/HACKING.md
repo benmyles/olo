@@ -22739,20 +22739,49 @@ it needs its lead.
 from a codex subagent running astra 6.2 on max for all changes (in
 addition to the existing reviews)"): `astra-review --about "WHAT IT IS,
 WHAT CHANGED" --working [PATH…]` (what isn't committed, new files too)
-or `… RANGE [PATH…]` (commits) writes the diff, and what the commits
+or `… FROM..TO [PATH…]` (commits) writes the diff, and what the commits
 said of themselves, into a folder of the review's own and starts Astra
 6.2 there in the Codex CLI (`codex -m gpt-6.2-astra -c
 model_reasoning_effort="max" -s workspace-write -a never`, its agents
 and hooks off: its sandbox reads the disk, writes only that folder, and
 has no network; it is never asked leave and asks none) as a child tab
-with a minder, like every helper. Its brief: what is wrong (logic,
+with a minder, like every helper. "Only that folder" takes two settings
+more than `workspace-write` (`sandbox_workspace_write.exclude_slash_tmp`
+and `.exclude_tmpdir_env_var`): Codex lets /tmp and whatever TMPDIR
+names be written, and TMPDIR here is /var/tmp, where the tree under
+review and everything else of ours is (found by its own review; `codex
+sandbox -c … -- sh -c 'touch …'` shows what a sandbox may write).
+`--dry-run` says what would be reviewed (the files, the lines, the
+review's name) and starts nothing. Its brief: what is wrong (logic,
 error paths, races, waits with no end, memory taken on another
 process's word), what it breaks elsewhere (callers, an older build
 meeting a newer one), the project's rules, what the tests don't hold,
 each with a case in which it goes wrong and how sure it is; then what
 it checked and found sound. The review and the diff it read are kept in
-`/var/tmp/olo-reviews/astra-HASH/`, named by the change itself: the
-same diff asked again prints the review written. `--tree DIR` reviews
+`/var/tmp/olo-reviews/astra-HASH/`, named by the change itself (the
+diff's own bytes, however it was asked for): the same diff asked again
+prints the review written. What the tool holds to, each from its own
+second review (2026-11-27, 27 findings, most of this tool): the diff is
+taken in bytes with every asking of git checked (a new file with an
+accented name was left out without a word; a range that began with a
+dash was an option); a range is two commits, resolved once, and the
+reviewer is told the last one's id, since the tree moves on under it;
+one asking owns a review from its start to its keeping (a lock beside
+the kept review: a second asking waits and reads the first's); a review
+written whose front door ended before keeping it is kept by the next
+asking, never removed with its folder; a result is put in its place
+whole or not at all (`publish`), and only a file with something in it
+is a result (`whole`); a helper is ended once, its stop checked, and no
+test session is swept by a reviewer's name. A helper's name is one word
+(`folder`): `forget` given a path removed that folder, any folder. A
+result written before the lead last spoke to a helper is of its last
+task, not this one (`finished`: a builder on its second task read as
+DONE by its first report). `approve` presses nothing where the service
+declines to (`choose`: it went on to count rows down from the first and
+press Return, on a box the service had declined as unreadable). For a
+trial of the tool itself, `OLO_AGENTS_DIR` and `OLO_REVIEWS_DIR` name
+other folders (outside the repository tried: inside it, they are part
+of "what isn't committed", a new change at every asking). `--tree DIR` reviews
 another checkout (a scratch one, while builders are in the shared
 tree). The tool lets six looks, reviews and investigators run at once
 (three before: a change has three reviewers now, and every session on

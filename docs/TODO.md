@@ -875,6 +875,47 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Left from Astra's second code review** (2026-11-27,
+  `/var/tmp/olo-reviews/astra-0ea13780e6/astra-review.md`, 27 findings;
+  what was fixed is in the commits of that day). Each is a claim until
+  made to happen:
+  - *Auto Approve loses a tall question* (its 19): "Terminal captures
+    just the bottom 30 rows at `apps/terminal/src/agent.rs:52`, and Rex
+    does the same at `apps/rex/src/hub.rs:2485`. In a 60-row pane, two
+    wrapped quoted labels can put the question 35 rows above the footer.
+    Both desktop Auto Approve paths lose the question even though the
+    person can see it. Read back to the question within the visible
+    viewport and use the actual footer as the end." Measured cost first:
+    the screen is read at each change.
+  - *The parser on long quoted labels* (its 26): "calls `goes_on` from
+    every continuation, scanning the remaining suffix again for the same
+    next answer. A run of 100 short quote lines before the next answer
+    costs roughly 5,000 line inspections … classify each ordinary answer
+    twice despite the commit's 'once' claim. Preparse each row once,
+    carry the next-answer information in a reverse pass." To measure
+    (`tools/dev/bench`), then do.
+  - *The helpers' tool*: a helper's record is in a folder it can write
+    (its 5: "keep the authoritative destinations in a parent-owned
+    record outside the helper workspace"; what it names is now believed
+    only as far as its own folder and a place outside the repository);
+    a reviewer of the same name in another Rex session reads as "gone"
+    (its 7: "distinguish unknown or inaccessible status from confirmed
+    exit; verify the job type, full input identity and immutable child
+    ID before attaching, stopping or reusing its directory"; the lock
+    now keeps two askings on this computer apart); a staged edit put
+    back on disk alone is left out of a `--working` review (its 15:
+    "distinguish the index from the working tree"); an older service
+    with Codex's helper and a dev server reads as busy for 20 minutes
+    (its 17); the diff is held in memory (its 22: bounded at 16 MiB
+    now, not streamed); "every quiet review repeatedly rereads its
+    screen and history" (its 25: the watch wakes every ten seconds
+    without an event and reads state, screen and history again; to make
+    it wait on the service's events alone).
+  - *The suite* (its 27): "the new 12-second assertion still measures
+    scheduler delay and cannot bound the join … bound the key
+    observation and FIFO operation themselves. Assert the recorded
+    Return and the existing 'answered by list' record."
+
 - **An agent's screen is read from what the pane shows, not from where
   the program is drawing** (found by the investigator of the Auto
   Approve report, 2026-11-27: "`BlockRuntime::screen_bottom` reads

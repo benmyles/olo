@@ -132,17 +132,22 @@ not). They were refused outright until 2026-11-27, and a builder whose
 task was the three programs' own instruction files could not read
 their help.
 """
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-HOME = "/var/tmp/olo-agents"
+# (Another place for a trial of the tool itself: OLO_AGENTS_DIR, and
+# OLO_REVIEWS_DIR for where reviews are kept.)
+HOME = os.environ.get("OLO_AGENTS_DIR") or "/var/tmp/olo-agents"
 SOCKET = "olo-agents"
 MOST = 5
 # The model's name carries its effort (`agy models`): xhigh, wherever
@@ -178,7 +183,7 @@ ESCALATED = {}
 ASTRA = "gpt-6.2-astra"
 # Where code reviews are kept: each in a folder of its name, with the
 # diff it read.
-REVIEWS = "/var/tmp/olo-reviews"
+REVIEWS = os.environ.get("OLO_REVIEWS_DIR") or "/var/tmp/olo-reviews"
 # What each program's TUI shows (agy 1.5.14, Claude Code 2.1.330; both
 # drawn inline, so the pane's history is the transcript). A question
 # with choices (leave to run something among them) has this under it:
@@ -399,7 +404,18 @@ def tmux(*args, check=False):
     return r
 
 
+# A helper's name: one word of the tool's own kind, never a path.
+NAMED = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
+
+
 def folder(name):
+    # (`forget` removes this folder whole, and a path given for a name
+    # named any folder there is: an absolute one takes HOME's place in
+    # the join, `..` climbs out of it. Checked here, where every command
+    # that takes a name comes through. Found by a code review,
+    # 2026-11-27, before anyone had pasted one.)
+    if not NAMED.fullmatch(name or ""):
+        sys.exit(f"agents: `{name}` isn't a helper's name (lowercase letters, digits and dashes; never a path)")
     return os.path.join(HOME, name)
 
 
@@ -429,7 +445,7 @@ def save_meta(name, m):
 
 def names():
     try:
-        return sorted(n for n in os.listdir(HOME) if meta(n))
+        return sorted(n for n in os.listdir(HOME) if NAMED.fullmatch(n) and meta(n))
     except OSError:
         return []
 
@@ -543,6 +559,23 @@ def at_rest(name):
     return said.get("state") in ("done", "idle") and not said.get("approval")
 
 
+def minded(name, m):
+    """Whether a minder answers for it now: the service's own word where
+    it gives one, else this tool's record from its start. (The record
+    alone said no for good of one started without a minder and given
+    one after, `olo agent mind`, as the tool itself tells the lead to
+    do: the lead was asked at the same moment as the minder.)"""
+    if via(name) == "rex":
+        r = olo("status", child(name), "--json")
+        try:
+            said = json.loads(r.stdout) if r.returncode == 0 else None
+        except ValueError:
+            said = None
+        if isinstance(said, dict) and "minder" in said:
+            return bool(said["minder"])
+    return bool(m.get("minded"))
+
+
 def asked(name):
     """What it asks, as it shows it, and its choices as (key, words)."""
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
@@ -551,8 +584,21 @@ def asked(name):
         return [], []
     # (The question: from the rule drawn above it, a line of ─.)
     start = max((i for i, l in enumerate(lines[:end]) if is_rule(l)), default=max(0, end - 12)) + 1
-    choices = [(m.group(1), m.group(2).strip()) for m in (re.match(r"^\s*[>❯]?\s*(\d)\.\s+(.*)$", l) for l in lines[start:end]) if m]
+    choices = [(m.group(2), m.group(3).strip()) for m in (CHOICE.match(l) for l in lines[start:end]) if m]
     return lines[start:end], choices
+
+
+# A choice of a question as an agent draws it: its mark where it has it
+# (Claude Code's ❯, Antigravity's >, Codex's ›, which was missing here
+# until 2026-11-27: Codex's marked choice wasn't read as one), its
+# number, its words.
+CHOICE = re.compile(r"^\s*([>❯›])?\s*(\d)\.\s+(.*)$")
+
+
+def marked(text):
+    """The numbers of the choices that carry the mark, as the question's
+    lines show them (one, where the box is read right)."""
+    return [m.group(2) for m in (CHOICE.match(l) for l in text) if m and m.group(1)]
 
 
 def progress(name):
@@ -856,7 +902,7 @@ before it ships. The lead who wrote it has tested it and thinks it is
 right.
 
 The change is {diff}: git's unified diff. What each commit said of
-itself, where it is committed, is {commits}. The tree it is in is
+itself, where it is committed, is {commits}. {at} The tree it is in is
 {tree}: read whatever you need there, the changed files whole, their
 callers, the tests, `docs/HACKING.md` for how a thing is meant to work
 (it is very long: search it), with `rg`, `sed -n`, `git -C {tree} show`
@@ -975,10 +1021,23 @@ def launch_astra_review(name, cwd):
     own folder. Its sandbox lets it read the disk and write only there,
     with no network; it is never asked leave nor asks it (`never`: what
     the sandbox refuses is refused), none of the person's Codex hooks
-    run, and it starts no agents."""
+    run, and it starts no agents.
+
+    "Only there" took two settings more than `workspace-write`: Codex
+    adds /tmp and the folder TMPDIR names to what may be written, and
+    TMPDIR here is /var/tmp, where the tree under review, the other
+    helpers' folders and the kept reviews all are. Its own review found
+    it (2026-11-27: "the reviewer can write to the tree it is
+    reviewing"), and it was so: from the reviewer's sandbox a file was
+    made in a neighbouring folder under /var/tmp and in /tmp; with the
+    two exclusions both are refused and its own folder is written
+    (`codex sandbox -c … -- sh -c 'touch …'`, how to check it again).
+    Its temporary files go in a folder of its own."""
     first = f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."
-    plain = ["--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-c", f'projects."{cwd}".trust_level="trusted"']
-    session(name, cwd, [], ["codex", "-m", ASTRA, "-c", 'model_reasoning_effort="max"', "-s", "workspace-write", "-a", "never", *plain, "-C", cwd, first],
+    os.makedirs(os.path.join(cwd, "tmp"), exist_ok=True)
+    plain = ["--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-c", f'projects."{cwd}".trust_level="trusted"',
+             "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true"]
+    session(name, cwd, [f"TMPDIR={os.path.join(cwd, 'tmp')}"], ["codex", "-m", ASTRA, "-c", 'model_reasoning_effort="max"', "-s", "workspace-write", "-a", "never", *plain, "-C", cwd, first],
             native=["codex", "--model", ASTRA, "--effort", "max", "--sandbox", "workspace-write", "--approval", "never", "--prompt", first, "--", *plain])
 
 
@@ -1008,6 +1067,9 @@ def launch(name, d, cwd, others, target=None, commands=True):
 # computer counts in the same folder; a second session's two looks
 # left room for one.)
 HELPERS_MOST = 6
+# The most diff a code review is given: what is more is generated, or a
+# folder named by mistake, and is read into memory whole here.
+REVIEW_MOST = 16 * 2**20
 
 
 def room(name, program="agy", kind="worker"):
@@ -1023,7 +1085,7 @@ def room(name, program="agy", kind="worker"):
     # (One that has finished, its result written and its turn over, holds
     # no place: a minder told to start a queue of nine, five at a time and
     # stopping none, was refused the sixth by two that were done.)
-    working = [n for n in running if not (os.path.exists(done_file(n)) and state(n) == "idle")]
+    working = [n for n in running if not (finished(n) and state(n) == "idle")]
     # (A worker's meta names its crate; a look or an investigator's don't.)
     same = [n for n in working if bool((meta(n) or {}).get("crate")) == (kind == "worker")]
     most = MOST if kind == "worker" else HELPERS_MOST
@@ -1282,9 +1344,11 @@ def review(args):
     changes"). The change is a range of commits, or with `--working`
     what isn't committed (of the PATHs given, or everything)."""
     refuse_nested()
-    about, tree, working = "", ROOT, False
-    while args and args[0] in ("--about", "--tree", "--working"):
-        if args[0] == "--working":
+    about, tree, working, dry = "", ROOT, False, False
+    while args and args[0] in ("--about", "--tree", "--working", "--dry-run"):
+        if args[0] == "--dry-run":
+            dry, args = True, args[1:]
+        elif args[0] == "--working":
             working, args = True, args[1:]
         elif len(args) < 2:
             break
@@ -1292,71 +1356,169 @@ def review(args):
             about, args = args[1], args[2:]
         else:
             tree, args = os.path.abspath(args[1]), args[2:]
-    if (not working and not args) or any(a.startswith("--") for a in args):
-        sys.exit('usage: tools/dev/astra-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] RANGE [PATH…]\n'
-                 '       tools/dev/astra-review [--about …] [--tree DIR] --working [PATH…]')
-    status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True)
-    if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
-        sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
-    git = lambda *a: subprocess.run(["git", "-C", tree, *a], capture_output=True, text=True)
+    usage = ('usage: tools/dev/astra-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] [--dry-run] FROM..TO [PATH…]\n'
+             '       tools/dev/astra-review [--about …] [--tree DIR] [--dry-run] --working [PATH…]')
+    if (not working and not args) or any(a.startswith("-") for a in args):
+        sys.exit(usage)
+    # (Git asked in bytes, each asking checked, its own diff and no
+    # other: a name git quotes (`café.rs`) was passed back with the
+    # quotes and its file left out of the review without a word; a
+    # failed asking gave an empty part; a range that began with a dash
+    # was an option to `git diff`. A code review of this tool,
+    # 2026-11-27.)
+    def git(*a, ok=(0,)):
+        try:
+            ran = subprocess.run(["git", "-C", tree, "--literal-pathspecs", "-c", "core.quotepath=off", *a], capture_output=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            sys.exit(f"agents: git {a[0]} in {tree} hadn't answered in two minutes: nothing reviewed")
+        if ran.returncode not in ok:
+            sys.exit(f"agents: git {' '.join(a[:3])} in {tree}: {ran.stderr.decode(errors='replace').strip()[:300] or f'status {ran.returncode}'}")
+        return ran.stdout
+    def commit(rev):
+        ran = subprocess.run(["git", "-C", tree, "rev-parse", "--verify", "--quiet", "--end-of-options", rev + "^{commit}"], capture_output=True, timeout=120)
+        if ran.returncode:
+            sys.exit(f"agents: no commit `{rev}` in {tree}")
+        return ran.stdout.decode().strip()
+    plain = ("--no-ext-diff", "--no-textconv")
     if working:
         of, paths = "what isn't committed", args
-        diff = git("diff", "HEAD", "--", *paths).stdout
+        head = commit("HEAD")
+        diff = git("diff", *plain, head, "--", *paths)
         # (New files nobody has added yet: whole, as a diff shows them.)
-        for new in git("ls-files", "--others", "--exclude-standard", "--", *paths).stdout.splitlines():
-            diff += subprocess.run(["git", "-C", tree, "diff", "--no-index", "--", "/dev/null", new], capture_output=True, text=True).stdout
-        commits = ""
+        for new in git("ls-files", "-z", "--others", "--exclude-standard", "--", *paths).split(b"\0"):
+            if new:
+                diff += git("diff", *plain, "--no-index", "--", "/dev/null", os.fsdecode(new), ok=(0, 1))
+        commits = b""
+        at = (f"It is of the working tree over commit {head}, read at {time.strftime('%H:%M:%S', time.gmtime())} UTC: others may be changing "
+              "files there while you read, so where a file in the tree doesn't match the diff, go by the diff and say so.")
     else:
         of, paths = args[0], args[1:]
-        ran = git("diff", of, "--", *paths)
-        if ran.returncode:
-            sys.exit(f"agents: git diff {of}: {ran.stderr.strip()}")
-        diff = ran.stdout
-        commits = git("log", "--reverse", "--format=commit %h%n%n%s%n%n%b%n", of, "--", *paths).stdout
+        ends = of.split("..")
+        if len(ends) != 2 or not all(ends):
+            sys.exit(f"agents: a range is FROM..TO, two commits (`{of}` isn't): for one commit, COMMIT^..COMMIT\n" + usage)
+        first, last = commit(ends[0]), commit(ends[1])
+        diff = git("diff", *plain, first, last, "--", *paths)
+        commits = git("log", "--reverse", "--format=commit %h%n%n%s%n%n%b%n", f"{first}..{last}", "--", *paths)
+        of = f"{first[:12]}..{last[:12]}"
+        at = (f"The change ends at commit {last}: the tree may have moved on since, so read a file as it was reviewed with "
+              f"`git -C {tree} show {last}:PATH`, and where the tree's copy differs from that, go by the commit.")
     if not diff.strip():
         sys.exit(f"agents: nothing to review ({of}" + (f", {' '.join(paths)}" if paths else "") + f" in {tree}: no difference)")
-    # (Named by what it reads: the same change asked again is the same review.)
-    name = "astra-" + hashlib.sha1((tree + of + " ".join(paths) + diff).encode()).hexdigest()[:10]
+    if len(diff) > REVIEW_MOST:
+        sys.exit(f"agents: {len(diff) / 2**20:.0f} MiB of diff ({of}): more than a review reads ({REVIEW_MOST // 2**20} MiB). Name the paths to be reviewed, or leave out what is generated")
+    # (Named by what it reads, the diff's own bytes and nothing of how it
+    # was asked for: the same change asked again, by its range or from
+    # the working tree, is the same review.)
+    digest = hashlib.sha256(diff).hexdigest()
+    name = "astra-" + digest[:10]
+    lines = diff.count(b"\n")
+    if dry:
+        # (What would be reviewed, and nothing started: the files as the
+        # diff names them.)
+        files = [l[6:].decode(errors="replace") for l in diff.splitlines() if l.startswith(b"+++ b/")]
+        print(f"agents: dry run: {name} would review {of}: {lines} lines of diff in {len(files)} files\n  " + "\n  ".join(files))
+        return
     kept = os.path.join(REVIEWS, name)
     out = os.path.join(kept, "astra-review.md")
+    os.makedirs(kept, mode=0o700, exist_ok=True)
+    # One asking owns a review from its start to its keeping: two at
+    # once each found "none running", and the second removed the folder
+    # the first had just filled; or both waited, and both kept, stopped
+    # and removed it. The second waits here for the first's, and reads
+    # what it kept. (The lock is beside the kept review, not in the
+    # folder that is removed.)
+    lock = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
+    until, said_waiting = time.time() + 3 * 3600, False
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if not said_waiting:
+                said_waiting = True
+                print(f"agents: {name} is being waited for by another asking of this same review: waiting for theirs", flush=True)
+            if time.time() > until:
+                sys.exit(f"agents: three hours, and the other asking of {name} hasn't ended: look (tools/dev/agents list)")
+            time.sleep(2)
+    asked_file = os.path.join(kept, "asked.json")
+
+    def kept_already():
+        """The review of these very bytes, where one is kept whole."""
+        if not whole(out):
+            return False
+        there = os.path.join(kept, "change.diff")
+        if whole(there) and open(there, "rb").read() != diff:
+            sys.exit(f"agents: {kept} holds the review of another change whose name begins the same ({digest[:10]}): move it aside and ask again")
+        try:
+            before = json.load(open(asked_file))
+        except (OSError, ValueError):
+            before = {}
+        print(f"agents: this very change was reviewed already ({out}):", flush=True)
+        if before.get("about") and before.get("about") != about:
+            print(f"agents: (asked then with other words of it: {before['about'][:300]})", flush=True)
+        print(open(out).read().rstrip())
+        return True
+
+    if kept_already():
+        return
     m = meta(name)
     d = folder(name)
     written = os.path.join(d, "review.md")
     if not (m and live(name)):
-        if os.path.isfile(out) and os.path.getsize(out):
-            # (Reviewed before, to the byte: its review as it was written.)
-            print(f"agents: this very change was reviewed already ({out}):", flush=True)
+        # (A review written whose front door ended before keeping it, or
+        # whose reviewer had exited by the time it looked: kept now. The
+        # same change asked again used to remove the folder, and the only
+        # copy of the review with it.)
+        if m and whole(written):
+            publish(written, out)
+            if whole(os.path.join(d, "transcript.txt")):
+                publish(os.path.join(d, "transcript.txt"), out[:-3] + ".log")
+            print(f"agents: {name} had written its review and it was never kept: kept now ({out}):", flush=True)
             print(open(out).read().rstrip())
+            shutil.rmtree(d, ignore_errors=True)
             return
+        # (Asked here, not at the start: a review that is kept is read
+        # by a lead who isn't signed in, too.)
+        if not shutil.which("codex"):
+            sys.exit("agents: no codex on PATH (the Codex CLI, signed in): Astra can't review")
+        status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True)
+        if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
+            sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
         room(name, "codex", kind="helper")
         if os.path.exists(d):
             shutil.rmtree(d)
-        os.makedirs(d)
-        os.makedirs(kept, exist_ok=True)
-        said = {"diff": os.path.join(d, "change.diff"), "commits": os.path.join(d, "commits.txt"), "tree": tree, "out": written}
-        open(said["diff"], "w").write(diff)
-        open(said["commits"], "w").write(commits or "(Not committed yet: there is no message. What the lead says of it is below.)\n")
-        shutil.copyfile(said["diff"], os.path.join(kept, "change.diff"))
+        os.makedirs(d, mode=0o700)
+        said = {"diff": os.path.join(d, "change.diff"), "commits": os.path.join(d, "commits.txt"), "tree": tree, "out": written, "at": at}
+        open(said["diff"], "wb").write(diff)
+        open(said["commits"], "wb").write(commits or b"(Not committed yet: there is no message. What the lead says of it is below.)\n")
+        publish(said["diff"], os.path.join(kept, "change.diff"))
+        json.dump({"of": of, "paths": paths, "tree": tree, "about": about, "sha256": digest, "asked": time.time()}, open(asked_file, "w"), indent=1)
         brief = REVIEW_RULES.format(**said) + (f"\nWhat it is, and what changed, in the lead's words: {about}\n" if about else "")
         open(os.path.join(d, "brief.md"), "w").write(brief)
-        save_meta(name, {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": "codex"})
+        save_meta(name, {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": "codex", "kind": "review"})
         launch_astra_review(name, d)
-        print(f"agents: {name} is reviewing {of} ({len(diff.splitlines())} lines of diff); its review will be {out}", flush=True)
+        print(f"agents: {name} is reviewing {of} ({lines} lines of diff); its review will be {out}", flush=True)
     else:
         print(f"agents: {name} is on it already; waiting for it", flush=True)
     rc = watch(20, only=name)
-    if rc == 0:
-        shutil.copyfile(written, out)
-        if via(name) == "rex":
-            end(name)
-            log_kept = os.path.join(d, "transcript.txt")
-            if os.path.exists(log_kept):
-                shutil.copyfile(log_kept, out[:-3] + ".log")
-        else:
-            open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
+    # (Its review written, however the wait ended: an exited reviewer
+    # with its review in its folder ended the wait with 1 and nothing
+    # kept.)
+    if rc == 0 or (whole(written) and not live(name)):
+        screen_said = None if via(name) == "rex" else (screen(name, 200000) or "") + "\n"
+        # (Ended once; no test sessions swept by its name: it may start
+        # none, and another helper's name may begin with its own.)
+        ended = end(name, sessions=False)
+        publish(written, out)
+        log = os.path.join(d, "transcript.txt")
+        if screen_said is not None:
+            open(log, "w").write(screen_said)
+        if whole(log):
+            publish(log, out[:-3] + ".log")
         print(open(out).read().rstrip())
-        end(name)
-        shutil.rmtree(d, ignore_errors=True)
+        if ended:
+            shutil.rmtree(d, ignore_errors=True)
+        rc = 0
     sys.exit(rc)
 
 
@@ -1370,6 +1532,26 @@ def done_file(n):
     return m.get("done") or os.path.join(folder(n), "report.md")
 
 
+def whole(path):
+    """Whether `path` is a file of its own with something in it: not a
+    link to another, not a folder, not empty."""
+    try:
+        st = os.lstat(path)
+    except (OSError, TypeError):
+        return False
+    return stat.S_ISREG(st.st_mode) and st.st_size > 0
+
+
+def finished(n):
+    """Whether its result is written: a file with something in it,
+    written since the lead last told it anything. (A builder given a
+    second task was called DONE by its first task's report, each time
+    its screen came to rest, while it worked on the second; and a file
+    made and still empty passed for a result: 2026-11-27.)"""
+    f = done_file(n)
+    return whole(f) and os.lstat(f).st_mtime >= ((meta(n) or {}).get("said_at") or 0)
+
+
 def list_():
     rows = names()
     if not rows:
@@ -1380,7 +1562,7 @@ def list_():
         st = state(n)
         # (Its turn over and its result written: done. Idle without it:
         # a question, or waiting to be told more.)
-        st = "done" if st == "idle" and os.path.exists(done_file(n)) else st
+        st = "done" if st == "idle" and finished(n) else st
         # (In its first moments it shows its prompt before it has begun:
         # not a turn over. The watch waits as long for it.)
         st = "starting" if st == "idle" and time.time() - m.get("started", 0) < 30 else st
@@ -1482,11 +1664,12 @@ def watch(stuck_min, only=None, at_most=None, among=None):
                 # (One with a minder is its minder's to answer first: the
                 # lead hears of it if the minder hands it back, or if it
                 # still stands after a minute and a half.)
-                if m.get("minded") and time.time() - asking_since.setdefault(n, time.time()) < MINDER_HAS:
+                has_minder = minded(n, m)
+                if has_minder and time.time() - asking_since.setdefault(n, time.time()) < MINDER_HAS:
                     continue
                 question = asked(n)[0]
                 again = second_time(n, question)
-                unanswered = " (its minder hasn't answered it)" if m.get("minded") else ""
+                unanswered = " (its minder hasn't answered it)" if has_minder else ""
                 alerts.append((n, f"asks you{unanswered} (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)" + (f": {again}" if again else ""), "\n".join(question)))
             if st != "asking":
                 asking_since.pop(n, None)
@@ -1508,16 +1691,16 @@ def watch(stuck_min, only=None, at_most=None, among=None):
                 if time.time() - idle_since.setdefault(n, time.time()) < 15:
                     continue
                 p = progress(n)
-                finished = os.path.exists(done_file(n))
+                has_result = finished(n)
                 # (One waited for alone that has its result is done,
                 # whether or not it was looked at meanwhile.)
-                if p != m.get("seen") or (only and finished):
+                if p != m.get("seen") or (only and has_result):
                     # (A look's review is named where it is kept: the file
                     # in its own folder is gone a moment after, with the
                     # folder, and a minder was pointed at nothing.)
-                    said = f"is DONE ({m.get('kept') or done_file(n)})" if finished else "finished a turn (a question, or waiting)"
+                    said = f"is DONE ({m.get('kept') or done_file(n)})" if has_result else "finished a turn (a question, or waiting)"
                     alerts.append((n, said, screen(n, 40)))
-                    if finished and not only:
+                    if has_result and not only:
                         # (Said once: a watcher of several isn't called
                         # back by the same finished one at every wait.
                         # Not by a front door's wait for its one: that
@@ -1541,14 +1724,14 @@ def watch(stuck_min, only=None, at_most=None, among=None):
             # word: its minder's "it has finished" came a moment before
             # the screen read as at rest, and a review's front door took
             # it for a question and ended without keeping the review.)
-            finished = bool(only) and os.path.exists(done_file(only)) and (state(only) == "idle" or at_rest(only))
+            over = bool(only) and finished(only) and (state(only) == "idle" or at_rest(only))
             for n, why, text in alerts:
                 print(f"=== {n} {why}")
-                if not finished:
+                if not over:
                     print(shown(text))
                     print()
             if only:
-                if finished:
+                if over:
                     return 0
                 print(f"agents: {only} is waiting on you, which isn't a failure (the 3 this ends with says so): answer it (approve, answer, say), then run this again to go on waiting for it")
                 return 3
@@ -1650,34 +1833,51 @@ def say(name, text, now=False):
         press(name, "M-m")
         time.sleep(1.0)
     seen(name)
+    # (When it was last told anything: a result written before that is
+    # of what it was asked before, `finished`.)
+    m = meta(name)
+    if m is not None:
+        m["said_at"] = time.time()
+        save_meta(name, m)
     print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until the step it is on ends (`agents say {name} --now …` delivers at once)"))
 
 
-def choose(name, pick, choices):
+def choose(name, pick, choices, text):
     """Take `pick`, one of the `choices` a question shows (its key and
     its words). In tmux: its own key, a digit. In a child tab a digit
     can't be pressed (text there is pasted where the program takes
     pastes, and refused while a child asks leave), so it is taken as the
     service takes an answer: by what the choice means (`olo agent
     approve`, which sees its mark on that very choice before Return and
-    Escapes otherwise), and, for a choice that is none of its kinds, by
-    moving the mark down to it from the first and confirming."""
+    Escapes otherwise). Where the service declines, nothing is pressed:
+    it declines a box it can't read for certain (a number seen twice, a
+    mark it can't place), and this used to go on to count rows down from
+    the first and press Return, on whatever the mark then stood on (a
+    code review, 2026-11-27: with the mark on No it confirmed No, and it
+    could confirm a standing permission). A choice that is none of the
+    service's kinds is taken by moving the mark down to it, only with
+    the mark seen on the first choice, alone."""
     if via(name) != "rex":
         press(name, pick[0])
-        return
+        return True
     words = pick[1]
     kind = ("--once" if words.startswith("Yes") and "always" not in words and "auto mode" not in words
             else "--session" if words.startswith("Yes") and "in this conversation" in words
             else "--no" if words.startswith("No") else None)
     if kind:
         r = olo("approve", child(name), kind, "--json")
-        if r.returncode == 0:
-            return
-        print(f"agents: olo agent approve {kind} didn't take ({(r.stderr or r.stdout).strip()[:200]}): moving to the choice instead", file=sys.stderr)
+        if r.returncode != 0:
+            print(f"agents: olo agent approve {kind} didn't take ({(r.stderr or r.stdout).strip()[:300]}): nothing pressed. Look (agents peek {name}) and answer in its tab, or with `agents keys {name} …` once you have seen where its mark stands", file=sys.stderr)
+        return r.returncode == 0
+    first = choices[0][0] if choices else None
+    if marked(text) != [first]:
+        print(f"agents: the mark isn't seen on the first choice alone (it is on {', '.join(marked(text)) or 'none'}): nothing pressed. Look (agents peek {name}) and move to the choice yourself (`agents keys {name} …`)", file=sys.stderr)
+        return False
     for _ in range([c[0] for c in choices].index(pick[0])):
         press(name, "Down")
         time.sleep(0.15)
     press(name, "C-m")
+    return True
 
 
 def answer(name, how):
@@ -1708,7 +1908,8 @@ def answer(name, how):
     if any(x in pick[1] for x in SAVES):
         sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
     before = screen(name, 400) or ""
-    choose(name, pick, choices)
+    if not choose(name, pick, choices, text):
+        return 4
     # (Whether it took: its screen moves on. The same question again after
     # that is a second asking, not this one left up: an agent that ran a
     # script asked to run it again, and the minder took it for an answer
@@ -1764,16 +1965,25 @@ def keys(name, which):
     seen(name)
 
 
-def end(name):
+def end(name, sessions=True):
     """End its session, whatever state it is in: what it said kept in
     its folder (transcript.txt) first, and any headless test session it
-    left running (it names them agy-NAME…) stopped with it."""
+    left running (it names them agy-NAME…) stopped with it (`sessions`:
+    not for a code reviewer, which may start none, and whose name may be
+    the start of another helper's). Whether it is ended: a child the
+    service wouldn't stop is said, and its record isn't marked ended
+    (it was, and its folder removed, with the child still running: a
+    code review, 2026-11-27)."""
     d = folder(name)
+    ended = True
     if via(name) == "rex":
         # (The service keeps all it said as it stops it; its tab closes.)
         kept = ["--save", os.path.join(d, "transcript.txt")] if os.path.isdir(d) else []
         if state(name) != "gone":
-            olo("stop", child(name), "--force", *kept)
+            r = olo("stop", child(name), "--force", *kept)
+            if r.returncode != 0 and state(name) not in ("gone", "exited"):
+                ended = False
+                print(f"agents: {name} couldn't be stopped ({(r.stderr or r.stdout).strip()[:200]}): it runs still; `olo agent stop {child(name)}` and look", file=sys.stderr)
     else:
         text = screen(name, 200000)
         if text and os.path.isdir(d):
@@ -1781,7 +1991,7 @@ def end(name):
         tmux("kill-session", "-t", f"={name}")
     tsession = os.path.join(ROOT, "tools/dev/tsession")
     try:
-        listed = subprocess.run(["/usr/bin/python3", tsession, "list"], capture_output=True, text=True, timeout=20).stdout
+        listed = subprocess.run(["/usr/bin/python3", tsession, "list"], capture_output=True, text=True, timeout=20).stdout if sessions else ""
         for line in listed.splitlines():
             its = line.split()
             if its and (its[0] == f"agy-{name}" or its[0].startswith(f"agy-{name}-")) and "ended" not in its[1:]:
@@ -1790,11 +2000,11 @@ def end(name):
     except (OSError, subprocess.SubprocessError):
         pass
     m = meta(name)
-    if m:
+    if m and ended:
         m["seen_state"] = "exited"
         m["ended"] = time.time()
         save_meta(name, m)
-
+    return ended
 
 def stop(name):
     refuse_nested()
@@ -1832,10 +2042,10 @@ def tidy(now=None):
                 save_meta(n, m)
                 continue
             sat = now - m.get("still_since", now)
-            finished = os.path.exists(done_file(n))
-            if (finished and sat >= DONE_KEPT) or sat >= IDLE_KEPT:
+            has_result = finished(n)
+            if (has_result and sat >= DONE_KEPT) or sat >= IDLE_KEPT:
                 end(n)
-                said.append(f"{n}: {'done' if finished else 'idle'} and untouched for {int(sat // 60)} minutes; stopped (its folder {folder(n)} stays)")
+                said.append(f"{n}: {'done' if has_result else 'idle'} and untouched for {int(sat // 60)} minutes; stopped (its folder {folder(n)} stays)")
         elif st == "gone":
             ended = m.get("ended") or os.path.getmtime(os.path.join(folder(n), "meta.json"))
             if now - ended >= FOLDER_KEPT:
@@ -1849,16 +2059,51 @@ def say_tidied(said):
         print(f"agents: {line}", file=sys.stderr)
 
 
+def publish(src, dst):
+    """A result put where it is kept, whole or not at all: read from a
+    file of its own (never through a link), written beside its place
+    under another name and moved there in one step, so a disk that
+    fills or a copy cut short leaves no half of a review under the
+    review's name (which the next asking would have served as the
+    review, and `forget` taken for it kept). A link standing at `dst`
+    is replaced, not written through. For the person alone to read."""
+    if not whole(src):
+        raise OSError(f"{src} isn't a file with something in it")
+    data = open(src, "rb").read()
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    part = f"{dst}.{os.getpid()}.part"
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(part)
+    with os.fdopen(os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(part, dst)
+
+
 def keep_result(name):
     """A look's or a review's result put where it is kept (beside the
     pictures, with the diff) if its front door never got to: the path,
-    or None where there is nothing to keep or it is kept already."""
+    or None where there is nothing to keep or it is kept already, whole
+    (the same bytes: an empty or a shorter file at its place is not it
+    kept). Where another result stands there, both are kept."""
     m = meta(name) or {}
     written, kept = m.get("done"), m.get("kept")
-    if not (written and kept) or os.path.exists(kept) or not (os.path.isfile(written) and os.path.getsize(written)):
+    if not (written and kept) or not whole(written):
         return None
-    os.makedirs(os.path.dirname(kept), exist_ok=True)
-    shutil.copyfile(written, kept)
+    # (Its record is in its own folder, which it can write: what it
+    # names is believed only as far as a result of its own, in its own
+    # folder, going to a place outside the repository.)
+    inside = lambda path, root: os.path.realpath(path).startswith(os.path.realpath(root) + os.sep)
+    if not inside(written, folder(name)) or inside(kept, ROOT):
+        print(f"agents: {name}'s record names {written} to be kept at {kept}: not its own result, or a place in the repository; nothing kept", file=sys.stderr)
+        return None
+    if whole(kept):
+        if open(kept, "rb").read() == open(written, "rb").read():
+            return None
+        root, ext = os.path.splitext(kept)
+        kept = f"{root}.{int(os.lstat(written).st_mtime)}{ext}"
+    publish(written, kept)
     return kept
 
 
@@ -1873,8 +2118,14 @@ def forget(name):
     kept = keep_result(name)
     if kept:
         print(f"agents: {name}'s result wasn't kept yet: it is now, at {kept}")
-    shutil.rmtree(folder(name), ignore_errors=True)
-    print(f"agents: {name}'s folder removed")
+    # (A helper's own folder, which has its record: never a folder that
+    # only bears a name. And what couldn't be removed is said.)
+    where = folder(name)
+    if not os.path.isfile(os.path.join(where, "meta.json")) or os.path.islink(where):
+        sys.exit(f"agents: {name} isn't a helper of this tool's ({where} has no record of one): nothing removed")
+    left = []
+    shutil.rmtree(where, onerror=lambda _f, path, _e: left.append(path))
+    print(f"agents: {name}'s folder removed" if not left else f"agents: {name}'s folder couldn't be removed whole ({len(left)} left, the first {left[0]})")
 
 
 def allowed():

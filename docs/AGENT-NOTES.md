@@ -4112,6 +4112,22 @@ their host's"):
   collect the `ESC [ ? N h` it writes. When a person reports what a
   check says works, the first question is what the real program does
   that the stand-in doesn't.
+- **A trial of a tool that reviews "what isn't committed" keeps its
+  scratch outside the repository it tries.** Mine put the tool's own
+  folders inside the trial repository (2026-11-27): every asking then
+  saw a new change (the last asking's files), and the "same change
+  asked again" started two real reviewers, which sat at Codex's first
+  screen for two minutes until I stopped them. And a trial that must
+  start nothing takes the program off the PATH (`PATH=/usr/bin:/bin`),
+  which is how the second one was made safe.
+- **TMPDIR here is /var/tmp, and programs treat it as theirs to
+  write.** Codex's `workspace-write` sandbox adds TMPDIR and /tmp to
+  what a run may write: for a helper meant to write only its own
+  folder that was the whole of our scratch, the tree under review
+  included. Give such a helper a TMPDIR inside its folder and exclude
+  both (`tools/dev/agents`, `launch_astra_review`), and measure what a
+  sandbox may write rather than read its name (`codex sandbox -c
+  'sandbox_mode="workspace-write"' -- sh -c 'touch /var/tmp/x'`).
 - **A test desktop's pointer is somewhere**: after a click on an alert
   that then closes, the pointer is over the window beneath, which is
   told of it (a pane whose program hears the mouse gets a report). A

@@ -77,8 +77,9 @@ existing reviews)". Run in the background, with the looks at the
 change's pictures where it has any:
 
     tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working [PATH…]   # not committed yet
-    tools/dev/astra-review --about "…" RANGE [PATH…]                               # commits: main~2..main
+    tools/dev/astra-review --about "…" FROM..TO [PATH…]                            # commits: main~2..main (one: C^..C)
     tools/dev/astra-review --tree /var/tmp/NAME/tree …                             # another checkout
+    tools/dev/astra-review --dry-run …                                             # what it would read; starts nothing
 
 - It works in a folder of its own with the diff (`change.diff`) and
   what the commits said (`commits.txt`); its sandbox lets it read the
@@ -90,7 +91,11 @@ change's pictures where it has any:
   `/var/tmp/olo-reviews/astra-HASH/` (`astra-review.md`, its screen in
   `astra-review.log`). The name is the change's own: the same diff
   asked again prints the review written, a changed one is reviewed
-  anew.
+  anew. Asked twice at once, the second waits for the first's. A
+  review written and never kept (its front door ended first) is kept
+  by asking for it again: never `forget` a reviewer to "start over".
+- The reviewer is told the last commit's id and reads files as of it
+  (`git show ID:PATH`): the tree moves on under a long review.
 - A finding is a claim. Make each happen (a test that fails) before
   fixing it; say in the commit what it found and what you did, and
   what you checked and found not to be so, with why.
