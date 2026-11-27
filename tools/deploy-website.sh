@@ -247,10 +247,20 @@ if [ "$preview" = 1 ] || [ -z "$domains" ]; then
 fi
 
 say "Its domains"
-domain_list() { limited cf pages domains list "$project" 2>/dev/null | json 'print("\n".join(x["name"] + " " + x.get("status", "?") for x in d))' || true; }
+# What cf lists, as lines: the command, then the Python that prints them.
+# A list that can't be had stops the run with what cf said (a guess at
+# "nothing there" would make what is there a second time).
+listed() {
+  local how=$1 out
+  shift
+  out=$(limited cf "$@" 2>"$err") || fail "cf $*: $(cat "$err")"
+  echo "$out" | json "$how"
+}
+# (`list` takes the project as --project-name; `create` as its argument.)
+domain_list() { listed 'print("\n".join(x["name"] + " " + x.get("status", "?") for x in d))' pages domains list --project-name "$project"; }
 attached=""
-[ -n "$proj" ] && attached=$(domain_list)
-zones=$(limited cf zones list 2>/dev/null | json 'print("\n".join(z["name"] for z in d))' || true)
+if [ -n "$proj" ]; then attached=$(domain_list); fi
+zones=$(listed 'print("\n".join(z["name"] for z in d))' zones list)
 for d in $domains; do
   # Attached to the project?
   if printf '%s\n' "$attached" | grep -q "^$d "; then
@@ -275,7 +285,7 @@ for d in $domains; do
     todo "$d: its zone isn't in this account; point a CNAME at $subdomain where its DNS is"
     continue
   fi
-  records=$(limited cf dns records list --zone "$zone" --name "$d" 2>/dev/null | json 'print("\n".join(r["type"] + " " + r.get("content", "") for r in d))' || true)
+  records=$(listed 'print("\n".join(r["type"] + " " + r.get("content", "") for r in d))' dns records list --zone "$zone" --name "$d")
   if printf '%s\n' "$records" | grep -qix "CNAME $subdomain"; then
     ok "$d: its CNAME to $subdomain is there"
   elif [ -n "$records" ]; then
@@ -291,9 +301,27 @@ for d in $domains; do
   fi
 done
 
+# A domain that isn't active yet, its record there: Pages is asked to look
+# again now (it checked when the domain was attached, before its record was
+# made, and its next look of its own is some minutes off), and how each
+# stands is said: its record seen ("verification"), then its certificate.
 if [ "$mode" != check ]; then
-  if domain_list | grep -qv ' active$'; then
-    echo "  (A new domain is \"pending\" until Cloudflare has checked it and issued its certificate: some minutes.)"
+  for d in $(domain_list | grep -v ' active$' | cut -d' ' -f1); do
+    limited cf pages domains validation retry "$d" --project-name "$project" >/dev/null 2>&1 || true
+  done
+  waiting=0
+  while read -r d state seen certificate; do
+    [ -n "$d" ] || continue
+    if [ "$state" = active ]; then
+      ok "https://$d is live"
+    else
+      todo "$d: $state (its record seen: $seen; its certificate: $certificate)"
+      waiting=1
+    fi
+  done < <(listed 'print("\n".join(" ".join([x["name"], x.get("status", "?"), (x.get("verification_data") or {}).get("status", "?"), (x.get("validation_data") or {}).get("status", "?")]) for x in d))' pages domains list --project-name "$project")
+  if [ "$waiting" = 1 ]; then
+    echo "  (Cloudflare issues a new domain's certificate by itself, in some minutes; until then the"
+    echo "   domain answers with its error 522. https://$subdomain is live meanwhile; --check says how it stands.)"
   fi
 fi
 if [ "$mode" = check ]; then
