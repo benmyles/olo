@@ -768,6 +768,24 @@ fn a_feedback_survey_is_set_aside() {
     std::thread::sleep(Duration::from_millis(1300));
     let _ = rig.status("surveyed");
     rig.typed_since("surveyed", before, b"0", "once, though it stays");
+    // A repaint caught empty after its key, then the same survey once more before it goes (a slow
+    // agent on a busy host): one showing, its key once. (The empty frame let the showing go, and
+    // the survey drawn again was pressed for again: a second `0`, the field's if the first was taken.)
+    rig.show("surveyed", &working());
+    rig.wait_state("surveyed", "working");
+    let before = rig.keys("surveyed").len();
+    let blank = rig.when_typed("surveyed", b"0", "\n\n".to_owned());
+    rig.show("surveyed", &survey);
+    assert!(blank.join().unwrap(), "the service set the survey aside");
+    std::thread::sleep(Duration::from_millis(400));
+    rig.show("surveyed", &survey);
+    std::thread::sleep(Duration::from_millis(700));
+    for _ in 0..3 {
+        let _ = rig.status("surveyed");
+    }
+    rig.show("surveyed", &idle("Done at last."));
+    rig.wait_state("surveyed", "idle");
+    rig.typed_since("surveyed", before, b"0", "once, though an empty frame came between two paints of it");
     rig.json(&["stop", "surveyed", "--force", "--json"]);
 }
 
@@ -5707,6 +5725,213 @@ fn round3_11_send_wait_against_held_older_service() {
 
     // Lift hold so Rig::drop can retire the older service cleanly.
     let _ = std::fs::remove_file(rig.dir.join("host-upgrade.hold"));
+}
+
+/// A question is answered once whatever its screen does meanwhile, and
+/// only by who saw it: four cases the code review of the first fix
+/// found (Astra 6.2, 2026-11-27), each failing without its fix.
+///
+/// A repaint caught half-way after the Return (a frame with nothing on
+/// it, then the same box for a while yet: a slow agent) is not the
+/// box's going: the list answers it once.
+#[test]
+fn a_repaints_empty_frame_is_not_a_box_gone() {
+    let Some(rig) = Rig::start("once-repaint") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
+    rig.start_child("claude", "slow", &["--approve-all-but", "not-these.txt"]);
+    let before = rig.keys("slow").len();
+    let blank = rig.when_typed("slow", b"\r", "\n\n".to_owned());
+    rig.show("slow", &asking("cargo build -p olo-kit", 0));
+    assert!(blank.join().unwrap(), "the list didn't answer\n{}", rig.said());
+    std::thread::sleep(Duration::from_millis(120));
+    rig.show("slow", &asking("cargo build -p olo-kit", 0));
+    std::thread::sleep(Duration::from_millis(900));
+    rig.show("slow", &working());
+    rig.wait_state("slow", "working");
+    std::thread::sleep(Duration::from_millis(400));
+    let allowed = rig.json(&["mind", "slow", "--json"])["answered"].as_array().map_or(0, Vec::len);
+    assert_eq!((String::from_utf8_lossy(&rig.keys("slow")[before..]).as_ref(), allowed), ("\r", 1), "a box seen again after an empty frame was answered again\n{}", rig.said());
+    rig.json(&["stop", "slow", "--force", "--json"]);
+}
+
+/// …and where the screen stays empty for longer (a repaint that is slow
+/// on a busy host, or the box gone and the very same asked again: the
+/// screen can't say which), the same box seen next is a person's, not
+/// the list's: one Return. With the agent seen at work between them,
+/// the same asked again is another box, and the list's. (The test
+/// above failed one whole run in two under a load of 95, its 120 ms of
+/// nothing grown past the service's two readings: "\r\r".)
+#[test]
+fn the_same_box_after_only_an_empty_screen_is_a_persons() {
+    let Some(rig) = Rig::start("once-blank") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
+    let started = rig.start_child("claude", "blank", &["--approve-all-but", "not-these.txt"]);
+    let before = rig.keys("blank").len();
+    let blank = rig.when_typed("blank", b"\r", "\n\n".to_owned());
+    rig.show("blank", &asking("cargo build -p olo-kit", 0));
+    assert!(blank.join().unwrap(), "the list didn't answer\n{}", rig.said());
+    std::thread::sleep(Duration::from_millis(700));
+    rig.show("blank", &asking("cargo build -p olo-kit", 0));
+    let asked = rig.json(&["watch", "blank", "--since", &started["cursor"].to_string(), "--on", "approval", "--timeout", "10", "--json"]);
+    assert_eq!(asked["state"], "waiting_approval", "the same box after an empty screen wasn't told to anyone: {asked}");
+    std::thread::sleep(Duration::from_millis(600));
+    assert_eq!(String::from_utf8_lossy(&rig.keys("blank")[before..]), "\r", "the same box after only an empty screen was answered again by the list\n{}", rig.said());
+    // (At work, then the very same asked: another box, the list's.)
+    rig.show("blank", &working());
+    rig.wait_state("blank", "working");
+    let again = rig.when_typed("blank", b"\r", working());
+    rig.show("blank", &asking("cargo build -p olo-kit", 0));
+    assert!(again.join().unwrap(), "the same asked again after work wasn't the list's\n{}", rig.said());
+    assert_eq!(String::from_utf8_lossy(&rig.keys("blank")[before..]), "\r\r");
+    rig.json(&["stop", "blank", "--force", "--json"]);
+}
+
+/// Two askings with no box named, one behind the other: the second is
+/// told an answer is on its way, and the box that comes next, which its
+/// asker never saw, is not answered by it. One that names its box waits
+/// its turn, and is refused for the box that stands by then.
+#[test]
+fn an_asking_behind_another_answers_nothing_it_never_saw() {
+    let Some(rig) = Rig::start("once-queued") else { return };
+    rig.stand_in("claude");
+    rig.start_child("claude", "pair", &[]);
+    rig.show("pair", &asking("make one", 0));
+    rig.wait_state("pair", "waiting_approval");
+    let before = rig.keys("pair").len();
+    let next = rig.when_typed_after("pair", b"\r", Duration::from_millis(500), asking("rm -rf build", 0));
+    let (first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| rig.olo(&["approve", "pair", "--once", "--json"]));
+        std::thread::sleep(Duration::from_millis(150));
+        let second = rig.olo(&["approve", "pair", "--once", "--json"]);
+        (first.join().unwrap(), second)
+    });
+    assert!(next.join().unwrap());
+    assert_eq!(first.0, 0, "{first:?}");
+    rig.wait("the next box to stand", || rig.status("pair")["approval"]["command"].as_str().is_some_and(|c| c.contains("rm -rf build")));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(String::from_utf8_lossy(&rig.keys("pair")[before..]), "\r", "the box that came next was answered by an asking that never saw it: {second:?}");
+    assert!(second.0 != 0 && second.2.contains("being answered"), "{second:?}");
+    let named = rig.status("pair")["approval"]["box"].as_str().unwrap().to_owned();
+    rig.show("pair", &asking("make two", 0));
+    rig.wait("the box after", || rig.status("pair")["approval"]["command"].as_str().is_some_and(|c| c.contains("make two")));
+    let (code, _, err) = rig.olo(&["approve", "pair", "--once", "--box", &named, "--json"]);
+    assert!(code != 0 && err.contains("isn't the one that stands now"), "{err}");
+    rig.json(&["stop", "pair", "--force", "--json"]);
+}
+
+/// A list taken away while the mark is walked to the yes allows
+/// nothing: the arrow, and no Return.
+#[test]
+fn a_list_taken_away_mid_answer_allows_nothing() {
+    let Some(rig) = Rig::start("once-revoked") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
+    rig.start_child("claude", "revoked", &["--approve-all-but", "not-these.txt"]);
+    let before = rig.keys("revoked").len();
+    let moved = rig.when_typed_after("revoked", b"\x1b[A", Duration::from_millis(900), asking("cargo fmt", 0));
+    rig.show("revoked", &asking("cargo fmt", 1));
+    rig.wait("the walk to the yes", || rig.keys("revoked").len() > before);
+    rig.json(&["mind", "revoked", "--approve-none", "--json"]);
+    assert!(moved.join().unwrap());
+    std::thread::sleep(Duration::from_millis(1200));
+    let allowed = rig.json(&["mind", "revoked", "--json"])["answered"].as_array().map_or(0, Vec::len);
+    assert_eq!((String::from_utf8_lossy(&rig.keys("revoked")[before..]).as_ref(), allowed), ("\x1b[A", 0), "a list taken away answered all the same\n{}", rig.said());
+    rig.json(&["stop", "revoked", "--force", "--json"]);
+}
+
+/// A box that stood when the service was replaced is not the list's to
+/// answer again: the one before may have. It is told to a person.
+#[test]
+fn a_box_standing_at_a_takeover_is_a_persons() {
+    let Some(rig) = Rig::start("once-takeover") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
+    let kept = rig.start_child("claude", "kept", &["--approve-all-but", "not-these.txt"]);
+    let before = rig.keys("kept").len();
+    rig.show("kept", &asking("cargo check", 0));
+    rig.wait("the list's one Return", || rig.keys("kept").len() > before);
+    let first = rig.service_pid().expect("a service");
+    assert!(Command::new("kill").args(["-9", &first.to_string()]).status().unwrap().success());
+    rig.wait("the service to be gone", || !Path::new(&format!("/proc/{first}")).exists());
+    let asked = rig.json(&["watch", "kept", "--since", &kept["cursor"].to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    assert_eq!(asked["state"], "waiting_approval", "{asked}");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(String::from_utf8_lossy(&rig.keys("kept")[before..]), "\r", "the service that took the child over answered its standing box again");
+    rig.json(&["stop", "kept", "--force", "--json"]);
+}
+
+/// A folder's trust at a child's start: one question whether or not its
+/// path is drawn yet, and not told to anyone while its answer is on
+/// its way (the same review: read with no path and then with one, it
+/// was answered twice; and `run --trust` came back "question" for one
+/// answered a moment before).
+#[test]
+fn a_folders_trust_is_one_question_and_not_told_while_answered() {
+    let Some(rig) = Rig::start("trust-once") else { return };
+    rig.stand_in("claude");
+    let work = rig.work();
+    let other = rig.dir.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    let asks = |folder: &str| {
+        format!(
+            "{0}\n Accessing workspace:\n\n {folder}\n\n Quick safety check: Is this a project you created or one you trust?\n\n ❯ Yes, I trust this folder\n   No, exit\n\n Enter to confirm · Esc to cancel\n",
+            rule()
+        )
+    };
+    // (Its path not drawn yet, its mark on the yes: then the whole of it, for longer than a confirmation.)
+    let started = rig.start_child("claude", "builder", &["--trust", "--cwd", &work, "--add-dir", &other.display().to_string()]);
+    let before = rig.keys("builder").len();
+    let whole = rig.when_typed("builder", b"\r", asks(&work));
+    rig.show("builder", &asks(""));
+    assert!(whole.join().unwrap(), "the trust wasn't answered\n{}", rig.said());
+    // Not told as a question while its answer is on its way…
+    let (code, out, _) = rig.olo(&["watch", "builder", "--since", &started["cursor"].to_string(), "--on", "question,approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "a trust question whose answer was on its way was told: {out}");
+    rig.show("builder", &idle("Ready."));
+    rig.wait_state("builder", "idle");
+    std::thread::sleep(Duration::from_millis(300));
+    // …and answered once, though it was read two ways.
+    assert_eq!(String::from_utf8_lossy(&rig.keys("builder")[before..]), "\r", "one question, read with and without its path, was answered twice");
+    rig.json(&["stop", "builder", "--force", "--json"]);
+}
+
+/// A `--trust` child's own folder is the service's to answer from the
+/// child's start, not from the moment the answering comes to it: its
+/// question, standing with its mark not drawn yet for longer than a
+/// confirmation, is not told as one. (It was told wherever a reading
+/// came before the answering task had taken the question: one run in
+/// four of `a_folders_trust_is_one_question_…` on a busy host, and here
+/// every time.)
+#[test]
+fn a_trust_at_a_start_is_the_services_before_it_is_answered() {
+    let Some(rig) = Rig::start("trust-held") else { return };
+    rig.stand_in("claude");
+    let work = rig.work();
+    let asks = |mark: &str| {
+        format!(
+            "{0}\n Accessing workspace:\n\n {work}\n\n Quick safety check: Is this a project you created or one you trust?\n\n {mark} Yes, I trust this folder\n   No, exit\n\n Enter to confirm · Esc to cancel\n",
+            rule()
+        )
+    };
+    let started = rig.start_child("claude", "builder", &["--trust", "--cwd", &work]);
+    let before = rig.keys("builder").len();
+    rig.show("builder", &asks(" "));
+    std::thread::sleep(Duration::from_millis(800));
+    let gone = rig.when_typed("builder", b"\r", idle("Ready."));
+    rig.show("builder", &asks("❯"));
+    assert!(gone.join().unwrap(), "the trust wasn't answered\n{}", rig.said());
+    rig.wait_state("builder", "idle");
+    let (code, out, _) = rig.olo(&["watch", "builder", "--since", &started["cursor"].to_string(), "--on", "question,approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "a trust question the service was about to answer was told: {out}");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("builder")[before..]), "\r");
+    // (One that isn't the child's own is told at once, as ever.)
+    rig.show("builder", &asks("❯").replace(&work, "/somewhere/else"));
+    let asked = rig.json(&["watch", "builder", "--since", &started["cursor"].to_string(), "--on", "question", "--timeout", "10", "--json"]);
+    assert_eq!(asked["state"], "waiting_question", "{asked}");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("builder")[before..]), "\r", "a folder that isn't the child's was answered");
+    rig.json(&["stop", "builder", "--force", "--json"]);
 }
 
 /// Regression test for Case 1: `--approve-all-but` must answer a single approval box

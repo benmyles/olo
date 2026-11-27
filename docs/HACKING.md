@@ -32636,23 +32636,73 @@ agents through the night, could not move to it.
   (up to four times): the other answer chosen, or Returns into the
   agent's field. (3) **a survey's `0` pressed again** after 300 ms,
   three times in all: the second was typed into the agent's field.
-  Now: one writer of answers a child (`answer_lock`: `approve` and the
-  trust answer); a box is **marked answered before its Return is
-  written**, under the lock that takes a minder's grant, and every
-  reading passes over it until it has gone (`transition`, its
-  confirmation, the list); the edge is cleared and the watcher woken
-  only *after* the box has gone or its two seconds are up
-  (`box_finish`: one that didn't go is told afresh, to a person, and
-  never allowed by the list a second time, `list_skip_hash`); should
-  the asking be dropped on its way the box is finished all the same
-  (`Answering`'s drop). The trust answer reads once under the lock,
-  presses its arrows once, waits for the mark to be seen on the yes
-  (three seconds) and presses Return once, each folder's question
-  once. A survey's key is pressed once for a showing, by whichever
-  reading takes it (`Live::survey_pressed`, the screen read again
-  before the key), and the survey waited for; one that stays is said.
-  A second box that asks the very same is still another box, and
-  answered. `approve`'s own walk to an answer (`--no` on Claude Code:
+  Now: one writer of answers a child (`answer_lock`, the child's own:
+  `approve` and the trust answer); a box is **marked answered before
+  its Return is written**, under the lock that takes a minder's grant,
+  and every reading passes over it until it has gone (`transition`, its
+  confirmation, the list, a watch's look at what stands, a minder's
+  grant); the edge is cleared and the watcher woken only *after* the
+  box has gone or its two seconds are up (`box_finish`: one that didn't
+  go, or whose Return wasn't seen to be written, is told afresh, to a
+  person, and is not the list's again for thirty seconds,
+  `Live::list_skip`); should the asking be dropped on its way the box
+  is finished all the same (`Answering`'s drop, there before the
+  Return). **Which box stands is said by the readings of the screen,
+  in the order they were begun, and by nothing else**
+  (`Live::box_after`, in `look`; `Looked::boxed` carries it; `box_key`
+  only reads): a slow `status`, formatting its answer, had put the box
+  it read in the place of one answered since, unanswered. **A box is
+  gone** when another stands in its place, when the agent is plainly
+  somewhere else (at work in its turn, at its own prompt), or when no
+  box shows for two readings 150 ms apart: one frame with none on it
+  is a repaint caught half-way as often (taken for the box's going,
+  the list answered the same box again when the repaint was done);
+  and an answered box is kept through such frames. A box that went
+  with only an empty screen to show for it (`BoxEnd::Blank`) may as
+  well be a repaint that is slow, on a busy host: it is put away, and
+  **the very same box seen next, with nothing else seen first, is a
+  person's and not the list's** (`Live::list_skip`, let go by another
+  box, by the agent seen at work or at its prompt, or in thirty
+  seconds). **An asking that
+  names no box answers nothing it never saw**: where another answer is
+  on its way it is told so ("is being answered just now … `--box
+  KEY`"); one that names its box, and a minder (its grant is for one
+  box), waits its turn and is held to that box. A list's yes is by the
+  list as it stands when the answer is written (`--by-list`,
+  `list_allows`: one taken away while the mark was walked to the yes
+  allows nothing), and never for a box that **stood when this service
+  took the child over** (the service before may have answered it: a
+  person's; a survey standing then is left too). Where another
+  question stands by the time the mark has been walked, nothing more
+  is pressed (an Escape was, onto that other question). The trust
+  answer reads once under the lock, presses its arrows once, waits for
+  the mark to be seen on the yes (three seconds, a repaint waited
+  through) and presses Return once, each key within the start's
+  fifteen seconds; the question at a child's start is **one question
+  whether or not its path is drawn yet** (read both ways it was
+  answered twice), and a `--trust` child's own folders' questions are
+  the service's, and nobody's to be told of, **from the moment the
+  child's record is made** until they are answered or the start's time
+  is up (`TrustAtStart` in `Live::trust`, there before its screen is
+  first read: `run --trust` came back "question" for one answered a
+  moment later, wherever a reading came before the answering had taken
+  the question; where the telling is held back the service's bell is
+  rung all the same, which is how the answering learns of its
+  question). One that isn't the child's own, or still stands after its
+  keys, is told as any other. A survey's key is
+  pressed once for a showing, by whichever reading takes it
+  (`Live::survey_pressed`: let go if that reading is dropped before
+  its key, and only by a reading taken after the key that has
+  something on it: an empty frame between two paints of one survey
+  had its key pressed again, "00"), the screen read again before the
+  key, and the survey waited for by that reading alone; one that
+  stays is said. A second box that asks the very same
+  is another box and is answered **where something was seen between
+  them** (the agent at work, its prompt, another box): two that follow
+  with nothing between, or with only an empty screen between, can't be
+  told from one on a screen, and the second is then a person's, not
+  the list's.
+  `approve`'s own walk to an answer (`--no` on Claude Code:
   three Downs) has 1.5 s for the mark to land and passes over two
   readings without the box (a repaint): on the busy host it gave up
   with "cursor did not land" or "dialog disappeared", exit 1 and
@@ -32662,7 +32712,22 @@ agents through the night, could not move to it.
   `repro_case2_trust_presses_down_twice_on_slow_redraw` fail ten times
   of ten without the fix ("expected 1 Enter for box 1, got \"\r\r\"";
   "\x1b[B\x1b[B\r\r"), and `a_feedback_survey_is_set_aside` has the
-  slow agent and the survey that stays. (A test of the survey had
+  slow agent and the survey that stays. What that fix's own code
+  review found (Astra 6.2, fifteen findings, "hold") is the second
+  half of the above, with `a_box_is_what_the_latest_reading_says`
+  (the rule itself), `a_repaints_empty_frame_is_not_a_box_gone`,
+  `an_asking_behind_another_answers_nothing_it_never_saw`,
+  `a_list_taken_away_mid_answer_allows_nothing`,
+  `a_box_standing_at_a_takeover_is_a_persons`,
+  `a_folders_trust_is_one_question_and_not_told_while_answered` and
+  `a_trust_at_a_start_is_the_services_before_it_is_answered` and
+  `the_same_box_after_only_an_empty_screen_is_a_persons`, each failing
+  without it. (The last two from the pass's own runs on the busy host:
+  the trust test before them failed one whole run in four, the
+  question told before the answering had come to it; the repaint test
+  one in two, its 120 ms of nothing grown past the two readings and
+  the box answered again. A test that fails only under load is the
+  bug it was written for, found again.) (A test of the survey had
   failed under load with "000" for "0" earlier the same day and was
   loosened to "one to three": the load was not the fault.)
 - *A reading takes up what stood when it began* (`state::takes_up`,

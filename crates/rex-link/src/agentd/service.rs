@@ -109,6 +109,53 @@ pub struct Reading {
     expected: Option<u64>,
 }
 
+/// A child started with `--trust`: its own folders' trust questions in
+/// the fifteen seconds of its start are the service's to answer, and
+/// nobody's to be told of meanwhile. Held from the moment its record is
+/// made, before its screen is first read (the answering task comes to a
+/// question a moment after the reading that first shows it: on a busy
+/// host that reading had told it as a question, and `run --trust` came
+/// back "question" for one answered a moment later. 2026-11-27).
+pub(super) struct TrustAtStart {
+    /// Its folders: where it runs, and those added.
+    own: Vec<String>,
+    /// The questions whose keys were written ([`TrustAtStart::which`]):
+    /// one still standing after that is a person's.
+    answered: HashSet<Option<String>>,
+    /// Keys are on their way just now.
+    answering: bool,
+    until: Instant,
+}
+
+impl TrustAtStart {
+    fn of(entry: &NativeSubagent, until: Instant) -> Self {
+        let own = entry.cwd.iter().chain(entry.add_dirs.iter()).map(|d| d.trim_end_matches('/').to_owned()).collect();
+        Self { own, answered: HashSet::new(), answering: false, until }
+    }
+
+    /// Which question a reading shows: the one at the child's start
+    /// (None: one of them, whether or not its folder's path is drawn
+    /// yet. Read with no path and then with one, it was two questions
+    /// and answered twice), or an added folder's (its path).
+    pub(super) fn which(asked: &olo_agent_screen::FolderTrustPrompt) -> Option<String> {
+        asked.is_add_dir.then(|| asked.folder.as_deref().unwrap_or_default().trim_end_matches('/').to_owned())
+    }
+
+    /// The question is about one of the child's own folders.
+    pub(super) fn owns(own: &[String], asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
+        match asked.folder.as_deref().map(|f| f.trim_end_matches('/')) {
+            Some(f) => own.iter().any(|a| a == f),
+            None => !asked.is_add_dir,
+        }
+    }
+
+    /// This question is still the service's to answer, or its keys are
+    /// on their way: not to be told.
+    fn on_its_way(&self, asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
+        Self::owns(&self.own, asked) && (self.answering || (!self.answered.contains(&Self::which(asked)) && Instant::now() < self.until))
+    }
+}
+
 /// What is kept of a child while it lives (nothing of it is written
 /// down: a new service finds it out again).
 pub struct Live {
@@ -178,18 +225,32 @@ pub struct Live {
     /// The approval box that stands (`state::box_hash`), its number among
     /// this child's boxes, and whether an answer has already been written
     /// for this showing (`BoxNow::answered`); none while none stands or
-    /// once it was finished here. See [`Service::box_state`].
+    /// once it was finished here. Said by the readings, in `look`.
     box_now: Option<BoxNow>,
     boxes: u64,
     /// True while `approve` is actively navigating choices (`delta != 0`):
     /// prevents a concurrent `look` that catches a transient mid-repaint
     /// frame from wiping `box_now`.
     navigating: bool,
-    /// If an approval box failed to dismiss within 2 s after Enter was
-    /// sent, remember its hash until the box leaves or changes so
-    /// `--approve-all-but` never automatically sends a second Enter for
-    /// that showing (escalating it to the parent/minder instead).
-    list_skip_hash: Option<u64>,
+    /// A box the list must not answer, and until when: one whose Return
+    /// was written and that didn't go in two seconds (it is told to a
+    /// person afresh), and one that stood already when this service
+    /// took the child over (the service before may have answered it).
+    /// Kept through frames with no box on them (a repaint read
+    /// half-way); let go when another box is seen, or its time is up.
+    list_skip: Option<(u64, Instant)>,
+    /// The readings of its screen, in the order they were begun, and the
+    /// last of them taken: which box stands is what the latest reading
+    /// says, never one that was begun before it and came back after
+    /// (a slow `status`, formatting its answer, put the box it had read
+    /// in the place of the one answered since, unanswered).
+    read_seq: u64,
+    accepted_seq: u64,
+    /// One writer of answers into it ([`Service::answer_lock`]).
+    answer_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Its own folders' trust is the service's to answer (`--trust`, the
+    /// fifteen seconds of its start): [`TrustAtStart`].
+    trust: Option<TrustAtStart>,
     /// Latest confirmed state event recorded for this live child, kept
     /// independently of the 2,000-event log ring so a standing question
     /// is never lost when other host events evict the ring.
@@ -210,7 +271,79 @@ impl BoxNow {
     }
 }
 
+/// How long a box that didn't go after its Return, or went with
+/// nothing to say where its agent is, is kept from the list
+/// ([`Live::list_skip`]).
+const LIST_SKIPS: Duration = Duration::from_secs(30);
+
+/// How an answered box was seen to end ([`Service::box_finish`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoxEnd {
+    /// Another box in its place, its agent at work in its turn or at
+    /// its own prompt, its tab gone.
+    Gone,
+    /// No box on the screen for a moment and nothing to say where its
+    /// agent is: gone, or a repaint that is slow (a busy host). The
+    /// screen can't say which, so the very same box seen next, with
+    /// nothing else seen first, is a person's and not the list's
+    /// (a blank that outlasted the readings had the list answer the
+    /// same box again: one whole run of the suite in two under a load
+    /// of 95, 2026-11-27).
+    Blank,
+    /// It still stands, its two seconds up; or its Return wasn't seen
+    /// to be written.
+    Stays,
+}
+
+/// The box `ap` is, where it is the one held as standing: its key and
+/// whether its answer has been written. Read-only.
+fn peek_box(live: &Live, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<(String, bool)> {
+    let what = state::box_hash(ap?);
+    live.box_now.filter(|b| b.hash == what).map(|b| (b.key(), b.answered))
+}
+
 impl Live {
+    /// Which box stands after a reading taken in its order (`ap`: the
+    /// box it shows, or none), and that box's key and whether its
+    /// answer has been written. The same box keeps its number; another
+    /// is a new one, and lets go of a box kept from the list. With none
+    /// on the screen the box is gone, but for one whose answer is on its
+    /// way (marked answered, or being walked to): `approve` says when
+    /// such a box has gone ([`Service::box_finish`]). `adopted`: the
+    /// first reading this service takes of a child it took over: a box
+    /// standing then is kept from the list (the service before may have
+    /// answered it). `elsewhere`: no box, and the agent plainly somewhere
+    /// else (at work in its turn, at its own prompt): what was kept from
+    /// the list is let go, the same asked after this being another box.
+    fn box_after(&mut self, ap: Option<&olo_agent_screen::ApprovalPrompt>, adopted: bool, elsewhere: bool) -> Option<(String, bool)> {
+        let Some(ap) = ap else {
+            if !self.navigating && !self.box_now.is_some_and(|b| b.answered) {
+                self.box_now = None;
+            }
+            if elsewhere {
+                self.list_skip = None;
+            }
+            return None;
+        };
+        let what = state::box_hash(ap);
+        if self.list_skip.is_some_and(|(h, until)| h != what || Instant::now() >= until) {
+            self.list_skip = None;
+        }
+        let cur = match self.box_now {
+            Some(cur) if cur.hash == what => cur,
+            _ => {
+                self.boxes += 1;
+                let cur = BoxNow { hash: what, number: self.boxes, answered: false };
+                self.box_now = Some(cur);
+                if adopted {
+                    self.list_skip = Some((what, Instant::now() + Duration::from_secs(600)));
+                }
+                cur
+            }
+        };
+        Some((cur.key(), cur.answered))
+    }
+
     fn new() -> Self {
         let now = now_unix_ms();
         Self {
@@ -242,7 +375,11 @@ impl Live {
             box_now: None,
             boxes: 0,
             navigating: false,
-            list_skip_hash: None,
+            list_skip: None,
+            read_seq: 0,
+            accepted_seq: 0,
+            answer_lock: Arc::new(tokio::sync::Mutex::new(())),
+            trust: None,
             latest_event: None,
         }
     }
@@ -431,6 +568,11 @@ pub struct Looked {
     /// A feedback survey is drawn over it and wouldn't be set aside:
     /// what is read may be covered by it.
     pub survey: bool,
+    /// The approval box this reading shows, as the service knows it:
+    /// its key (`bN-hhhhhhhh`) and whether its answer has been written.
+    /// None where it shows no box, or one the service doesn't hold as
+    /// standing (a reading that came back out of its order).
+    pub boxed: Option<(String, bool)>,
     /// What the child had been given and not yet been seen at when the
     /// reading began. A turn seen on in this reading takes up that and
     /// nothing given since: a reading begun while turn A was on, with a
@@ -484,10 +626,10 @@ pub struct Service {
     /// `--rules`, `--with`) so concurrent moves on one worker never
     /// interleave with stale ownership.
     worker_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    /// Per-child async locks serializing terminal answers (`approve`,
-    /// startup `--trust`) so two callers or tasks never navigate or
-    /// confirm the same child's prompt concurrently.
-    answer_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// When this service began (Unix ms): a child whose tab was asked
+    /// for before then is one it took over, and what stood on its screen
+    /// then may have been answered by the service before.
+    pub began_ms: u64,
 }
 
 fn exited(summary: String) -> ScreenClassification {
@@ -570,9 +712,10 @@ impl Service {
         map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
     }
 
+    /// The lock one writer of answers into a child holds (`approve`, the
+    /// trust answer at its start). The child's own, gone with its record.
     pub fn answer_lock(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
-        let mut map = self.answer_locks.lock().unwrap_or_else(|e| e.into_inner());
-        map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
+        self.lock().live.get(id).map(|l| l.answer_lock.clone()).unwrap_or_else(|| Arc::new(tokio::sync::Mutex::new(())))
     }
 
     pub fn bump_empty_gen_locked(st: &mut State, minder_id: &str) -> u64 {
@@ -672,8 +815,8 @@ impl Service {
     /// was read before; otherwise the last reading where nothing was
     /// written since.
     pub async fn look(&self, entry: &NativeSubagent, fresh: bool) -> Looked {
-        let (reading, out_seq, activity, status_msg, rows, expected) = {
-            let st = self.lock();
+        let (reading, out_seq, activity, status_msg, rows, expected, my_seq, first_of_an_adopted) = {
+            let mut st = self.lock();
             let alive = entry.exited_at.is_none() && st.reg.by_window(HOST, &entry.session_id, &entry.window_id).is_some();
             let Some(live) = st.live.get(&entry.id).filter(|_| alive) else {
                 // (Its program ended and its tab stays, or the tab is gone.)
@@ -690,6 +833,7 @@ impl Service {
                     last_state_change_at: chg,
                     pid: entry.last_pid,
                     survey: false,
+                    boxed: None,
                     expected: None,
                     reports: false,
                     expects: None,
@@ -704,6 +848,7 @@ impl Service {
                     last_state_change_at: live.last_state_change_at,
                     pid: live.pid.or(entry.last_pid),
                     survey: false,
+                    boxed: None,
                     expected: None,
                     reports: false,
                     expects: None,
@@ -719,18 +864,27 @@ impl Service {
                     last_state_change_at: live.last_state_change_at,
                     pid: live.pid.or(entry.last_pid),
                     survey: live.survey_stays,
+                    boxed: peek_box(live, read.cls.approval.as_ref()),
                     expected: read.expected,
                     reports: live.reported,
                     expects: live.expects,
                     live: true,
                 };
             }
-            (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq))
+            let got = (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq));
+            // (This reading's place among the child's; and whether it is
+            // the first this service takes of a child it didn't start.)
+            let adopted = (to_unix_ms(entry.started_at).max(0) as u64) < self.began_ms;
+            let (seq, first) = st.live.get_mut(&entry.id).map_or((0, false), |l| {
+                l.read_seq += 1;
+                (l.read_seq, adopted && l.accepted_seq == 0)
+            });
+            (got.0, got.1, got.2, got.3, got.4, got.5, seq, first)
         };
         let mut survey = false;
         let mut survey_tried = false;
         let mut live_read = false;
-        let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), &mut survey, &mut survey_tried).await {
+        let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), first_of_an_adopted, &mut survey, &mut survey_tried).await {
             Ok(screen) => {
                 live_read = true;
                 let mut cls = classify_screen_rich(entry.cli, activity, &screen, true);
@@ -746,14 +900,21 @@ impl Service {
         };
         let mut st = self.lock();
         let (mut out, mut chg, mut pid, mut reports, mut expects) = (0, 0, entry.last_pid, false, None);
+        let mut boxed = None;
         if let Some(live) = st.live.get_mut(&entry.id) {
+            // (Taken in the order the readings were begun: one begun
+            // before the last taken says nothing of what stands now.)
+            let ordered = live_read && my_seq > live.accepted_seq;
+            if ordered {
+                live.accepted_seq = my_seq;
+            }
             // (Kept as a reading only where the screen was read: what the
             // server couldn't say is answered by the last reading, and
             // that keeps the count and the giving it was made at. Stored
             // under this asking's, an old "at work" passed for a reading
             // of the screen after its turn's end, and nothing was told
             // of that end. A code review, 2026-11-27.)
-            if live_read && cls.state != SubagentLiveState::Exited {
+            if ordered && cls.state != SubagentLiveState::Exited {
                 live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone(), expected });
             }
             // Any live reading that sees a turn on (`cls.in_turn`) proves the
@@ -776,15 +937,15 @@ impl Service {
                 live.last_key = None;
                 live.check_gen = live.check_gen.wrapping_add(1);
             }
-            if live_read && cls.approval.is_none() && !live.navigating {
-                live.box_now = None;
-                live.list_skip_hash = None;
-            }
+            // (Which box stands is this reading's to say where it is the
+            // latest, `Live::box_after`; an earlier one only reads.)
+            let elsewhere = cls.approval.is_none() && (cls.in_turn || cls.summary.as_deref() == Some(state::AT_PROMPT));
+            boxed = if ordered { live.box_after(cls.approval.as_ref(), first_of_an_adopted, elsewhere) } else { peek_box(live, cls.approval.as_ref()) };
             live.survey_stays = survey && survey_tried;
             (out, chg, pid, reports, expects) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported, live.expects);
         }
         // (And a screen that wasn't read takes up nothing.)
-        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected: expected.filter(|_| live_read), reports, expects, live: live_read }
+        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, boxed, expected: expected.filter(|_| live_read), reports, expects, live: live_read }
     }
 
     /// A child's screen as the server has it, with a feedback survey
@@ -807,26 +968,58 @@ impl Service {
     /// is not one that stays: marked so, it was never dismissed after
     /// the draft had gone, and the next digit meant for the agent rated
     /// it (the confirming review).
-    async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, survey: &mut bool, tried: &mut bool) -> Result<String, RexErr> {
+    ///
+    /// `first_of_an_adopted`: the first reading this service takes of a
+    /// child it took over from the service before. A survey standing
+    /// then may have had its key pressed by that one: it is left, and
+    /// said, as one that stays.
+    async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, first_of_an_adopted: bool, survey: &mut bool, tried: &mut bool) -> Result<String, RexErr> {
         /// How long a survey whose key was pressed is waited for.
         const SURVEY_GOES: Duration = Duration::from_millis(900);
+        /// A showing's dismissal taken by one reading: let go again if
+        /// that reading is dropped before it has written the key (its
+        /// asker gone: left taken, the survey was never set aside).
+        struct Claim<'a> {
+            service: &'a Service,
+            id: &'a str,
+            written: bool,
+        }
+        impl Drop for Claim<'_> {
+            fn drop(&mut self) {
+                if !self.written
+                    && let Some(live) = self.service.lock().live.get_mut(self.id)
+                {
+                    live.survey_pressed = None;
+                }
+            }
+        }
+        let mut read_at = Instant::now();
         let mut screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
         let Some(agent) = entry.cli.screen_agent() else { return Ok(screen) };
         let begun = Instant::now();
-        let unmark = |service: &Self| {
-            if let Some(live) = service.lock().live.get_mut(&entry.id) {
-                live.survey_pressed = None;
-            }
-        };
         loop {
             if olo_agent_screen::parse_survey(agent, &screen).is_none() {
                 *survey = false;
-                unmark(self);
+                // (Gone, by a reading taken after the key: one begun
+                // before it says nothing of what the key did, and let
+                // go by such a one the showing was pressed for again.
+                // And by a reading with something on it: an empty one
+                // is a repaint caught half-way as often, the same
+                // survey drawn again after it, and its key a second
+                // time was the agent's field's where the first had
+                // been taken. As a box that went with only an empty
+                // screen to show for it, `BoxEnd::Blank`.)
+                if !screen.trim().is_empty()
+                    && let Some(live) = self.lock().live.get_mut(&entry.id)
+                    && live.survey_pressed.is_some_and(|at| at <= read_at)
+                {
+                    live.survey_pressed = None;
+                }
                 return Ok(screen);
             }
             *survey = true;
             let (stays, pressed) = self.lock().live.get(&entry.id).map_or((false, None), |l| (l.survey_stays, l.survey_pressed));
-            if stays {
+            if stays || first_of_an_adopted {
                 *tried = true;
                 break;
             }
@@ -838,47 +1031,47 @@ impl Service {
             if olo_agent_screen::feedback_draft(agent, &screen).is_some() {
                 break;
             }
-            let pressed = match pressed {
-                Some(at) => at,
-                None => {
-                    // (Taken, or another reading's: one of them presses.)
-                    let mine = match self.lock().live.get_mut(&entry.id) {
-                        Some(live) if live.survey_pressed.is_none() => {
-                            live.survey_pressed = Some(Instant::now());
-                            true
-                        }
-                        _ => false,
-                    };
-                    if mine {
-                        // (As it stands now, before the key.)
-                        let now = match self.rex.screen(&entry.session_id, &entry.block_id, rows).await {
-                            Ok(now) => now,
-                            Err(e) => {
-                                unmark(self);
-                                return Err(e);
-                            }
-                        };
-                        let found = olo_agent_screen::parse_survey(agent, &now).filter(|_| olo_agent_screen::feedback_draft(agent, &now).is_none());
-                        screen = now;
-                        let Some(found) = found else {
-                            unmark(self);
-                            continue;
-                        };
-                        if let Err(e) = self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await {
-                            unmark(self);
-                            return Err(e);
-                        }
+            let Some(at) = pressed else {
+                // (Taken, or another reading's: one of them presses.)
+                let mine = match self.lock().live.get_mut(&entry.id) {
+                    Some(live) if live.survey_pressed.is_none() => {
+                        live.survey_pressed = Some(Instant::now());
+                        true
                     }
-                    self.lock().live.get(&entry.id).and_then(|l| l.survey_pressed).unwrap_or(begun)
+                    _ => false,
+                };
+                if !mine {
+                    // (Another's, a moment ago: its to wait for.)
+                    break;
                 }
+                let mut claim = Claim { service: self, id: &entry.id, written: false };
+                // (As it stands now, before the key.)
+                read_at = Instant::now();
+                let now = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
+                let found = olo_agent_screen::parse_survey(agent, &now).filter(|_| olo_agent_screen::feedback_draft(agent, &now).is_none());
+                screen = now;
+                let Some(found) = found else {
+                    drop(claim);
+                    continue;
+                };
+                self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await?;
+                claim.written = true;
+                // (Its own to wait for: once, till it goes or its time is up.)
+                *tried = true;
+                while begun.elapsed() < SURVEY_GOES {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    read_at = Instant::now();
+                    screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
+                    if olo_agent_screen::parse_survey(agent, &screen).is_none() {
+                        break;
+                    }
+                }
+                continue;
             };
-            *tried = true;
-            let now = Instant::now();
-            if now >= pressed + SURVEY_GOES || now >= begun + SURVEY_GOES {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
+            // (Pressed by another reading: not waited for here, and known
+            // to stay once its time has passed.)
+            *tried = at.elapsed() >= SURVEY_GOES;
+            break;
         }
         Ok(screen)
     }
@@ -999,36 +1192,14 @@ impl Service {
     /// is read with none on it). Numbers begin again with the service:
     /// a key from before then answers nothing, which is the safe way to
     /// be wrong.
-    /// The key of the approval box that stands (`bN-hhhhhhhh`) and whether
-    /// an answer has already been written for this showing of it.
-    pub fn box_state(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<(String, bool)> {
-        let mut st = self.lock();
-        let live = st.live.get_mut(id)?;
-        let Some(ap) = ap else {
-            if !live.navigating {
-                live.box_now = None;
-                live.list_skip_hash = None;
-            }
-            return None;
-        };
-        let what = state::box_hash(ap);
-        if live.list_skip_hash.is_some_and(|h| h != what) {
-            live.list_skip_hash = None;
-        }
-        let cur = match live.box_now {
-            Some(cur) if cur.hash == what => cur,
-            _ => {
-                live.boxes += 1;
-                let cur = BoxNow { hash: what, number: live.boxes, answered: false };
-                live.box_now = Some(cur);
-                cur
-            }
-        };
-        Some((cur.key(), cur.answered))
-    }
-
+    ///
+    /// **Which box stands is said by the readings of the screen, in
+    /// their order, and by nothing else** (`look`): this only reads. A
+    /// reading that shows another box than the one held (it was begun
+    /// before the last one taken, or the box was finished since) has no
+    /// key: whoever has it reads again.
     pub fn box_key(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<String> {
-        self.box_state(id, ap).map(|(k, _)| k)
+        self.lock().live.get(id).and_then(|l| peek_box(l, ap)).map(|(k, _)| k)
     }
 
     /// Atomically marks the standing approval box `standing` as answered
@@ -1044,15 +1215,11 @@ impl Service {
         Ok(cur.number)
     }
 
-    /// Reverts the answered mark if writing Enter to the terminal failed
-    /// before anything was sent.
-    pub(super) fn box_unmark_answered(&self, id: &str, number: u64) {
-        if let Some(live) = self.lock().live.get_mut(id)
-            && let Some(cur) = live.box_now.as_mut()
-            && cur.number == number
-        {
-            cur.answered = false;
-        }
+    /// The box `key` is the one held as standing and its answer has
+    /// been written: still on the screen, perhaps, and nobody's to be
+    /// told of or to judge.
+    pub(super) fn box_answer_on_its_way(st: &State, id: &str, key: &str) -> bool {
+        st.live.get(id).and_then(|l| l.box_now).is_some_and(|b| b.answered && b.key() == key)
     }
 
     /// True iff `box_now` is still the exact instance `box_key` and has not
@@ -1069,20 +1236,52 @@ impl Service {
         }
     }
 
-    /// Finishes an answered box once `approve`'s dismiss wait completes:
-    /// clears `box_now` only if it is still that box (`number`, never
-    /// clobbering a newer box that already replaced it), and if it failed
-    /// to dismiss within 2 s, records its hash in `list_skip_hash` so
-    /// `--approve-all-but` escalates instead of pressing Enter again.
-    pub fn box_finish(&self, id: &str, number: u64, dismissed: bool) {
+    /// The keys of a folder's trust are on their way: that question is
+    /// answered from here on, whatever becomes of them ([`TrustAtStart`]).
+    pub(super) fn trust_taken(&self, id: &str, which: Option<String>) {
+        if let Some(trust) = self.lock().live.get_mut(id).and_then(|l| l.trust.as_mut()) {
+            trust.answered.insert(which);
+            trust.answering = true;
+        }
+    }
+
+    /// Its keys are no longer on their way: what still stands is read
+    /// again, and told as any other question.
+    pub(super) fn trust_keys_done(&self, id: &str) {
+        if let Some(trust) = self.lock().live.get_mut(id).and_then(|l| l.trust.as_mut()) {
+            trust.answering = false;
+        }
+        self.poke(id);
+    }
+
+    /// The answering of a child's folders at its start is over (answered,
+    /// its time up, a question that isn't its own): what stands is read
+    /// again and told.
+    pub(super) fn trust_over(&self, id: &str) {
+        if let Some(live) = self.lock().live.get_mut(id) {
+            live.trust = None;
+        }
+        self.poke(id);
+    }
+
+    /// Finishes an answered box once `approve`'s wait for it is over:
+    /// the box is put away if it is still that one (`number`: never a
+    /// newer one that took its place), and what was read of the screen
+    /// with it, so that what stands next is read afresh and is another
+    /// box. One that didn't go (its Return may or may not have been
+    /// taken), or went with nothing to say where its agent is
+    /// ([`BoxEnd`]), is not the list's to answer again
+    /// (`Live::list_skip`): seen again, it is told to a person.
+    pub fn box_finish(&self, id: &str, number: u64, end: BoxEnd) {
         if let Some(live) = self.lock().live.get_mut(id)
             && let Some(cur) = live.box_now
             && cur.number == number
         {
-            if !dismissed {
-                live.list_skip_hash = Some(cur.hash);
+            if end != BoxEnd::Gone {
+                live.list_skip = Some((cur.hash, Instant::now() + LIST_SKIPS));
             }
             live.box_now = None;
+            live.read = None;
         }
     }
 
@@ -1090,7 +1289,28 @@ impl Service {
     pub fn box_gone(&self, id: &str) {
         if let Some(live) = self.lock().live.get_mut(id) {
             live.box_now = None;
+            live.read = None;
         }
+    }
+
+    /// What a child asks, as its list is asked it, where the list allows
+    /// it: the whole of the request (one cut short on the screen, or
+    /// folded, is nobody's to allow unread), with one answer that is a
+    /// yes for this once. Asked when the list judges a box, and again as
+    /// the answer is about to be written: a list taken away meanwhile
+    /// (`mind NAME --approve-none`) allows nothing.
+    pub(super) fn list_allows(&self, id: &str, ap: &olo_agent_screen::ApprovalPrompt) -> Option<String> {
+        let cut = ap.folded_lines.is_some()
+            || ap.command.as_deref().is_some_and(|c| {
+                let t = c.trim_end();
+                t.ends_with('…') || t.ends_with("...")
+            });
+        if cut {
+            return None;
+        }
+        let asked = super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)?;
+        let list = self.leave_of(id)?;
+        (list.excepts(&asked).is_none() && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1).then_some(asked)
     }
 
     /// An approval as it is told (`approval_to_json`), with its box's key.
@@ -1627,11 +1847,36 @@ impl Service {
         // transition by `box:<key>` so a second identical box never matches
         // `live.last_key` from box 1. If this showing was already answered
         // and the child has not yet redrawn, do not re-trigger confirmation.)
-        let (key, box_answered) = match self.box_state(id, cls.approval.as_ref()) {
-            Some((bk, answered)) => (format!("box:{bk}"), answered),
-            None => (subkey(&cls), false),
+        let (key, box_answered) = match (cls.approval.as_ref(), looked.boxed.as_ref()) {
+            (Some(_), Some((bk, answered))) => (format!("box:{bk}"), *answered),
+            // (A box the service doesn't hold as standing: the reading
+            // came back out of its order, or the box was finished since.
+            // Read afresh.)
+            (Some(_), None) => {
+                if let Some(live) = self.lock().live.get_mut(id) {
+                    live.read = None;
+                }
+                self.poke(id);
+                return;
+            }
+            (None, _) => (subkey(&cls), false),
         };
-        if box_answered {
+        // (An answer on its way, a box's or a folder's trust: nothing to
+        // tell of what still stands on the screen, and what was being
+        // confirmed from before the answer is of before it: confirmed
+        // after, an old question was told as a new one and the next real
+        // asking of it passed for told. A code review, 2026-11-27.)
+        let trust_on_its_way = cls.folder_trust.as_ref().is_some_and(|asked| self.lock().live.get(id).and_then(|l| l.trust.as_ref()).is_some_and(|trust| trust.on_its_way(asked)));
+        if box_answered || trust_on_its_way {
+            if let Some(live) = self.lock().live.get_mut(id) {
+                live.check_gen = live.check_gen.wrapping_add(1);
+            }
+            // (Whoever is answering waits on what its screen shows: the
+            // answering of a start's trust learned of its question by the
+            // telling of it, which this is in the place of.)
+            if trust_on_its_way {
+                self.changed.notify_waiters();
+            }
             return;
         }
         let started_ms = to_unix_ms(entry.started_at).max(0) as u64;
@@ -1748,9 +1993,13 @@ impl Service {
                 service.poke(&id);
                 return;
             }
-            let (again_box, again_key, again_answered) = match service.box_state(&id, again.cls.approval.as_ref()) {
-                Some((bk, answered)) => (Some(bk.clone()), format!("box:{bk}"), answered),
-                None => (None, subkey(&again.cls), false),
+            let (again_box, again_key, again_answered) = match (again.cls.approval.as_ref(), again.boxed.clone()) {
+                (Some(_), Some((bk, answered))) => (Some(bk.clone()), format!("box:{bk}"), answered),
+                (Some(_), None) => {
+                    service.poke(&id);
+                    return;
+                }
+                (None, _) => (None, subkey(&again.cls), false),
             };
             if again_answered {
                 return;
@@ -1877,34 +2126,21 @@ impl Service {
             // alike, one written late, another session's file), and the
             // tool is named otherwise there, so a pattern on `^Bash:`
             // missed. What isn't read whole is asked.
-            let whole_asked = again.cls.approval.as_ref().and_then(|ap| {
-                let cut = ap.folded_lines.is_some()
-                    || ap.command.as_deref().is_some_and(|c| {
-                        let t = c.trim_end();
-                        t.ends_with('…') || t.ends_with("...")
-                    });
-                if cut {
-                    return None;
-                }
-                super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)
-            });
             let list_skipped = again.cls.approval.as_ref().is_some_and(|ap| {
                 let h = state::box_hash(ap);
-                service.lock().live.get(&id).is_some_and(|l| l.list_skip_hash == Some(h))
+                service.lock().live.get(&id).is_some_and(|l| l.list_skip.is_some_and(|(skipped, until)| skipped == h && Instant::now() < until))
             });
             if state == SubagentLiveState::WaitingApproval
                 && !list_skipped
-                && let Some(list) = service.leave_of(&id)
                 && let Some(ap) = &again.cls.approval
                 && let Some(box_key_for_list) = again_box.as_deref().filter(|bk| service.box_still_unanswered(&id, bk))
-                && let Some(asked) = whole_asked
-                && list.excepts(&asked).is_none()
-                && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1
+                && let Some(asked) = service.list_allows(&id, ap)
             {
                 let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, window_from_block: false, block: None, child: None };
                 // (For the box it judged: another that stands by the time
                 // the answer is given is not answered by this.)
-                let args = vec![json!(id.clone()), json!("--once"), json!("--box"), json!(box_key_for_list), json!("--json")];
+                // (And by the list as it stands when the answer is written: `--by-list`.)
+                let args = vec![json!(id.clone()), json!("--once"), json!("--by-list"), json!("--box"), json!(box_key_for_list), json!("--json")];
                 let answered = service.approve(&json!({ "args": args }), &from).await;
                 if answered.ok {
                     service.leave_given(&id, &asked);
@@ -1912,7 +2148,7 @@ impl Service {
                 }
                 if answered.data["dismissed"] == false {
                     logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
-                    // `approve` recorded `list_skip_hash`, cleared `box_now`, and poked
+                    // `approve` recorded `list_skip`, cleared `box_now`, and poked
                     // `watch_child` so the standing prompt is reported once with its fresh key.
                     return;
                 }
@@ -2276,7 +2512,7 @@ impl Service {
 
     /// A child begins: written down, watched, said to followers.
     pub async fn begin(self: &Arc<Self>, entry: NativeSubagent) -> Result<(), RexErr> {
-        self.begin_attached(entry, None, None).await.map(|_| ())
+        self.begin_attached(entry, None, None, None).await.map(|_| ())
     }
 
     /// Registers a newly started child, atomically validating any chosen
@@ -2286,7 +2522,16 @@ impl Service {
     /// or started closing while the tab was being created). If the minder
     /// became unavailable, the child is registered under `fallback_parent`
     /// unminded and the reason is returned in the second tuple element.
-    pub async fn begin_attached(self: &Arc<Self>, mut entry: NativeSubagent, fallback_parent: Option<&str>, reserved_minder: Option<&str>) -> Result<(NativeSubagent, Option<String>), RexErr> {
+    /// `trust_until`: its own folders' trust is the service's to answer
+    /// until then (`--trust`), held from before its first reading
+    /// ([`TrustAtStart`]).
+    pub async fn begin_attached(
+        self: &Arc<Self>,
+        mut entry: NativeSubagent,
+        fallback_parent: Option<&str>,
+        reserved_minder: Option<&str>,
+        trust_until: Option<Instant>,
+    ) -> Result<(NativeSubagent, Option<String>), RexErr> {
         self.attach(&entry.session_id).await?;
         self.never_its_size(&entry).await;
         let mut minder_lost: Option<String> = None;
@@ -2320,7 +2565,9 @@ impl Service {
             }
             st.reserved_ids.remove(&entry.id);
             st.reg.register(entry.clone());
-            st.live.insert(entry.id.clone(), Live::new());
+            let mut live = Live::new();
+            live.trust = trust_until.map(|until| TrustAtStart::of(&entry, until));
+            st.live.insert(entry.id.clone(), live);
             st.idle_since = None;
         }
         // (Written down before anybody is told it started: a service
@@ -2916,7 +3163,7 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
         said_held: std::sync::atomic::AtomicBool::new(false),
         minder_gate: tokio::sync::Mutex::new(()),
         worker_locks: Mutex::new(HashMap::new()),
-        answer_locks: Mutex::new(HashMap::new()),
+        began_ms: now_unix_ms(),
     });
     tokio::spawn(service.clone().writer());
     service.reconcile().await;
@@ -3069,5 +3316,65 @@ mod tests {
         assert_eq!(stamp_of(1_709_208_000), "2024-02-29 12:00:00Z");
         assert_eq!(stamp_of(1_795_743_906), "2026-11-27 01:45:06Z");
         assert_eq!(stamp_of(1_798_761_599), "2026-12-31 23:59:59Z");
+    }
+}
+
+#[cfg(test)]
+mod box_tests {
+    use super::*;
+    use olo_agent_screen::{Agent, parse_approval};
+
+    fn asking(command: &str) -> olo_agent_screen::ApprovalPrompt {
+        let rule = "─".repeat(60);
+        let dashed = "╌".repeat(60);
+        let screen = format!(
+            "● Bash({command})\n{rule}\n Bash command\n Make it so\n{dashed}\n │ {command}\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: {command}\n   3. No\n Esc to cancel · Tab to amend\n"
+        );
+        parse_approval(Agent::Claude, &screen).expect("a box")
+    }
+
+    /// Which box stands is said by the readings in their order, and an
+    /// answered box is kept through a frame with none on it (a code
+    /// review, 2026-11-27: a slow `status` put the box it had read in
+    /// the place of the one answered since; a repaint read half-way
+    /// let the list answer the same box again).
+    #[test]
+    fn a_box_is_what_the_latest_reading_says() {
+        let (a, b) = (asking("ls"), asking("cargo test"));
+        let mut live = Live::new();
+        // A reading in its order: its box, numbered; read again, the same.
+        let (first, answered) = live.box_after(Some(&a), false, false).unwrap();
+        assert!(first.starts_with("b1-") && !answered);
+        assert_eq!(live.box_after(Some(&a), false, false), Some((first.clone(), false)));
+        // One that only reads (begun before the last taken): its own box where that stands, none for another's, and nothing changed.
+        assert_eq!(peek_box(&live, Some(&a)), Some((first.clone(), false)));
+        assert_eq!(peek_box(&live, Some(&b)), None);
+        assert_eq!(live.box_now.map(|x| x.number), Some(1));
+        // Its answer written: kept through a frame with no box on it, and still answered when seen again.
+        live.box_now.as_mut().unwrap().answered = true;
+        assert_eq!(live.box_after(None, false, false), None);
+        assert_eq!(live.box_after(Some(&a), false, false), Some((first.clone(), true)), "a repaint's empty frame put an answered box away");
+        // Another box in its place is another, unanswered.
+        let (second, answered) = live.box_after(Some(&b), false, false).unwrap();
+        assert!(second.starts_with("b2-") && !answered);
+        // One not answered goes with the first frame that has none (the very same asked again after is another).
+        assert_eq!(live.box_after(None, false, false), None);
+        assert!(live.box_now.is_none());
+        assert!(live.box_after(Some(&b), false, false).unwrap().0.starts_with("b3-"));
+        // A box kept from the list stays so through frames with none, and is let go by another box.
+        live.list_skip = Some((state::box_hash(&b), Instant::now() + LIST_SKIPS));
+        live.box_after(None, false, false);
+        live.box_after(Some(&b), false, false);
+        assert!(live.list_skip.is_some(), "kept from the list through an empty frame");
+        live.box_after(Some(&a), false, false);
+        assert!(live.list_skip.is_none());
+        // …and by the agent seen plainly somewhere else: the same asked after that is another box, and the list's.
+        live.list_skip = Some((state::box_hash(&a), Instant::now() + LIST_SKIPS));
+        live.box_after(None, false, true);
+        assert!(live.list_skip.is_none(), "kept from the list though the agent was seen at work since");
+        // The first reading of a child taken over: what stands then is kept from the list.
+        let mut taken_over = Live::new();
+        taken_over.box_after(Some(&a), true, false);
+        assert_eq!(taken_over.list_skip.map(|(h, _)| h), Some(state::box_hash(&a)));
     }
 }

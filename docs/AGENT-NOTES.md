@@ -513,6 +513,28 @@ types for someone: mark the thing answered before the key, press once,
 wait for it to go, and tell a person if it doesn't. A check that fails
 only under load with a key too many ("000" for "0") is this, not the
 load: I loosened such a test to "one to three" before I saw it.
+
+And "no longer on the screen" is not "gone" either. The pass after that
+one took two readings with nothing on them, 150 ms apart, for a box's
+going, and its own tests found the same fault twice more in whole runs
+under a load of 90 (each passing alone): an empty frame is a repaint
+caught half-way as often, and on a busy computer it lasts. What a
+screen can't say (gone, or slow) is said by what is seen next: the
+agent at work, its prompt, another question. Until then the same thing
+seen again is a person's, not a second key (`BoxEnd::Blank`, a
+survey's claim). A `--trust` child's question was told as one where a
+reading came before the answering task had got to it: what a service
+means to do by itself is claimed where the child's record is made, not
+where the task that does it starts.
+
+### A verification's runs are of the source as it was when they began
+
+Three times in one hour (2026-11-27) I edited the tree a suite was
+running in, to fix what one of its runs had shown: every run after
+that was of another build, and the tally meant nothing. Stop the runs,
+fix, then start them all again with the diff kept beside them and
+compared at the end (`git diff -- CRATE > tested.patch` before, `cmp`
+after): the runs' last line says whether they were of one source.
 `tools/dev/agents-check` tries the tool's own reading of a helper's
 field on the screens that fooled it (agy's running tasks, drawn under
 its field with a rule of their own, were "the field").

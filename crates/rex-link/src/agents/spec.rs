@@ -1071,6 +1071,9 @@ pub struct ApproveSpec {
     /// or of the event it was judged from): refused where another
     /// stands by now.
     pub box_key: Option<String>,
+    /// The service's own asking for a child's list (`--by-list`): the
+    /// list is asked again as the answer is written.
+    pub by_list: bool,
     pub reason: Option<String>,
     pub json: bool,
 }
@@ -1084,6 +1087,7 @@ impl ApproveSpec {
         let (mut once, mut session, mut no) = (false, false, false);
         let mut reason: Option<String> = None;
         let mut box_key: Option<String> = None;
+        let mut by_list = false;
         let mut json = false;
         if let Some(arr) = v.get("args").and_then(Value::as_array) {
             let strs: Vec<String> = arr.iter().map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| x.to_string())).collect();
@@ -1104,6 +1108,7 @@ impl ApproveSpec {
                         box_key = Some(strs.get(i).ok_or("--box requires the box's key (`approval.box` in `status --json`)")?.clone());
                     }
                     s if s.starts_with("--box=") => box_key = Some(s["--box=".len()..].to_owned()),
+                    "--by-list" => by_list = true,
                     s if s.starts_with('-') => return Err(format!("unknown approve option `{s}` (use `--once`, `--session` or `--no`)")),
                     s if target.is_none() => target = Some(s.to_owned()),
                     s => return Err(format!("unexpected argument `{s}`")),
@@ -1126,7 +1131,7 @@ impl ApproveSpec {
             (false, false, true) => Answer::No,
             _ => return Err("specify exactly one of `--once`, `--session` or `--no` (never a choice that is kept in settings or switches mode)".into()),
         };
-        Ok(Self { target, answer, box_key: box_key.filter(|k| !k.is_empty()), reason, json })
+        Ok(Self { target, answer, box_key: box_key.filter(|k| !k.is_empty()), by_list, reason, json })
     }
 }
 

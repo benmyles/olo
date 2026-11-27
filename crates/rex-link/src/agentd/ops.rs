@@ -1886,7 +1886,10 @@ impl Service {
             tokio::time::sleep(Duration::from_millis(ms.min(5000))).await;
         }
         let reserved_mid = pending.as_ref().map(|(mid, _)| *mid);
-        let (entry, lost) = match self.begin_attached(entry, fallback_parent, reserved_mid).await {
+        // (Its own folders' trust is the service's to answer from before
+        // its screen is first read: `--trust`, below.)
+        let trust_until = (spec.trust && cli.is_agent()).then(|| Instant::now() + Duration::from_secs(15));
+        let (entry, lost) = match self.begin_attached(entry, fallback_parent, reserved_mid, trust_until).await {
             Ok(v) => {
                 if let Some((_, guard)) = pending {
                     guard.disarm();
@@ -1911,12 +1914,44 @@ impl Service {
         // and `--trust` left it standing: `olo agent run agy … --trust
         // --cwd NEW_FOLDER` came back "question", its brief never taken
         // up. The ShiftUp lead's item 42.)
-        if spec.trust && cli.is_agent() {
+        if let Some(until) = trust_until {
             let (service, entry) = (self.clone(), entry.clone());
             tokio::spawn(async move {
-                let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+                // One answer a question, however slow the child is to draw:
+                // read once under the lock that one writer of answers
+                // holds, the arrows pressed once, the mark waited for on
+                // the yes, Return once, the question waited for to go.
+                // (It went round again after 100 ms where the mark hadn't
+                // moved yet, a second Down, and pressed Return again where
+                // the question still stood after 250 ms, up to four times:
+                // the other answer chosen, or Returns into the agent's
+                // field. 2026-11-27.) Each key within the fifteen seconds
+                // of a start, and none after.
+                let deadline = tokio::time::Instant::from_std(until);
                 let own: Vec<String> = entry.cwd.iter().chain(entry.add_dirs.iter()).map(|d| d.trim_end_matches('/').to_owned()).collect();
-                let mut answered: HashSet<(Option<String>, bool)> = HashSet::new();
+                let which = super::service::TrustAtStart::which;
+                let is_own = |trust: &olo_agent_screen::FolderTrustPrompt| super::service::TrustAtStart::owns(&own, trust);
+                /// The questions of its start are the service's until this
+                /// task is over, however it ends: then what stands is read
+                /// again and told (`Live::trust`, there since the child's
+                /// record was made).
+                struct AtStart<'a>(&'a Service, &'a str);
+                impl Drop for AtStart<'_> {
+                    fn drop(&mut self) {
+                        self.0.trust_over(self.1);
+                    }
+                }
+                let _at_start = AtStart(&service, &entry.id);
+                /// While its keys are on their way the question on the
+                /// screen is nobody's to be told of (`run --trust` came
+                /// back "question" for one answered a moment before).
+                struct OnItsWay<'a>(&'a Service, &'a str);
+                impl Drop for OnItsWay<'_> {
+                    fn drop(&mut self) {
+                        self.0.trust_keys_done(self.1);
+                    }
+                }
+                let mut answered: HashSet<Option<String>> = HashSet::new();
                 loop {
                     let changed = service.changed.notified();
                     let cls = service.look(&entry, false).await.cls;
@@ -1924,132 +1959,138 @@ impl Service {
                         break;
                     }
                     if let Some(trust) = cls.folder_trust {
-                        let folder_key = trust.folder.as_deref().map(|f| f.trim_end_matches('/').to_owned());
-                        let its_own = match folder_key.as_deref() {
-                            Some(f) => own.iter().any(|a| a == f),
-                            None => !trust.is_add_dir,
-                        };
-                        let trust_key = (folder_key, trust.is_add_dir);
-                        if !its_own {
+                        if !is_own(&trust) {
                             break;
                         }
-                        if answered.contains(&trust_key) {
+                        if answered.contains(&which(&trust)) {
                             tokio::select! {
                                 _ = changed => {}
                                 _ = tokio::time::sleep_until(deadline) => break,
                             }
                             continue;
                         }
-                        // One writer per child's answers: re-read the live screen once under the
-                        // lock so navigation starts from where the mark stands right now.
-                        let _answer_lock = service.answer_lock(&entry.id).lock_owned().await;
+                        // (Its turn among the child's answers, within the start's time.)
+                        let answers = service.answer_lock(&entry.id);
+                        let _held = tokio::select! {
+                            held = answers.lock_owned() => held,
+                            _ = tokio::time::sleep_until(deadline) => break,
+                        };
+                        // (As it stands now, under the lock.)
                         let looked = service.look(&entry, true).await;
                         if looked.cls.state == SubagentLiveState::Exited {
                             break;
                         }
                         let Some(trust) = looked.cls.folder_trust.filter(|_| looked.live) else {
-                            drop(_answer_lock);
-                            if !looked.live {
-                                tokio::select! {
-                                    _ = changed => {}
-                                    _ = tokio::time::sleep(Duration::from_millis(80)) => {}
-                                    _ = tokio::time::sleep_until(deadline) => break,
-                                }
+                            drop(_held);
+                            tokio::select! {
+                                _ = changed => {}
+                                _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                                _ = tokio::time::sleep_until(deadline) => break,
                             }
                             continue;
                         };
-                        let folder_key = trust.folder.as_deref().map(|f| f.trim_end_matches('/').to_owned());
-                        let its_own = match folder_key.as_deref() {
-                            Some(f) => own.iter().any(|a| a == f),
-                            None => !trust.is_add_dir,
-                        };
-                        let trust_key = (folder_key, trust.is_add_dir);
-                        if !its_own {
+                        if !is_own(&trust) {
                             break;
                         }
-                        if answered.contains(&trust_key) {
+                        let key = which(&trust);
+                        if answered.contains(&key) {
                             continue;
                         }
+                        // (Its mark not drawn yet: when its screen changes, or in half a second.)
                         if !trust.marked {
-                            drop(_answer_lock);
+                            drop(_held);
                             tokio::select! {
                                 _ = changed => {}
-                                _ = tokio::time::sleep(Duration::from_millis(60)) => {}
+                                _ = tokio::time::sleep(Duration::from_millis(500)) => {}
                                 _ = tokio::time::sleep_until(deadline) => break,
                             }
                             continue;
                         }
-                        // Record this folder's trust prompt as answered BEFORE writing any keys
-                        // so a slow redraw never causes a second Down or a second Return.
-                        answered.insert(trust_key.clone());
+                        if tokio::time::Instant::now() >= deadline {
+                            break;
+                        }
+                        // Answered from here on, whatever becomes of the keys:
+                        // never a second walk to the same question.
+                        answered.insert(key.clone());
+                        service.trust_taken(&entry.id, key.clone());
+                        let _on_its_way = OnItsWay(&service, &entry.id);
+                        let same = |t: &olo_agent_screen::FolderTrustPrompt| which(t) == key;
                         let delta = trust.trust_index as isize - trust.selected_index as isize;
-                        let key = if delta > 0 { "\x1b[B" } else { "\x1b[A" };
+                        let arrow = if delta > 0 { "\x1b[B" } else { "\x1b[A" };
+                        let mut pressed = true;
                         for _ in 0..delta.unsigned_abs() {
-                            let _ = service.rex.write(&entry.session_id, &entry.block_id, key).await;
+                            if service.rex.write(&entry.session_id, &entry.block_id, arrow).await.is_err() {
+                                pressed = false;
+                                break;
+                            }
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }
-                        let mut landed = delta == 0;
-                        if delta != 0 {
-                            // (Answered only where the mark is seen to stand on it: wait for the
-                            // child to redraw instead of pressing the arrow again.)
-                            let nav_by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
-                            let mut gone_polls = 0u8;
-                            while tokio::time::Instant::now() < nav_by {
-                                let wait_changed = service.changed.notified();
-                                let again = service.look(&entry, true).await.cls;
-                                if again.state == SubagentLiveState::Exited {
+                        // (Return only where the mark is seen to stand on the
+                        // yes: waited for, three seconds and no later than the
+                        // start's time; a frame or two without the question, a
+                        // repaint, is waited through.)
+                        let mut landed = pressed && delta == 0;
+                        if pressed && delta != 0 {
+                            let by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
+                            let mut none_since: Option<tokio::time::Instant> = None;
+                            while tokio::time::Instant::now() < by {
+                                let moved = service.changed.notified();
+                                let again = service.look(&entry, true).await;
+                                if again.cls.state == SubagentLiveState::Exited {
                                     break;
                                 }
-                                match again.folder_trust {
-                                    Some(t) => {
-                                        gone_polls = 0;
-                                        let fk = t.folder.as_deref().map(|f| f.trim_end_matches('/').to_owned());
-                                        if (fk, t.is_add_dir) != trust_key {
-                                            break;
-                                        }
-                                        if t.marked && t.selected_index == t.trust_index {
-                                            landed = true;
-                                            break;
-                                        }
+                                match again.cls.folder_trust.filter(|_| again.live) {
+                                    Some(t) if !same(&t) => break,
+                                    Some(t) if t.marked && t.selected_index == t.trust_index => {
+                                        landed = true;
+                                        break;
                                     }
-                                    None => {
-                                        gone_polls += 1;
-                                        if gone_polls >= 2 {
-                                            break;
-                                        }
-                                    }
+                                    Some(_) => none_since = None,
+                                    None if again.live => match none_since {
+                                        Some(since) if since.elapsed() >= Duration::from_millis(600) => break,
+                                        Some(_) => {}
+                                        None => none_since = Some(tokio::time::Instant::now()),
+                                    },
+                                    None => {}
                                 }
                                 tokio::select! {
-                                    _ = wait_changed => {}
-                                    _ = tokio::time::sleep(Duration::from_millis(55)) => {}
-                                    _ = tokio::time::sleep_until(nav_by) => break,
+                                    _ = moved => {}
+                                    _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                                    _ = tokio::time::sleep_until(by) => break,
                                 }
                             }
                         }
-                        if landed {
-                            let _ = service.rex.write(&entry.session_id, &entry.block_id, "\r").await;
-                            let dismiss_by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
-                            while tokio::time::Instant::now() < dismiss_by {
-                                let wait_changed = service.changed.notified();
-                                let again = service.look(&entry, true).await.cls;
-                                if again.state == SubagentLiveState::Exited {
+                        if landed && tokio::time::Instant::now() < deadline && service.rex.write(&entry.session_id, &entry.block_id, "\r").await.is_ok() {
+                            // (Gone: another question, or none for two readings.)
+                            let by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
+                            let mut none_since: Option<tokio::time::Instant> = None;
+                            while tokio::time::Instant::now() < by {
+                                let moved = service.changed.notified();
+                                let again = service.look(&entry, true).await;
+                                if again.cls.state == SubagentLiveState::Exited {
                                     break;
                                 }
-                                let same_still = again.folder_trust.as_ref().is_some_and(|t| {
-                                    let fk = t.folder.as_deref().map(|f| f.trim_end_matches('/').to_owned());
-                                    (fk, t.is_add_dir) == trust_key
-                                });
-                                if !same_still {
-                                    break;
+                                match again.cls.folder_trust.filter(|_| again.live) {
+                                    Some(t) if same(&t) => none_since = None,
+                                    Some(_) => break,
+                                    None if again.live => match none_since {
+                                        Some(since) if since.elapsed() >= Duration::from_millis(150) => break,
+                                        Some(_) => {}
+                                        None => none_since = Some(tokio::time::Instant::now()),
+                                    },
+                                    None => {}
                                 }
                                 tokio::select! {
-                                    _ = wait_changed => {}
-                                    _ = tokio::time::sleep(Duration::from_millis(80)) => {}
-                                    _ = tokio::time::sleep_until(dismiss_by) => break,
+                                    _ = moved => {}
+                                    _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                                    _ = tokio::time::sleep_until(by) => break,
                                 }
                             }
-                            service.poke(&entry.id);
                         }
+                        // (Its own drop says the keys are no longer on their
+                        // way, and has what stands read again: a question
+                        // that is still there is then told, as any other.)
+                        drop(_on_its_way);
                         if entry.add_dirs.is_empty() {
                             break;
                         }
@@ -2384,7 +2425,13 @@ impl Service {
                 } else {
                     let rules_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
                     if let Some(box_key) = approval_val.as_ref().and_then(|a| a["box"].as_str()) {
-                        st.told.insert(pair, super::service::ToldGrant { token: box_key.to_owned(), is_approval: true, rules_gen });
+                        // (Not for a box whose answer is on its way: it is
+                        // still on the screen, and nobody's to judge.)
+                        if Self::box_answer_on_its_way(&st, &entry.id, box_key) {
+                            st.told.remove(&pair);
+                        } else {
+                            st.told.insert(pair, super::service::ToldGrant { token: box_key.to_owned(), is_approval: true, rules_gen });
+                        }
                     } else if state == SubagentLiveState::WaitingQuestion && cls.folder_trust.is_none() && (cls.recognized_question || cls.state != SubagentLiveState::WaitingQuestion) {
                         let key = super::service::subkey(&cls);
                         let token = if key.is_empty() { "tx:waiting".to_owned() } else { key };
@@ -2971,7 +3018,12 @@ impl Service {
                             if cls.state != SubagentLiveState::Idle {
                                 baseline_idle.remove(&entry.id);
                             }
-                            if spec.matches_state(cls.state) && !Self::minders_own(&self.lock().reg, caller, &entry.id, cls.state) {
+                            // (A box whose answer is on its way, still on
+                            // the screen while the agent draws, is no
+                            // question that stands: told as one, it was
+                            // answered a second time by whoever watched.)
+                            let on_its_way = cls.approval.as_ref().and_then(|ap| self.box_key(&entry.id, Some(ap))).is_some_and(|key| Self::box_answer_on_its_way(&self.lock(), &entry.id, &key));
+                            if spec.matches_state(cls.state) && !on_its_way && !Self::minders_own(&self.lock().reg, caller, &entry.id, cls.state) {
                                 let name = cls.state.as_str().to_owned();
                                 candidate = Some((entry.clone(), cls, name, None));
                                 break;
@@ -3462,22 +3514,41 @@ impl Service {
         if caller.child.as_ref().is_some_and(|c| c.is_minder()) && spec.answer == olo_rex_link::agents::Answer::Session {
             return err("a minder's yes is for this once (`--once`): one that is kept is the parent's to give".into(), 69);
         }
-        // One writer per child's answers: serialize approval navigation and confirmation.
-        let _answer_lock = self.answer_lock(&entry.id).lock_owned().await;
+        // One writer per child's answers. An asking that names its box
+        // (`--box KEY`), and a minder's (its grant is for one box), waits
+        // its turn and is held to that box. One that names none answers
+        // "whatever stands": waiting behind another answer, it would
+        // answer the box that came *after* it, which its asker never saw
+        // (a code review, 2026-11-27). It is told so instead.
+        let answers = self.answer_lock(&entry.id);
+        let _answer_lock = match answers.clone().try_lock_owned() {
+            Ok(held) => held,
+            Err(_) if spec.box_key.is_none() && !caller.child.as_ref().is_some_and(|c| c.is_minder()) => {
+                let who = entry.name.as_deref().unwrap_or(&entry.id);
+                return err(
+                    format!(
+                        "`{who}` is being answered just now: nothing more was pressed. Look at what it asks after that (`olo agent status {who} --json`) and answer that box by its key (`--box KEY`)"
+                    ),
+                    1,
+                );
+            }
+            Err(_) => answers.lock_owned().await,
+        };
         let pre_cursor = self.cursor();
         // (As the server shows it this moment.)
         let looked_ap = self.look(&entry, true).await;
         if entry.cli.is_agent() && !looked_ap.live && looked_ap.cls.state != SubagentLiveState::Exited {
             return err(format!("`{}`'s screen couldn't be read just now: nothing was answered; try again", entry.id), 1);
         }
+        let standing_now = looked_ap.boxed.clone();
         let cls = looked_ap.cls;
         let Some(ap) = cls.approval else {
             return err(format!("`{}` has no active approval prompt (current state: {})", entry.id, cls.state.as_str()), 1);
         };
         // Exact numbered box instance (`bN-hhhhhhhh`): two askings of the same
         // command are two distinct box keys.
-        let Some((standing, already_answered)) = self.box_state(&entry.id, Some(&ap)) else {
-            return err(format!("`{}` has no active approval prompt", entry.id), 1);
+        let Some((standing, already_answered)) = standing_now else {
+            return err(format!("`{}`'s screen changed as it was read: nothing was answered; look again and answer what stands", entry.id), 1);
         };
         if already_answered {
             return err(format!("the approval box (`{standing}`) on `{}` was already answered and is still dismissing", entry.name.as_deref().unwrap_or(&entry.id)), 1);
@@ -3530,7 +3601,7 @@ impl Service {
         }
         // Check BOTH the exact box instance (`standing`) AND (for a minder)
         // that ownership, rules generation, and pending revisions have not changed.
-        let same_instance = |cur: &olo_agent_screen::ApprovalPrompt| self.box_key(&entry.id, Some(cur)).as_deref() == Some(standing.as_str());
+        let same_instance = |now: &super::service::Looked| now.boxed.as_ref().is_some_and(|(key, _)| key == &standing);
         let ownership_and_rules_hold = || -> bool {
             let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) else { return true };
             let Some(exp_gen) = minder_grant_gen else { return false };
@@ -3598,6 +3669,7 @@ impl Service {
                     return err("rules or minder assignment changed during navigation; aborted without further input".into(), 1);
                 }
                 let cur_looked = self.look(&entry, true).await;
+                let still_it = same_instance(&cur_looked);
                 let Some(cur) = cur_looked.cls.approval else {
                     gone_polls += 1;
                     if gone_polls >= 3 {
@@ -3608,11 +3680,11 @@ impl Service {
                     continue;
                 };
                 gone_polls = 0;
-                if !same_instance(&cur) {
-                    if caller.child.as_ref().is_none_or(|c| !c.is_minder()) {
-                        let _ = write("\x1b").await;
-                    }
-                    return err("approval dialog changed during navigation; aborted safely".into(), 1);
+                // (Another question stands where this one was: nothing more
+                // is pressed. An Escape was, which put away the very
+                // question whoever looks after the child should be asked.)
+                if !still_it {
+                    return err("approval dialog changed during navigation; nothing more was pressed".into(), 1);
                 }
                 if on_it(&cur) {
                     verified = true;
@@ -3630,6 +3702,11 @@ impl Service {
         // Atomically re-check and consume the minder's grant AND mark this showing
         // of the box as answered BEFORE writing Enter, so no second reading of the
         // same showing can answer it again while the child redraws.
+        // (A list's yes is by the list as it stands now: one taken away
+        // while the mark was being walked to the answer allows nothing.)
+        if spec.by_list && self.list_allows(&entry.id, &ap).is_none() {
+            return err("its list no longer allows what it asks: nothing was answered".into(), 1);
+        }
         let standing_num = {
             let mut st = self.lock();
             if let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) {
@@ -3652,15 +3729,13 @@ impl Service {
                 Err(()) => return err(format!("the approval box (`{standing}`) was already answered or replaced before confirmation"), 1),
             }
         };
-        if let Err(e) = write("\r").await {
-            self.box_unmark_answered(&entry.id, standing_num);
-            return err(format!("failed to confirm approval dialog: {e}"), 1);
-        }
         // (Marked answered, and so passed over by every reading, until it
         // is finished below. Should this asking be dropped on the way, its
-        // asker gone, the box is finished all the same, as one that did
-        // not go: told again if it still stands, and never answered by a
-        // list a second time. Left marked, it would never be told again.)
+        // asker gone, or its Return not be seen to be written (written
+        // or not: a timeout doesn't say), the box is finished all the
+        // same, as one that did not go: told again if it still stands,
+        // and never answered by a list a second time. Left marked, it
+        // would never be told again.)
         struct Answering<'a> {
             service: &'a Service,
             id: &'a str,
@@ -3670,31 +3745,63 @@ impl Service {
         impl Drop for Answering<'_> {
             fn drop(&mut self) {
                 if !self.finished {
-                    self.service.box_finish(self.id, self.number, false);
+                    self.service.box_finish(self.id, self.number, super::service::BoxEnd::Stays);
                     self.service.poke(self.id);
                 }
             }
         }
         let mut answering = Answering { service: self, id: &entry.id, number: standing_num, finished: false };
+        if let Err(e) = write("\r").await {
+            return err(format!("failed to confirm approval dialog: {e}"), 1);
+        }
 
         // Wait up to 2s for the box to dismiss or change. Never send an
         // automatic retry Enter: if the terminal replaced box 1 immediately
         // with an identical box 2 (no blank frame between), a retry Enter
         // would confirm box 2 without anyone judging it.
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        let mut dismissed = false;
+        use super::service::BoxEnd;
+        let mut end = BoxEnd::Stays;
+        // (Gone: another box in its place, or no box for two readings a
+        // moment apart. One reading with none on it is a repaint caught
+        // half-way as often as the box's going: taken for that, the box
+        // was put away while it still stood, and the list answered it
+        // again. And two such readings are a slow repaint as well as a
+        // box gone, on a busy host: that end is `Blank`, the same box
+        // seen next a person's.)
+        let mut none_since: Option<tokio::time::Instant> = None;
         loop {
             let changed = self.changed.notified();
-            match self.look(&entry, true).await.cls.approval.as_ref() {
-                None => {
-                    dismissed = true;
-                    break;
+            let now = self.look(&entry, true).await;
+            if now.cls.state == SubagentLiveState::Exited {
+                end = BoxEnd::Gone;
+                break;
+            }
+            if now.live {
+                match (now.cls.approval.is_some(), same_instance(&now)) {
+                    (true, true) => none_since = None,
+                    // (Another box, held as standing: this one went.)
+                    (true, false) if now.boxed.is_some() => {
+                        end = BoxEnd::Gone;
+                        break;
+                    }
+                    (true, false) => {}
+                    // (No box, and the agent plainly somewhere else: at
+                    // work in its turn, or at its own prompt. A whole
+                    // frame, not a repaint caught half-way.)
+                    (false, _) if now.cls.in_turn || now.cls.summary.as_deref() == Some(olo_rex_link::agents::state::AT_PROMPT) => {
+                        end = BoxEnd::Gone;
+                        break;
+                    }
+                    (false, _) => match none_since {
+                        Some(since) if since.elapsed() >= Duration::from_millis(150) => {
+                            end = BoxEnd::Blank;
+                            break;
+                        }
+                        Some(_) => {}
+                        None => none_since = Some(tokio::time::Instant::now()),
+                    },
                 }
-                Some(cur) if !same_instance(cur) => {
-                    dismissed = true;
-                    break;
-                }
-                Some(_) => {}
             }
             if tokio::time::Instant::now() >= deadline {
                 break;
@@ -3710,7 +3817,8 @@ impl Service {
         // seen as its own event. Never reset edge before the box leaves: poking
         // `watch_child` while the answered box is still on screen caused a second
         // confirmation task to answer the same showing twice under load.)
-        self.box_finish(&entry.id, standing_num, dismissed);
+        let dismissed = end != BoxEnd::Stays;
+        self.box_finish(&entry.id, standing_num, end);
         answering.finished = true;
         let post_event_recorded = self.lock().log.last_state_of(&entry.id).is_some_and(|ev| ev.seq > pre_cursor);
         if !post_event_recorded {

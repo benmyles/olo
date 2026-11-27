@@ -560,9 +560,26 @@ something nobody here has is in "Blocked", with what it waits for.
     (`a_rest_is_the_end_of_the_turn_it_says`) now asks only while the
     rule still holds; the rule itself is a time, and a busy host
     outlasts it.
-  - The locks a child's answers are given under (`answer_locks`, as
-    `worker_locks`) are kept for as long as the service runs, one a
-    child there ever was.
+  - Left by the code review of "a question is answered once" (Astra
+    6.2, `/var/tmp/olo-reviews/astra-42fbdd0225/astra-review.md`, 15
+    findings, "hold the change"; fixed: its 1, 2, 3, 4 for a box and
+    a survey that stand at a takeover, 5, 6's list, 7's Escape, 8, 9,
+    10, 11, 13, 14 in part, 15). Its words for the rest: 4, "Box
+    numbers also restart at one, so an old parent's `--box b1-…` can
+    match a later identical first box after restart"; 6, "`--box` also
+    relies on `state.rs:99`, which normalizes every digit in the
+    question. Two commandless Edit boxes with" numbers alone between
+    them have one key; 7, "While `navigating` is set, a live reading
+    that actually sees A close preserves A's number. If an identical B
+    appears with the requested choice marked before the third missing
+    read, verification accepts B under A's key … The arrow loop also
+    sends the original count even if a person moves the mark between
+    steps"; 12, "If A becomes identical B without an observed change
+    … B is escalated under a fresh key and the list skips it …
+    Automatically distinguishing these showings requires a trustworthy
+    per-question identifier from the child"; 14, "Trust navigation
+    also wakes for unrelated children's changes" (`Service::changed`
+    is one bell for every child).
 - **A helper's test that failed once under load** (2026-11-27, the
   whole suite beside thirty test desktops and two container trials):
   `leave_is_given_by_a_list_and_what_it_names_is_asked`, "the service
