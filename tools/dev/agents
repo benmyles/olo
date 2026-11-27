@@ -255,18 +255,67 @@ _REX = []
 _SUBTREE_IDS = [None]
 
 
+CODE_REVIEW_NAME = re.compile(r"^(?:astra|agyrev)-[0-9a-f]{10}$")
+
+
+def _open_lock(path):
+    """Open a lock file without truncating or following symlinks (0o600 regular file)."""
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as e:
+        sys.exit(f"agents: cannot open lock {path}: {e}")
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            os.close(fd)
+            sys.exit(f"agents: lock path {path} is not a regular file")
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        raise
+    return os.fdopen(fd, "r+")
+
+
 def trusted_meta_path(name):
     if not NAMED.fullmatch(name or ""):
         sys.exit(f"agents: `{name}` isn't a helper's name (lowercase letters, digits and dashes; never a path)")
     return os.path.join(HOME, ".meta", f"{name}.json")
 
 
+def trusted_meta_status(name):
+    """Return `(state, data)` where state is `'ok'`, `'missing'`, or `'corrupt'`
+    so unreadable/corrupt parent records fail closed instead of falling back
+    to helper-writable `meta.json`."""
+    p = trusted_meta_path(name)
+    try:
+        with open(p, "r") as f:
+            obj = json.load(f)
+    except FileNotFoundError:
+        return "missing", None
+    except (OSError, ValueError):
+        return "corrupt", None
+    if not isinstance(obj, dict):
+        return "corrupt", None
+    return "ok", obj
+
+
 def trusted_meta(name):
     """Parent-owned helper metadata stored outside the helper's writable folder."""
-    try:
-        return json.load(open(trusted_meta_path(name)))
-    except (OSError, ValueError):
+    st, obj = trusted_meta_status(name)
+    return obj if st == "ok" else None
+
+
+def preferred_meta(name, fail_on_corrupt=False):
+    st, obj = trusted_meta_status(name)
+    if st == "ok":
+        return obj
+    if st == "corrupt":
+        if fail_on_corrupt:
+            sys.exit(f"agents: parent metadata for `{name}` is unreadable/corrupt ({trusted_meta_path(name)}): refusing mutation")
         return None
+    return meta(name)
 
 
 def save_trusted_meta(name, m):
@@ -324,12 +373,14 @@ def subtree_ids(refresh=False):
 
 def is_ours(name, allow_trimmed=False):
     """Whether `name` belongs to this tab's subtree / repository checkout.
-    Fails closed when ownership or checkout root is missing/uncertain so
-    multiple leads sharing /var/tmp/olo-agents never touch each other's
-    helpers. Only `sweep_builds`/`tidy` pass `allow_trimmed=True` so trimmed
-    ended Rex records launched by THIS tab/subtree stay sweepable."""
-    tm = trusted_meta(name)
-    m = tm if tm is not None else (meta(name) or {})
+    Fails closed when ownership, parent metadata, or checkout root is
+    missing/corrupt/uncertain so multiple leads sharing /var/tmp/olo-agents
+    never touch each other's helpers. Only `sweep_builds`/`tidy` pass
+    `allow_trimmed=True` so trimmed ended Rex records launched by THIS
+    tab/subtree stay sweepable."""
+    m = preferred_meta(name)
+    if not m:
+        return False
     root = m.get("root")
     if not root or os.path.realpath(root) != os.path.realpath(ROOT):
         return False
@@ -345,7 +396,7 @@ def is_ours(name, allow_trimmed=False):
             return True
         if rid in all_known:
             return False
-        if not (allow_trimmed and m.get("ended")):
+        if not (allow_trimmed and (m.get("ended") or (meta(name) or {}).get("ended"))):
             return False
         owner_win = m.get("owner_window")
         return bool(owner_win) and owner_win in owned_wins
@@ -357,7 +408,7 @@ def agents_lock():
     """Serialize helper admission and scratch folder lifecycle across
     concurrent leads/minders sharing HOME, refreshing subtree cache on entry."""
     os.makedirs(HOME, exist_ok=True)
-    f = open(os.path.join(HOME, ".agents.lock"), "w")
+    f = _open_lock(os.path.join(HOME, ".agents.lock"))
     try:
         fcntl.flock(f, fcntl.LOCK_EX)
         _SUBTREE_IDS[0] = None
@@ -373,8 +424,7 @@ def check_collision(name):
     positively owned by this tab/checkout (including ended foreign records
     and directories missing readable metadata)."""
     d = folder(name)
-    tm = trusted_meta(name)
-    m = tm if tm is not None else meta(name)
+    m = preferred_meta(name, fail_on_corrupt=True)
     if m is None:
         if os.path.exists(d):
             sys.exit(f"agents: `{name}` already exists at {d} without readable metadata: inspect or remove it manually, or choose another name")
@@ -407,9 +457,8 @@ def rex_here():
 
 def via(name):
     """How it was started: "rex" (a child tab) or "tmux". Prefers parent-owned
-    trusted metadata when present."""
-    tm = trusted_meta(name)
-    m = tm if tm is not None else (meta(name) or {})
+    trusted metadata when present and fails closed on corrupt parent metadata."""
+    m = preferred_meta(name, fail_on_corrupt=True) or {}
     return m.get("via", "tmux")
 
 
@@ -417,8 +466,7 @@ def child(name):
     """What `olo agent` knows it by: its id (a name is another's too,
     once this one has ended and one like it is started). Prefers parent-owned
     trusted metadata so helper-writable meta.json cannot redirect status/stop."""
-    tm = trusted_meta(name)
-    m = tm if tm is not None else (meta(name) or {})
+    m = preferred_meta(name, fail_on_corrupt=True) or {}
     return m.get("rex_id") or name
 
 
@@ -595,7 +643,8 @@ def state(name):
             # already is gone, not to be ended and announced again at
             # every `list` and `watch`. A minder was told twenty times
             # that a helper's session had been closed, 2026-11-26.)
-            return "gone" if (meta(name) or {}).get("ended") else "exited"
+            pm = preferred_meta(name) or {}
+            return "gone" if pm.get("ended") else "exited"
         # (Its turn ended on a run of its own that still goes, a test or
         # a build it will be woken by: the service knows, `waiting_on`.)
         # (But for what is the agent program's own: Codex keeps a helper
@@ -1122,11 +1171,13 @@ def session(name, cwd, env, program, native=None, subagent=True):
     if not any(e.startswith("PATH=") for e in env):
         env.append(f"PATH={clean_path()}")
     # Forward custom OLO_AGENTS_DIR to every board-owning child (and
-    # OLO_REVIEWS_DIR to minders) so isolated trials never touch live state.
+    # OLO_REVIEWS_DIR to minders) as absolute paths so isolated trials never
+    # touch live state or resolve differently under a child's `--cwd`.
     forward_keys = ("OLO_AGENTS_DIR",) if subagent else ("OLO_AGENTS_DIR", "OLO_REVIEWS_DIR")
     for k in forward_keys:
         if os.environ.get(k) and not any(e.startswith(f"{k}=") for e in env):
-            env.append(f"{k}={os.environ[k]}")
+            env.append(f"{k}={os.path.abspath(os.environ[k])}")
+    unset_vars = list(UNSET) + (["OLO_MINDER"] if subagent else ["OLO_SUBAGENT"])
     if native and rex_here():
         info = subtree_ids(refresh=True)
         if info is None:
@@ -1134,7 +1185,7 @@ def session(name, cwd, env, program, native=None, subagent=True):
         args = ["start", *native[:1], "--name", name, "--title", name, "--cwd", cwd, "--desktop", "none", "--env", marker]
         for e in env:
             args += ["--env", e]
-        for u in UNSET:
+        for u in unset_vars:
             args += ["--unset-env", u]
         r = olo(*args, "--json", *native[1:], check=True)
         try:
@@ -1155,7 +1206,7 @@ def session(name, cwd, env, program, native=None, subagent=True):
         save_meta(name, m)
         save_trusted_meta(name, m)
         return
-    env = ["env", *[x for u in UNSET for x in ("-u", u)], marker, *env]
+    env = ["env", *[x for u in unset_vars for x in ("-u", u)], marker, *env]
     tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", cwd, *env, *program, check=True)
     m = meta(name) or {}
     m.update({"via": "tmux", "root": ROOT, "minded": bool(os.environ.get("OLO_MINDER"))})
@@ -1611,9 +1662,9 @@ def _inside(path, root):
 
 
 def _already_collected_review(name):
-    """Idempotent lookup for an already-collected review whose scratch folder
-    was removed by a prior collector/waiter."""
-    if not (name.startswith("astra-") or name.startswith("agyrev-")):
+    """Idempotent lookup for an already-collected code review whose scratch
+    folder was removed by a prior collector/waiter, scoped to THIS checkout."""
+    if not CODE_REVIEW_NAME.fullmatch(name or ""):
         return None
     kept_dir = os.path.join(REVIEWS, name)
     asked_p = os.path.join(kept_dir, "asked.json")
@@ -1622,6 +1673,8 @@ def _already_collected_review(name):
     try:
         asked = json.load(open(asked_p))
     except (OSError, ValueError):
+        return None
+    if asked.get("tree") and os.path.realpath(asked["tree"]) != os.path.realpath(ROOT):
         return None
     if whole(out) and asked.get("sha256"):
         return out
@@ -1635,17 +1688,26 @@ def collect_one(name, print_out=False, written_override=None, out_override=None,
     per-review lock BEFORE `agents_lock()` (matching `review()`) to eliminate
     lock-order deadlocks."""
     refuse_nested()
+    if not NAMED.fullmatch(name or ""):
+        sys.exit(f"agents: `{name}` isn't a helper's name (lowercase letters, digits and dashes; never a path)")
     lock_f = None
     try:
-        # Acquire per-review lock BEFORE agents_lock() so collect_one() and
-        # review() share one global lock ordering.
-        if not locked and name.startswith(("astra-", "agyrev-")):
-            os.makedirs(REVIEWS, mode=0o700, exist_ok=True)
-            lock_f = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
-            fcntl.flock(lock_f, fcntl.LOCK_EX)
+        # Acquire per-review lock BEFORE agents_lock() ONLY for validated
+        # code-review names (never arbitrary prefixes or visual looks), using
+        # a non-truncating O_NOFOLLOW lock opener and bounded wait.
+        if not locked and CODE_REVIEW_NAME.fullmatch(name):
+            lock_f = _open_lock(os.path.join(REVIEWS, f".{name}.lock"))
+            deadline = time.monotonic() + 30.0
+            while True:
+                try:
+                    fcntl.flock(lock_f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        sys.exit(f"agents: another waiter is currently publishing {name}; retry shortly or check `tools/dev/agents list`")
+                    time.sleep(0.2)
         with agents_lock():
-            tm = trusted_meta(name)
-            m = tm if tm is not None else meta(name)
+            m = preferred_meta(name, fail_on_corrupt=True)
             if not m:
                 already = _already_collected_review(name)
                 if already:
@@ -1689,7 +1751,7 @@ def collect_one(name, print_out=False, written_override=None, out_override=None,
                 if st not in ("idle", "exited", "gone") and not at_rest(name):
                     sys.exit(f"agents: {name} is still {st}: wait for it to finish before collecting")
             screen_said = None if via(name) == "rex" else (screen(name, 200000) or "") + "\n"
-            ended = end(name, sessions=False)
+            ended = end(name, sessions=False, locked=True)
             if not ended:
                 sys.exit(f"agents: {name} did not stop cleanly; scratch folder {d} kept for retry before publishing")
             publish(written, out)
@@ -1865,7 +1927,7 @@ def review(args):
     kept = os.path.join(REVIEWS, name)
     out = os.path.join(kept, f"{front}.md")
     os.makedirs(kept, mode=0o700, exist_ok=True)
-    lock = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
+    lock = _open_lock(os.path.join(REVIEWS, f".{name}.lock"))
     until, said_waiting = time.time() + 3 * 3600, False
     while True:
         try:
@@ -1965,7 +2027,7 @@ def ago(t):
 
 
 def done_file(n):
-    m = meta(n) or {}
+    m = preferred_meta(n) or {}
     return m.get("done") or os.path.join(folder(n), "report.md")
 
 
@@ -1986,7 +2048,9 @@ def finished(n):
     its screen came to rest, while it worked on the second; and a file
     made and still empty passed for a result: 2026-11-27.)"""
     f = done_file(n)
-    return whole(f) and os.lstat(f).st_mtime >= ((meta(n) or {}).get("said_at") or 0)
+    pm = preferred_meta(n) or {}
+    said_at = max(pm.get("said_at") or 0, (meta(n) or {}).get("said_at") or 0)
+    return whole(f) and os.lstat(f).st_mtime >= said_at
 
 
 def list_():
@@ -2305,10 +2369,15 @@ def say(name, text, now=False):
         if st in ("waiting_approval", "waiting_question"):
             sys.exit(f"agents: {name} is asking you something ({st}): answer that first (`olo agent approve` or `agents approve`)")
         if helper_name:
+            now_said = time.time()
             m = meta(helper_name)
             if m is not None:
-                m["said_at"] = time.time()
+                m["said_at"] = now_said
                 save_meta(helper_name, m)
+            tm = trusted_meta(helper_name)
+            if tm is not None:
+                tm["said_at"] = now_said
+                save_trusted_meta(helper_name, tm)
         r = olo("send", target_id, "--enter", "--paste", "--verify", "--json", "--text", text, check=True)
         words = " ".join(text.split())[:24]
 
@@ -2531,7 +2600,7 @@ def keys(name, which):
     seen(name)
 
 
-def end(name, sessions=True):
+def end(name, sessions=True, locked=False):
     """End its session, whatever state it is in: what it said kept in
     its folder (transcript.txt) first, and any headless test session it
     left running (it names them agy-NAME…) stopped with it (`sessions`:
@@ -2542,26 +2611,34 @@ def end(name, sessions=True):
     code review, 2026-11-27)."""
     d = folder(name)
     ended = True
+    snap = preferred_meta(name, fail_on_corrupt=True) or {}
+    orig_via = snap.get("via", "tmux")
+    orig_rex_id = snap.get("rex_id")
+    orig_started = snap.get("started")
     # (A code reviewer's is never swept, whoever ends it: `stop`, the
     # tidy and its own front door alike.)
-    sessions = sessions and not (meta(name) or {}).get("review_of")
-    if via(name) == "rex":
+    sessions = sessions and not snap.get("review_of")
+    cli_sess = None
+    if orig_via == "rex":
+        target_id = orig_rex_id or name
         # (The service keeps all it said as it stops it; its tab closes.)
         kept = ["--save", os.path.join(d, "transcript.txt")] if os.path.isdir(d) else []
         # (What its CLI knows its conversation by, kept while the service
         # still says: its record there is trimmed in time, and `resume`
         # then has only this to take the conversation up by.)
-        seen_by = olo("status", child(name), "--json")
+        seen_by = olo("status", target_id, "--json")
         try:
             its = json.loads(seen_by.stdout).get("cli_session_id") if seen_by.returncode == 0 else None
         except ValueError:
             its = None
-        m0 = meta(name)
-        if its and m0 is not None and m0.get("cli_session") != its:
-            m0["cli_session"] = its
-            save_meta(name, m0)
+        if its:
+            cli_sess = its
+            m0 = meta(name)
+            if m0 is not None and m0.get("cli_session") != its:
+                m0["cli_session"] = its
+                save_meta(name, m0)
         if state(name) != "gone":
-            r = olo("stop", child(name), "--force", "--json", *kept)
+            r = olo("stop", target_id, "--force", "--json", *kept)
             # (Its own word that it ended: it answers without an error and
             # `ended: false` where its program outlived the time it gave it.)
             try:
@@ -2573,18 +2650,23 @@ def end(name, sessions=True):
             # status before it had none yet: an agy stopped as it began
             # its first conversation. A code review, 2026-11-27.)
             its = stopped.get("cli_session_id")
-            m0 = meta(name)
-            if its and m0 is not None and m0.get("cli_session") != its:
-                m0["cli_session"] = its
-                save_meta(name, m0)
+            if its:
+                cli_sess = its
+                m0 = meta(name)
+                if m0 is not None and m0.get("cli_session") != its:
+                    m0["cli_session"] = its
+                    save_meta(name, m0)
             if (r.returncode != 0 or still) and state(name) not in ("gone", "exited"):
                 ended = False
-                print(f"agents: {name} couldn't be stopped ({(r.stderr or r.stdout).strip()[:200]}): it runs still; `olo agent stop {child(name)}` and look", file=sys.stderr)
+                print(f"agents: {name} couldn't be stopped ({(r.stderr or r.stdout).strip()[:200]}): it runs still; `olo agent stop {target_id}` and look", file=sys.stderr)
     else:
         text = screen(name, 200000)
         if text and os.path.isdir(d):
             open(os.path.join(d, "transcript.txt"), "w").write(text + "\n")
-        tmux("kill-session", "-t", f"={name}")
+        kr = tmux("kill-session", "-t", f"={name}")
+        if kr.returncode != 0 and tmux("has-session", "-t", f"={name}").returncode == 0:
+            ended = False
+            print(f"agents: {name} tmux session couldn't be stopped ({(kr.stderr or kr.stdout).strip()[:200]})", file=sys.stderr)
     tsession = os.path.join(ROOT, "tools/dev/tsession")
     try:
         listed = subprocess.run(["/usr/bin/python3", tsession, "list"], capture_output=True, text=True, timeout=20).stdout if sessions else ""
@@ -2595,24 +2677,44 @@ def end(name, sessions=True):
                 print(f"agents: stopped {name}'s test session {its[0]}", file=sys.stderr)
     except (OSError, subprocess.SubprocessError):
         pass
-    m = meta(name)
-    now_ts = time.time()
-    if m and ended:
-        m["seen_state"] = "exited"
-        m["ended"] = now_ts
-        save_meta(name, m)
-    tm = trusted_meta(name)
-    if tm is not None and ended:
-        tm["seen_state"] = "exited"
-        tm["ended"] = now_ts
-        if m and m.get("cli_session"):
-            tm["cli_session"] = m["cli_session"]
-        save_trusted_meta(name, tm)
+
+    def _record_ended():
+        now_ts = time.time()
+        tm = trusted_meta(name)
+        m = meta(name)
+        # Do not mark a newly admitted replacement generation as ended.
+        cur = tm if tm is not None else m
+        if cur is not None:
+            if orig_rex_id and cur.get("rex_id") and cur.get("rex_id") != orig_rex_id:
+                return
+            if orig_started is not None and cur.get("started") is not None and cur.get("started") != orig_started:
+                return
+        if m and ended:
+            m["seen_state"] = "exited"
+            m["ended"] = now_ts
+            if cli_sess:
+                m["cli_session"] = cli_sess
+            save_meta(name, m)
+        if tm is not None and ended:
+            tm["seen_state"] = "exited"
+            tm["ended"] = now_ts
+            if cli_sess:
+                tm["cli_session"] = cli_sess
+            save_trusted_meta(name, tm)
+
+    if ended:
+        if locked:
+            _record_ended()
+        else:
+            with agents_lock():
+                _record_ended()
     return ended
+
 
 def stop(name):
     refuse_nested()
-    end(name)
+    if not end(name):
+        sys.exit(f"agents: {name} could not be stopped cleanly")
     print(f"agents: {name} stopped; its folder {folder(name)} stays (its report or answer, its brief, transcript.txt)")
 
 
@@ -2661,11 +2763,14 @@ def tidy_one(n, now, said):
             end(n)
             said.append(f"{n}: {'done' if has_result else 'idle'} and untouched for {int(sat // 60)} minutes; stopped (its folder {folder(n)} stays)")
     elif st == "gone":
-        ended = m.get("ended") or os.path.getmtime(os.path.join(folder(n), "meta.json"))
+        pm = preferred_meta(n) or {}
+        ended = pm.get("ended") or m.get("ended") or os.path.getmtime(os.path.join(folder(n), "meta.json"))
         if now - ended >= FOLDER_KEPT:
             # (What it wrote is kept first, as `forget` keeps it.)
             kept = keep_result(n)
             shutil.rmtree(folder(n), ignore_errors=True)
+            if not os.path.exists(folder(n)):
+                delete_trusted_meta(n)
             said.append(f"{n}: ended over a week ago; its folder removed" + (f" (its result kept at {kept})" if kept else ""))
     return said
 
@@ -2707,17 +2812,21 @@ def keep_result(name):
     or None where there is nothing to keep or it is kept already, whole
     (the same bytes: an empty or a shorter file at its place is not it
     kept). Where another result stands there, both are kept."""
-    m = meta(name) or {}
+    m = preferred_meta(name) or {}
     written, kept = m.get("done"), m.get("kept")
     if not (written and kept) or not whole(written):
         return None
-    # (Its record is in its own folder, which it can write: what it
-    # names is believed only as far as a result of its own, in its own
-    # folder, going to a place outside the repository.)
-    inside = lambda path, root: os.path.realpath(path).startswith(os.path.realpath(root) + os.sep)
-    if not inside(written, folder(name)) or inside(kept, ROOT):
+    # (Validate against helper folder, repository boundary, and code-review destination.)
+    if not _inside(written, folder(name)) or _inside(kept, ROOT) or not kept.endswith(".md"):
         print(f"agents: {name}'s record names {written} to be kept at {kept}: not its own result, or a place in the repository; nothing kept", file=sys.stderr)
         return None
+    is_review = m.get("kind") == "review" or bool(m.get("review_of"))
+    if is_review:
+        expected_dir = os.path.join(REVIEWS, name)
+        expected_file = "astra-review.md" if name.startswith("astra-") else "agy-review.md"
+        if os.path.realpath(kept) != os.path.realpath(os.path.join(expected_dir, expected_file)):
+            print(f"agents: {name}'s review destination {kept} is outside {expected_dir}/{expected_file}; nothing kept", file=sys.stderr)
+            return None
     if whole(kept):
         if open(kept, "rb").read() == open(written, "rb").read():
             return None

@@ -26,6 +26,7 @@ import ctypes
 import errno
 import fcntl
 import json
+import math
 import os
 import re
 import secrets
@@ -79,9 +80,11 @@ IN_MOVED_TO = 0x00000080
 IN_CREATE = 0x00000100
 IN_DELETE = 0x00000200
 IN_DELETE_SELF = 0x00000400
+IN_MOVE_SELF = 0x00000800
 IN_Q_OVERFLOW = 0x00004000
 IN_IGNORED = 0x00008000
-WATCH_MASK = IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_DELETE_SELF
+WATCH_MASK = IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF
+MAX_REX_OUTPUT_BYTES = 256 * 1024
 
 STATUS_META = {
     "working": ("● WORKING", BG_CYAN, B_CYAN, [
@@ -113,8 +116,10 @@ STATUS_META = {
 
 
 def clean_text(s, keep_newlines=False):
-    """Strip ANSI escape sequences and control characters from user text."""
-    t = ANSI_RE.sub("", str(s or ""))
+    """Strip ANSI escape sequences, control characters, and unpaired UTF-16
+    surrogates from user text."""
+    t = str(s or "").encode("utf-8", "replace").decode("utf-8")
+    t = ANSI_RE.sub("", t)
     t = t.replace("\r\n", "\n").replace("\r", "\n")
     if not keep_newlines:
         t = t.replace("\n", " ")
@@ -166,8 +171,12 @@ def _agents_home():
     return os.environ.get("OLO_AGENTS_DIR") or AGENTS_HOME
 
 
+def _raw_caller_marker():
+    return os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER")
+
+
 def _caller_identity():
-    who = os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER")
+    who = _raw_caller_marker()
     if who and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", who):
         return who
     return None
@@ -175,77 +184,137 @@ def _caller_identity():
 
 def default_path():
     home = _agents_home()
+    raw_who = _raw_caller_marker()
     who = _caller_identity()
+    if raw_who and not who:
+        sys.exit(f"agent-board: invalid caller identity marker ({raw_who!r})")
     if who:
         return os.path.join(home, who, "board.json")
     return os.path.join(home, "board.json")
 
 
+def _open_verified_parent_dirfd(path, create=False):
+    """Walk from `/var/tmp` to `os.path.dirname(path)` component-by-component
+    with `O_DIRECTORY | O_NOFOLLOW` so a symlink parent swap cannot redirect
+    lock, temp-file, or rename operations outside the verified directory."""
+    var_tmp = os.path.realpath("/var/tmp")
+    parent = os.path.dirname(os.path.abspath(path))
+    if not (parent == var_tmp or parent.startswith(var_tmp + os.sep)):
+        sys.exit(f"agent-board: parent directory must live under /var/tmp (refused {parent})")
+    rel = os.path.relpath(parent, var_tmp)
+    parts = [] if rel == "." else rel.split(os.sep)
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        cur = os.open(var_tmp, dir_flags)
+    except OSError as e:
+        sys.exit(f"agent-board: cannot open /var/tmp: {e}")
+    try:
+        for seg in parts:
+            if not seg or seg in (".", ".."):
+                sys.exit(f"agent-board: invalid path component in {parent}")
+            try:
+                nxt = os.open(seg, dir_flags, dir_fd=cur)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(seg, 0o755, dir_fd=cur)
+                except FileExistsError:
+                    pass
+                nxt = os.open(seg, dir_flags, dir_fd=cur)
+            os.close(cur)
+            cur = nxt
+        return cur
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.close(cur)
+        raise
+
+
 def safe_path(path, for_write=False):
     """Allowlist board paths strictly under `/var/tmp` (never `/tmp`, never
     inside `REPO_ROOT`, never inside `<agents_home>/.meta`). When invoked by
-    a subagent or minder for mutation (`for_write=True`), confine writes
-    strictly inside that agent's own folder under `<agents_home>/<name>`."""
+    a subagent or minder for mutation (`for_write=True`), fail closed on
+    invalid caller markers and confine writes strictly inside that agent's
+    own folder under `<agents_home>/<name>` (without symlink components)."""
     p = os.path.abspath(path or default_path())
     rp = os.path.realpath(p)
     if os.path.islink(p):
         sys.exit(f"agent-board: refusing symlink board path ({p})")
     if os.path.isdir(p) or os.path.isdir(rp):
         sys.exit(f"agent-board: {p} is a directory; pass a file path like /var/tmp/olo-agents/<name>/board.json")
+    if _inside(rp, REPO_ROOT):
+        sys.exit(f"agent-board: refusing to write board inside repository ({p}); use /var/tmp/olo-agents/<name>/board.json")
     var_tmp = os.path.realpath("/var/tmp")
     if not (rp.startswith(var_tmp + os.sep) and p.startswith("/var/tmp" + os.sep)):
         sys.exit(f"agent-board: board path must live under /var/tmp (refused {p})")
-    if _inside(rp, REPO_ROOT):
-        sys.exit(f"agent-board: refusing to write board inside repository ({p}); use /var/tmp/olo-agents/<name>/board.json")
     meta_dir = os.path.join(_agents_home(), ".meta")
     if _inside(rp, meta_dir):
         sys.exit(f"agent-board: refusing protected metadata path ({p})")
+    # Reject any existing symlink component along the path under /var/tmp.
+    probe = var_tmp
+    for seg in os.path.relpath(p, var_tmp).split(os.sep):
+        probe = os.path.join(probe, seg)
+        if os.path.islink(probe):
+            sys.exit(f"agent-board: refusing symlink component in board path ({probe})")
     if for_write:
+        raw_who = _raw_caller_marker()
         who = _caller_identity()
+        if raw_who and not who:
+            sys.exit(f"agent-board: invalid caller identity marker ({raw_who!r}); refusing mutation")
         if who:
-            own_dir = os.path.realpath(os.path.join(_agents_home(), who))
-            if not (rp == own_dir or rp.startswith(own_dir + os.sep)):
+            agents_root = os.path.realpath(_agents_home())
+            own_raw = os.path.join(agents_root, who)
+            if os.path.islink(own_raw):
+                sys.exit(f"agent-board: refusing symlink agent directory ({own_raw})")
+            own_dir = os.path.realpath(own_raw)
+            if not rp.startswith(own_dir + os.sep):
                 sys.exit(f"agent-board: subagent `{who}` may only write its own board under {own_dir} (refused {p})")
     return p
 
 
 @contextlib.contextmanager
-def board_lock(path, timeout=LOCK_TIMEOUT_SECS):
-    """Acquire an exclusive lock on `<path>.lock` without truncating or
-    following symlinks, bounded by `timeout` seconds."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    lock_p = f"{path}.lock"
-    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW
+def board_lock(path, timeout=LOCK_TIMEOUT_SECS, suffix=".lock"):
+    """Acquire an exclusive lock on `<name><suffix>` inside the verified
+    parent directory descriptor without truncating or following symlinks."""
+    dfd = _open_verified_parent_dirfd(path, create=True)
+    lock_name = f"{os.path.basename(path)}{suffix}"
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
-        fd = os.open(lock_p, flags, 0o600)
-    except OSError as e:
-        sys.exit(f"agent-board: cannot open lock {lock_p}: {e}")
-    try:
-        st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode):
-            sys.exit(f"agent-board: lock path {lock_p} is not a regular file")
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    sys.exit(f"agent-board: timed out after {timeout:.0f}s waiting for lock on {path}")
-                time.sleep(0.05)
-        yield
+        try:
+            fd = os.open(lock_name, flags, 0o600, dir_fd=dfd)
+        except OSError as e:
+            sys.exit(f"agent-board: cannot open lock {path}{suffix}: {e}")
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                sys.exit(f"agent-board: lock path {path}{suffix} is not a regular file")
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        sys.exit(f"agent-board: timed out after {timeout:.0f}s waiting for lock on {path}")
+                    time.sleep(0.05)
+            yield dfd
+        finally:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            with contextlib.suppress(OSError):
+                os.close(fd)
     finally:
         with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        with contextlib.suppress(OSError):
-            os.close(fd)
+            os.close(dfd)
 
 
 def default_board_data():
     who = _caller_identity() or "agent"
+    is_minder = bool(os.environ.get("OLO_MINDER")) and not bool(os.environ.get("OLO_SUBAGENT"))
     return {
         "title": who,
-        "role": "Minder" if os.environ.get("OLO_MINDER") else "Builder",
+        "role": "Minder" if is_minder else "Builder",
         "crate": "",
         "status": "working",
         "phase": "",
@@ -259,6 +328,14 @@ def default_board_data():
         "updated_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
         "updates": 0,
     }
+
+
+def _finite_pct(val):
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    if isinstance(val, float) and not math.isfinite(val):
+        return None
+    return max(0, min(100, int(val)))
 
 
 def normalize_board(raw):
@@ -275,13 +352,7 @@ def normalize_board(raw):
         base["status"] = "working"
     else:
         base["status"] = base["status"].lower()
-    prog = raw.get("progress")
-    if isinstance(prog, bool):
-        base["progress"] = None
-    elif isinstance(prog, (int, float)):
-        base["progress"] = max(0, min(100, int(prog)))
-    else:
-        base["progress"] = None
+    base["progress"] = _finite_pct(raw.get("progress"))
     upd = raw.get("updates")
     base["updates"] = int(upd) if isinstance(upd, int) and not isinstance(upd, bool) and upd >= 0 else 0
 
@@ -291,7 +362,7 @@ def normalize_board(raw):
         for entry in did_raw[-MAX_DID:]:
             if isinstance(entry, dict):
                 txt = clean_text(entry.get("text") or "").strip()
-                ts = clean_text(entry.get("at") or "").strip()
+                ts = truncate_plain(clean_text(entry.get("at") or "").strip(), 12)
                 if txt:
                     did_out.append({"at": ts, "text": txt})
             elif entry is not None:
@@ -323,13 +394,18 @@ def normalize_board(raw):
     return base
 
 
-def read_regular_json(path, max_bytes=MAX_BOARD_BYTES):
+def _reject_nonfinite_json(tok):
+    raise ValueError(f"non-finite JSON constant: {tok}")
+
+
+def read_regular_json(path, max_bytes=MAX_BOARD_BYTES, dir_fd=None):
     """Read and parse a regular, non-symlink JSON file with O_NONBLOCK so a
     FIFO or oversized file can never hang or exhaust memory. Returns
     `(exists, obj, err_str)`."""
-    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    target = os.path.basename(path) if dir_fd is not None else path
     try:
-        fd = os.open(path, flags)
+        fd = os.open(target, flags, dir_fd=dir_fd)
     except FileNotFoundError:
         return False, None, None
     except OSError as e:
@@ -353,7 +429,7 @@ def read_regular_json(path, max_bytes=MAX_BOARD_BYTES):
         with contextlib.suppress(OSError):
             os.close(fd)
     try:
-        obj = json.loads(b"".join(chunks).decode("utf-8"))
+        obj = json.loads(b"".join(chunks).decode("utf-8"), parse_constant=_reject_nonfinite_json)
     except (UnicodeDecodeError, ValueError) as e:
         return True, None, f"invalid JSON in {path}: {e}"
     if not isinstance(obj, dict):
@@ -361,8 +437,19 @@ def read_regular_json(path, max_bytes=MAX_BOARD_BYTES):
     return True, obj, None
 
 
-def load_board(path, strict=False):
-    exists, obj, err = read_regular_json(path)
+def load_board_raw(path, strict=False, dir_fd=None):
+    exists, obj, err = read_regular_json(path, dir_fd=dir_fd)
+    if not exists:
+        return None
+    if err is not None:
+        if strict:
+            sys.exit(f"agent-board: refusing to overwrite corrupt/unreadable board ({err}); fix or re-run `init`")
+        return None
+    return obj
+
+
+def load_board(path, strict=False, dir_fd=None):
+    exists, obj, err = read_regular_json(path, dir_fd=dir_fd)
     if not exists:
         return default_board_data()
     if err is not None:
@@ -375,26 +462,38 @@ def load_board(path, strict=False):
     return normalize_board(obj)
 
 
-def save_json_atomic(path, data):
-    if os.path.islink(path):
-        sys.exit(f"agent-board: refusing to replace symlink ({path})")
-    payload = (json.dumps(data, indent=2) + "\n").encode("utf-8")
-    if len(payload) > MAX_BOARD_BYTES:
-        sys.exit(f"agent-board: serialized board exceeds {MAX_BOARD_BYTES} byte limit")
-    parent = os.path.dirname(path)
-    os.makedirs(parent, exist_ok=True)
-    tmp = f"{path}.tmp.{os.getpid()}.{secrets.token_hex(4)}"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+def save_json_atomic(path, data, dir_fd=None):
+    owned_dfd = None
+    if dir_fd is None:
+        owned_dfd = _open_verified_parent_dirfd(path, create=True)
+        dir_fd = owned_dfd
     try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(payload)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+        name = os.path.basename(path)
+        try:
+            st = os.lstat(name, dir_fd=dir_fd)
+            if stat.S_ISLNK(st.st_mode):
+                sys.exit(f"agent-board: refusing to replace symlink ({path})")
+        except FileNotFoundError:
+            pass
+        payload = (json.dumps(data, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        if len(payload) > MAX_BOARD_BYTES:
+            sys.exit(f"agent-board: serialized board exceeds {MAX_BOARD_BYTES} byte limit")
+        tmp_name = f"{name}.tmp.{os.getpid()}.{secrets.token_hex(4)}"
+        fd = os.open(tmp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0), 0o600, dir_fd=dir_fd)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name, dir_fd=dir_fd)
+            raise
+    finally:
+        if owned_dfd is not None:
+            with contextlib.suppress(OSError):
+                os.close(owned_dfd)
 
 
 def parse_todo_str(raw):
@@ -430,9 +529,9 @@ def compute_progress(data):
     done = sum(1 for t in todos if t.get("state") == "done")
     active = sum(1 for t in todos if t.get("state") == "now")
     total = len(todos)
-    explicit = data.get("progress")
-    if explicit is not None and not isinstance(explicit, bool):
-        pct = max(0, min(100, int(explicit)))
+    explicit = _finite_pct(data.get("progress"))
+    if explicit is not None:
+        pct = explicit
     elif total > 0:
         pct = int(round((done + 0.35 * active) * 100.0 / total))
         if done == total:
@@ -593,31 +692,44 @@ def render(data, cols=68, rows=None):
 
     # Goal section (1-2 easy-to-understand paragraphs)
     goal = data["goal"].strip()
-    lines.append("")
-    lines.append(section_header("◎", "GOAL", B_CYAN, cols))
+    goal_lines = [f"{section_header('◎', 'GOAL', B_CYAN, cols)}"]
     if goal:
         for gl in wrap_lines(goal, cols - 4):
             if gl == "":
-                lines.append(f" {CYAN}┃{RESET}")
+                goal_lines.append(f" {CYAN}┃{RESET}")
             else:
-                lines.append(f" {CYAN}┃{RESET} {gl}")
+                goal_lines.append(f" {CYAN}┃{RESET} {gl}")
     else:
-        lines.append(f" {DIM}┃ {truncate_plain('(goal not set yet)', cols - 4)}{RESET}")
+        goal_lines.append(f" {DIM}┃ {truncate_plain('(goal not set yet)', cols - 4)}{RESET}")
 
     # Standup: Doing Now
     now = data["now"].strip()
     note = data["note"].strip()
-    lines.append("")
-    lines.append(section_header("▸", "DOING NOW", B_YELLOW, cols))
+    now_lines = [section_header("▸", "DOING NOW", B_YELLOW, cols)]
     if now:
         for idx, nl in enumerate(wrap_lines(now, cols - 5)):
             lead = f"{B_YELLOW}▸{RESET}" if idx == 0 else " "
-            lines.append(f" {YELLOW}┃{RESET} {lead} {BOLD}{B_WHITE}{nl}{RESET}")
+            now_lines.append(f" {YELLOW}┃{RESET} {lead} {BOLD}{B_WHITE}{nl}{RESET}")
     else:
-        lines.append(f" {DIM}┃ {truncate_plain('(waiting for next step)', cols - 4)}{RESET}")
+        now_lines.append(f" {DIM}┃ {truncate_plain('(waiting for next step)', cols - 4)}{RESET}")
     if note:
         for nl in wrap_lines(note, cols - 6):
-            lines.append(f" {MAGENTA}┃{RESET} {B_MAGENTA}★ {nl}{RESET}")
+            now_lines.append(f" {MAGENTA}┃{RESET} {B_MAGENTA}★ {nl}{RESET}")
+
+    # On short panes, crop long Goal paragraphs first so Doing Now stays visible.
+    if rows is not None and rows >= 10:
+        header_count = len(lines)
+        min_for_now = 1 + 2  # blank + DOING NOW header + at least 1 content line
+        max_goal_lines = max(2, rows - 2 - 1 - header_count - 1 - min_for_now)
+        if len(goal_lines) > max_goal_lines:
+            omitted_g = len(goal_lines) - (max_goal_lines - 1)
+            goal_lines = goal_lines[:max_goal_lines - 1] + [
+                f" {DIM}┃ {truncate_plain(f'… (+{omitted_g} goal lines)', cols - 4)}{RESET}"
+            ]
+    lines.append("")
+    lines.extend(goal_lines)
+    lines.append("")
+    lines.extend(now_lines)
 
     # Standup: Recently Did
     did_rows = [(e.get("at", ""), e.get("text", "")) for e in data["did"][-MAX_DID:] if e.get("text")]
@@ -625,9 +737,11 @@ def render(data, cols=68, rows=None):
     lines.append(section_header("✓", "RECENTLY DID", B_GREEN, cols))
     if did_rows:
         for ts, txt in did_rows:
-            use_ts = bool(ts) and cols >= 28
-            tag = f"{DIM}[{ts}]{RESET} " if use_ts else ""
-            indent = len(ts) + 3 if use_ts else 0
+            ts_clean = truncate_plain(ts, 12)
+            ts_w = vis_len(ts_clean)
+            use_ts = bool(ts_clean) and (cols - 3 - (ts_w + 3)) >= 8
+            tag = f"{DIM}[{ts_clean}]{RESET} " if use_ts else ""
+            indent = ts_w + 3 if use_ts else 0
             wlines = wrap_lines(txt, cols - 3 - indent)
             for i, wl in enumerate(wlines):
                 if i == 0:
@@ -655,6 +769,9 @@ def render(data, cols=68, rows=None):
     todo_hdr = f"TODO ({done}/{total})" if total else "TODO"
     lines.append(section_header("☑", todo_hdr, B_MAGENTA, cols))
     if todos:
+        num_w = max(2, len(str(len(todos))))
+        prefix_w = 5 + num_w
+        cont_pad = " " * prefix_w
         for idx, t in enumerate(todos, 1):
             st = t["state"]
             txt = t["text"]
@@ -666,31 +783,39 @@ def render(data, cols=68, rows=None):
                 mark, style = f"{B_RED}✕{RESET}", f"{BOLD}{B_RED}"
             else:
                 mark, style = f"{WHITE}○{RESET}", WHITE
-            num = f"{DIM}{idx:2d}.{RESET}"
-            for i, wl in enumerate(wrap_lines(txt, cols - 7)):
+            num = f"{DIM}{idx:{num_w}d}.{RESET}"
+            for i, wl in enumerate(wrap_lines(txt, cols - prefix_w)):
                 if i == 0:
                     lines.append(f" {mark} {num} {style}{wl}{RESET}")
                 else:
-                    lines.append(f"       {style}{wl}{RESET}")
+                    lines.append(f"{cont_pad}{style}{wl}{RESET}")
     else:
         lines.append(f" {DIM}· {truncate_plain('no checklist items yet', cols - 3)}{RESET}")
 
     # Footer
     foot_l = f"Updated {updated or 'now'}" + (f" · #{updates}" if updates else "")
     foot_r = "live · inotify"
-    if len(foot_l) + 1 + len(foot_r) <= cols:
-        gap = cols - len(foot_l) - len(foot_r)
+    fl_w, fr_w = vis_len(foot_l), vis_len(foot_r)
+    if fl_w + 1 + fr_w <= cols:
+        gap = cols - fl_w - fr_w
         foot_line = f"{DIM}{foot_l}{' ' * gap}{foot_r}{RESET}"
     else:
         foot_line = f"{DIM}{truncate_plain(foot_l, cols)}{RESET}"
     footer = [f"{DIM}{'─' * cols}{RESET}", foot_line]
 
-    if rows is not None and rows >= 10 and len(lines) + 1 + len(footer) > rows:
-        # Keep the header box, Goal, and Doing Now pinned at the top of short panes.
-        body_keep = max(7, rows - len(footer) - 1)
-        hidden = len(lines) - body_keep
-        lines = lines[:body_keep]
-        lines.append(f"{DIM}{truncate_plain(f'… +{hidden} more lines (enlarge pane to see all)', cols)}{RESET}")
+    if rows is not None:
+        rows = max(1, int(rows))
+        if rows < 10:
+            return "\n".join(lines[:rows])
+        if len(lines) + 1 + len(footer) > rows:
+            # Keep the header box, Goal, and Doing Now pinned at the top of short panes.
+            body_keep = max(7, rows - len(footer) - 1)
+            hidden = len(lines) - body_keep
+            lines = lines[:body_keep]
+            lines.append(f"{DIM}{truncate_plain(f'… +{hidden} more lines (enlarge pane to see all)', cols)}{RESET}")
+            lines.extend(footer)
+            return "\n".join(lines)
+        lines.append("")
         lines.extend(footer)
         return "\n".join(lines)
     lines.append("")
@@ -716,13 +841,16 @@ def _init_inotify():
     libc.inotify_init1.restype = ctypes.c_int
     libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
     libc.inotify_add_watch.restype = ctypes.c_int
+    libc.inotify_rm_watch.argtypes = [ctypes.c_int, ctypes.c_int]
+    libc.inotify_rm_watch.restype = ctypes.c_int
     return libc
 
 
 def show(path):
     path = safe_path(path, for_write=False)
     folder, name = os.path.split(path)
-    os.makedirs(folder, exist_ok=True)
+    if not os.path.isdir(folder):
+        sys.exit(f"agent-board: directory {folder} does not exist; run `init` first")
     libc = _init_inotify()
     fd = libc.inotify_init1(0x80000 | 0x800)  # IN_CLOEXEC | IN_NONBLOCK
     if fd < 0:
@@ -774,28 +902,37 @@ def show(path):
                     buf = b""
                 i = 0
                 rewatch = False
+                moved_self = False
                 while i + 16 <= len(buf):
-                    _wd, mask, _cookie, length = struct.unpack_from("iIII", buf, i)
+                    ev_wd, mask, _cookie, length = struct.unpack_from("iIII", buf, i)
                     ev_name = buf[i + 16:i + 16 + length].rstrip(b"\0").decode(errors="replace")
                     i += 16 + length
                     if mask & IN_Q_OVERFLOW:
                         redraw = True
-                    if mask & (IN_IGNORED | IN_DELETE_SELF):
+                    if ev_wd == wd and (mask & (IN_IGNORED | IN_DELETE_SELF | IN_MOVE_SELF)):
                         rewatch = True
+                        if mask & IN_MOVE_SELF:
+                            moved_self = True
                         redraw = True
-                    elif ev_name == name:
+                    elif ev_wd == wd and ev_name == name:
                         redraw = True
                 if rewatch:
+                    if moved_self:
+                        libc.inotify_rm_watch(fd, wd)
                     if os.path.isdir(folder):
                         new_wd = libc.inotify_add_watch(fd, folder.encode(), WATCH_MASK)
                         if new_wd < 0:
                             break
+                        wd = new_wd
                     else:
                         break
             if redraw:
                 draw_screen(path)
     except (KeyboardInterrupt, BrokenPipeError):
         pass
+    except OSError as e:
+        if e.errno not in (errno.EPIPE, errno.EIO):
+            raise
     finally:
         with contextlib.suppress(OSError, ValueError):
             signal.set_wakeup_fd(prev_wake)
@@ -814,59 +951,134 @@ def board_meta_path(path):
     return f"{path}.meta.json"
 
 
+def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES):
+    """Run a Rex CLI command draining stdout/stderr with a hard byte cap and
+    monotonic deadline so a large session listing cannot exhaust memory."""
+    import selectors
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    except OSError as e:
+        return None, "", str(e)
+    sel = selectors.DefaultSelector()
+    sel.register(proc.stdout, selectors.EVENT_READ, "out")
+    sel.register(proc.stderr, selectors.EVENT_READ, "err")
+    out_chunks, err_chunks = [], []
+    out_n = err_n = 0
+    overflow = False
+    deadline = time.monotonic() + timeout
+    try:
+        while sel.get_map():
+            rem = deadline - time.monotonic()
+            if rem <= 0:
+                proc.kill()
+                proc.wait()
+                return None, "", f"timed out after {timeout}s"
+            for key, _ in sel.select(min(0.25, rem)):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    sel.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                if key.data == "out":
+                    if out_n + len(chunk) > max_bytes:
+                        overflow = True
+                        proc.kill()
+                        proc.wait()
+                        return None, "", f"rex output exceeded {max_bytes} byte limit"
+                    out_chunks.append(chunk)
+                    out_n += len(chunk)
+                else:
+                    if err_n < 65536:
+                        take = chunk[:65536 - err_n]
+                        err_chunks.append(take)
+                        err_n += len(take)
+        rc = proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+    except (OSError, subprocess.SubprocessError) as e:
+        with contextlib.suppress(OSError):
+            proc.kill()
+            proc.wait()
+        return None, "", str(e)
+    finally:
+        for key in list(sel.get_map().values()):
+            with contextlib.suppress(OSError):
+                key.fileobj.close()
+        sel.close()
+    if overflow:
+        return None, "", f"rex output exceeded {max_bytes} byte limit"
+    return rc, b"".join(out_chunks).decode("utf-8", "replace"), b"".join(err_chunks).decode("utf-8", "replace")
+
+
 def resolve_rex_target(rex_bin, explicit_block=None):
-    """Return `(session, block, window_id)` for a Rex pane. Inside
+    """Return `(session, block, window_id, err)` for a Rex pane. Inside
     `--desktop none` subagents, `REX_SESSION` is stripped while `REX_BLOCK`
     remains set — discover `session_id` and `window_id` directly from
     `rex block inspect <block> --json`."""
     block = explicit_block or os.environ.get("REX_BLOCK")
     if not block:
-        return None, None, None
+        return None, None, None, None
     session = os.environ.get("REX_SESSION") if not explicit_block else None
     window_id = None
-    try:
-        cmd = [rex_bin, "block", "inspect", block, "--json"]
-        if session:
-            cmd[3:3] = ["-s", session]
-        ins = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        if ins.returncode == 0:
-            said = json.loads(ins.stdout)
-            if isinstance(said, dict):
-                blk = said.get("block") if isinstance(said.get("block"), dict) else {}
-                session = session or said.get("session_id") or blk.get("session_id")
-                window_id = blk.get("window_id") or said.get("window_id")
-    except (OSError, subprocess.SubprocessError, ValueError):
-        pass
-    return session, block, window_id
+    cmd = [rex_bin, "block", "inspect", block, "--json"]
+    if session:
+        cmd[3:3] = ["-s", session]
+    rc, stdout, stderr = _run_rex_bounded(cmd, timeout=10)
+    if rc == 0:
+        try:
+            said = json.loads(stdout)
+        except ValueError:
+            said = None
+        if isinstance(said, dict):
+            blk = said.get("block") if isinstance(said.get("block"), dict) else {}
+            session = session or said.get("session_id") or blk.get("session_id")
+            window_id = blk.get("window_id") or said.get("window_id")
+            return session, block, window_id, None
+        return session, block, None, "malformed rex block inspect JSON"
+    err = (stderr or stdout or f"exit {rc}").strip()
+    return session, block, window_id, err
 
 
-def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None):
+def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None, path=None):
     """Query Rex for a live placed Standup pane. Returns `(ok, block_id_or_none)`
     so a transient Rex query error (`ok=False`) never triggers a duplicate split."""
-    try:
-        chk = subprocess.run(
-            [rex_bin, "block", "list", "-s", session, "--short=false", "--json"],
-            capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False, None
-    if chk.returncode != 0:
+    rc, stdout, _stderr = _run_rex_bounded(
+        [rex_bin, "block", "list", "-s", session, "--short=false", "--json"],
+        timeout=10,
+    )
+    if rc != 0:
         return False, None
     try:
-        said = json.loads(chk.stdout)
+        said = json.loads(stdout)
     except ValueError:
         return False, None
-    blocks = said.get("blocks") if isinstance(said, dict) else (said if isinstance(said, list) else [])
+    if isinstance(said, dict):
+        blocks = said.get("blocks")
+        if not isinstance(blocks, list):
+            return False, None
+    elif isinstance(said, list):
+        blocks = said
+    else:
+        return False, None
     for b in blocks:
         if not isinstance(b, dict) or b.get("placement") != "placed":
             continue
         bid = b.get("block_id")
         if pane_id and bid == pane_id:
+            if window_id and b.get("window_id") and b.get("window_id") != window_id:
+                continue
             return True, bid
     if window_id:
         for b in blocks:
-            if isinstance(b, dict) and b.get("placement") == "placed" and b.get("window_id") == window_id and b.get("label") == "Standup":
-                return True, b.get("block_id")
+            if not isinstance(b, dict) or b.get("placement") != "placed" or b.get("window_id") != window_id:
+                continue
+            if b.get("label") != "Standup":
+                continue
+            # If the pane exposes its command/args, require matching board path when multiple boards share a window.
+            cmd_info = b.get("command") or b.get("argv") or b.get("cmdline")
+            if path and cmd_info:
+                joined = " ".join(str(x) for x in cmd_info) if isinstance(cmd_info, list) else str(cmd_info)
+                if path not in joined:
+                    continue
+            return True, b.get("block_id")
     return True, None
 
 
@@ -888,54 +1100,59 @@ def extract_split_block_id(stdout):
 
 def open_pane(path, ratio=38, explicit_block=None, after_save=False):
     path = safe_path(path, for_write=True)
+    if _raw_caller_marker() and explicit_block and explicit_block != os.environ.get("REX_BLOCK"):
+        sys.exit("agent-board: subagents may only split their own $REX_BLOCK")
     ratio = max(20, min(65, int(ratio)))
     rex_bin = shutil.which("rex") or "/usr/bin/rex"
-    session, block, window_id = resolve_rex_target(rex_bin, explicit_block=explicit_block)
-    if not (session and block):
-        print(f"agent-board: not in a Rex pane; board saved at {path}")
+    session, block, window_id, inspect_err = resolve_rex_target(rex_bin, explicit_block=explicit_block)
+    if not block:
+        note = f"board saved at {path}" if after_save else f"board path is {path}"
+        print(f"agent-board: not in a Rex pane; {note}")
         return
+    if not session:
+        hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
+        sys.exit(f"agent-board: could not inspect Rex pane {block}: {inspect_err or 'no session returned'}{hint}")
     meta_p = board_meta_path(path)
-    with board_lock(path):
-        exists, bm, _err = read_regular_json(meta_p, max_bytes=65536)
+    # Use a separate pane lock so a slow `rex split` never times out concurrent `update` calls.
+    with board_lock(path, suffix=".pane.lock") as dfd:
+        exists, bm, _err = read_regular_json(meta_p, max_bytes=65536, dir_fd=dfd)
         if not exists or not isinstance(bm, dict):
             bm = {}
         saved_pane = bm.get("pane_block") if (bm.get("anchor_block") == block and bm.get("path") == path) else None
-        ok_list, existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id)
-        if not ok_list and saved_pane:
-            print(f"agent-board: could not verify existing pane {saved_pane} (Rex busy); skipping duplicate split ({path})")
-            return
+        ok_list, existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id, path=path)
+        if not ok_list:
+            hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
+            sys.exit(f"agent-board: could not list Rex panes for {session} (Rex busy); skipping duplicate split{hint}")
         if existing:
             try:
-                save_json_atomic(meta_p, {"anchor_block": block, "pane_block": existing, "session": session, "window_id": window_id, "path": path})
+                save_json_atomic(meta_p, {"anchor_block": block, "pane_block": existing, "session": session, "window_id": window_id, "path": path}, dir_fd=dfd)
             except OSError as e:
                 print(f"agent-board: warning: could not update {meta_p}: {e}", file=sys.stderr)
             print(f"agent-board: already open in {existing} ({path})")
             return
-        if not os.path.exists(path):
-            save_json_atomic(path, default_board_data())
+        with board_lock(path) as data_dfd:
+            ex_board, _, _ = read_regular_json(path, dir_fd=data_dfd)
+            if not ex_board:
+                save_json_atomic(path, default_board_data(), dir_fd=data_dfd)
         me = os.path.abspath(__file__)
-        try:
-            ran = subprocess.run(
-                [
-                    rex_bin, "split", "-s", session, "-b", block,
-                    "--split=right", f"--ratio={ratio}", "--focus=false",
-                    "--shell=none", "--label", "Standup", "--json",
-                    "--", "/usr/bin/python3", "-I", me, "show", path,
-                ],
-                capture_output=True, text=True, timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError) as e:
+        rc, stdout, stderr = _run_rex_bounded(
+            [
+                rex_bin, "split", "-s", session, "-b", block,
+                "--split=right", f"--ratio={ratio}", "--focus=false",
+                "--shell=none", "--label", "Standup", "--json",
+                "--", "/usr/bin/python3", "-I", me, "show", path,
+            ],
+            timeout=30,
+        )
+        if rc != 0:
             hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
-            sys.exit(f"agent-board: rex split failed: {e}{hint}")
-        if ran.returncode:
-            hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
-            sys.exit(f"agent-board: rex split failed: {(ran.stderr or ran.stdout).strip()}{hint}")
-        pane_id = extract_split_block_id(ran.stdout)
+            sys.exit(f"agent-board: rex split failed: {(stderr or stdout or 'error').strip()}{hint}")
+        pane_id = extract_split_block_id(stdout)
         if not pane_id and window_id:
-            _ok, found = find_existing_standup_pane(rex_bin, session, window_id=window_id)
+            _ok, found = find_existing_standup_pane(rex_bin, session, window_id=window_id, path=path)
             pane_id = found or ""
         try:
-            save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "window_id": window_id, "path": path})
+            save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "window_id": window_id, "path": path}, dir_fd=dfd)
         except OSError as e:
             print(f"agent-board: warning: could not save {meta_p}: {e}", file=sys.stderr)
     print(f"agent-board: opened right split pane {pane_id or '(ok)'} watching {path}")
@@ -969,12 +1186,13 @@ def add_common_flags(p):
     p.add_argument("--clear-note", action="store_true", help="Clear highlight note")
 
 
-def apply_updates(data, args, is_init=False):
+def apply_updates(data, args, is_init=False, raw_doc=None):
     now_hm = time.strftime("%H:%M", time.gmtime())
     if is_init:
         base = default_board_data()
-        base["title"] = data.get("title") or base["title"]
-        base["role"] = data.get("role") or base["role"]
+        if isinstance(data, dict):
+            base["title"] = data.get("title") or base["title"]
+            base["role"] = data.get("role") or base["role"]
         data = base
     else:
         data = normalize_board(data)
@@ -1036,6 +1254,10 @@ def apply_updates(data, args, is_init=False):
 
     data["updated_at"] = time.strftime("%H:%M:%S UTC", time.gmtime())
     data["updates"] = int(data.get("updates") or 0) + 1
+    if not is_init and isinstance(raw_doc, dict):
+        merged = dict(raw_doc)
+        merged.update(data)
+        return merged
     return data
 
 
@@ -1077,14 +1299,16 @@ def main():
     elif args.cmd == "preview":
         p = safe_path(args.file, for_write=False)
         rows = args.height if args.height and args.height > 0 else None
-        sys.stdout.write(render(load_board(p, strict=False), cols=args.width, rows=rows))
+        out = render(load_board(p, strict=False), cols=args.width, rows=rows)
+        sys.stdout.write(out if out.endswith("\n") else out + "\n")
     elif args.cmd in ("init", "update"):
         is_init = args.cmd == "init"
         p = safe_path(args.file, for_write=True)
-        with board_lock(p):
-            existing = default_board_data() if is_init else load_board(p, strict=True)
-            data = apply_updates(existing, args, is_init=is_init)
-            save_json_atomic(p, data)
+        with board_lock(p) as dfd:
+            raw_doc = load_board_raw(p, strict=not is_init, dir_fd=dfd)
+            existing = (normalize_board(raw_doc) if raw_doc is not None else default_board_data()) if is_init else load_board(p, strict=True, dir_fd=dfd)
+            data = apply_updates(existing, args, is_init=is_init, raw_doc=raw_doc)
+            save_json_atomic(p, data, dir_fd=dfd)
         if args.open:
             open_pane(p, ratio=args.ratio, explicit_block=args.block, after_save=True)
         pct, done, _act, total = compute_progress(data)

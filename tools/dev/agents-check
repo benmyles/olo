@@ -285,6 +285,67 @@ try:
         finally:
             os.environ.pop("OLO_SUBAGENT", None)
 
+        # collect_one validates name BEFORE creating any lock file and does not create lock files for visual looks:
+        expect_exit(lambda: agents.collect_one("astra-bad/name"), "helper's name")
+        assert not os.path.exists(os.path.join(reviews, ".astra-bad")), "invalid name must not create lock dirs"
+        expect_exit(lambda: agents.collect_one("astra-visual-shots"), "does not belong")
+        assert not os.path.exists(os.path.join(reviews, ".astra-visual-shots.lock")), "visual look must not create code-review lock"
+
+        # Lock-order observation: collect_one acquires per-review lock BEFORE agents_lock:
+        lock_order = []
+        orig_open_lock = agents._open_lock
+        orig_agents_lock = agents.agents_lock
+        def obs_open_lock(p):
+            lock_order.append(("review_lock", os.path.basename(p)))
+            return orig_open_lock(p)
+        @agents.contextlib.contextmanager
+        def obs_agents_lock():
+            lock_order.append(("agents_lock", ".agents.lock"))
+            with orig_agents_lock():
+                yield
+        agents._open_lock = obs_open_lock
+        agents.agents_lock = obs_agents_lock
+        try:
+            expect_exit(lambda: agents.collect_one("agyrev-1234567890"), "does not belong")
+        finally:
+            agents._open_lock = orig_open_lock
+            agents.agents_lock = orig_agents_lock
+        assert lock_order[:2] == [("review_lock", ".agyrev-1234567890.lock"), ("agents_lock", ".agents.lock")], lock_order
+
+        # Corrupt trusted_meta fails closed instead of falling back to untrusted meta.json:
+        corrupt_h = "corrupt-helper"
+        make_helper(corrupt_h, {"via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT}, trusted=True)
+        open(agents.trusted_meta_path(corrupt_h), "w").write("{corrupt")
+        assert agents.is_ours(corrupt_h) is False, "corrupt trusted_meta must fail closed"
+        expect_exit(lambda: agents.child(corrupt_h), "unreadable/corrupt")
+
+        # end() records verified olo cli_session_id directly into trusted_meta even when meta.json is deleted,
+        # and ignores fake cli_session planted in meta.json:
+        end_h = "end-verify"
+        make_helper(end_h, {"via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT, "started": 1234.5}, trusted=True)
+        os.remove(os.path.join(home, end_h, "meta.json"))
+        orig_olo_end = agents.olo
+        orig_st_end = agents.state
+        try:
+            def fake_end_olo(*a, **kw):
+                if a[0] == "status":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"state": "working", "cli_session_id": "verified-sess-9"}), "")
+                if a[0] == "stop":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"ended": True, "cli_session_id": "verified-sess-9"}), "")
+                return orig_olo_end(*a, **kw)
+            agents.olo = fake_end_olo
+            agents.state = lambda n: "idle"
+            assert agents.end(end_h, sessions=False) is True
+            tm_after = agents.trusted_meta(end_h)
+            assert tm_after.get("ended") and tm_after.get("cli_session") == "verified-sess-9", tm_after
+            # state() must read ended from trusted_meta even when meta.json is absent:
+            agents.state = orig_state
+            agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, json.dumps({"state": "exited", "running": False}), "")
+            assert agents.state(end_h) == "gone", f"expected gone via trusted_meta, got {agents.state(end_h)}"
+        finally:
+            agents.olo = orig_olo_end
+            agents.state = orig_st_end
+
         # Crate containment blocks escaping `--tree` even if target has a Cargo.toml:
         tree_a = os.path.join(td, "tree-a")
         tree_b = os.path.join(td, "tree-b")
@@ -360,25 +421,57 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
     clean_env["OLO_AGENTS_DIR"] = td
     bp = os.path.join(td, "builder-x", "board.json")
 
-    # Allowlist path safety + subagent confinement:
+    # Allowlist path safety + subagent confinement + dirfd/symlink/FIFO checks:
     orig_ab_dir = os.environ.get("OLO_AGENTS_DIR")
     orig_ab_sub = os.environ.get("OLO_SUBAGENT")
+    orig_ab_min = os.environ.get("OLO_MINDER")
     try:
         os.environ["OLO_AGENTS_DIR"] = td
         os.environ.pop("OLO_SUBAGENT", None)
+        os.environ.pop("OLO_MINDER", None)
         expect_exit(lambda: board.safe_path("/tmp/bad-board.json", for_write=True), "/var/tmp")
-        expect_exit(lambda: board.safe_path(os.path.join(agents.ROOT, "board.json"), for_write=True), "/var/tmp")
+        expect_exit(lambda: board.safe_path(os.path.join(agents.ROOT, "board.json"), for_write=True), "inside repository")
         expect_exit(lambda: board.safe_path("/home/someone/.bashrc", for_write=True), "/var/tmp")
         expect_exit(lambda: board.safe_path(os.path.join(td, ".meta", "builder-x.json"), for_write=True), "protected metadata")
         sym_tmp = os.path.join(td, "sym-tmp.json")
         os.symlink("/tmp/escape-board.json", sym_tmp)
         expect_exit(lambda: board.safe_path(sym_tmp, for_write=True), "symlink")
 
-        # Subagent confined strictly to its own folder:
+        # Subagent confined strictly INSIDE its own folder (never own_dir itself) and invalid marker fails closed:
         os.environ["OLO_SUBAGENT"] = "builder-x"
         assert board.safe_path(bp, for_write=True) == bp
+        expect_exit(lambda: board.safe_path(os.path.join(td, "builder-x"), for_write=True), "may only write its own board")
         expect_exit(lambda: board.safe_path(os.path.join(td, "other-builder", "board.json"), for_write=True), "may only write its own board")
         expect_exit(lambda: board.safe_path(os.path.join(td, ".meta", "builder-x.json"), for_write=True), "protected metadata")
+        os.environ["OLO_SUBAGENT"] = "Invalid_Name"
+        expect_exit(lambda: board.safe_path(bp, for_write=True), "invalid caller identity")
+        os.environ.pop("OLO_SUBAGENT", None)
+
+        # Direct board_lock O_NOFOLLOW check on symlinked .lock sidecar:
+        victim = os.path.join(td, "victim.txt")
+        open(victim, "w").write("keep-me")
+        os.makedirs(os.path.join(td, "lock-test"), exist_ok=True)
+        lt_board = os.path.join(td, "lock-test", "board.json")
+        os.symlink(victim, f"{lt_board}.lock")
+        expect_exit(lambda: board.board_lock(lt_board).__enter__(), "cannot open lock")
+        assert open(victim).read() == "keep-me", "symlinked lock must not truncate victim"
+
+        # read_regular_json rejects FIFO without blocking and rejects >512 KiB and non-finite NaN JSON:
+        fifo_p = os.path.join(td, "lock-test", "pipe.json")
+        os.mkfifo(fifo_p)
+        ex_f, obj_f, err_f = board.read_regular_json(fifo_p)
+        assert ex_f and obj_f is None and "not a regular file" in (err_f or ""), (ex_f, obj_f, err_f)
+        nan_p = os.path.join(td, "lock-test", "nan.json")
+        open(nan_p, "w").write('{"progress": NaN}')
+        ex_n, obj_n, err_n = board.read_regular_json(nan_p)
+        assert ex_n and obj_n is None and "invalid JSON" in (err_n or ""), (ex_n, obj_n, err_n)
+        assert board.normalize_board({"progress": float("inf"), "title": "bad\ud800surr"})["progress"] is None
+        board.render({"progress": float("nan"), "title": "bad\ud800surr", "did": [{"at": "2026-11-27 21:54:00", "text": "hello world"}]}, cols=28).encode("utf-8")
+
+        # show() refuses missing directory without creating it:
+        missing_dir = os.path.join(td, "never-created")
+        expect_exit(lambda: board.show(os.path.join(missing_dir, "board.json")), "does not exist")
+        assert not os.path.exists(missing_dir), "show() must not create missing parent directory"
     finally:
         if orig_ab_dir is not None:
             os.environ["OLO_AGENTS_DIR"] = orig_ab_dir
@@ -388,6 +481,10 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
             os.environ["OLO_SUBAGENT"] = orig_ab_sub
         else:
             os.environ.pop("OLO_SUBAGENT", None)
+        if orig_ab_min is not None:
+            os.environ["OLO_MINDER"] = orig_ab_min
+        else:
+            os.environ.pop("OLO_MINDER", None)
 
     run_init = subprocess.run([
         "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init",
@@ -400,35 +497,43 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
         "--todo", "[x] Fix shutdown race",
         "--todo", "[>] Run live FarHost rig",
         "--todo", "[ ] Test Fedora 44",
+        "--todo", "[ ] Keep item 99 alive",
         "--todo", "[x]",  # empty text after prefix must be skipped
         "--note", "204/204 tests passing",
     ], capture_output=True, text=True, check=True, env=clean_env)
-    assert "45%" in run_init.stdout, f"expected exact 45% (1 done + 0.35 active of 3): {run_init.stdout}"
+    assert "34%" in run_init.stdout, f"expected exact 34% (1 done + 0.35 active of 4): {run_init.stdout}"
 
-    # Incremental update preserves goal, title, earlier did; strict numeric index & batch drop work accurately:
+    # Incremental update preserves unknown JSON fields, goal, title, earlier did; strict numeric index & batch drop work:
+    raw_b = json.load(open(bp))
+    raw_b["future_ext"] = {"keep": True}
+    json.dump(raw_b, open(bp, "w"))
     subprocess.run([
         "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
         "--file", bp, "--status", "testing",
         "--check-todo", "FarHost", "--log-checked",
         "--add-todo", "Clear agy-review",
-        "--drop-todo", "99",  # out-of-range digit must NOT substring-match "Test Fedora 44"
-        "--drop-todo", "1", "--drop-todo", "3",  # must drop #1 and #3 (NOT #4!)
+        "--drop-todo", "99",  # out-of-range digit must NOT substring-match "Keep item 99 alive"!
+        "--drop-todo", "1", "--drop-todo", "3",  # must drop #1 and #3 (NOT #4 or #5!)
         "--now", "Waiting on confirming review",
     ], capture_output=True, text=True, check=True, env=clean_env)
+    assert json.load(open(bp)).get("future_ext") == {"keep": True}, "update must preserve unknown fields"
     saved = board.load_board(bp)
     assert saved["title"] == "rexside-evil", f"ANSI escape was not stripped: {saved['title']!r}"
     assert "Harden Rex host screen plumbing." in saved["goal"], "incremental update dropped goal"
     assert len(saved["did"]) == 2 and "FarHost" in saved["did"][-1]["text"], saved["did"]
-    assert [t["text"] for t in saved["todos"]] == ["Run live FarHost rig", "Clear agy-review"], saved["todos"]
+    assert [t["text"] for t in saved["todos"]] == ["Run live FarHost rig", "Keep item 99 alive", "Clear agy-review"], saved["todos"]
 
-    # Explicit --progress override must agree between CLI output and rendered bar even when all todos are done:
+    # Explicit --progress override must agree between CLI output, label, and filled bar cells even when all todos are done:
     subprocess.run([
         "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
-        "--file", bp, "--check-todo", "Clear agy-review", "--progress", "40",
+        "--file", bp, "--check-todo", "Keep item 99 alive", "--check-todo", "Clear agy-review", "--progress", "40",
     ], capture_output=True, text=True, check=True, env=clean_env)
     ov = board.load_board(bp)
     rendered_ov = board.ANSI_RE.sub("", board.render(ov, cols=60))
     assert " 40%" in rendered_ov and "100%" not in rendered_ov, rendered_ov
+    bar_line = next(l for l in rendered_ov.splitlines() if "▐" in l and "▌" in l)
+    inside_bar = bar_line.split("▐", 1)[1].split("▌", 1)[0]
+    assert "░" in inside_bar and inside_bar.count("█") < len(inside_bar), f"bar fill ignored --progress 40: {bar_line!r}"
 
     # Corrupt JSON refuses `update` without resetting the file:
     corrupt_p = os.path.join(td, "builder-x", "corrupt.json")
@@ -436,8 +541,8 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
     bad_upd = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--file", corrupt_p, "--phase", "x"], capture_output=True, text=True, env=clean_env)
     assert bad_upd.returncode != 0 and open(corrupt_p).read() == "{broken json", bad_upd.stderr
 
-    # Render across narrow (24, 30), standard, and wide widths including CJK & short height (30x24):
-    for w in (24, 30, 34, 42, 50, 68, 100):
+    # Render across narrow (18..30), standard, and wide widths including CJK, 100 todos, & exact/short heights:
+    for w in (18, 22, 24, 30, 34, 42, 50, 68, 100):
         out = board.render(saved, cols=w)
         all_lines = out.splitlines()
         box_lines = [l for l in all_lines if "╭" in l or "│" in l or "├" in l or "╰" in l]
@@ -446,10 +551,19 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
             assert board.vis_len(bl) == w, f"box width mismatch at cols={w}: got {board.vis_len(bl)} for {bl!r}"
         for line in all_lines:
             assert board.vis_len(line) <= w, f"line overflow at cols={w}: got {board.vis_len(line)} for {line!r}"
-    short_out = board.render(saved, cols=30, rows=20).splitlines()
-    assert len(short_out) <= 20 and "rexside-evil" in board.ANSI_RE.sub("", short_out[1]), short_out
+    # 100 todos must not overflow cols=30, and exact-height rows must omit trailing newline:
+    many = dict(saved, todos=[{"state": "todo", "text": "x" * 40}] * 100)
+    for line in board.render(many, cols=30).splitlines():
+        assert board.vis_len(line) <= 30, f"100-todo overflow: {board.vis_len(line)} > 30: {line!r}"
+    full_line_count = len(board.render(saved, cols=68).splitlines())
+    exact_out = board.render(saved, cols=68, rows=full_line_count)
+    assert not exact_out.endswith("\n") and len(exact_out.splitlines()) == full_line_count
+    short_out = board.render(dict(saved, goal="Word " * 120), cols=30, rows=20)
+    assert not short_out.endswith("\n") and len(short_out.splitlines()) <= 20
+    assert "DOING NOW" in board.ANSI_RE.sub("", short_out), "short height must keep DOING NOW visible"
 
-    # Stub `rex` verifying open_pane works with REX_BLOCK-only, parses block_ids[0], dedups, and reports saved on split failure:
+    # Stub `rex` verifying open_pane works with REX_BLOCK-only, parses block_ids[0] without fallback masking,
+    # dedups, rejects subagent --block override, and reports saved on split failure:
     rex_dir = os.path.join(td, "rex-stub")
     os.makedirs(rex_dir)
     split_count_f = os.path.join(td, "split_count.txt")
@@ -470,15 +584,18 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
         f"        sys.stderr.write('simulated split failure\\n'); sys.exit(1)\n"
         f"    n = (int(open(cf).read()) if os.path.exists(cf) else 0) + 1\n"
         f"    open(cf, 'w').write(str(n))\n"
-        f"    print(json.dumps({{'anchor_id': 'block:sub-1', 'block_ids': ['block:standup-1'], 'split_ids': ['split:1']}}))\n"
+        f"    print(json.dumps({{'anchor_id': 'block:sub-1', 'block_ids': ['block:standup-parsed'], 'split_ids': ['split:1']}}))\n"
     )
     os.chmod(stub_rex, 0o755)
     sub_env = dict(clean_env)
     sub_env["PATH"] = f"{rex_dir}:{clean_env.get('PATH', '')}"
     sub_env["REX_BLOCK"] = "block:sub-1"  # REX_SESSION intentionally unset (--desktop none)
     sub_env["OLO_SUBAGENT"] = "builder-x"
+    # Subagent must not split another pane via --block:
+    bad_blk = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp, "--block", "block:lead-1"], capture_output=True, text=True, env=sub_env)
+    assert bad_blk.returncode != 0 and "own $REX_BLOCK" in bad_blk.stderr, bad_blk.stderr
     op1 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, check=True, env=sub_env)
-    assert "block:standup-1" in op1.stdout, op1.stdout
+    assert "block:standup-parsed" in op1.stdout, f"block_ids[0] parser did not return parsed ID: {op1.stdout}"
     op2 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, check=True, env=sub_env)
     assert "already open in block:standup-1" in op2.stdout and open(split_count_f).read() == "1", (op2.stdout, open(split_count_f).read())
 
@@ -491,23 +608,39 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
     fr = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--open", "--file", bp2, "--title", "by", "--did", "step-1"], capture_output=True, text=True, env=fail_env)
     assert fr.returncode != 0 and "already saved" in fr.stderr and "agent-board open" in fr.stderr and os.path.exists(bp2), fr.stderr
 
-    # Live `show()` subprocess: verify inotify redraw, SIGWINCH redraw, and prompt SIGTERM exit (PEP 475 wakeup pipe):
-    import signal as _sig, time as _time
+    # Live `show()` subprocess: deterministic select()-driven synchronization verifying
+    # initial frame, SIGWINCH redraw, inotify redraw, and clean SIGTERM exit:
+    import select as _sel, signal as _sig, time as _time
     show_proc = subprocess.Popen(
         ["/usr/bin/python3", os.path.join(HERE, "agent-board"), "show", bp],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=clean_env,
     )
+    os.set_blocking(show_proc.stdout.fileno(), False)
+    buf = bytearray()
+    def wait_for(cond, timeout_s=5.0):
+        dl = _time.monotonic() + timeout_s
+        while _time.monotonic() < dl:
+            if cond(buf):
+                return True
+            r, _, _ = _sel.select([show_proc.stdout], [], [], max(0.02, min(0.1, dl - _time.monotonic())))
+            if r:
+                chunk = os.read(show_proc.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+        return cond(buf)
     try:
-        _time.sleep(0.25)
+        CLEAR = b"\x1b[H\x1b[2J\x1b[3J"
+        assert wait_for(lambda b: b.count(CLEAR) >= 1 and b"live" in b), f"missed initial frame: {bytes(buf)!r}"
+        c1 = buf.count(CLEAR)
         show_proc.send_signal(_sig.SIGWINCH)
-        _time.sleep(0.15)
+        assert wait_for(lambda b: b.count(CLEAR) >= c1 + 1), "show() missed SIGWINCH redraw"
+        c2 = buf.count(CLEAR)
         subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--file", bp, "--now", "inotify-live-marker"], capture_output=True, text=True, check=True, env=clean_env)
-        _time.sleep(0.2)
+        assert wait_for(lambda b: b.count(CLEAR) >= c2 + 1 and b"inotify-live-marker" in b), "show() missed inotify redraw"
         show_proc.send_signal(_sig.SIGTERM)
-        out_b, err_b = show_proc.communicate(timeout=3)
+        rest_out, err_b = show_proc.communicate(timeout=3)
         assert show_proc.returncode == 0, (show_proc.returncode, err_b)
-        assert b"inotify-live-marker" in out_b, "show() missed inotify update"
-        assert out_b.count(b"\x1b[H\x1b[2J\x1b[3J") >= 3, "show() missed SIGWINCH or inotify redraw"
     finally:
         if show_proc.poll() is None:
             show_proc.kill()
