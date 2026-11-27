@@ -159,18 +159,47 @@ wl-paste)
 	real "$@"
 	;;
 op)
-	# (What op was given on its input is the host's own op's again where
-	# the desktop can't be asked or may not do it: `olo` keeps it at the
-	# place named here on 69, and nowhere otherwise.)
-	OLO_BRIDGE_KEEP_STDIN="${XDG_RUNTIME_DIR:-${TMPDIR:-/var/tmp}}/olo-op-input.$$"
-	export OLO_BRIDGE_KEEP_STDIN
-	asked op "$@"
-	if [ -f "$OLO_BRIDGE_KEEP_STDIN" ] && [ ! -L "$OLO_BRIDGE_KEEP_STDIN" ]; then
-		(real "$@") < "$OLO_BRIDGE_KEEP_STDIN"
-		status=$?
-		rm -f "$OLO_BRIDGE_KEEP_STDIN"
-		exit "$status"
+	# What op is given on its input (where it reads any: `olo`'s own rule,
+	# the same words) is kept here first, so that whichever op takes it,
+	# the desktop's or, where the desktop can't be asked or may not do it
+	# (69), the host's own, gets it whole: `olo` reads it to send it, and
+	# the host's own op then found it read and gone (a piped `op inject`
+	# got an empty template). Kept in a file of this run's own, in a
+	# folder only this account opens, removed however this ends, and
+	# opened then unlinked before the host's own op runs: nothing of it
+	# is on disk while that does. (It was handed between the two scripts
+	# by a name with this shell's pid in it, under a folder others may
+	# share: a file left by an earlier run could be fed to op, and an
+	# interrupted one left the input lying. A code review, 2026-11-27.)
+	takes=no
+	case " $* " in *" - "*) takes=yes ;; esac
+	if [ "${1:-}" = inject ]; then
+		case " $* " in *" -i "* | *" --in-file "* | *" -i="* | *" --in-file="*) ;; *) takes=yes ;; esac
 	fi
+	[ "${1:-} ${2:-}" = "item edit" ] && [ -f /dev/stdin ] && takes=yes
+	if [ "$takes" = yes ] && [ ! -t 0 ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ]; }; then
+		keep="${XDG_RUNTIME_DIR:-${TMPDIR:-/var/tmp}}/olo-rex-bridge-$(id -u 2> /dev/null || echo 0)"
+		[ -L "$keep" ] || mkdir -p -m 0700 "$keep" 2> /dev/null || true
+		if [ -L "$keep" ] || [ ! -d "$keep" ] || [ ! -O "$keep" ]; then
+			echo "$me: $keep isn't a folder of this account's own: its input can't be kept" >&2
+			exit 1
+		fi
+		kept=$(umask 077 && mktemp "$keep/op-input.XXXXXX") || exit 1
+		trap 'rm -f "$kept"' EXIT
+		trap 'rm -f "$kept"; trap - EXIT; exit 130' INT TERM HUP
+		if ! cat > "$kept"; then
+			echo "$me: its input couldn't be kept ($keep)" >&2
+			exit 1
+		fi
+		"$here/olo" op "$@" < "$kept"
+		status=$?
+		[ "$status" -eq 69 ] || exit "$status"
+		exec 3< "$kept"
+		rm -f "$kept"
+		trap - EXIT INT TERM HUP
+		real "$@" <&3
+	fi
+	asked op "$@"
 	real "$@"
 	;;
 olo-screen)

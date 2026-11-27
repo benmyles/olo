@@ -164,10 +164,12 @@ end
 -- for a host (`bridge::OpCarry`).
 if cmd == "op" then
   local stdin = os.getenv("OLO_BRIDGE_STDIN")
-  -- (The file is `olo`'s to put away once the desktop has answered:
-  -- refused, it is what the host's own op reads instead.)
+  -- (The file is `olo`'s to put away where it says so; an `olo` from
+  -- before that left it to this script, and during an upgrade the two
+  -- are replaced a moment apart.)
   if stdin and stdin ~= "" then
     a.stdin = base64_of(stdin)
+    if os.getenv("OLO_BRIDGE_STDIN_KEPT") ~= "1" then os.remove(stdin) end
   end
   local reads = { ["-i"] = true, ["--in-file"] = true, ["--template"] = true, ["--env-file"] = true }
   local files, i = {}, 1
@@ -203,9 +205,20 @@ end
 app = shown or app
 if not app then fail("no Olo desktop is connected to this Rex server now (open this host in Olo's Rex)", 69) end
 
+-- (69 says the desktop wasn't asked, and the caller may do it here
+-- instead. Once the desktop has answered at all it has the request: an
+-- answer lost after that says nothing of whether it was done, and a
+-- caller that went on to do it here could do it twice (a vault item
+-- made on the desktop and again by the host's own `op`). 75 then: not
+-- known, try again.)
+local asked_once = false
 local function ask(name, with)
   local r, why = rex.call("client.perform", { client_id = app, action = name, args = with, session_id = session, block_id = block, timeout_ms = 30000 })
-  if not r then fail(fmt_err(why), 69) end
+  if not r then
+    if asked_once then fail("the Olo desktop was asked and its answer was lost (" .. fmt_err(why) .. "): whether it was done isn't known; nothing more was done here", 75) end
+    fail(fmt_err(why), 69)
+  end
+  asked_once = true
   return r.result or {}
 end
 

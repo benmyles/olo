@@ -1363,11 +1363,16 @@ mod commands_tests {
     /// they were made 69; from then the stand-in went on to the host's
     /// own `op` with its input already read and gone (a code review,
     /// 2026-11-27). Answered by the desktop, or failed there, the host's
-    /// own isn't run; and nothing of the input is left behind either way.
+    /// own isn't run; and nothing of the input is left behind either way,
+    /// nor when the run is cut off while the desktop is asked (the session
+    /// closed: both scripts put their copies away). A file a caller's own
+    /// environment names as "the input's copy" is the caller's, and stays.
     #[test]
     fn a_refused_op_gives_the_hosts_own_its_input() {
-        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-shim-in-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        // (A folder of this run's own, made new: never one found there and emptied.)
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-shim-in-{}-{stamp}", std::process::id()));
+        std::fs::create_dir(&dir).expect("a new folder for this test");
         let (shims, own, run_dir) = (dir.join("shims"), dir.join("own"), dir.join("run"));
         for d in [&shims, &own, &run_dir] {
             std::fs::create_dir_all(d).unwrap();
@@ -1381,7 +1386,11 @@ mod commands_tests {
         std::fs::write(shims.join("olo.lua"), SKILL_LUA).unwrap();
         std::os::unix::fs::symlink("olo-desktop-command", shims.join("op")).unwrap();
         // (`rex`: says what the desktop would have been sent of the input, and answers REX_STATUS.)
-        exec(&dir.join("rex"), "#!/bin/sh\nprintf 'sent: ' >> \"$LOG\"; [ -n \"$OLO_BRIDGE_STDIN\" ] && cat \"$OLO_BRIDGE_STDIN\" >> \"$LOG\"; echo >> \"$LOG\"; exit ${REX_STATUS:-0}\n");
+        // (And waits REX_WAITS seconds first, where it is to be cut off meanwhile.)
+        exec(
+            &dir.join("rex"),
+            "#!/bin/sh\nprintf 'sent: ' >> \"$LOG\"; [ -n \"$OLO_BRIDGE_STDIN\" ] && cat \"$OLO_BRIDGE_STDIN\" >> \"$LOG\"; echo >> \"$LOG\"; [ -n \"$REX_WAITS\" ] && sleep \"$REX_WAITS\"; exit ${REX_STATUS:-0}\n",
+        );
         exec(&own.join("op"), "#!/bin/sh\nprintf 'own op %s: ' \"$*\" >> \"$LOG\"; cat >> \"$LOG\"; echo >> \"$LOG\"\n");
         let log = dir.join("log");
         let run = |status: i32| -> (i32, String) {
@@ -1421,6 +1430,56 @@ mod commands_tests {
         // Failed there: its status; the host's own isn't run.
         assert_eq!(run(1), (1, format!("sent: {template}\n")));
         assert!(left().is_empty(), "{:?}", left());
+        // Asked, and the answer lost (75): not known whether it was done, so the host's own isn't run.
+        assert_eq!(run(75), (75, format!("sent: {template}\n")));
+        assert!(left().is_empty(), "{:?}", left());
+
+        // Cut off while the desktop is asked (its session closed: the signal goes to all of it):
+        // neither script leaves its copy of the input.
+        use std::io::Write as _;
+        use std::os::unix::process::CommandExt as _;
+        let _ = std::fs::remove_file(&log);
+        let mut cut = std::process::Command::new(shims.join("op"))
+            .arg("inject")
+            .current_dir(&dir)
+            .env("PATH", format!("{}:{}:/usr/bin:/bin", shims.display(), own.display()))
+            .env("LOG", &log)
+            .env("REX_SESSION", "session:1")
+            .env("XDG_RUNTIME_DIR", &run_dir)
+            .env("OLO_BRIDGE_REX", dir.join("rex"))
+            .env("REX_WAITS", "20")
+            .stdin(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        cut.stdin.take().unwrap().write_all(template.as_bytes()).unwrap();
+        // (Until the desktop has been sent it: both copies are on disk then.)
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !std::fs::read_to_string(&log).is_ok_and(|l| l.contains("sent: user")) && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(left().len(), 2, "its two copies while the desktop is asked: {:?}", left());
+        let _ = std::process::Command::new("kill").args(["-HUP", &format!("-{}", cut.id())]).status();
+        let _ = cut.wait();
+        assert!(left().is_empty(), "cut off: {:?}", left());
+        assert!(!std::fs::read_to_string(&log).unwrap_or_default().contains("own op"), "and the host's own op isn't run");
+
+        // A caller's own file, named by a variable of the bridge's inherited from it: left alone.
+        let theirs = dir.join("theirs.txt");
+        std::fs::write(&theirs, "the caller's own").unwrap();
+        let out = std::process::Command::new(shims.join("olo"))
+            .args(["notify", "done"])
+            .current_dir(&dir)
+            .env("PATH", format!("{}:{}:/usr/bin:/bin", shims.display(), own.display()))
+            .env("LOG", &log)
+            .env("REX_SESSION", "session:1")
+            .env("XDG_RUNTIME_DIR", &run_dir)
+            .env("OLO_BRIDGE_REX", dir.join("rex"))
+            .env("OLO_BRIDGE_STDIN", &theirs)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(std::fs::read_to_string(&theirs).ok().as_deref(), Some("the caller's own"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

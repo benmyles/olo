@@ -121,15 +121,28 @@ if [ "$OLO_BRIDGE_CMD" = op ]; then
 	fi
 	[ "${1:-} ${2:-}" = "item edit" ] && [ -f /dev/stdin ] && takes=yes
 fi
+# (Its copy is made here and nowhere named from outside: a variable of
+# that name inherited from a caller named a file of the caller's, which
+# was then removed with the answer. A code review, 2026-11-27, as the
+# rest of this: the copy is removed if this is interrupted; a copy that
+# couldn't be written whole is an error, not a shorter input.)
+unset OLO_BRIDGE_STDIN OLO_BRIDGE_STDIN_KEPT
 if [ "$takes" = yes ] && [ ! -t 0 ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ]; }; then
 	OLO_BRIDGE_STDIN=$(umask 077 && mktemp "$OLO_BRIDGE_DIR/stdin.XXXXXX") || exit 1
-	head -c 1048577 > "$OLO_BRIDGE_STDIN"
+	trap 'rm -f "$OLO_BRIDGE_STDIN"' EXIT
+	trap 'rm -f "$OLO_BRIDGE_STDIN"; trap - EXIT; exit 130' INT TERM HUP
+	if ! head -c 1048577 > "$OLO_BRIDGE_STDIN"; then
+		echo "olo: op's standard input couldn't be kept to send to the Olo desktop ($OLO_BRIDGE_DIR)" >&2
+		exit 1
+	fi
 	if [ "$(wc -c < "$OLO_BRIDGE_STDIN")" -gt 1048576 ]; then
-		rm -f "$OLO_BRIDGE_STDIN"
 		echo "olo: op's standard input is more than 1 MiB: too much to send to the Olo desktop" >&2
 		exit 1
 	fi
-	export OLO_BRIDGE_STDIN
+	# (Said to olo.lua: the copy is this script's to remove. An olo.lua
+	# beside an `olo` from before this removes it itself, as it did.)
+	OLO_BRIDGE_STDIN_KEPT=1
+	export OLO_BRIDGE_STDIN OLO_BRIDGE_STDIN_KEPT
 fi
 # `olo run`: give the run a known id and trap INT/TERM/HUP so ^C cancels
 # the desktop command (or dismisses its approval alert) immediately.
@@ -168,22 +181,14 @@ if [ "$OLO_SCREEN_ON" = desktop ]; then
 	fi
 	exit "$rc"
 fi
-# What op was given on its standard input is this script's to put away
-# (olo.lua sends it and leaves the file be): gone with the answer, but
-# for one case. Where the desktop couldn't be asked or may not do it
-# (69) and the caller is the stand-in for `op` (it names a place:
-# OLO_BRIDGE_KEEP_STDIN), the input is moved there, for the host's own
-# `op` to read: without that the stand-in went on to the host's own
-# program with its input already read and gone (a piped `op inject`
-# got an empty template; found by a code review, 2026-11-27).
+# What op was given on its standard input was copied for olo.lua to
+# send: the copy is this script's to put away, whatever the answer (and
+# if it is interrupted: the trap set where it was made).
 if [ -n "${OLO_BRIDGE_STDIN:-}" ]; then
 	${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"
 	rc=$?
-	if [ "$rc" = 69 ] && [ -n "${OLO_BRIDGE_KEEP_STDIN:-}" ]; then
-		mv -f "$OLO_BRIDGE_STDIN" "$OLO_BRIDGE_KEEP_STDIN" 2> /dev/null || rm -f "$OLO_BRIDGE_STDIN"
-	else
-		rm -f "$OLO_BRIDGE_STDIN"
-	fi
+	rm -f "$OLO_BRIDGE_STDIN"
+	trap - EXIT
 	exit "$rc"
 fi
 # (OLO_BRIDGE_REX: another way to say `rex`, for Olo's own tests.)
