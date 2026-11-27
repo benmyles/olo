@@ -1,37 +1,56 @@
 #!/usr/bin/env bash
-# Deploy olo-desktop.com to Cloudflare.
+# Deploy olo-desktop.com (website/) to Cloudflare Pages, setting up what
+# isn't there yet.
 #
-#   tools/deploy-website.sh            stage website/dist, then deploy it
-#   tools/deploy-website.sh --build    stage only
+#   tools/deploy-website.sh            check, set up, stage website/dist, deploy
+#   tools/deploy-website.sh --check    check, and say what a deploy would do;
+#                                      change nothing
+#   tools/deploy-website.sh --build    stage website/dist only (no Cloudflare)
 #   tools/deploy-website.sh --preview  deploy to a preview URL, not the site
-#   tools/deploy-website.sh --yes      don't ask before deploying
+#   tools/deploy-website.sh --yes      don't ask before changing anything
 #
-# The site is the Cloudflare project "olo-desktop" (OLO_SITE_PROJECT names
-# another), which serves website/dist as it is. The site needs no build:
-# website/ is the page as it is served (website/README.md), and staging is
-# copying what is served (index.html, index.md, llms.txt, assets/) into
-# website/dist, without its tools and README. Deploying is Cloudflare's
-# own tool's work (wrangler). Whatever is missing, this asks before it
-# does anything about it: Node's npx to run
-# wrangler (run from npm each time, nothing installed globally), and being
-# signed in to Cloudflare (wrangler opens the browser). With
-# CLOUDFLARE_API_TOKEN set (a token that may edit Workers or Pages), no
-# sign-in is asked for: that is the way for a script with nobody at it.
+# At its start, before anything is changed, it checks that:
 #
-# Which Cloudflare account: wrangler's own choice when there is one, else
-# CLOUDFLARE_ACCOUNT_ID, else the id kept in website/.cloudflare-account
-# (not in git; asked for once, and kept there).
+#   - the commands it needs are here: Cloudflare's `cf` and `wrangler` (or
+#     Node's `npx` to run wrangler), `python3` and `git`;
+#   - `cf` is signed in (`cf auth login`), and to the right account: the one
+#     whose id is CLOUDFLARE_ACCOUNT_ID, else the id kept in
+#     website/.cloudflare-account (not in git). The first time, with neither,
+#     it names the account cf is signed in to and asks before keeping it
+#     there; signed in to another account later, it stops;
+#   - `wrangler` is signed in (`wrangler login`) to that same account.
+#
+# Then each run makes sure of each of these, in turn, and changes only what
+# isn't so (running it again changes nothing but the deployment):
+#
+#   1. The Pages project (OLO_SITE_PROJECT, default "olo-desktop") is
+#      there: made with `cf pages create` if not, a Direct Upload project
+#      whose production branch is "main".
+#   2. website/dist holds what is served (index.html, index.md, llms.txt,
+#      assets/), copied from website/: the site needs no build.
+#   3. It is deployed: `wrangler pages deploy` (cf has no command that
+#      uploads a deployment's files), to the production branch, or with
+#      --preview to the branch "preview" (a URL of its own).
+#   4. Each custom domain (OLO_SITE_DOMAINS, default "olo-desktop.com
+#      www.olo-desktop.com"; empty for none) is attached to the project,
+#      and, where its zone is in the account, has a proxied CNAME record
+#      to the project's pages.dev name. A record of that name that is
+#      anything else is left as it is, and said.
+#
+# It asks before each change (Return is yes); with nobody at the terminal
+# the answer is no, unless --yes.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 site=$here/website
 project=${OLO_SITE_PROJECT:-olo-desktop}
-wrangler_version=4
-build_only=0 preview=0 yes=0
+domains=${OLO_SITE_DOMAINS-olo-desktop.com www.olo-desktop.com}
+mode=deploy preview=0 yes=0
 
 for arg in "$@"; do
   case $arg in
-    --build) build_only=1 ;;
+    --check) mode=check ;;
+    --build) mode=build ;;
     --preview) preview=1 ;;
     --yes | -y) yes=1 ;;
     -h | --help)
@@ -46,128 +65,240 @@ for arg in "$@"; do
 done
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+todo() { printf '  \033[33m•\033[0m %s\n' "$*"; }
 fail() {
   echo "deploy-website: $*" >&2
   exit 1
 }
 
 # Yes or no, asked of the person at the terminal (Return is yes). With
-# nobody there, the answer is no: nothing is installed unasked.
+# nobody there, the answer is no, unless --yes.
 ask() {
-  if [ "$yes" = 1 ] && [ "${2:-}" = deploy ]; then return 0; fi
+  [ "$yes" = 1 ] && return 0
   if [ ! -t 0 ]; then
-    echo "$1 (nobody to ask: no)" >&2
+    echo "  $1 (nobody to ask: no; --yes answers yes)" >&2
     return 1
   fi
   local answer
-  read -r -p "$1 [Y/n] " answer
+  read -r -p "  $1 [Y/n] " answer
   case ${answer:-y} in y | Y | yes | Yes) return 0 ;; *) return 1 ;; esac
 }
 
-# ---- what it needs ----------------------------------------------------------
+# `json 'PYTHON'`: the JSON on stdin as `d`.
+json() { python3 -c "import json, sys; d = json.load(sys.stdin); $1"; }
 
-if [ "$build_only" = 0 ] && ! command -v npx >/dev/null; then
-  say "Node.js isn't installed (Cloudflare's wrangler runs on it)."
-  if command -v mise >/dev/null; then
-    ask "Install Node.js with mise (into your home folder)?" || fail "it needs npx (Node.js)"
-    mise use --global node@lts
-    eval "$(mise env -s bash)"
-  elif command -v dnf >/dev/null; then
-    ask "Install Node.js with dnf (it asks for your password)?" || fail "it needs npx (Node.js)"
-    sudo dnf install -y nodejs npm
-  else
-    fail "it needs npx (Node.js): install it, then run this again"
-  fi
-  command -v npx >/dev/null || fail "Node.js went in, but npx isn't on PATH: open a new shell and run this again"
-fi
-
-# ---- build ------------------------------------------------------------------
-
-say "Staging the site…"
-rm -rf "$site/dist"
-mkdir -p "$site/dist"
-for f in index.html index.md llms.txt assets; do
-  [ -e "$site/$f" ] || fail "website/ has no $f"
-  cp -r "$site/$f" "$site/dist/"
-done
-files=$(find "$site/dist" -type f | wc -l)
-size=$(du -sh "$site/dist" | cut -f1)
-echo "website/dist: $files files, $size."
-if [ "$build_only" = 1 ]; then exit 0; fi
-
-# ---- Cloudflare -------------------------------------------------------------
-
-# (From npm each time, at a pinned major version; npm keeps it cached.)
-wrangler() { npx --yes "wrangler@$wrangler_version" "$@"; }
-
-if [ ! -d "$HOME/.npm/_npx" ] || ! ls "$HOME"/.npm/_npx/*/node_modules/wrangler >/dev/null 2>&1; then
-  say "Cloudflare's wrangler isn't here yet."
-  ask "Fetch it from npm (kept in npm's cache, nothing installed globally)?" || fail "it needs wrangler to deploy"
-fi
-
-if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] && [ -s "$site/.cloudflare-account" ]; then
-  CLOUDFLARE_ACCOUNT_ID=$(tr -d '[:space:]' <"$site/.cloudflare-account")
-  export CLOUDFLARE_ACCOUNT_ID
-fi
-
-if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && ! wrangler whoami 2>/dev/null | grep -q "You are logged in"; then
-  say "You aren't signed in to Cloudflare."
-  ask "Sign in now (wrangler opens your browser)?" || fail "it needs to be signed in: run it again when you are, or set CLOUDFLARE_API_TOKEN"
-  wrangler login
-  wrangler whoami | grep -q "You are logged in" || fail "the sign-in didn't complete"
-fi
-
-# More than one account, and none said: asked once, and kept (not in git).
-if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
-  accounts=$(wrangler whoami 2>/dev/null | grep -Eo '[0-9a-f]{32}' | sort -u)
-  if [ "$(printf '%s\n' "$accounts" | grep -c .)" -gt 1 ]; then
-    say "You have more than one Cloudflare account:"
-    wrangler whoami 2>/dev/null | grep -E '[0-9a-f]{32}' || true
-    [ -t 0 ] || fail "say which with CLOUDFLARE_ACCOUNT_ID"
-    read -r -p "The account id that has $project: " CLOUDFLARE_ACCOUNT_ID
-    [[ $CLOUDFLARE_ACCOUNT_ID =~ ^[0-9a-f]{32}$ ]] || fail "that isn't an account id"
-    echo "$CLOUDFLARE_ACCOUNT_ID" >"$site/.cloudflare-account"
-    export CLOUDFLARE_ACCOUNT_ID
-  fi
-fi
-
-# What kind of project it is: a Pages project, or a Worker that serves
-# static files. Asked of Cloudflare, so the script is right either way.
-kind=worker
-if wrangler pages project list 2>/dev/null | grep -qw "$project"; then kind=pages; fi
-
-where="the live site"
-[ "$preview" = 1 ] && where="a preview URL"
-say "Ready to deploy website/dist to $where (Cloudflare $kind \"$project\")."
-ask "Deploy?" deploy || fail "not deployed"
-
-commit=$(git -C "$here" rev-parse --short HEAD 2>/dev/null || echo unknown)
-dirty=$(git -C "$here" status --porcelain -- website 2>/dev/null | grep -c . || true)
-message="olo $commit"
-[ "$dirty" != 0 ] && message="$message (with uncommitted changes)"
-
-if [ "$kind" = pages ]; then
-  branch=main
-  [ "$preview" = 1 ] && branch=preview
-  wrangler pages deploy "$site/dist" --project-name "$project" --branch "$branch" --commit-hash "$commit" --commit-message "$message" --commit-dirty=true
-else
-  # (A Worker with nothing but static files: Cloudflare serves them; the
-  # site is one page, with no 404 page of its own.)
-  config=$(mktemp /var/tmp/olo-website-XXXXXX.jsonc)
-  trap 'rm -f "$config"' EXIT
-  cat >"$config" <<JSON
-{
-  "name": "$project",
-  "compatibility_date": "2026-01-01",
-  "assets": { "directory": "$site/dist", "not_found_handling": "none", "html_handling": "auto-trailing-slash" }
+# A command that asks Cloudflare, given two minutes at most (so a network
+# that doesn't answer is said, not waited on).
+limited() {
+  if command -v timeout >/dev/null; then timeout 120 "$@"; else "$@"; fi
 }
-JSON
-  if [ "$preview" = 1 ]; then
-    wrangler versions upload --config "$config" --message "$message"
-  else
-    wrangler deploy --config "$config" --message "$message"
-  fi
+
+# What is served, copied into website/dist.
+stage() {
+  rm -rf "$site/dist"
+  mkdir -p "$site/dist"
+  local f
+  for f in index.html index.md llms.txt assets; do
+    [ -e "$site/$f" ] || fail "website/ has no $f"
+    cp -r "$site/$f" "$site/dist/"
+  done
+  files=$(find "$site/dist" -type f | wc -l)
+  size=$(du -sh "$site/dist" | cut -f1)
+}
+
+if [ "$mode" = build ]; then
+  stage
+  echo "website/dist: $files files, $size."
+  exit 0
 fi
 
-say "Deployed."
-[ "$preview" = 1 ] || echo "https://olo-desktop.com (a minute for every edge to have it)"
+# ---- At its start: the commands, and both signed in to the right account ----
+
+say "Checking the commands and the account"
+# (pnpm's global commands, where cf and wrangler are put, may not be on PATH.)
+PATH="$PATH:${PNPM_HOME:-$HOME/.local/share/pnpm}/bin"
+missing=()
+command -v python3 >/dev/null || missing+=("python3")
+command -v git >/dev/null || missing+=("git")
+command -v cf >/dev/null || missing+=("cf (Cloudflare's CLI; then: cf auth login)")
+# (The array is `wr`, and the function below `run_wrangler`: a function named
+# as the command would call itself.)
+if command -v wrangler >/dev/null; then
+  wr=(wrangler)
+elif command -v npx >/dev/null; then
+  wr=(npx --yes wrangler@4)
+else
+  wr=()
+  missing+=("wrangler (or Node's npx to run it; then: wrangler login)")
+fi
+if [ ${#missing[@]} -gt 0 ]; then
+  printf 'deploy-website: it needs, and did not find:\n' >&2
+  printf '  %s\n' "${missing[@]}" >&2
+  exit 1
+fi
+ok "python3, git, cf and ${wr[*]} are here"
+# (Run from website/, so no other project's wrangler config is read.)
+run_wrangler() { (cd "$site" && limited "${wr[@]}" "$@"); }
+
+# cf: signed in, and its accounts ("ID NAME" a line).
+who=$(limited cf auth whoami 2>/dev/null) || fail "cf isn't signed in (or Cloudflare didn't answer): cf auth login"
+echo "$who" | json 'sys.exit(0 if d.get("authenticated") and d.get("tokenValid", True) else 1)' ||
+  fail "cf isn't signed in: cf auth login"
+accounts=$(echo "$who" | json 'print("\n".join(a["id"] + " " + a.get("name", "") for a in d.get("accounts", [])))')
+[ -n "$accounts" ] || fail "cf is signed in, but to no account"
+
+# The right account: said, or kept from the first time.
+want=${CLOUDFLARE_ACCOUNT_ID:-}
+kept=$site/.cloudflare-account
+if [ -z "$want" ] && [ -s "$kept" ]; then want=$(tr -d '[:space:]' <"$kept"); fi
+if [ -z "$want" ]; then
+  if [ "$(printf '%s\n' "$accounts" | grep -c .)" != 1 ]; then
+    printf 'deploy-website: cf is signed in to several accounts:\n' >&2
+    printf '%s\n' "$accounts" | sed 's/^/  /' >&2
+    fail "say which with CLOUDFLARE_ACCOUNT_ID, or put its id in website/.cloudflare-account"
+  fi
+  want=${accounts%% *}
+  if [ "$mode" = check ]; then
+    todo "no account is kept yet: a deploy would ask to keep \"${accounts#* }\" ($want) in website/.cloudflare-account"
+  else
+    ask "Deploy to the Cloudflare account \"${accounts#* }\" ($want), and keep it as the site's (website/.cloudflare-account)?" ||
+      fail "no account chosen: nothing done"
+    echo "$want" >"$kept"
+  fi
+fi
+[[ $want =~ ^[0-9a-f]{32}$ ]] || fail "\"$want\" isn't a Cloudflare account id (CLOUDFLARE_ACCOUNT_ID, or website/.cloudflare-account)"
+name=$(printf '%s\n' "$accounts" | sed -n "s/^$want //p")
+if ! printf '%s\n' "$accounts" | grep -q "^$want "; then
+  printf 'deploy-website: cf is signed in to another account than the site'"'"'s (%s):\n' "$want" >&2
+  printf '%s\n' "$accounts" | sed 's/^/  /' >&2
+  fail "sign in to the site's account (cf auth login), or say another with CLOUDFLARE_ACCOUNT_ID"
+fi
+export CLOUDFLARE_ACCOUNT_ID=$want
+ok "cf is signed in to the site's account: \"$name\" ($want)"
+
+# wrangler: signed in, and to the same account.
+wwho=$(run_wrangler whoami 2>&1) || true
+echo "$wwho" | grep -q "You are logged in" || fail "wrangler isn't signed in (or Cloudflare didn't answer): wrangler login"
+echo "$wwho" | grep -q "$want" || fail "wrangler is signed in, but not to the site's account ($want): wrangler login"
+ok "wrangler is signed in to the same account"
+
+# ---- 1. the Pages project ----------------------------------------------------
+
+say "The Pages project \"$project\""
+err=$(mktemp /var/tmp/deploy-website-XXXXXX)
+trap 'rm -f "$err"' EXIT
+project_json() { limited cf pages get "$project" 2>"$err"; }
+if proj=$(project_json); then
+  ok "it is there"
+else
+  grep -qE '8000007|404' "$err" || fail "cf pages get: $(cat "$err")"
+  todo "it isn't there: to make, production branch \"main\""
+  if [ "$mode" = check ]; then
+    proj=""
+  else
+    ask "Make the Pages project \"$project\"?" || fail "not made: nothing deployed"
+    limited cf pages create --name "$project" --production-branch main >/dev/null
+    proj=$(project_json) || fail "cf pages create made no project: $(cat "$err")"
+    ok "made"
+  fi
+fi
+if [ -n "$proj" ]; then
+  subdomain=$(echo "$proj" | json 'print(d["subdomain"])')
+  production=$(echo "$proj" | json 'print(d.get("production_branch") or "main")')
+  ok "https://$subdomain (production branch \"$production\")"
+else
+  subdomain="$project.pages.dev" production=main
+fi
+
+# ---- 2 and 3. staged and deployed ---------------------------------------------
+
+say "The deployment"
+stage
+ok "website/dist: $files files, $size"
+branch=$production
+[ "$preview" = 1 ] && branch=preview
+commit=$(git -C "$here" rev-parse --short HEAD 2>/dev/null || echo unknown)
+dirty=false
+[ -n "$(git -C "$here" status --porcelain -- website 2>/dev/null)" ] && dirty=true
+message="olo $commit"
+[ "$dirty" = true ] && message="$message (website/ with uncommitted changes)"
+where="the site (branch \"$branch\")"
+[ "$preview" = 1 ] && where="a preview URL (branch \"preview\")"
+if [ "$mode" = check ]; then
+  todo "a deploy would send website/dist to $where, as \"$message\""
+else
+  ask "Deploy website/dist to $where?" || fail "not deployed"
+  # (The upload is given ten minutes, not `limited`'s two.)
+  out=$(cd "$site" && "${wr[@]}" pages deploy "$site/dist" --project-name "$project" --branch "$branch" \
+    --commit-hash "$commit" --commit-message "$message" --commit-dirty="$dirty" 2>&1) || {
+    echo "$out" >&2
+    fail "wrangler pages deploy failed"
+  }
+  url=$(echo "$out" | grep -Eo 'https://[a-z0-9.-]+\.pages\.dev' | tail -1 || true)
+  ok "deployed${url:+: $url}"
+fi
+
+# ---- 4. its domains (the production site's only) --------------------------------
+
+if [ "$preview" = 1 ] || [ -z "$domains" ]; then
+  say "Done."
+  exit 0
+fi
+
+say "Its domains"
+domain_list() { limited cf pages domains list "$project" 2>/dev/null | json 'print("\n".join(x["name"] + " " + x.get("status", "?") for x in d))' || true; }
+attached=""
+[ -n "$proj" ] && attached=$(domain_list)
+zones=$(limited cf zones list 2>/dev/null | json 'print("\n".join(z["name"] for z in d))' || true)
+for d in $domains; do
+  # Attached to the project?
+  if printf '%s\n' "$attached" | grep -q "^$d "; then
+    ok "$d is the project's ($(printf '%s\n' "$attached" | grep "^$d " | cut -d' ' -f2))"
+  elif [ "$mode" = check ]; then
+    todo "$d: to attach to the project"
+  elif ask "Attach $d to the project?"; then
+    limited cf pages domains create "$project" --name "$d" >/dev/null
+    ok "$d attached"
+  else
+    todo "$d not attached"
+    continue
+  fi
+  # Its DNS: the zone it is in, if that zone is this account's.
+  zone=""
+  for z in $zones; do
+    if [ "$d" = "$z" ] || [ "${d%."$z"}" != "$d" ]; then
+      [ ${#z} -gt ${#zone} ] && zone=$z
+    fi
+  done
+  if [ -z "$zone" ]; then
+    todo "$d: its zone isn't in this account; point a CNAME at $subdomain where its DNS is"
+    continue
+  fi
+  records=$(limited cf dns records list --zone "$zone" --name "$d" 2>/dev/null | json 'print("\n".join(r["type"] + " " + r.get("content", "") for r in d))' || true)
+  if printf '%s\n' "$records" | grep -qix "CNAME $subdomain"; then
+    ok "$d: its CNAME to $subdomain is there"
+  elif [ -n "$records" ]; then
+    todo "$d already has records ($(printf '%s' "$records" | tr '\n' ';')): left as they are; Pages needs a CNAME to $subdomain"
+  elif [ "$mode" = check ]; then
+    todo "$d: a proxied CNAME to $subdomain, to make (zone $zone)"
+  elif ask "Make $d a proxied CNAME to $subdomain (zone $zone)?"; then
+    body=$(python3 -c 'import json, sys; print(json.dumps({"type": "CNAME", "name": sys.argv[1], "content": sys.argv[2], "proxied": True, "ttl": 1, "comment": "olo-desktop.com on Cloudflare Pages (tools/deploy-website.sh)"}))' "$d" "$subdomain")
+    limited cf dns records create --zone "$zone" --body "$body" >/dev/null
+    ok "$d: CNAME to $subdomain made"
+  else
+    todo "$d: no CNAME made"
+  fi
+done
+
+if [ "$mode" != check ]; then
+  if domain_list | grep -qv ' active$'; then
+    echo "  (A new domain is \"pending\" until Cloudflare has checked it and issued its certificate: some minutes.)"
+  fi
+fi
+if [ "$mode" = check ]; then
+  say "Checked: nothing was changed. (• is what a deploy would do.)"
+  exit 0
+fi
+say "Done."
+echo "https://$subdomain$(for d in $domains; do printf ', https://%s' "$d"; done)"

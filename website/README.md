@@ -179,12 +179,31 @@ host`) taught (2026-11-27):
 
 ## Deploying
 
-`tools/deploy-website.sh` copies what is served (`index.html`,
-`index.md`, `llms.txt`, `assets/`) into `website/dist` (not in git) and
-deploys that to the Cloudflare project `olo-desktop`, asking before it
-fetches Cloudflare's `wrangler` or signs in (`--build` to stage only,
-`--preview` for a preview URL, `--help` for the rest). Nothing is
-published yet.
+`tools/deploy-website.sh` deploys it to Cloudflare Pages, and sets up
+what isn't there yet. It needs Cloudflare's `cf` and `wrangler`, each
+signed in (`cf auth login`, `wrangler login`): `cf` does the setting up,
+and `wrangler` the upload (`cf` has no command that uploads a Pages
+deployment's files).
+
+```sh
+tools/deploy-website.sh --check    # what is set up, what a deploy would do; changes nothing
+tools/deploy-website.sh            # check, set up, stage, deploy (asks before each change)
+tools/deploy-website.sh --preview  # to a preview URL instead of the site
+tools/deploy-website.sh --yes      # don't ask
+```
+
+At its start it checks that the commands are there and that both are
+signed in to the site's account: the one whose id is
+`CLOUDFLARE_ACCOUNT_ID`, else the id kept in `website/.cloudflare-account`
+(not in git; the first run asks before keeping it). Then, each only if
+it isn't so already: the Pages project `olo-desktop` (production branch
+`main`); `website/dist` staged from what is served (`index.html`,
+`index.md`, `llms.txt`, `assets/`; `--build` does only this); the
+deployment; and each domain (`olo-desktop.com`, `www.olo-desktop.com`)
+attached to the project, with a proxied CNAME to the project's
+`pages.dev` name where its zone is in the account (a record that is
+there already is never changed). Run again, it changes nothing but the
+deployment.
 
 ## Left to do
 
