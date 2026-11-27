@@ -8675,6 +8675,7 @@ dependencies = [
  "olo-release",
  "olo-rex-client",
  "olo-rex-sync",
+ "olo-screen-codec",
  "quinn",
  "rcgen",
  "regex",
@@ -8724,15 +8725,45 @@ dependencies = [
 name = "olo-screen"
 version = "0.1.0"
 dependencies = [
+ "libc",
+ "olo-crash",
+ "olo-kit",
+ "olo-preview",
+ "olo-protocol",
+ "olo-screen-pane",
+ "olo-sync",
+ "olo-theme",
+ "olo-video",
+ "olo-xdg",
+ "png 0.18.1",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
+name = "olo-screen-codec"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "zstd 0.14.3",
+]
+
+[[package]]
+name = "olo-screen-pane"
+version = "0.1.0"
+dependencies = [
  "ab_glyph",
  "fontdb",
  "libc",
  "olo-capture",
- "olo-crash",
  "olo-keychain",
  "olo-kit",
  "olo-preview",
  "olo-protocol",
+ "olo-rex-link",
+ "olo-screen-codec",
  "olo-sync",
  "olo-theme",
  "olo-video",

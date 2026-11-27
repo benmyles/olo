@@ -9,23 +9,19 @@ name = "olo-screen"
 path = "src/main.rs"
 
 [dependencies]
+olo-screen-pane.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-kit.workspace = true
 olo-theme.workspace = true
 olo-protocol.workspace = true
 olo-xdg.workspace = true
-olo-keychain.workspace = true
-olo-capture.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 png = "0.18"
-zstd = "0.14"
 olo-video.workspace = true
 # Pictures out of videos (video-frame).
 olo-preview.workspace = true
-ab_glyph = "0.2"
-fontdb = "0.23"

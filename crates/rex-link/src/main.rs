@@ -31,6 +31,14 @@ mod procs;
 #[cfg(feature = "quic")]
 mod quic;
 #[cfg(feature = "screens")]
+mod screen_export;
+#[cfg(feature = "screens")]
+mod screen_follow;
+#[cfg(feature = "screens")]
+mod screen_history;
+#[cfg(feature = "screens")]
+mod screen_stream;
+#[cfg(feature = "screens")]
 mod screens;
 #[cfg(feature = "sync")]
 mod sync;

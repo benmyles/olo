@@ -56,13 +56,48 @@ pub fn chrome_home(name: &str) -> PathBuf {
     crate::history::dir(name)
 }
 
+/// Private fallback runtime directory when `XDG_RUNTIME_DIR` is unset:
+/// prefers the standard owned `/run/user/<uid>` if present and owned by this
+/// account, else private `0700` `/var/tmp/olo-runtime-<uid>` (never `/tmp`).
+pub(crate) fn fallback_runtime_dir() -> PathBuf {
+    use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    let std_run = PathBuf::from(format!("/run/user/{uid}"));
+    if std::fs::symlink_metadata(&std_run).is_ok_and(|m| m.file_type().is_dir() && m.uid() == uid) {
+        return std_run;
+    }
+    let fallback = PathBuf::from(format!("/var/tmp/olo-runtime-{uid}"));
+    if std::fs::symlink_metadata(&fallback).is_err() {
+        let mut b = std::fs::DirBuilder::new();
+        b.mode(0o700);
+        let _ = b.create(&fallback);
+    }
+    fallback
+}
+
 fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
+    std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(fallback_runtime_dir)
 }
 
 /// Where screens are listed (and their logs and settings kept).
 pub fn dir() -> PathBuf {
     olo_xdg::legacy::runtime_file(&runtime_dir(), "olo-screens")
+}
+
+/// Read at most `max_bytes` from a verified regular file without following
+/// symlinks or blocking on a FIFO.
+pub(crate) fn read_bounded_regular(path: &Path, max_bytes: usize) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let f = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path).ok()?;
+    let meta = f.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > max_bytes as u64 {
+        return None;
+    }
+    let mut buf = Vec::with_capacity((meta.len() as usize).min(64 << 10));
+    f.take(max_bytes as u64 + 1).read_to_end(&mut buf).ok()?;
+    (buf.len() <= max_bytes).then_some(buf)
 }
 
 /// Where screens' logs go: a folder of their own in `dir` (made as it's
@@ -86,20 +121,273 @@ fn control_file(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{name}.control"))
 }
 
-/// The person takes screen `name` over (`true`) or hands it back: said
-/// for `olo-screen`, which does nothing to the screen meanwhile.
-pub fn set_controlled(name: &str, on: bool) {
-    set_controlled_in(&dir(), name, on);
+/// Stable per-screen flock inode serializing Take Control (`LOCK_EX`),
+/// in-flight agent CLI actions (`LOCK_SH`), and `.control` marker cleanup
+/// (never unlinked while screens exist, so releasing an old control lock can
+/// never remove a replacement controller's `.control` marker).
+fn control_lock_file(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}.control.lock"))
 }
 
-fn set_controlled_in(dir: &Path, name: &str, on: bool) {
-    let file = control_file(dir, name);
-    if on {
-        let _ = std::fs::create_dir_all(dir);
-        let _ = std::fs::write(&file, std::process::id().to_string());
-    } else {
-        let _ = std::fs::remove_file(&file);
+/// Stable per-screen flock inode serializing lifecycle transitions (`start`,
+/// `stop`, `clear`, `archive`, `delete`) so generation checks are atomic.
+fn lifecycle_lock_file(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}.lifecycle.lock"))
+}
+
+fn open_stable_lock(path: &Path) -> Result<std::fs::File, String> {
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|e| format!("couldn't open lock {}: {e}", path.display()))?;
+    let meta = file.metadata().map_err(|e| format!("stat {}: {e}", path.display()))?;
+    if !meta.file_type().is_file() || meta.uid() != uid {
+        return Err(format!("refusing unsafe lock file {}", path.display()));
     }
+    Ok(file)
+}
+
+fn lock_lifecycle_in(dir: &Path, name: &str) -> Result<std::fs::File, String> {
+    use std::os::fd::AsRawFd as _;
+    require_valid_name(name)?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create runtime folder: {e}"))?;
+    let file = open_stable_lock(&lifecycle_lock_file(dir, name))?;
+    // SAFETY: valid owned fd.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return Err(format!("couldn't lock lifecycle for {name}: {}", std::io::Error::last_os_error()));
+    }
+    Ok(file)
+}
+
+/// Read `/proc/{pid}/stat`'s 22nd field (process start time in clock ticks) to
+/// detect PID reuse when validating `.control` or session identity.
+pub(crate) fn proc_start_ticks(pid: i32) -> Option<u64> {
+    started_ticks(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
+}
+
+fn parse_control_lock_meta(bytes: &[u8]) -> Option<(i32, Option<u64>)> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let mut parts = text.split_whitespace();
+    let pid = parts.next()?.parse::<i32>().ok().filter(|&p| p > 0)?;
+    let ticks = parts.next().and_then(|t| t.parse::<u64>().ok());
+    Some((pid, ticks))
+}
+
+fn is_controller_alive(pid: i32, expected_ticks: Option<u64>) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+    if let Some(exp) = expected_ticks
+        && proc_start_ticks(pid) != Some(exp)
+    {
+        return false;
+    }
+    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| is_controller_exe(&exe))
+}
+
+/// Exclusive advisory lock (`flock`) on a running screen's Take Control lease.
+///
+/// Holds `LOCK_EX` on both the stable `NAME.control.lock` (serializing against
+/// new viewers, in-flight agent CLI actions, and `screens::stop`) and on
+/// `NAME.control` (compatible with legacy/current `olo-rex-link`), checks any
+/// pre-existing non-flocking viewer PID before truncating, records `(dev, ino)`
+/// so releasing an old handle can never unlink a replacement controller's
+/// `.control` marker, and keeps `NAME.control` containing the plain decimal PID.
+pub struct ControlLock {
+    marker_path: PathBuf,
+    marker_id: (u64, u64),
+    stable_lock: Option<std::fs::File>,
+    marker_file: Option<std::fs::File>,
+}
+
+impl ControlLock {
+    pub fn release(&mut self) {
+        use std::os::fd::AsRawFd as _;
+        use std::os::unix::fs::MetadataExt as _;
+        let marker = self.marker_file.take();
+        let stable = self.stable_lock.take();
+        if let Some(file) = marker {
+            // Unlink ONLY while still holding both locks AND only if the path
+            // on disk still points to the exact `(dev, ino)` we created.
+            if let Ok(pm) = std::fs::symlink_metadata(&self.marker_path)
+                && pm.file_type().is_file()
+                && (pm.dev(), pm.ino()) == self.marker_id
+            {
+                let _ = std::fs::remove_file(&self.marker_path);
+            }
+            // Explicit `LOCK_UN` before `close` ensures a concurrent `fork()`
+            // in another thread (prior to `O_CLOEXEC`) cannot keep the flock alive.
+            // SAFETY: valid owned fd.
+            unsafe {
+                libc::flock(file.as_raw_fd(), libc::LOCK_UN);
+            }
+            drop(file);
+        }
+        if let Some(s) = stable {
+            let _ = s.set_len(0);
+            // SAFETY: valid owned fd.
+            unsafe {
+                libc::flock(s.as_raw_fd(), libc::LOCK_UN);
+            }
+            drop(s);
+        }
+    }
+}
+
+impl Drop for ControlLock {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+/// Shared lease held by an in-flight agent CLI mutating action on `NAME` so
+/// Take Control cannot interleave mid-drag (and an action cannot begin while
+/// Take Control holds `LOCK_EX`).
+pub struct ActionLease {
+    stable_lock: Option<std::fs::File>,
+}
+
+impl Drop for ActionLease {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd as _;
+        if let Some(s) = self.stable_lock.take() {
+            // SAFETY: valid owned fd; unlock before close so a concurrent fork
+            // cannot briefly keep LOCK_SH held.
+            unsafe {
+                libc::flock(s.as_raw_fd(), libc::LOCK_UN);
+            }
+            drop(s);
+        }
+    }
+}
+
+/// Acquire a shared action lease for screen `name` (waiting while the person
+/// controls it, matching `controlled(name)` semantics).
+pub fn acquire_action_lease(name: &str) -> Result<ActionLease, String> {
+    acquire_action_lease_in(&dir(), name)
+}
+
+pub(crate) fn acquire_action_lease_in(dir: &Path, name: &str) -> Result<ActionLease, String> {
+    use std::os::fd::AsRawFd as _;
+    require_valid_name(name)?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create runtime folder: {e}"))?;
+    let stable = open_stable_lock(&control_lock_file(dir, name))?;
+    // First try non-blocking so we can check if someone else holds Take Control.
+    // SAFETY: valid owned fd.
+    if unsafe { libc::flock(stable.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } != 0 {
+        return Err(format!("someone is controlling screen {name} right now"));
+    }
+    // Also honor an unchanged `olo-rex-link` or legacy viewer that only holds
+    // `NAME.control` (without `NAME.control.lock`).
+    if controlled_in(dir, name) {
+        unsafe {
+            libc::flock(stable.as_raw_fd(), libc::LOCK_UN);
+        }
+        return Err(format!("someone is controlling screen {name} right now"));
+    }
+    Ok(ActionLease { stable_lock: Some(stable) })
+}
+
+/// Acquire exclusive Take Control lock for screen `name`, failing without
+/// modifying `.control` if another viewer or an in-flight agent action holds it.
+pub fn try_acquire_control(name: &str) -> Result<ControlLock, String> {
+    try_acquire_control_in(&dir(), name)
+}
+
+pub(crate) fn try_acquire_control_in(dir: &Path, name: &str) -> Result<ControlLock, String> {
+    use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
+    use std::os::fd::AsRawFd as _;
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+
+    require_valid_name(name)?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create control folder: {e}"))?;
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    let my_pid = std::process::id() as i32;
+    let my_ticks = proc_start_ticks(my_pid);
+
+    let mut stable = open_stable_lock(&control_lock_file(dir, name))?;
+    // SAFETY: valid owned fd.
+    if unsafe { libc::flock(stable.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err("Someone else is controlling or acting on this screen.".into());
+    }
+
+    let path = control_file(dir, name);
+    for _ in 0..4 {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+            .open(&path)
+            .map_err(|e| format!("couldn't open control lock for {name}: {e}"))?;
+        let fm = file.metadata().map_err(|e| format!("stat control lock for {name}: {e}"))?;
+        if !fm.file_type().is_file() || fm.uid() != uid {
+            return Err(format!("refusing unsafe control marker for {name}"));
+        }
+        // SAFETY: `file` is a valid owned file descriptor.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return Err("Someone else is controlling this screen.".into());
+        }
+        let same_inode = std::fs::symlink_metadata(&path).is_ok_and(|pm| pm.file_type().is_file() && fm.dev() == pm.dev() && fm.ino() == pm.ino());
+        if !same_inode {
+            continue;
+        }
+        // Guard against a live legacy non-flocking viewer BEFORE truncating.
+        if fm.len() > 0 && fm.len() <= 64 {
+            let mut existing = Vec::new();
+            if file.seek(SeekFrom::Start(0)).is_ok()
+                && std::io::Read::by_ref(&mut file).take(65).read_to_end(&mut existing).is_ok()
+                && let Some((other_pid, _)) = parse_control_lock_meta(&existing)
+                && other_pid != my_pid
+                && is_controller_alive(other_pid, None)
+            {
+                return Err("Someone else is controlling this screen.".into());
+            }
+        }
+        // Record `(pid, start_ticks)` in the stable lock file for PID-reuse
+        // validation, and keep plain decimal `{pid}` in `.control` for full
+        // compatibility with legacy/current `olo-rex-link` readers.
+        let _ = stable.set_len(0);
+        let _ = stable.seek(SeekFrom::Start(0));
+        if let Some(t) = my_ticks {
+            let _ = write!(stable, "{my_pid} {t}");
+        } else {
+            let _ = write!(stable, "{my_pid}");
+        }
+        let _ = stable.flush();
+
+        if let Err(e) = file.set_len(0).and_then(|()| file.seek(SeekFrom::Start(0))).and_then(|_| write!(file, "{my_pid}")).and_then(|()| file.flush()) {
+            if std::fs::symlink_metadata(&path).is_ok_and(|pm| fm.dev() == pm.dev() && fm.ino() == pm.ino()) {
+                let _ = std::fs::remove_file(&path);
+            }
+            return Err(format!("couldn't write control lock for {name}: {e}"));
+        }
+        return Ok(ControlLock { marker_path: path, marker_id: (fm.dev(), fm.ino()), stable_lock: Some(stable), marker_file: Some(file) });
+    }
+    Err("Someone else is controlling this screen.".into())
+}
+
+/// Whether `exe` (resolved from `/proc/PID/exe`) is an Olo viewer or Rex
+/// helper permitted to hold a screen's `.control` lock (`olo-screen`,
+/// `olo-rex`, `olo-rex-link*`, or the current test executable).
+fn is_controller_exe(exe: &Path) -> bool {
+    let Some(raw) = exe.file_name().and_then(|n| n.to_str()) else { return false };
+    let clean = raw.trim_end_matches(" (deleted)");
+    if clean == "olo-screen" || clean == "olo-rex" || clean.starts_with("olo-rex-link") {
+        return true;
+    }
+    std::env::current_exe().ok().and_then(|me| me.file_name().map(|m| m == raw || m == clean)).unwrap_or(false)
 }
 
 /// Whether the person is controlling screen `name` now (a viewer that
@@ -109,10 +397,15 @@ pub fn controlled(name: &str) -> bool {
 }
 
 fn controlled_in(dir: &Path, name: &str) -> bool {
-    let Some(pid) = std::fs::read_to_string(control_file(dir, name)).ok().and_then(|s| s.trim().parse::<u32>().ok()) else { return false };
-    // (The viewer is this program, in its window.)
-    let ours = |exe: PathBuf| exe.file_name().is_some_and(|n| std::env::current_exe().ok().and_then(|me| me.file_name().map(|m| m == n)).unwrap_or(false));
-    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(ours)
+    if !valid_name(name) {
+        return false;
+    }
+    let Some(bytes) = read_bounded_regular(&control_file(dir, name), 64) else { return false };
+    let Some((pid, inline_ticks)) = parse_control_lock_meta(&bytes) else { return false };
+    // Check optional `(pid, start_ticks)` recorded in the stable lock sidecar
+    // so a recycled PID from a crashed helper is not mistaken for the owner.
+    let expected_ticks = inline_ticks.or_else(|| read_bounded_regular(&control_lock_file(dir, name), 64).and_then(|b| parse_control_lock_meta(&b)).filter(|(p, _)| *p == pid).and_then(|(_, t)| t));
+    is_controller_alive(pid, expected_ticks)
 }
 
 /// Forget the screens this process said the person controls (a viewer
@@ -122,18 +415,48 @@ pub fn clear_controlled_by_me() {
 }
 
 fn clear_controlled_in(dir: &Path) {
-    let me = std::process::id().to_string();
+    use std::os::fd::AsRawFd as _;
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+    let me = std::process::id() as i32;
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
-        if path.extension().is_some_and(|e| e == "control") && std::fs::read_to_string(&path).is_ok_and(|s| s.trim() == me) {
-            let _ = std::fs::remove_file(path);
+        if !path.extension().is_some_and(|e| e == "control") {
+            continue;
+        }
+        let Some(name) = path.file_stem().and_then(|s| s.to_str()).filter(|n| valid_name(n)) else { continue };
+        let Some(bytes) = read_bounded_regular(&path, 64) else { continue };
+        if !parse_control_lock_meta(&bytes).is_some_and(|(p, _)| p == me) {
+            continue;
+        }
+        // Serialize with `NAME.control.lock` and verify `(dev, ino)` before unlinking.
+        let Ok(stable) = open_stable_lock(&control_lock_file(dir, name)) else { continue };
+        if unsafe { libc::flock(stable.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            continue;
+        }
+        let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(&path) else {
+            continue;
+        };
+        let Ok(fm) = file.metadata() else { continue };
+        if !fm.file_type().is_file() {
+            continue;
+        }
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0
+            && std::fs::symlink_metadata(&path).is_ok_and(|pm| pm.file_type().is_file() && pm.dev() == fm.dev() && pm.ino() == fm.ino())
+        {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
 
-/// A name a screen can have: letters, digits, `-` and `_`.
+/// A name a screen can have: starts with a letter or digit, followed by
+/// letters, digits, `-` or `_` (never option-shaped `-…` or path-shaped).
 pub fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 40 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    !name.is_empty() && name.len() <= 40 && name.as_bytes()[0].is_ascii_alphanumeric() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Single validation gate for every operation taking a screen name.
+pub(crate) fn require_valid_name(name: &str) -> Result<(), String> {
+    if valid_name(name) { Ok(()) } else { Err(format!("{name:?} can't name a screen (letters, digits, - and _)")) }
 }
 
 /// Whether a process with this command line and environment is screen
@@ -161,7 +484,12 @@ fn is_session_of(cmdline: &[u8], environ: &[u8], name: &str) -> bool {
 /// each `start` and `stop` it made ended them all, another agent's
 /// screen in the middle of its work among them (2026-11-16).
 fn listed_in(environ: &[u8], here: &Path) -> bool {
-    let theirs = environ.split(|b| *b == 0).find_map(|v| v.strip_prefix(b"XDG_RUNTIME_DIR=")).map(|d| PathBuf::from(String::from_utf8_lossy(d).into_owned())).unwrap_or_else(std::env::temp_dir);
+    let theirs = environ
+        .split(|b| *b == 0)
+        .find_map(|v| v.strip_prefix(b"XDG_RUNTIME_DIR="))
+        .filter(|d| !d.is_empty())
+        .map(|d| PathBuf::from(String::from_utf8_lossy(d).into_owned()))
+        .unwrap_or_else(fallback_runtime_dir);
     let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_owned());
     real(&theirs) == real(here)
 }
@@ -389,14 +717,22 @@ fn sanitize(program: &str) -> String {
 /// The running screens, by name. Entries whose session is gone are
 /// removed.
 pub fn list() -> Vec<Screen> {
+    list_in(&dir())
+}
+
+pub(crate) fn list_in(runtime_screens_dir: &Path) -> Vec<Screen> {
     let mut screens = Vec::new();
-    let Ok(read) = std::fs::read_dir(dir()) else { return screens };
+    let Ok(read) = std::fs::read_dir(runtime_screens_dir) else { return screens };
     for e in read.flatten() {
         let path = e.path();
-        if path.extension().is_none_or(|x| x != "json") || path.to_string_lossy().ends_with("-settings.json") {
+        if path.extension().is_none_or(|x| x != "json") {
             continue;
         }
-        let Some(screen) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Screen>(&b).ok()) else { continue };
+        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if fname.ends_with("-settings.json") || fname.ends_with(".owner.json") {
+            continue;
+        }
+        let Some(screen) = read_bounded_regular(&path, 64 * 1024).and_then(|b| serde_json::from_slice::<Screen>(&b).ok()) else { continue };
         // (Forgotten only once its session has ended: a socket missing a
         // moment, or a command line that changed, isn't that.)
         if screen.running() {
@@ -409,8 +745,24 @@ pub fn list() -> Vec<Screen> {
     screens
 }
 
+/// Look up a single running screen directly from its bounded `NAME.json`
+/// descriptor (no full directory scan, no unbounded read).
 pub fn get(name: &str) -> Result<Screen, String> {
-    list().into_iter().find(|s| s.name == name).ok_or_else(|| format!("there's no screen {name:?} (olo-screen list)"))
+    get_in(&dir(), name)
+}
+
+pub(crate) fn get_in(runtime_screens_dir: &Path, name: &str) -> Result<Screen, String> {
+    require_valid_name(name)?;
+    let path = runtime_screens_dir.join(format!("{name}.json"));
+    let Some(screen) = read_bounded_regular(&path, 64 * 1024).and_then(|b| serde_json::from_slice::<Screen>(&b).ok()) else {
+        return Err(format!("there's no screen {name:?} (olo-screen list)"));
+    };
+    if screen.name == name && screen.running() {
+        Ok(screen)
+    } else {
+        let _ = std::fs::remove_file(&path);
+        Err(format!("there's no screen {name:?} (olo-screen list)"))
+    }
 }
 
 /// The first of "agent", "agent-2", … that no running screen has: what
@@ -463,24 +815,17 @@ impl Default for Options {
     }
 }
 
-/// Where a screen's own settings are kept, beside its history: every
-/// screen, however started (the viewer's New Screen leaves no history
-/// till an agent acts on it), is listed once stopped, and starts again as
-/// it was.
-fn kept_path(name: &str) -> PathBuf {
-    crate::history::dir(name).join("screen.json")
-}
-
-/// What screen `name` was started with, if it ever was.
+/// What screen `name` was started with, if it ever was. Validates `name` and
+/// reads only a bounded non-symlink regular file.
 pub fn kept(name: &str) -> Option<Options> {
-    std::fs::read(kept_path(name)).ok().and_then(|b| serde_json::from_slice(&b).ok())
+    let dir = crate::history::dir_checked(name).ok()?;
+    read_bounded_regular(&dir.join("screen.json"), 16 * 1024).and_then(|b| serde_json::from_slice(&b).ok())
 }
 
 fn keep(name: &str, opts: &Options) {
-    let path = kept_path(name);
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
+    let Ok(dir) = crate::history::dir_checked(name) else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("screen.json");
     if let Ok(json) = serde_json::to_vec_pretty(opts) {
         let _ = std::fs::write(path, json);
     }
@@ -512,10 +857,11 @@ pub fn all() -> Vec<(String, State)> {
 
 /// Stop screen `name` if it runs, archive it.
 pub fn archive(name: &str, on: bool) -> Result<(), String> {
+    let _life = lock_lifecycle_in(&dir(), name)?;
     if !all().iter().any(|(n, _)| n == name) {
         return Err(format!("there's no screen {name:?} (olo-screen list)"));
     }
-    if on && list().iter().any(|s| s.name == name) {
+    if on && get(name).is_ok() {
         return Err(format!("screen {name} is running: stop it first (olo-screen stop {name})"));
     }
     crate::history::set_archived(name, on)
@@ -525,13 +871,44 @@ pub fn archive(name: &str, on: bool) -> Result<(), String> {
 /// recordings, stats and Chrome profile), to the Trash; stopped first if
 /// it runs.
 pub fn delete(name: &str) -> Result<(), String> {
+    let _life = lock_lifecycle_in(&dir(), name)?;
     if !all().iter().any(|(n, _)| n == name) {
         return Err(format!("there's no screen {name:?} (olo-screen list)"));
     }
-    if list().iter().any(|s| s.name == name) {
-        stop(name)?;
+    if get(name).is_ok() {
+        stop_locked(&dir(), name, None)?;
     }
+    let _ = std::fs::remove_file(dir().join(format!("{name}.owner.json")));
     crate::history::trash(name)
+}
+
+/// Delete screen `name` ONLY if it is currently stopped (refusing if a new
+/// session started while the confirmation dialog was open).
+pub fn delete_if_stopped(name: &str) -> Result<(), String> {
+    delete_if_stopped_in(&dir(), &crate::history::root_dir(), name)
+}
+
+pub(crate) fn delete_if_stopped_in(rt_dir: &Path, state_root: &Path, name: &str) -> Result<(), String> {
+    let _life = lock_lifecycle_in(rt_dir, name)?;
+    if get_in(rt_dir, name).is_ok() {
+        return Err(format!("screen {name} is running; stop it first before deleting"));
+    }
+    let _ = std::fs::remove_file(rt_dir.join(format!("{name}.owner.json")));
+    crate::history::trash_in(state_root, name)
+}
+
+/// Clear screen `name`'s history ONLY if it is currently stopped (refusing if
+/// the screen started while the confirmation dialog was open).
+pub fn clear_history_if_stopped(name: &str) -> Result<(), String> {
+    clear_history_if_stopped_in(&dir(), &crate::history::root_dir(), name)
+}
+
+pub(crate) fn clear_history_if_stopped_in(rt_dir: &Path, state_root: &Path, name: &str) -> Result<(), String> {
+    let _life = lock_lifecycle_in(rt_dir, name)?;
+    if get_in(rt_dir, name).is_ok() {
+        return Err(format!("screen {name} is running; stop it first before clearing its history"));
+    }
+    crate::history::clear_in(state_root, name)
 }
 
 fn config_path() -> PathBuf {
@@ -573,6 +950,10 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     }
     let dir = dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let _life = lock_lifecycle_in(&dir, name)?;
+    if get_in(&dir, name).is_ok() {
+        return Err(format!("there's already a screen {name:?}"));
+    }
     let _ = std::fs::File::create(dir.join("no-sound"));
     let person: Option<Settings> = std::fs::read(config_path()).ok().and_then(|b| serde_json::from_slice(&b).ok());
     let settings_path = dir.join(format!("{name}-settings.json"));
@@ -668,23 +1049,91 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     Ok(screen)
 }
 
+fn is_executable_file(path: &Path) -> bool {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt as _;
+    let Ok(m) = std::fs::metadata(path) else { return false };
+    if !m.is_file() {
+        return false;
+    }
+    let Ok(cpath) = CString::new(path.as_os_str().as_bytes()) else { return false };
+    // `access(X_OK)` checks whether *this account* can actually execute the
+    // file (rejecting foreign owner-only executables and `noexec` mounts).
+    // SAFETY: `cpath` is a valid NUL-terminated path.
+    unsafe { libc::access(cpath.as_ptr(), libc::X_OK) == 0 }
+}
+
+fn resolve_recorder_candidates_from(current_exe: Option<&Path>, path_env: Option<&std::ffi::OsStr>) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut push_unique = |cand: PathBuf| {
+        if is_executable_file(&cand) && !out.contains(&cand) {
+            out.push(cand);
+        }
+    };
+    if let Some(exe) = current_exe {
+        // (This program's own file may have been replaced since it started.)
+        let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+        if exe.file_name().and_then(|n| n.to_str()) == Some("olo-screen") {
+            push_unique(exe.clone());
+        }
+        push_unique(exe.with_file_name("olo-screen"));
+    }
+    if let Some(paths) = path_env {
+        for dir in std::env::split_paths(paths) {
+            push_unique(dir.join("olo-screen"));
+        }
+    }
+    if let Some(found) = olo_xdg::find_program("olo-screen") {
+        push_unique(found);
+    }
+    out
+}
+
+/// Resolve all executable `olo-screen` candidates in priority order so a
+/// failing candidate (e.g. `EACCES` or `noexec`) falls through to the next.
+fn resolve_recorder_candidates() -> Vec<PathBuf> {
+    let cur = std::env::current_exe().ok();
+    let path_env = std::env::var_os("PATH");
+    resolve_recorder_candidates_from(cur.as_deref(), path_env.as_deref())
+}
+
+fn spawn_recorder_from_candidates(candidates: &[PathBuf], name: &str, pid: i32, log_path: Option<&Path>) -> Result<(), String> {
+    use std::os::unix::process::CommandExt as _;
+    if candidates.is_empty() {
+        return Err("olo-screen wasn't found".into());
+    }
+    let mut last_err = String::new();
+    for exe in candidates {
+        let mut rec = Command::new(exe);
+        rec.args(["record", name]).process_group(pid).stdin(std::process::Stdio::null());
+        if let Some(lp) = log_path
+            && let Ok(log) = std::fs::OpenOptions::new().create(true).append(true).open(lp)
+        {
+            if let Ok(out) = log.try_clone() {
+                rec.stdout(out);
+            }
+            rec.stderr(log);
+        }
+        match rec.spawn() {
+            Ok(child) => {
+                olo_xdg::reap_child(child);
+                return Ok(());
+            }
+            Err(e) => {
+                last_err = format!("{}: {e}", exe.display());
+            }
+        }
+    }
+    Err(last_err)
+}
+
 /// Start what keeps screen `name`'s frames beside its history (`record`)
 /// for as long as it runs: in the screen's process group (its session's
 /// pid), so it ends with it.
 fn start_recorder(name: &str, pid: i32) {
-    use std::os::unix::process::CommandExt as _;
-    let Ok(exe) = std::env::current_exe() else { return };
-    // (This program's own file may have been replaced since it started.)
-    let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
-    let mut rec = Command::new(exe);
-    rec.args(["record", name]).process_group(pid).stdin(std::process::Stdio::null());
-    if let Ok(log) = std::fs::OpenOptions::new().create(true).append(true).open(logs_dir(&dir()).join(format!("{name}-record.log"))) {
-        if let Ok(out) = log.try_clone() {
-            rec.stdout(out);
-        }
-        rec.stderr(log);
-    }
-    if let Err(e) = rec.spawn().map(olo_xdg::reap_child) {
+    let candidates = resolve_recorder_candidates();
+    let log_path = logs_dir(&dir()).join(format!("{name}-record.log"));
+    if let Err(e) = spawn_recorder_from_candidates(&candidates, name, pid, Some(&log_path)) {
         tracing::warn!("screen {name}'s frames won't be kept: {e}");
     }
 }
@@ -802,9 +1251,38 @@ fn sweep_recorder_frames() {
     }
 }
 
-/// End a screen and everything started on it.
-pub fn stop(name: &str) -> Result<(), String> {
-    let screen = get(name)?;
+/// Remove `NAME.control` ONLY if nobody currently holds the exclusive lock on
+/// `NAME.control.lock` and `NAME.control` (never unlinking a live controller's
+/// replacement marker).
+fn remove_unlocked_control_marker(rt_dir: &Path, name: &str) {
+    use std::os::fd::AsRawFd as _;
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+    let Ok(stable) = open_stable_lock(&control_lock_file(rt_dir, name)) else { return };
+    if unsafe { libc::flock(stable.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return;
+    }
+    let path = control_file(rt_dir, name);
+    let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(&path) else {
+        return;
+    };
+    let Ok(fm) = file.metadata() else { return };
+    if !fm.file_type().is_file() {
+        return;
+    }
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0
+        && std::fs::symlink_metadata(&path).is_ok_and(|pm| pm.file_type().is_file() && pm.dev() == fm.dev() && pm.ino() == fm.ino())
+    {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+fn stop_locked(rt_dir: &Path, name: &str, expected_started: Option<u64>) -> Result<(), String> {
+    let screen = get_in(rt_dir, name)?;
+    if let Some(expected) = expected_started
+        && screen.started != expected
+    {
+        return Err(format!("screen {name} was replaced by a newer session; refusing to stop it"));
+    }
     // The person's programs on it back to their display first.
     crate::moving::send_home(&screen);
     end_sessions(&[screen.pid]);
@@ -817,11 +1295,28 @@ pub fn stop(name: &str) -> Result<(), String> {
         // or by the next start of its name.)
         return Err(format!("screen {name} is still ending"));
     }
-    let _ = std::fs::remove_file(entry(name));
-    let _ = std::fs::remove_file(dir().join(format!("{name}-settings.json")));
-    let _ = std::fs::remove_file(control_file(&dir(), name));
+    let _ = std::fs::remove_file(rt_dir.join(format!("{name}.json")));
+    let _ = std::fs::remove_file(rt_dir.join(format!("{name}-settings.json")));
+    let _ = std::fs::remove_file(rt_dir.join(format!("{name}.owner.json")));
+    remove_unlocked_control_marker(rt_dir, name);
     sweep_recorder_frames();
     Ok(())
+}
+
+/// End a screen and everything started on it.
+pub fn stop(name: &str) -> Result<(), String> {
+    stop_if_generation(name, None)
+}
+
+/// End screen `name`, verifying under its lifecycle lock that its session's
+/// `started` generation still matches `expected_started` (when supplied).
+pub fn stop_if_generation(name: &str, expected_started: Option<u64>) -> Result<(), String> {
+    stop_if_generation_in(&dir(), name, expected_started)
+}
+
+pub(crate) fn stop_if_generation_in(rt_dir: &Path, name: &str, expected_started: Option<u64>) -> Result<(), String> {
+    let _life = lock_lifecycle_in(rt_dir, name)?;
+    stop_locked(rt_dir, name, expected_started)
 }
 
 // ---- Input -----------------------------------------------------------------
@@ -1042,7 +1537,7 @@ mod tests {
     fn a_screens_session_is_known_by_its_environment() {
         let env = b"HOME=/home/me\0OLO_SCREEN=claude-browser\0WAYLAND_DISPLAY=\0";
         // Started, and re-executed bare after an upgrade: both its.
-        assert!(is_session_of(b"/home/me/.local/bin/olo-session\0--headless\01440x900\0", env, "claude-browser"));
+        assert!(is_session_of(b"/home/me/.local/bin/olo-session\0--headless\x001440x900\0", env, "claude-browser"));
         assert!(is_session_of(b"/home/me/.local/bin/olo-session\0", env, "claude-browser"));
         // Another screen's, the person's own session, another program.
         assert!(!is_session_of(b"/home/me/.local/bin/olo-session\0", env, "claude"));
@@ -1060,7 +1555,7 @@ mod tests {
         assert!(!listed_in(b"HOME=/var/tmp/shots/home\0XDG_RUNTIME_DIR=/var/tmp/shots/run\0OLO_SCREEN=readme\0", here));
         assert!(!listed_in(b"XDG_RUNTIME_DIR=/run/user/1000\0OLO_SCREEN=qa\0", Path::new("/var/tmp/shots/run")));
         // No folder said: the one olo-screen itself falls back to.
-        assert!(listed_in(b"OLO_SCREEN=agent\0", &std::env::temp_dir()));
+        assert!(listed_in(b"OLO_SCREEN=agent\0", &fallback_runtime_dir()));
     }
 
     /// When a process started, past a name with spaces and parentheses.
@@ -1076,23 +1571,89 @@ mod tests {
     /// runs there rather than handing its window to the person's Chrome.
     #[test]
     fn an_agent_waits_while_the_person_controls() {
-        let dir = std::env::temp_dir().join(format!("olo-screen-control-{}", std::process::id()));
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-control-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!controlled_in(&dir, "agent"));
-        set_controlled_in(&dir, "agent", true);
+        let mut lock = try_acquire_control_in(&dir, "agent").unwrap();
         assert!(controlled_in(&dir, "agent") && !controlled_in(&dir, "agent-2"));
-        set_controlled_in(&dir, "agent", false);
+        lock.release();
         assert!(!controlled_in(&dir, "agent"));
         // A viewer that has gone (another program on that pid, or none)
         // controls nothing.
         std::fs::write(control_file(&dir, "agent"), "1").unwrap();
         assert!(!controlled_in(&dir, "agent"));
         // Started again (an upgrade's exec: the same pid), it forgets
-        // what it said before.
-        set_controlled_in(&dir, "agent", true);
+        // an unlocked leftover lock file with its own pid.
+        std::fs::write(control_file(&dir, "agent"), std::process::id().to_string()).unwrap();
         clear_controlled_in(&dir);
         assert!(!controlled_in(&dir, "agent"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn astra_f2_control_lock_excludes_second_viewer_and_preserves_owner() {
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-f2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut first = try_acquire_control_in(&dir, "qa").expect("first viewer acquires lock");
+        let ctrl_path = control_file(&dir, "qa");
+        assert!(ctrl_path.starts_with(&dir));
+        assert_eq!(std::fs::read_to_string(&ctrl_path).unwrap().trim(), std::process::id().to_string());
+
+        // Second viewer fails without truncating or removing the first's lock.
+        let second = try_acquire_control_in(&dir, "qa");
+        assert!(second.is_err(), "second viewer must be refused while first holds lock");
+        assert!(ctrl_path.is_file(), "refused acquisition must leave lock file intact");
+        assert_eq!(std::fs::read_to_string(&ctrl_path).unwrap().trim(), std::process::id().to_string());
+
+        // `clear_controlled_in` must not remove an actively flocked file either.
+        clear_controlled_in(&dir);
+        assert!(ctrl_path.is_file(), "active flocked control file must survive clear_controlled_in");
+
+        // Releasing first removes the file and allows another viewer to acquire.
+        first.release();
+        assert!(!ctrl_path.exists());
+        let third = try_acquire_control_in(&dir, "qa").expect("lock free after first releases");
+        drop(third);
+        assert!(!ctrl_path.exists());
+
+        // Invalid/path-shaped screen name is refused before touching disk.
+        assert!(try_acquire_control_in(&dir, "../escape").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn astra_f28_non_executable_sibling_does_not_mask_path_recorder() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-f28-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let sib_dir = dir.join("sib");
+        let path_dir = dir.join("bin");
+        std::fs::create_dir_all(&sib_dir).unwrap();
+        std::fs::create_dir_all(&path_dir).unwrap();
+
+        let fake_rex = sib_dir.join("olo-rex");
+        let bad_sibling = sib_dir.join("olo-screen");
+        let good_bin = path_dir.join("olo-screen");
+        std::fs::write(&fake_rex, b"").unwrap();
+        std::fs::write(&bad_sibling, b"not executable").unwrap();
+        std::fs::set_permissions(&bad_sibling, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::write(&good_bin, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&good_bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let found = resolve_recorder_candidates_from(Some(&fake_rex), Some(path_dir.as_os_str()));
+        assert_eq!(found.first().map(PathBuf::as_path), Some(good_bin.as_path()), "non-executable sibling must not mask executable on PATH");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn controller_exe_accepts_screen_rex_and_rex_link() {
+        assert!(is_controller_exe(Path::new("/usr/local/bin/olo-screen")));
+        assert!(is_controller_exe(Path::new("/usr/local/bin/olo-screen (deleted)")));
+        assert!(is_controller_exe(Path::new("/usr/local/bin/olo-rex")));
+        assert!(is_controller_exe(Path::new("/home/user/.cache/olo-rex-link-abc123def")));
+        assert!(is_controller_exe(Path::new("/home/user/.cache/olo-rex-link-abc123def (deleted)")));
+        assert!(!is_controller_exe(Path::new("/usr/lib/systemd/systemd")));
+        assert!(!is_controller_exe(Path::new("/usr/bin/bash")));
     }
 
     #[test]
@@ -1188,5 +1749,158 @@ mod tests {
         person.display.scale = 2.0;
         let s = screen_settings(Some(person), 1.0);
         assert_eq!((s.power.sleep_minutes, s.power.display_off_minutes, s.screen_saver.enabled, s.display.scale), (0, 0, false, 1.0));
+    }
+
+    #[test]
+    fn review2_f5_and_f10_control_lock_safety_and_fifo_symlink_rejection() {
+        use std::os::unix::fs::MetadataExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-r2-f5-f10-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // 1. Finding #5: if a replacement `.control` inode appears while an old
+        //    `ControlLock` still exists, dropping the old handle MUST NOT unlink
+        //    the new controller's marker.
+        let mut old = try_acquire_control_in(&dir, "qa").unwrap();
+        let ctrl = control_file(&dir, "qa");
+        // Simulate an external replacement moving the old path aside and creating
+        // a brand-new `.control` inode.
+        let moved = dir.join("qa.control.old");
+        std::fs::rename(&ctrl, &moved).unwrap();
+        std::fs::write(&ctrl, "999999").unwrap();
+        let new_ino = std::fs::symlink_metadata(&ctrl).unwrap().ino();
+        old.release();
+        assert!(ctrl.is_file(), "old ControlLock drop must never unlink replacement .control");
+        assert_eq!(std::fs::symlink_metadata(&ctrl).unwrap().ino(), new_ino);
+        let _ = std::fs::remove_file(&ctrl);
+        let _ = std::fs::remove_file(&moved);
+
+        // 2. Finding #10: FIFO at `.control` must be rejected immediately (never hang)
+        //    and a symlink at `.control` must be rejected (never truncate target).
+        let fifo = control_file(&dir, "fifo");
+        assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+        let dir_c = dir.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(try_acquire_control_in(&dir_c, "fifo").is_err());
+        });
+        assert!(rx.recv_timeout(Duration::from_secs(2)).expect("FIFO .control must not hang"), "FIFO .control must be rejected");
+
+        let victim = dir.join("victim.txt");
+        std::fs::write(&victim, b"untouched").unwrap();
+        std::os::unix::fs::symlink(&victim, control_file(&dir, "sym")).unwrap();
+        assert!(try_acquire_control_in(&dir, "sym").is_err(), "symlink .control must be rejected");
+        assert_eq!(std::fs::read(&victim).unwrap(), b"untouched", "symlink target must not be truncated");
+
+        // 3. Finding #8: stale PID-reuse start_ticks mismatch is treated as NOT controlled.
+        let stale = control_file(&dir, "stale");
+        let stale_lock = control_lock_file(&dir, "stale");
+        std::fs::write(&stale, std::process::id().to_string()).unwrap();
+        std::fs::write(&stale_lock, format!("{} 1", std::process::id())).unwrap();
+        assert!(!controlled_in(&dir, "stale"), "mismatched start_ticks in lock sidecar must not report controlled");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn review2_f36_action_lease_serializes_with_take_control() {
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-r2-f36-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // While an agent CLI action holds `ActionLease` (`LOCK_SH`), Take Control
+        // (`LOCK_EX`) must be refused.
+        let lease = acquire_action_lease_in(&dir, "qa").expect("action lease");
+        assert!(try_acquire_control_in(&dir, "qa").is_err(), "Take Control must not preempt an in-flight agent action");
+        drop(lease);
+
+        // Once the action finishes, Take Control succeeds and blocks new actions.
+        let ctrl = try_acquire_control_in(&dir, "qa").expect("Take Control after action ends");
+        assert!(acquire_action_lease_in(&dir, "qa").is_err(), "agent action must not start while Take Control holds LOCK_EX");
+        drop(ctrl);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn review2_f3_generation_guards_refuse_replaced_stop_and_running_clear_delete() {
+        use std::os::unix::process::CommandExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-r2-f3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt = dir.join("rt");
+        let state = dir.join("state");
+        std::fs::create_dir_all(&rt).unwrap();
+        std::fs::create_dir_all(state.join("qa")).unwrap();
+        std::fs::write(state.join("qa/actions.jsonl"), "{}\n").unwrap();
+
+        // Spawn a real dummy process whose argv[0] ends with `olo-session` and
+        // `OLO_SCREEN=qa` so `Screen::running()` validates it identically to a
+        // live session.
+        let mut fake_session = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").spawn().expect("spawn dummy session");
+        let sock = rt.join("olo-test.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let scr = Screen {
+            name: "qa".into(),
+            wayland_display: "wayland-test".into(),
+            olo_socket: sock,
+            pid: fake_session.id() as i32,
+            width: 800,
+            height: 600,
+            scale: 1.0,
+            sound: false,
+            started: 2000,
+            bus: None,
+            a11y: None,
+        };
+        std::fs::write(rt.join("qa.json"), serde_json::to_vec(&scr).unwrap()).unwrap();
+
+        // Stop with older generation 1000 must refuse to stop generation 2000!
+        let err = stop_if_generation_in(&rt, "qa", Some(1000)).unwrap_err();
+        assert!(err.contains("replaced"), "expected replaced-session refusal, got: {err}");
+        // Clear & Delete while running must both refuse!
+        assert!(clear_history_if_stopped_in(&rt, &state, "qa").is_err(), "clear must refuse running screen");
+        assert!(delete_if_stopped_in(&rt, &state, "qa").is_err(), "delete must refuse running screen");
+        assert!(state.join("qa/actions.jsonl").is_file());
+
+        let _ = fake_session.kill();
+        let _ = fake_session.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn review2_f42_and_f43_option_names_rejected_and_runtime_never_tmp() {
+        assert!(!valid_name("-x"));
+        assert!(!valid_name("--clear"));
+        assert!(!valid_name("_leading_underscore"));
+        assert!(valid_name("agent-1_ok"));
+        let fb = fallback_runtime_dir();
+        assert!(!fb.starts_with("/tmp"), "fallback runtime dir must not live in /tmp: {}", fb.display());
+    }
+
+    #[test]
+    fn review2_f57_recorder_spawn_falls_through_failing_candidate() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-r2-f57-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // First candidate has +x bit but invalid ELF/shebang (spawn returns ENOEXEC).
+        let bad = dir.join("bad-screen");
+        std::fs::write(&bad, b"#!/nonexistent/interpreter/path\n").unwrap();
+        std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Second candidate is a real executable script that writes a marker file.
+        let marker = dir.join("ran.txt");
+        let good = dir.join("good-screen");
+        std::fs::write(&good, format!("#!/bin/sh\necho ok > {}\n", marker.display())).unwrap();
+        std::fs::set_permissions(&good, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        spawn_recorder_from_candidates(&[bad, good], "qa", 0, None).expect("must fall through failing candidate to working one");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !marker.is_file() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(marker.is_file(), "working fallback candidate must have executed");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

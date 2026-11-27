@@ -1,11 +1,10 @@
 //! A screen's use as cards (the Stats tab): when it was started and last
 //! used, how long it has run and been in use; its actions by kind and how
 //! many failed; how busy it was minute by minute over the last hour of
-//! use; and the programs run on it. From the history the window already
+//! use; and the programs run on it. From the history the pane already
 //! follows, so it changes as the agent works.
 
 use std::collections::VecDeque;
-
 use std::rc::Rc;
 
 use olo_kit::{
@@ -27,7 +26,7 @@ const MIN_CARD: f32 = 250.0;
 const GRAPH_H: f32 = 96.0;
 
 /// "14 min", "2 h 3 min", "45 s".
-pub fn span(ms: u64) -> String {
+pub(crate) fn span(ms: u64) -> String {
     let s = ms / 1000;
     match s {
         0..60 => format!("{s} s"),
@@ -37,7 +36,7 @@ pub fn span(ms: u64) -> String {
 }
 
 /// When `ms` was: the time today, else the day and time.
-pub fn when(ms: u64, now: u64) -> String {
+pub(crate) fn when(ms: u64, now: u64) -> String {
     let t = history::clock(ms);
     let (date, time) = (t.get(..10).unwrap_or(""), t.get(11..16).unwrap_or(""));
     if history::midnight(ms) == history::midnight(now) {
@@ -51,7 +50,7 @@ pub fn when(ms: u64, now: u64) -> String {
 }
 
 /// "3 min ago", "just now": said again as it changes (`olo_kit::ago`).
-pub fn ago(ms: u64, _now: u64) -> String {
+pub(crate) fn ago(ms: u64, _now: u64) -> String {
     olo_kit::ago::ago_ms(ms, ago_words)
 }
 
@@ -66,15 +65,16 @@ fn ago_words(age: std::time::Duration) -> String {
 
 /// The Stats tab for `replay`'s screen: its cards, two abreast when
 /// `width` has room, scrolled with `scroll`.
-pub fn view(replay: &Child<Replay>, running: bool, width: f32, scroll: &ScrollHandle, cx: &mut WindowCx) -> Element {
-    let (name, st, (series, busiest), end, empty) = replay.update(cx, |r, _| {
+pub(crate) fn view(replay: &Child<Replay>, running: bool, width: f32, scroll: &ScrollHandle, cx: &mut WindowCx) -> Element {
+    let (key, st, (series, busiest), end, empty, unavailable) = replay.update(cx, |r, _| {
         let st = r.stats(running).clone();
         let now = history::now_ms();
         let end = if running { now } else { st.last_used.unwrap_or(now) };
-        (r.name.clone(), st, per_minute(r.actions(), end), end, r.actions().is_empty())
+        (r.id_key().to_owned(), st, per_minute(r.actions(), end), end, r.actions().is_empty(), r.unavailable().map(str::to_owned))
     });
     if empty {
-        return div().size_full().child(EmptyState::new("Nothing has been done on this screen yet.").icon("agent-screens"));
+        let message = unavailable.unwrap_or_else(|| "Nothing has been done on this screen yet.".to_owned());
+        return div().size_full().child(EmptyState::new(message).icon("agent-screens"));
     }
     let p = theme::palette();
     let now = history::now_ms();
@@ -94,7 +94,7 @@ pub fn view(replay: &Child<Replay>, running: bool, width: f32, scroll: &ScrollHa
     facts.push(("Ran for".into(), span(st.ran_ms).into()));
     facts.push(("In use".into(), span(st.active_ms).into()));
     let caption = if running { "Running now" } else { "Stopped" };
-    let use_card = Card::new(format!("stats-use-{name}"), "Use").figure(span(st.active_ms)).caption(caption).child(Facts::new(facts));
+    let use_card = Card::new(format!("stats-use-{key}"), "Use").figure(span(st.active_ms)).caption(caption).child(Facts::new(facts));
 
     // Actions by kind.
     let kinds: Vec<(&str, usize)> = KINDS.iter().map(|(_, label, ks)| (*label, ks.iter().map(|k| st.actions.get(*k).copied().unwrap_or(0)).sum())).filter(|(_, n)| *n > 0).collect();
@@ -103,18 +103,18 @@ pub fn view(replay: &Child<Replay>, running: bool, width: f32, scroll: &ScrollHa
         1 => "1 failed".to_owned(),
         f => format!("{f} failed"),
     };
-    let actions_card = Card::new(format!("stats-actions-{name}"), "Actions").figure(style::thousands(total)).caption(failed).child(kind_bars(kinds));
+    let actions_card = Card::new(format!("stats-actions-{key}"), "Actions").figure(style::thousands(total)).caption(failed).child(kind_bars(kinds));
 
     // How busy, minute by minute.
     let fmt = |v: f64| format!("{v:.0}");
     let lines = vec![Series::new("Actions", c(p.keyboard_navigation), Rc::new(series)).fill(true)];
-    let graph = Graph::new(format!("screen-activity-{name}"), lines, end as f64 / 1000.0).span(3600.0).grid(600.0).unit(fmt).smooth(false).plain();
-    let activity_card = Card::new(format!("stats-activity-{name}"), "Actions a Minute").figure(format!("{busiest} at most")).caption("The last hour of use").child(div().h(px(GRAPH_H)).child(graph));
+    let graph = Graph::new(format!("screen-activity-{key}"), lines, end as f64 / 1000.0).span(3600.0).grid(600.0).unit(fmt).smooth(false).plain();
+    let activity_card = Card::new(format!("stats-activity-{key}"), "Actions a Minute").figure(format!("{busiest} at most")).caption("The last hour of use").child(div().h(px(GRAPH_H)).child(graph));
 
     // Programs.
     let programs: Vec<(SharedString, SharedString)> =
         st.programs.iter().map(|(p, n)| (SharedString::from(p.clone()), SharedString::from(if *n == 1 { "once".to_owned() } else { format!("{n} times") }))).collect();
-    let mut programs_card = Card::new(format!("stats-programs-{name}"), "Programs").figure(st.programs.len().to_string()).caption("Run on it with “olo-screen run”");
+    let mut programs_card = Card::new(format!("stats-programs-{key}"), "Programs").figure(st.programs.len().to_string()).caption("Run on it with “olo-screen run”");
     programs_card = if programs.is_empty() {
         let ink = style::card_ink(&p);
         programs_card.child(StringView::new("None run.").height(FACT_ROW).color(ink.dim))
@@ -168,7 +168,7 @@ fn per_minute(actions: &[Action], end: u64) -> (VecDeque<(f64, f64)>, usize) {
     let end_min = end / 60_000;
     let first = end_min.saturating_sub(59);
     let mut counts = [0usize; 60];
-    for a in actions.iter().rev().take_while(|a| a.at / 60_000 >= first) {
+    for a in actions.iter().rev().filter(|a| !a.is_oversized()).take_while(|a| a.at / 60_000 >= first) {
         let m = a.at / 60_000;
         if m <= end_min {
             counts[(m - first) as usize] += 1;
@@ -195,5 +195,29 @@ mod tests {
         assert_eq!(samples[59].1, 1.0);
         assert_eq!(span(45_000), "45 s");
         assert_eq!(span(3_780_000), "1 h 3 min");
+
+        // Empty history produces 60 zero samples.
+        let (empty_samples, empty_most) = per_minute(&[], end);
+        assert_eq!(empty_samples.len(), 60);
+        assert_eq!(empty_most, 0);
+
+        // Oversized placeholder (at == 0) in the middle must not truncate earlier actions.
+        let oversized = Action { at: 0, ms: 0, kind: "oversized".into(), args: vec![], result: None, error: None };
+        let with_oversized = vec![a(41 * 60_000), a(99 * 60_000 + 1), oversized, a(100 * 60_000)];
+        let (ov_samples, ov_most) = per_minute(&with_oversized, end);
+        assert_eq!(ov_most, 1);
+        assert_eq!(ov_samples[0], ((41 * 60) as f64, 1.0));
+        assert_eq!(ov_samples[58].1, 1.0);
+        assert_eq!(ov_samples[59].1, 1.0);
+    }
+
+    #[test]
+    fn when_formats_today_vs_earlier_day() {
+        let now = 1_750_000_000_000u64;
+        let today = when(now - 60_000, now);
+        assert_eq!(today.len(), 5, "{today}");
+        assert!(today.contains(':'));
+        let yesterday = when(now - 2 * 86_400_000, now);
+        assert!(yesterday.contains(','), "{yesterday}");
     }
 }

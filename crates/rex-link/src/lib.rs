@@ -39,6 +39,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 pub mod agents;
+pub mod screen_wire;
 
 /// What this helper does, counted: the app reads it from [`HEADER`] and
 /// asks of the helper only what its number says it does. 1: what is
@@ -1444,6 +1445,10 @@ pub mod quic_wire {
     pub const PLAIN: u8 = 0;
     pub const CONTROL: u8 = 1;
     pub const HELLO: u8 = 2;
+    /// A screen subcommand (`olo-rex-link screen follow|stream|history|export …`),
+    /// followed by a length-prefixed JSON argv selector (`screen_wire::encode_quic_screen_args`),
+    /// sent at priority `-1` (below terminals and control).
+    pub const SCREEN: u8 = 3;
     /// The ports the helper tries first (one to open in a firewall),
     /// before any the system gives it.
     pub const PORTS: std::ops::RangeInclusive<u16> = 61100..=61199;

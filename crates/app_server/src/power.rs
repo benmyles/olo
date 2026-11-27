@@ -1135,10 +1135,25 @@ impl<B: Backend> AnvilState<B> {
     /// An IPC connection closed: what it kept awake isn't.
     pub fn ipc_closed(&mut self, conn: &std::rc::Rc<crate::ipc::Conn>) {
         self.grabs_closed(conn);
+        self.input_closed(conn);
         let before = self.power.keep_awake.len();
         self.power.keep_awake.retain(|(c, _)| !std::rc::Rc::ptr_eq(c, conn));
         if self.power.keep_awake.len() != before {
             self.power_changed();
+        }
+    }
+
+    /// A connection that owned its synthetic input ended
+    /// (`Request::OwnInput`): what it still had down is let go, the last
+    /// pressed first, as its own letting go would have been taken.
+    pub fn input_closed(&mut self, conn: &std::rc::Rc<crate::ipc::Conn>) {
+        let Some(at) = self.ipc.owned_input.iter().position(|(who, _)| std::rc::Rc::ptr_eq(who, conn)) else { return };
+        let (_, held) = self.ipc.owned_input.swap_remove(at);
+        if !held.is_empty() {
+            info!(held = held.len(), "a connection that owned its input ended with it down: let go");
+        }
+        for what in held.into_iter().rev() {
+            self.synthetic_input(what.release());
         }
     }
 

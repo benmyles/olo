@@ -26,12 +26,131 @@
 //! what the viewer lists, or the rows chosen). Run on a worker:
 //! `progress` is told how far it has got and says whether to go on.
 
-use std::path::Path;
+use std::{
+    fs::{File, OpenOptions},
+    io::Write as _,
+    os::unix::fs::OpenOptionsExt as _,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::{
     history,
     record::{self, Frame, Player},
 };
+
+/// Monotonic per-process sequence so every temporary `.part` file created for
+/// an export or screenshot is uniquely named and never collides with another
+/// pane's job or an unrelated sibling file.
+static PART_SEQ: AtomicU64 = AtomicU64::new(1);
+
+/// Maximum screenshot output side and total pixels (256 MiB RGBA budget) so
+/// zoomed screenshots on large frames cannot allocate gigabytes.
+pub(crate) const MAX_SHOT_SIDE: usize = 16_384;
+pub(crate) const MAX_SHOT_PIXELS: usize = 64 * 1024 * 1024;
+
+/// Whether a 0-based action selection has gaps between its sorted unique
+/// indices (e.g. `[2, 3, 4, 8]` → `true`, `[2, 3, 4]` → `false`).
+pub(crate) fn has_gaps(actions: &[usize]) -> bool {
+    if actions.len() <= 1 {
+        return false;
+    }
+    let mut sorted = actions.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    sorted.windows(2).any(|w| w[1] != w[0] + 1)
+}
+
+/// Parse a 0-based `--part` spec (`"2-4,8"` or `"0,3"`) into sorted unique
+/// action indices in `0..count`.
+pub fn parse_part_spec(spec: &str, count: usize) -> Result<Vec<usize>, String> {
+    let mut out = Vec::new();
+    for piece in spec.split(',') {
+        let piece = piece.trim();
+        if piece.is_empty() {
+            return Err(format!("invalid --part spec {spec:?}"));
+        }
+        if let Some((a, b)) = piece.split_once('-') {
+            let start: usize = a.trim().parse().map_err(|_| format!("invalid --part range {piece:?}"))?;
+            let end: usize = b.trim().parse().map_err(|_| format!("invalid --part range {piece:?}"))?;
+            if start > end {
+                return Err(format!("invalid --part range {piece:?}: start > end"));
+            }
+            for i in start..=end {
+                if i < count {
+                    out.push(i);
+                }
+            }
+        } else {
+            let i: usize = piece.parse().map_err(|_| format!("invalid --part index {piece:?}"))?;
+            if i < count {
+                out.push(i);
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    if out.is_empty() {
+        return Err("none of the selected actions exist in this history".into());
+    }
+    Ok(out)
+}
+
+/// An exclusively created (`O_CREAT | O_EXCL | O_NOFOLLOW`, mode `0600`),
+/// uniquely named sibling temporary file beside a destination path.
+///
+/// Cleanup belongs strictly to the creator that successfully created this file:
+/// a failure before creation never unlinks anything, and dropping before
+/// [`ExclusivePartFile::publish`] removes only this creator's unique temp file.
+pub(crate) struct ExclusivePartFile {
+    path: PathBuf,
+    file: Option<File>,
+    keep: bool,
+}
+
+impl ExclusivePartFile {
+    pub(crate) fn create_beside(target: &Path) -> Result<ExclusivePartFile, String> {
+        let parent = target.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
+        let base = target.file_name().and_then(|n| n.to_str()).unwrap_or("output");
+        let pid = std::process::id();
+        for _ in 0..32 {
+            let seq = PART_SEQ.fetch_add(1, Ordering::Relaxed);
+            let candidate = parent.join(format!(".{base}.{pid}-{seq}.part"));
+            match OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(&candidate) {
+                Ok(file) => return Ok(ExclusivePartFile { path: candidate, file: Some(file), keep: false }),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(format!("{}: {e}", candidate.display())),
+            }
+        }
+        Err(format!("couldn't allocate a unique temporary file beside {}", target.display()))
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn take_file(&mut self) -> Option<File> {
+        self.file.take()
+    }
+
+    pub(crate) fn publish(mut self, target: &Path) -> Result<(), String> {
+        if let Some(mut f) = self.file.take() {
+            f.flush().map_err(|e| format!("{}: {e}", self.path.display()))?;
+        }
+        std::fs::rename(&self.path, target).map_err(|e| format!("{}: {e}", target.display()))?;
+        self.keep = true;
+        Ok(())
+    }
+}
+
+impl Drop for ExclusivePartFile {
+    fn drop(&mut self) {
+        self.file.take();
+        if !self.keep {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
 
 const FPS: u64 = 10;
 const STEP_MS: u64 = 1000 / FPS;
@@ -70,8 +189,12 @@ fn pieces(actions: &[(u64, u64)]) -> Vec<Piece> {
     let mut spans: Vec<(u64, u64)> = actions
         .iter()
         .flat_map(|&(at, ms)| {
-            let end = at + ms;
-            if ms > LONG_MS { vec![(at.saturating_sub(BEFORE_MS), at + AFTER_MS), (end.saturating_sub(BEFORE_MS), end + AFTER_MS)] } else { vec![(at.saturating_sub(BEFORE_MS), end + AFTER_MS)] }
+            let end = at.saturating_add(ms);
+            if ms > LONG_MS {
+                vec![(at.saturating_sub(BEFORE_MS), at.saturating_add(AFTER_MS)), (end.saturating_sub(BEFORE_MS), end.saturating_add(AFTER_MS))]
+            } else {
+                vec![(at.saturating_sub(BEFORE_MS), end.saturating_add(AFTER_MS))]
+            }
         })
         .collect();
     spans.sort_unstable();
@@ -80,13 +203,13 @@ fn pieces(actions: &[(u64, u64)]) -> Vec<Piece> {
     for &(a, b) in &spans[1..] {
         // (What's between, less the time kept on either side of a skip,
         // as short as a play-through: it plays through.)
-        if a <= to + PLAY_THROUGH_MS + 2 * FF_PAD_MS {
+        if a <= to.saturating_add(PLAY_THROUGH_MS + 2 * FF_PAD_MS) {
             to = to.max(b);
             continue;
         }
-        out.push(Piece::Screen { from, to: to + FF_PAD_MS });
-        out.push(Piece::Skip { from: to + FF_PAD_MS, to: a - FF_PAD_MS });
-        (from, to) = (a - FF_PAD_MS, b);
+        out.push(Piece::Screen { from, to: to.saturating_add(FF_PAD_MS) });
+        out.push(Piece::Skip { from: to.saturating_add(FF_PAD_MS), to: a.saturating_sub(FF_PAD_MS) });
+        (from, to) = (a.saturating_sub(FF_PAD_MS), b);
     }
     out.push(Piece::Screen { from, to });
     out
@@ -140,6 +263,55 @@ impl Out {
     }
 }
 
+/// The screen's picture `frame`, each pixel `zoom` × `zoom`, written to `path`
+/// as a PNG (streamed row by row into an exclusively created sibling temp file,
+/// renamed once whole). Validates output dimensions and pixel budget against
+/// `frame`'s actual size with checked arithmetic.
+pub fn save_shot(frame: &Frame, zoom: usize, path: &Path) -> Result<(), String> {
+    let z = zoom.max(1);
+    if frame.width == 0 || frame.height == 0 {
+        return Err("cannot save an empty screenshot".into());
+    }
+    let expected_src = frame.width.checked_mul(frame.height).and_then(|p| p.checked_mul(4)).ok_or("source frame dimensions overflow")?;
+    if frame.rgba.len() != expected_src {
+        return Err(format!("source frame pixel count {} != expected {expected_src}", frame.rgba.len()));
+    }
+    let w = frame.width.checked_mul(z).ok_or("screenshot width overflow")?;
+    let h = frame.height.checked_mul(z).ok_or("screenshot height overflow")?;
+    let pixels = w.checked_mul(h).ok_or("screenshot pixel count overflow")?;
+    if w > MAX_SHOT_SIDE || h > MAX_SHOT_SIDE || pixels > MAX_SHOT_PIXELS {
+        return Err(format!("zoomed screenshot {w}×{h} exceeds maximum allowed size ({MAX_SHOT_SIDE} side, {MAX_SHOT_PIXELS} pixels)"));
+    }
+    let row_bytes = w.checked_mul(4).ok_or("screenshot row overflow")?;
+    let mut part = ExclusivePartFile::create_beside(path)?;
+    let file = part.take_file().ok_or("temporary file unavailable")?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+    let mut stream = writer.stream_writer_with_size(row_bytes.min(64 << 10)).map_err(|e| e.to_string())?;
+    let mut wide = Vec::with_capacity(row_bytes);
+    for y in 0..frame.height {
+        let row = &frame.rgba[y * frame.width * 4..(y + 1) * frame.width * 4];
+        wide.clear();
+        if z == 1 {
+            wide.extend_from_slice(row);
+        } else {
+            for px in row.as_chunks::<4>().0 {
+                for _ in 0..z {
+                    wide.extend_from_slice(px);
+                }
+            }
+        }
+        for _ in 0..z {
+            stream.write_all(&wide).map_err(|e| e.to_string())?;
+        }
+    }
+    stream.finish().map_err(|e| e.to_string())?;
+    drop(writer);
+    part.publish(path)
+}
+
 /// Make screen `name`'s history into `out`: all of it (`actions` None),
 /// or the part around these of its actions (their numbers in the
 /// history, from 0), each pixel `zoom` × `zoom` (small screens easier to
@@ -155,11 +327,11 @@ pub fn export(name: &str, actions: Option<&[usize]>, zoom: usize, encoder: olo_v
 
 /// What an export made: how many frames (a tenth of a second each), how
 /// many pictures it encoded for them, and on what.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Made {
     pub frames: u64,
     pub encoded: u64,
-    pub encoder: &'static str,
+    pub encoder: String,
     /// Its size, zoomed.
     pub size: (usize, usize),
 }
@@ -201,9 +373,11 @@ fn export_from(actions: &[(u64, u64)], segments: &[record::Segment], encoder: ol
         .sum::<u64>()
         .max(1);
     let encoder = open_encoder(encoder, &plan, segments, vw, vh)?;
-    let tmp = out.with_extension("mp4.part");
+    let mut part = ExclusivePartFile::create_beside(out)?;
+    // Close our creation handle before `Mp4::create_for` opens the exclusive path.
+    drop(part.take_file());
     // (Each frame a tenth of a second: FPS × 1000 ticks a second.)
-    let mp4 = olo_video::Mp4::create_for(&tmp, vw as u32, vh as u32, FPS as u32 * 1000, encoder.codec()).map_err(|e| e.to_string())?;
+    let mp4 = olo_video::Mp4::create_for(part.path(), vw as u32, vh as u32, FPS as u32 * 1000, encoder.codec()).map_err(|e| e.to_string())?;
     let mut video = Out { encoder, mp4, held: None, encoded: 0 };
     // The picture encoded, as the video is (zoomed, in BGRA: the order the
     // GPUs' encoders take, so nothing is copied again on the way); and a
@@ -269,12 +443,12 @@ fn export_from(actions: &[(u64, u64)], segments: &[record::Segment], encoder: ol
     })();
     if let Err(e) = result {
         drop(video);
-        let _ = std::fs::remove_file(&tmp);
+        drop(part);
         return Err(e);
     }
-    let made = Made { frames: done, encoded: video.encoded, encoder: video.encoder.name(), size: (vw, vh) };
+    let made = Made { frames: done, encoded: video.encoded, encoder: video.encoder.name().to_owned(), size: (vw, vh) };
     video.mp4.finish().map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, out).map_err(|e| e.to_string())?;
+    part.publish(out)?;
     Ok(made)
 }
 
@@ -509,6 +683,25 @@ mod tests {
         assert!(pieces(&[]).is_empty());
     }
 
+    #[test]
+    fn save_shot_zooms_png_accurately() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-pane-shot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let frame = Frame { width: 2, height: 2, rgba: vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255] };
+        let path = dir.join("shot.png");
+        save_shot(&frame, 2, &path).unwrap();
+        let dec = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).unwrap()));
+        let mut reader = dec.read_info().unwrap();
+        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!((info.width, info.height), (4, 4));
+        assert_eq!(&buf[0..4], &[255, 0, 0, 255]);
+        assert_eq!(&buf[4..8], &[255, 0, 0, 255]);
+        assert_eq!(&buf[8..12], &[0, 255, 0, 255]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A screen's colours come out as they were (red stays red: the
     /// pictures go to the encoder in BGRA), and a skip's badge over it.
     #[test]
@@ -599,5 +792,71 @@ mod tests {
         assert_eq!(zooms(2160, 1350), [1], "4320 wide is past H.264's 4096");
         assert_eq!(zooms(1440, 900), [1, 2]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn review2_f2_exclusive_part_preserves_existing_part_and_refuses_symlink() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-pane-r2-f2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Pre-existing sibling `shot.png.part` belonging to someone else must
+        // NEVER be truncated or deleted by `save_shot` (success or failure).
+        let bystander = dir.join("shot.png.part");
+        std::fs::write(&bystander, b"important-unrelated-data").unwrap();
+        let target = dir.join("shot.png");
+
+        let frame = Frame { width: 2, height: 2, rgba: vec![10u8; 16] };
+        save_shot(&frame, 1, &target).unwrap();
+        assert_eq!(std::fs::read(&bystander).unwrap(), b"important-unrelated-data", "bystander .part file must remain untouched");
+        assert!(target.is_file());
+
+        // Two concurrent ExclusivePartFile creators for the same destination
+        // get distinct paths and dropping one never deletes the other.
+        let p1 = ExclusivePartFile::create_beside(&target).unwrap();
+        let p2 = ExclusivePartFile::create_beside(&target).unwrap();
+        assert_ne!(p1.path(), p2.path());
+        assert!(p1.path().starts_with(&dir) && p2.path().starts_with(&dir));
+        let p2_path = p2.path().to_path_buf();
+        drop(p1);
+        assert!(p2_path.is_file(), "dropping p1 must not unlink p2's temp file");
+        drop(p2);
+        assert!(!p2_path.exists(), "dropping p2 must unlink its own temp file");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn review2_f22_save_shot_rejects_oversize_zoom_without_allocating() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-pane-r2-f22-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("huge.png");
+
+        // 8192x8192 @ 3x = 24576x24576 (2.25 GiB RGBA) must be refused before allocating.
+        let frame = Frame { width: 8192, height: 8192, rgba: vec![0u8; 8192 * 8192 * 4] };
+        let err = save_shot(&frame, 3, &out).unwrap_err();
+        assert!(err.contains("exceeds maximum"), "unexpected error: {err}");
+        assert!(!out.exists());
+
+        // Short/corrupt source buffer is also refused without panicking.
+        let bad = Frame { width: 100, height: 100, rgba: vec![0u8; 16] };
+        assert!(save_shot(&bad, 1, &out).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn review2_f44_parse_part_spec_and_has_gaps() {
+        assert_eq!(parse_part_spec("2-4,8", 10).unwrap(), vec![2, 3, 4, 8]);
+        assert!(has_gaps(&[2, 3, 4, 8]));
+        assert!(!has_gaps(&[2, 3, 4]));
+        assert!(!has_gaps(&[4, 2, 3]));
+        assert!(!has_gaps(&[5]));
+        assert!(!has_gaps(&[]));
+        assert_eq!(parse_part_spec("0,0,1-2", 5).unwrap(), vec![0, 1, 2]);
+        assert!(parse_part_spec("4-2", 10).is_err());
+        assert!(parse_part_spec("99", 5).is_err());
+        assert!(parse_part_spec("", 5).is_err());
     }
 }

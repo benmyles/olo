@@ -1,0 +1,29 @@
+[package]
+name = "olo-screen-pane"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-screen-codec.workspace = true
+olo-rex-link.workspace = true
+olo-sync.workspace = true
+olo-kit.workspace = true
+olo-theme.workspace = true
+olo-protocol.workspace = true
+olo-xdg.workspace = true
+olo-keychain.workspace = true
+olo-capture.workspace = true
+olo-video.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+libc = "0.2"
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+png = "0.18"
+zstd = "0.14"
+ab_glyph = "0.2"
+fontdb = "0.23"
+
+[dev-dependencies]
+olo-preview.workspace = true

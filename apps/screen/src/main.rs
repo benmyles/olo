@@ -4,18 +4,10 @@
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
 
 mod atspi;
-mod clip;
-mod export;
 mod find;
-mod history;
-mod moving;
-mod picture;
-mod record;
-mod replay;
-mod screens;
-mod shares;
-mod stats;
 mod viewer;
+
+pub(crate) use olo_screen_pane::{export, history, moving, record, screens};
 
 use std::{path::PathBuf, time::Duration};
 
@@ -64,7 +56,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              what was done on it: each action, what it matched, how it went
        olo-screen history NAME --look N [OUT.png]
                                              the screen as it was when action N (from 1) ended
-       olo-screen history NAME --export OUT.mp4 [--from N] [--to N] [--zoom 1|2|3] [--encoder auto|cpu|nvidia|vaapi]
+       olo-screen history NAME --export OUT.mp4 [--part SPEC] [--from N] [--to N] [--zoom 1|2|3] [--encoder auto|cpu|nvidia|vaapi]
                                              as a video: its actions (N to N, from 1), the time
                                              between them skipped; each pixel zoomed (small
                                              screens easier to read), as far as H.264 allows
@@ -473,13 +465,29 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
     // While the person has the screen, an agent's actions wait for them
     // (reading it still answers): two hands on one pointer made a mess.
-    if !matches!(command, "start" | "take" | "give")
+    // Hold a shared `ActionLease` (`LOCK_SH`) across mutating input/window
+    // commands so Take Control cannot interleave mid-drag.
+    let _action_lease = if !matches!(command, "start" | "stop" | "take" | "give")
         && (history::ACTIONS.contains(&command) || command == "maximize")
         && let Some(n) = rest.first()
-        && screens::controlled(n)
     {
-        return Some(Err(controlled_answer(n)));
-    }
+        if screens::valid_name(n) {
+            match screens::acquire_action_lease(n) {
+                Ok(lease) => Some(lease),
+                Err(_) => return Some(Err(controlled_answer(n))),
+            }
+        } else {
+            None
+        }
+    } else {
+        if command == "stop"
+            && let Some(n) = rest.first()
+            && screens::controlled(n)
+        {
+            return Some(Err(controlled_answer(n)));
+        }
+        None
+    };
     let screen = || screens::get(&name()?);
     let input = |events: Vec<SyntheticEvent>| screen()?.input(events);
     Some(match command {
@@ -490,6 +498,11 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         "watch" => return None,
         "start" => (|| {
             let given = rest.first().filter(|a| !a.starts_with("--")).cloned();
+            if let Some(ref g) = given
+                && !screens::valid_name(g)
+            {
+                return Err(format!("{g:?} can't name a screen (letters, digits, - and _)"));
+            }
             // A stopped screen starts again as it was, unless told otherwise.
             let mut opts = given.as_deref().and_then(screens::kept).unwrap_or_default();
             if let Some(size) = option(rest, "--size") {
@@ -527,7 +540,13 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             Ok(())
         }
         "rename" => name().and_then(|n| history::set_title(&n, rest.get(1).map(String::as_str))),
-        "stop" => name().and_then(|n| screens::stop(&n)),
+        "stop" => (|| {
+            let n = name()?;
+            let expected = option(&rest[1..], "--expected-started")
+                .map(|v| v.parse::<u64>().map_err(|_| "--expected-started must be an integer".to_owned()))
+                .transpose()?;
+            screens::stop_if_generation(&n, expected)
+        })(),
         "archive" => name().and_then(|n| screens::archive(&n, true)),
         "unarchive" => name().and_then(|n| screens::archive(&n, false)),
         "delete" => name().and_then(|n| screens::delete(&n)),
@@ -684,40 +703,48 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         })(),
         "history" => (|| {
             let n = name()?;
-            if has(rest, "--clear") {
-                return history::clear(&n);
+            if !screens::valid_name(&n) {
+                return Err(format!("{n:?} can't name a screen (letters, digits, - and _)"));
+            }
+            // Scope all history flags strictly to arguments AFTER the screen name.
+            let flags = &rest[1..];
+            if has(flags, "--clear") {
+                return screens::clear_history_if_stopped(&n);
             }
             // The screen as it was when action N (from 1, as listed)
             // ended, as a picture.
-            if let Some(n) = option(rest, "--look") {
-                let n: usize = n.parse().map_err(|_| "--look is an action's number, from 1")?;
-                let all = history::read(&name()?);
-                let a = all.get(n.wrapping_sub(1)).ok_or_else(|| format!("there are {} actions", all.len()))?;
-                let (when, frame) = record::frame_at(&record::index(&name()?), a.at + a.ms).ok_or("no frames were kept from then")?;
-                let out = match rest.iter().skip_while(|a| *a != "--look").nth(2).filter(|a| !a.starts_with("--")) {
+            if let Some(idx_s) = option(flags, "--look") {
+                let idx: usize = idx_s.parse().map_err(|_| "--look is an action's number, from 1")?;
+                let all = history::read(&n);
+                let a = all.get(idx.wrapping_sub(1)).ok_or_else(|| format!("there are {} actions", all.len()))?;
+                let (when, frame) = record::frame_at(&record::index(&n), a.at.saturating_add(a.ms)).ok_or("no frames were kept from then")?;
+                let out = match flags.iter().skip_while(|a| *a != "--look").nth(2).filter(|a| !a.starts_with("--")) {
                     Some(o) => std::path::absolute(PathBuf::from(o)).map_err(|e| e.to_string())?,
-                    None => screens::dir().join(format!("{}-history-{n}.png", name()?)),
+                    None => screens::dir().join(format!("{n}-history-{idx}.png")),
                 };
-                let file = std::fs::File::create(&out).map_err(|e| format!("{}: {e}", out.display()))?;
-                let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), frame.width as u32, frame.height as u32);
-                encoder.set_color(png::ColorType::Rgba);
-                encoder.set_depth(png::BitDepth::Eight);
-                encoder.write_header().and_then(|mut w| w.write_image_data(&frame.rgba)).map_err(|e| e.to_string())?;
+                export::save_shot(&frame, 1, &out)?;
                 print_json(&json!({ "path": out, "action": a, "frame_at": when }));
                 return Ok(());
             }
             // As a video: an MP4, quiet stretches cut.
-            if let Some(out) = option(rest, "--export") {
+            if let Some(out) = option(flags, "--export") {
                 let out = std::path::absolute(PathBuf::from(out)).map_err(|e| e.to_string())?;
                 let mut shown = -1i32;
-                // Actions N to N (from 1, as listed), or all.
-                let at = |flag| option(rest, flag).map(|v| v.parse::<usize>().map_err(|_| format!("{flag} is an action's number, from 1"))).transpose();
+                // Actions by 0-based `--part SPEC` (e.g. `2-4,8`), or 1-based
+                // `--from`/`--to`, or all.
+                let at = |flag| option(flags, flag).map(|v| v.parse::<usize>().map_err(|_| format!("{flag} is an action's number, from 1"))).transpose();
                 let (from, to) = (at("--from")?, at("--to")?);
-                let count = history::read(&name()?).len();
-                let part: Option<Vec<usize>> = (from.is_some() || to.is_some()).then(|| (from.unwrap_or(1).max(1) - 1..to.unwrap_or(count).min(count)).collect());
-                let zoom = option(rest, "--zoom").map(|z| z.trim_end_matches(['x', '×']).parse::<usize>().map_err(|_| "--zoom is 1, 2 or 3")).transpose()?.unwrap_or(1);
-                let encoder = option(rest, "--encoder").map(|e| olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")).transpose()?.unwrap_or(olo_video::Choice::Auto);
-                let made = export::export(&name()?, part.as_deref(), zoom, encoder, &out, &mut |f| {
+                let count = history::read(&n).len();
+                let part: Option<Vec<usize>> = if let Some(spec) = option(flags, "--part") {
+                    Some(export::parse_part_spec(spec, count)?)
+                } else if from.is_some() || to.is_some() {
+                    Some((from.unwrap_or(1).max(1) - 1..to.unwrap_or(count).min(count)).collect())
+                } else {
+                    None
+                };
+                let zoom = option(flags, "--zoom").map(|z| z.trim_end_matches(['x', '×']).parse::<usize>().map_err(|_| "--zoom is 1, 2 or 3")).transpose()?.unwrap_or(1);
+                let encoder = option(flags, "--encoder").map(|e| olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")).transpose()?.unwrap_or(olo_video::Choice::Auto);
+                let made = export::export(&n, part.as_deref(), zoom, encoder, &out, &mut |f| {
                     let pct = (f * 100.0) as i32;
                     if pct / 10 != shown / 10 {
                         eprintln!("olo-screen: exporting… {pct}%");
@@ -730,14 +757,14 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 );
                 return Ok(());
             }
-            let kind = option(rest, "--kind");
-            let search = option(rest, "--search");
+            let kind = option(flags, "--kind");
+            let search = option(flags, "--search");
             let mut actions: Vec<history::Action> = history::read(&n).into_iter().filter(|a| kind.is_none_or(|k| &a.kind == k) && search.is_none_or(|t| a.mentions(t))).collect();
-            if let Some(last) = option(rest, "--last") {
+            if let Some(last) = option(flags, "--last") {
                 let last: usize = last.parse().map_err(|_| "--last is a number")?;
                 actions.drain(..actions.len().saturating_sub(last));
             }
-            if has(rest, "--json") {
+            if has(flags, "--json") {
                 print_json(&json!(actions));
             } else if actions.is_empty() {
                 println!("Nothing done on {n} yet.");
@@ -1470,11 +1497,13 @@ fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Re
     Err(format!("scrolled the whole list; nothing matches {}", q.describe()))
 }
 
+type ShownLookup<'a> = dyn Fn(&screens::Screen) -> Result<(Option<find::Found>, String), String> + 'a;
+
 /// `f` once it stops moving: a browser scrolls smoothly, so what the
 /// wheel brought into view goes on gliding for a moment, and a click at
 /// where it was read mid-glide missed it (`set` on a web form). Read again
 /// every 50 ms until two reads agree, a second at most.
-fn settled(s: &screens::Screen, shown: &dyn Fn(&screens::Screen) -> Result<(Option<find::Found>, String), String>, mut f: find::Found) -> Result<find::Found, String> {
+fn settled(s: &screens::Screen, shown: &ShownLookup<'_>, mut f: find::Found) -> Result<find::Found, String> {
     for _ in 0..20 {
         std::thread::sleep(Duration::from_millis(50));
         match shown(s)?.0 {
@@ -2086,5 +2115,21 @@ mod tests {
         assert!(point(&args(&["s"]), "move").unwrap_err().contains("--at X,Y"));
         // (--dx and --dy take values: not where.)
         assert_eq!(positionals(&args(&["s", "--dx", "3", "--dy", "900"])), args(&["s"]));
+    }
+
+    #[test]
+    fn review2_f42_start_and_history_reject_invalid_and_option_names_before_fs() {
+        // Invalid/path-shaped/single-dash names must be rejected before
+        // reading kept options or clearing history, never touching disk.
+        for bad in ["../escape", "a/b", "..", "-bad"] {
+            let err = cli(&args(&["start", bad])).expect("start returns Some").unwrap_err();
+            assert!(err.contains("can't name a screen"), "start {bad:?} -> {err}");
+        }
+        for bad in ["--clear", "../escape", "-bad"] {
+            let err = cli(&args(&["history", bad])).expect("history returns Some").unwrap_err();
+            assert!(err.contains("can't name a screen"), "history {bad:?} -> {err}");
+        }
+        let err = cli(&args(&["history", "../escape", "--clear"])).expect("history returns Some").unwrap_err();
+        assert!(err.contains("can't name a screen"), "history ../escape --clear -> {err}");
     }
 }

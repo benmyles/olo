@@ -652,6 +652,18 @@ pub enum Request {
     Synthetic {
         events: Vec<SyntheticEvent>,
     },
+    /// What this connection presses from here on ([`Request::Synthetic`]:
+    /// a key, a keysym, a button, a finger) is its own: when the
+    /// connection ends, whatever of it is still down is let go. For
+    /// whoever holds input for as long as it lives (a viewer that has
+    /// taken control of a screen, the helper that carries a person's keys
+    /// to a host's screen): killed with a key down, it left the key down
+    /// for good, with nobody to let it go. Not the rule for every
+    /// connection: a tool that presses in one connection and lets go in
+    /// the next (`tsession down … up`, a drag in steps) keeps what it
+    /// holds. An app_server that doesn't know this answers with an
+    /// error, and things are as they were.
+    OwnInput,
     /// A program may control the computer (olo-portal only: its
     /// RemoteDesktop portal, once the person has said yes): the next
     /// libei connection olo-portal makes to app_server's EIS socket

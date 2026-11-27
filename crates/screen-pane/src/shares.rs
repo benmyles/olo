@@ -27,6 +27,12 @@ use olo_kit::{
 /// The filters the search knows.
 const KEYS: &[&str] = &["vault", "kind", "shared"];
 
+/// Plain explanation shown in the Passwords tab when password sharing isn't
+/// available for a screen (e.g. a remote host screen before Step 8).
+pub(crate) fn unavailable_view(reason: impl Into<SharedString>) -> Element {
+    div().size_full().child(EmptyState::new(reason.into()).icon("passwords")).into_any_element()
+}
+
 /// What Passwords said, or why it couldn't.
 enum State {
     Asking,
@@ -85,10 +91,10 @@ impl Data {
 }
 
 /// What Passwords answered (from the worker that asked it).
-pub struct Answered(Result<Response, olo_keychain::CallError>);
+pub(crate) struct Answered(Result<Response, olo_keychain::CallError>);
 
 /// What's shared with `screen` (None: every screen): the editor.
-pub struct Shares {
+pub(crate) struct Shares {
     screen: Option<String>,
     state: State,
     search: Child<SearchField>,
@@ -99,11 +105,11 @@ pub struct Shares {
     /// A change on its way to Passwords.
     saving: bool,
     /// How wide it's laid out (its window or tab says).
-    pub width: f32,
+    pub(crate) width: f32,
 }
 
 impl Shares {
-    pub fn new(screen: Option<String>, cx: &mut Cx<Shares>) -> Shares {
+    pub(crate) fn new(screen: Option<String>, cx: &mut Cx<Shares>) -> Shares {
         let search = search_field(cx, "Search: words, vault:, kind:, shared:");
         cx.subscribe(&search, |s: &mut Shares, e: &SearchEvent, cx| {
             if let SearchEvent::Changed = e {

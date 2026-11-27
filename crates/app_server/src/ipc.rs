@@ -93,6 +93,56 @@ impl Conn {
     }
 }
 
+/// A synthetic press not yet let go ([`IpcState::owned_input`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeldInput {
+    Key(u32),
+    Keysym(u32),
+    Button(u32),
+    Touch(u32),
+}
+
+impl HeldInput {
+    /// What a synthetic event presses or lets go: which, and whether it
+    /// goes down (true) or up.
+    pub fn of(event: &olo_protocol::SyntheticEvent) -> Option<(Self, bool)> {
+        use olo_protocol::{SyntheticEvent as S, TouchPhase};
+        match event {
+            S::Key { key, pressed } => Some((Self::Key(*key), *pressed)),
+            S::Keysym { keysym, pressed } => Some((Self::Keysym(*keysym), *pressed)),
+            S::Button { button, pressed } => Some((Self::Button(*button), *pressed)),
+            S::Touch { slot, phase: TouchPhase::Down, .. } => Some((Self::Touch(*slot), true)),
+            S::Touch { slot, phase: TouchPhase::Up, .. } => Some((Self::Touch(*slot), false)),
+            _ => None,
+        }
+    }
+
+    /// The event that lets it go.
+    pub fn release(self) -> olo_protocol::SyntheticEvent {
+        use olo_protocol::{SyntheticEvent as S, TouchPhase};
+        match self {
+            Self::Key(key) => S::Key { key, pressed: false },
+            Self::Keysym(keysym) => S::Keysym { keysym, pressed: false },
+            Self::Button(button) => S::Button { button, pressed: false },
+            Self::Touch(slot) => S::Touch { slot, phase: TouchPhase::Up, x: 0.0, y: 0.0, window: None },
+        }
+    }
+}
+
+/// What a batch of synthetic events leaves down of what was down before
+/// it (`held`), in the order pressed: each press added once, each
+/// letting go taking its press away, in the batch's own order (a key let
+/// go and pressed again in one batch is down after it).
+pub fn held_after(held: &mut Vec<HeldInput>, events: &[olo_protocol::SyntheticEvent]) {
+    for event in events {
+        match HeldInput::of(event) {
+            Some((what, true)) if !held.contains(&what) => held.push(what),
+            Some((what, false)) => held.retain(|h| *h != what),
+            _ => {}
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct IpcState {
     pub path: PathBuf,
@@ -102,6 +152,12 @@ pub struct IpcState {
     /// Keys other programs took (`GrabKeys`, grabs.rs): who, the id they
     /// gave, the chord.
     pub key_grabs: Vec<(Rc<Conn>, String, olo_protocol::shortcuts::Chord)>,
+    /// Connections whose synthetic input is their own
+    /// (`Request::OwnInput`), each with what of it is down now: let go
+    /// when the connection ends (`input_closed`). Empty but while
+    /// somebody holds input so: nothing is kept for any other
+    /// connection's synthetic input.
+    pub owned_input: Vec<(Rc<Conn>, Vec<HeldInput>)>,
     /// Pictures to take with the next frame (see screenshot.rs).
     pub pending_screenshots: Vec<crate::screenshot::Shot>,
     /// Frames being recorded (`Request::Record`, headless).
@@ -254,7 +310,18 @@ pub fn init<B: Backend + 'static>(handle: &LoopHandle<'static, AnvilState<B>>, w
             }
         })
         .map_err(|e| std::io::Error::other(e.to_string()))?;
-    Ok(IpcState { path, _file: file, subscribers: Vec::new(), key_grabs: Vec::new(), pending_screenshots: Vec::new(), recording: None, saving: Default::default(), next_save: 0, saved: Some(saved) })
+    Ok(IpcState {
+        path,
+        _file: file,
+        subscribers: Vec::new(),
+        key_grabs: Vec::new(),
+        owned_input: Vec::new(),
+        pending_screenshots: Vec::new(),
+        recording: None,
+        saving: Default::default(),
+        next_save: 0,
+        saved: Some(saved),
+    })
 }
 
 impl IpcState {
@@ -943,8 +1010,32 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Synthetic { events } => {
+                // (What a connection that owns its input has down after
+                // this: `Request::OwnInput`. Nothing is looked up or
+                // kept while nobody does. And what one such connection
+                // had down that another's events let go is no longer
+                // its to let go.)
+                if !self.ipc.owned_input.is_empty() {
+                    for (who, held) in &mut self.ipc.owned_input {
+                        if Rc::ptr_eq(who, conn) {
+                            held_after(held, &events);
+                        } else {
+                            for event in &events {
+                                if let Some((what, false)) = HeldInput::of(event) {
+                                    held.retain(|h| *h != what);
+                                }
+                            }
+                        }
+                    }
+                }
                 for e in events {
                     self.synthetic_input(e);
+                }
+                Reply::Ok
+            }
+            Request::OwnInput => {
+                if !self.ipc.owned_input.iter().any(|(who, _)| Rc::ptr_eq(who, conn)) {
+                    self.ipc.owned_input.push((conn.clone(), Vec::new()));
                 }
                 Reply::Ok
             }
@@ -1091,5 +1182,39 @@ mod tests {
         assert_eq!(sent(&mut ipc, all("b", 1, 2)), [Some(vec![1, 2]), Some(vec![1]), None, None]);
         // The focus moves to ours.
         assert_eq!(sent(&mut ipc, all("b", 1, 1)), [Some(vec![1, 2]), None, Some(vec![1]), None]);
+    }
+}
+
+#[cfg(test)]
+mod owned_input_tests {
+    use super::{HeldInput, held_after};
+    use olo_protocol::{SyntheticEvent as S, TouchPhase};
+
+    /// What a connection that owns its input has down after each batch,
+    /// and what lets each go (`Request::OwnInput`).
+    #[test]
+    fn what_a_batch_leaves_down() {
+        let mut held = Vec::new();
+        held_after(&mut held, &[S::Key { key: 42, pressed: true }, S::Key { key: 30, pressed: true }, S::Key { key: 30, pressed: false }, S::Move { x: 1.0, y: 2.0 }]);
+        assert_eq!(held, [HeldInput::Key(42)]);
+        // Let go and pressed again in one batch: down after it. Pressed twice: held once.
+        held_after(&mut held, &[S::Key { key: 42, pressed: false }, S::Key { key: 42, pressed: true }, S::Key { key: 42, pressed: true }]);
+        assert_eq!(held, [HeldInput::Key(42)]);
+        held_after(
+            &mut held,
+            &[
+                S::Button { button: 0x110, pressed: true },
+                S::Keysym { keysym: 0xffe1, pressed: true },
+                S::Touch { slot: 2, phase: TouchPhase::Down, x: 5.0, y: 5.0, window: None },
+                S::Touch { slot: 2, phase: TouchPhase::Motion, x: 6.0, y: 5.0, window: None },
+                S::Wheel { dx: 0, dy: 1 },
+            ],
+        );
+        assert_eq!(held, [HeldInput::Key(42), HeldInput::Button(0x110), HeldInput::Keysym(0xffe1), HeldInput::Touch(2)]);
+        // Each is let go by its own event.
+        let let_go: Vec<S> = held.iter().rev().map(|h| h.release()).collect();
+        held_after(&mut held, &let_go);
+        assert!(held.is_empty(), "{held:?}");
+        assert!(matches!(let_go[0], S::Touch { slot: 2, phase: TouchPhase::Up, .. }));
     }
 }

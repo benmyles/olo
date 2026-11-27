@@ -32,8 +32,9 @@ move = ["sync", "agents", "dep:russh"]
 # `olo-rex-link screen`: Agent Screens of the host's own (`src/screens.rs`):
 # Olo's release fetched from GitHub, checked and unpacked under the
 # account (olo-release: TLS and zstd, C both, so built where zig is, as
-# `quic` and `sync` are), and its `olo-screen` run.
-screens = ["dep:olo-release", "dep:libc"]
+# `quic` and `sync` are), its `olo-screen` run, and live screen streaming
+# (shared tile-delta codec in `olo-screen-codec`).
+screens = ["dep:olo-release", "dep:olo-screen-codec", "dep:libc"]
 
 [dependencies]
 serde.workspace = true
@@ -55,6 +56,7 @@ rcgen = { version = "0.14", optional = true, default-features = false, features 
 sha2 = { version = "0.11", optional = true }
 olo-rex-sync = { workspace = true, optional = true }
 olo-release = { workspace = true, optional = true }
+olo-screen-codec = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 russh = { version = "0.65", optional = true, default-features = false, features = ["aws-lc-rs"] }
 tungstenite = { version = "0.30", optional = true, default-features = false, features = ["handshake"] }

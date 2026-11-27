@@ -35,6 +35,11 @@ fn main() {
         "crates/rex-link/Cargo.toml",
         "crates/agent-screen/src",
         "crates/agent-screen/Cargo.toml",
+        // (What the helper reads recordings with, for a host's screens:
+        // a fix there alone left the helper inside Rex as it was. A
+        // code review, 2026-11-27.)
+        "crates/screen-codec/src",
+        "crates/screen-codec/Cargo.toml",
         "crates/rex-sync/src",
         "crates/rex-sync/Cargo.toml",
         "vendor/russh/src",

@@ -945,6 +945,37 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Agent Screens for a host's screens: what is next, and what its
+  reviews left** (Ben, 2026-11-27; HACKING, "A screen's pane, and a
+  host's screens served live"; the design and the builders' reports are
+  under `/var/tmp/olo-agents/screens/` and `/var/tmp/olo-agents/
+  hostside/` while it is built).
+  - Next, in order: Agent Screens shows connected hosts' screens (the
+    Rex Screens socket's types, a stand-in for Rex, the sidebar's
+    sections: in hand); Rex's client end for screen streams
+    (`crates/rex`: a stream kind below terminals and control, SSH as
+    the fallback); Rex's hub follows each host's screens and serves the
+    socket and its state file; Activity's rows for screens under the
+    agent that controls them, and the pane in Rex; passwords for a
+    host's screen, last.
+  - Left to the compositor by the review of the whole (Astra 6.2,
+    `/var/tmp/olo-reviews/astra-67622ee483/astra-review.md`): its 15,
+    "The helper asks the compositor for a full RGBA capture in the
+    runtime directory, then validates the written file. Opening a legal
+    7680 × 4320 s[creen] …": a capture's budget in app_server itself;
+    its 51, "An observer misses pointer-only changes made by another
+    client": an event for the pointer's place on a headless screen.
+    (Its 8, keys left down by a controller that was killed, is done:
+    `Request::OwnInput`.)
+  - Small: `olo-screen stop NAME --expected-started` taken by
+    `olo-screen` itself (the helper checks the generation and lets go
+    of its lock before it asks: a moment between); `--part` in
+    `olo-screen`'s usage.
+  - The reviews' own leftovers are answered finding by finding in
+    `report-review2.md` (the pane's 61) and `report-screens-review2.md`
+    (the host's): what each says is not done is to be read there before
+    the steps above are called finished.
+
 - **Left by the confirming review of the Codex fix** (Astra 6.2,
   2026-11-27, `/var/tmp/olo-reviews/astra-0123b09798/astra-review.md`,
   16 findings and five on cost and tests; fixed after it, with no

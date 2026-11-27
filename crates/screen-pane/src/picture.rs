@@ -20,6 +20,7 @@ use olo_kit::{
 };
 
 /// A screen's pixels: RGBA, opaque (so as good as premultiplied).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shot {
     pub size: [usize; 2],
     pub rgba: Vec<u8>,
@@ -39,12 +40,12 @@ type Made = (u64, (u32, u32));
 
 /// What the well is told: its drawing wants a frame resampled, or a
 /// worker made one.
-pub enum Msg {
+pub(crate) enum Msg {
     Asked,
     Made(Made, Option<Arc<RenderImage>>),
 }
 
-pub struct PictureWell {
+pub(crate) struct PictureWell {
     shot: Option<Arc<Shot>>,
     /// Counts frames shown, so what was made for one isn't kept for the
     /// next.
@@ -68,7 +69,7 @@ pub struct PictureWell {
 }
 
 impl PictureWell {
-    pub fn new(name: impl Into<SharedString>, cx: &mut Cx<Self>) -> PictureWell {
+    pub(crate) fn new(name: impl Into<SharedString>, cx: &mut Cx<Self>) -> PictureWell {
         static KEYS: AtomicU64 = AtomicU64::new(1);
         PictureWell {
             shot: None,
@@ -89,7 +90,7 @@ impl PictureWell {
     /// Show frames live, of `size` (`Window::set_external_buffer` under
     /// [`PictureWell::external_key`] gives them): drawn again only when
     /// that changes.
-    pub fn set_live(&mut self, size: (u32, u32), cx: &mut Cx<Self>) {
+    pub(crate) fn set_live(&mut self, size: (u32, u32), cx: &mut Cx<Self>) {
         if self.live != Some(size) || self.text.is_some() || self.shot.is_some() {
             self.live = Some(size);
             self.text = None;
@@ -102,12 +103,12 @@ impl PictureWell {
     }
 
     /// What the frames shown live are given to the window under.
-    pub fn external_key(&self) -> u64 {
+    pub(crate) fn external_key(&self) -> u64 {
         self.key
     }
 
     /// Show `shot` (a new frame).
-    pub fn set_shot(&mut self, shot: Arc<Shot>, cx: &mut Cx<Self>) {
+    pub(crate) fn set_shot(&mut self, shot: Arc<Shot>, cx: &mut Cx<Self>) {
         self.shot = Some(shot);
         self.live = None;
         self.generation += 1;
@@ -116,7 +117,7 @@ impl PictureWell {
     }
 
     /// Show nothing: `text` in its place (None: just the well).
-    pub fn clear(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
+    pub(crate) fn clear(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
         if self.shot.is_some() || self.live.is_some() || self.text != text {
             self.shot = None;
             self.live = None;
@@ -130,7 +131,7 @@ impl PictureWell {
 
     /// Say `text` in the picture's place, keeping the frame for when it's
     /// wanted again (None: show the frame).
-    pub fn set_text(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
+    pub(crate) fn set_text(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
         if self.text != text {
             self.text = text;
             cx.invalidate();
@@ -138,18 +139,23 @@ impl PictureWell {
     }
 
     /// The screen's logical size, for its shape before a frame comes.
-    pub fn set_shape(&mut self, shape: Option<(f32, f32)>) {
+    pub(crate) fn set_shape(&mut self, shape: Option<(f32, f32)>) {
         self.shape = shape;
     }
 
-    pub fn has_shot(&self) -> bool {
+    pub(crate) fn has_shot(&self) -> bool {
         self.shot.is_some() || self.live.is_some()
+    }
+
+    /// Current RGBA picture shown in the well (if any).
+    pub(crate) fn current_shot(&self) -> Option<Arc<Shot>> {
+        self.shot.clone()
     }
 
     /// Where the picture was last drawn (None: no picture showed), for
     /// what's drawn over it to read as it draws (after the well has, in
     /// the same frame) and for what's pressed on it.
-    pub fn shown_at(&self) -> std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>> {
+    pub(crate) fn shown_at(&self) -> std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>> {
         self.shown.clone()
     }
 

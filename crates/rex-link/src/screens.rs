@@ -75,13 +75,17 @@
 //! such program to go by, and the screen stays until stopped, as with
 //! `--keep`.
 
-use std::os::unix::fs::{FileExt as _, MetadataExt as _};
+use std::io::{self, Read as _, Write as _};
+use std::os::fd::AsRawFd as _;
+use std::os::unix::fs::{DirBuilderExt as _, FileExt as _, MetadataExt as _, OpenOptionsExt as _};
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::AtomicBool;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use olo_rex_link::screen_wire::{OwnerPane, PROTO, ScreenOwner, valid_screen_name};
+use serde::Deserialize;
 use serde_json::json;
 
 const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--again] [--under-screens] [--no-chrome] [--no-emoji-font]
@@ -89,7 +93,103 @@ const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--a
        olo screen status                    what is here, as JSON
        olo screen default [host|desktop]    where `olo screen` goes on this host when it isn't said
        olo screen remove                    Olo taken off this host again
+       olo screen follow                    follow screens and host status as NDJSON (zero polling)
+       olo screen stream NAME               stream live frames of screen NAME (binary tile deltas)
+       olo screen history-stream NAME       follow history & frame index, serve frame_at on stdin (binary wire)
+       olo screen export NAME [OPTIONS]     export screen history MP4 with progress and streamed bytes
        olo screen --on host COMMAND…        olo-screen's own commands, on this host (start, run, look, tree, click, …)";
+
+/// Commands that act on a screen and update `NAME.owner.json` when the
+/// controlling Rex pane (`REX_BLOCK`) changes (matches `apps/screen/src/history.rs`).
+const OWNER_ACTIONS: &[&str] = &[
+    "run",
+    "take",
+    "give",
+    "click",
+    "move",
+    "down",
+    "up",
+    "drag",
+    "scroll",
+    "wheel",
+    "key",
+    "type",
+    "set",
+    "select",
+    "scroll-to",
+    "invoke",
+    "focus",
+    "close",
+    "minimize",
+    "zoom",
+    "maximize",
+    "resize",
+    "place",
+];
+
+/// Owned raw file descriptor closed automatically on drop.
+pub(crate) struct OwnedFd(i32);
+
+impl OwnedFd {
+    pub(crate) fn new(fd: i32) -> Self {
+        Self(fd)
+    }
+
+    pub(crate) fn raw(&self) -> i32 {
+        self.0
+    }
+
+    pub(crate) fn into_raw(mut self) -> i32 {
+        let fd = self.0;
+        self.0 = -1;
+        fd
+    }
+
+    pub(crate) fn try_dup(&self) -> Option<Self> {
+        if self.0 < 0 {
+            return None;
+        }
+        // SAFETY: duplicates our owned fd with close-on-exec set atomically.
+        let dup = unsafe { libc::fcntl(self.0, libc::F_DUPFD_CLOEXEC, 0) };
+        (dup >= 0).then(|| Self(dup))
+    }
+}
+
+impl Drop for OwnedFd {
+    fn drop(&mut self) {
+        if self.0 >= 0 {
+            // SAFETY: exclusively owned file descriptor.
+            unsafe {
+                libc::close(self.0);
+            }
+        }
+    }
+}
+
+/// Runtime screen descriptor written by `olo-screen start` in
+/// `$XDG_RUNTIME_DIR/olo-screens/NAME.json`.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RuntimeScreen {
+    pub name: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub wayland_display: String,
+    #[serde(alias = "tabula_socket")]
+    pub olo_socket: PathBuf,
+    pub pid: i32,
+    pub width: u32,
+    pub height: u32,
+    #[serde(default = "default_one")]
+    pub scale: f64,
+    #[serde(default)]
+    pub sound: bool,
+    #[serde(default)]
+    pub started: u64,
+}
+
+fn default_one() -> f64 {
+    1.0
+}
 
 /// Noto Color Emoji (SIL Open Font License 1.1), as its makers' own
 /// repository has it at one commit (the release "unicode 18.0" of
@@ -120,14 +220,1009 @@ pub fn prefix() -> PathBuf {
 }
 
 /// Where this host's default is kept: one word, `host` or `desktop`.
-fn default_file() -> PathBuf {
+pub(crate) fn default_file() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home().join(".config")).join("olo/screens-on")
 }
 
-fn default_now() -> &'static str {
-    match std::fs::read_to_string(default_file()).unwrap_or_default().trim() {
+pub(crate) fn default_now() -> &'static str {
+    let Some(bytes) = read_bounded_regular(&default_file(), 64) else {
+        return "desktop";
+    };
+    match std::str::from_utf8(&bytes).unwrap_or_default().trim() {
         "host" => "host",
         _ => "desktop",
+    }
+}
+
+/// Valid screen name (delegates to `screen_wire::valid_screen_name`, rejecting
+/// option-shaped names beginning with `-`).
+pub(crate) fn valid_name(name: &str) -> bool {
+    valid_screen_name(name)
+}
+
+/// Round any positive sub-millisecond remainder up to 1 ms so `poll(2)` never
+/// spins with `timeout_ms == 0` during the final fraction of a millisecond.
+pub(crate) fn timeout_ms_ceil(rem: Duration) -> i32 {
+    if rem.is_zero() {
+        0
+    } else {
+        let ms = rem.as_millis().saturating_add(u128::from(rem.subsec_nanos() % 1_000_000 != 0));
+        ms.min(i32::MAX as u128) as i32
+    }
+}
+
+pub(crate) fn set_nonblocking(fd: i32) {
+    // SAFETY: standard fcntl on valid fd.
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags >= 0 {
+            libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
+}
+
+/// What fd condition aborts a blocked non-blocking stdout write.
+#[derive(Clone, Copy)]
+pub(crate) enum CancelFd {
+    /// Any readability cancels (broadcast stop pipe or `signalfd`).
+    Readable(i32),
+    /// Stdin peer closure cancels without consuming buffered request bytes.
+    StdinEof(i32),
+}
+
+/// True when `fd` is a socket (`S_IFSOCK`), so `poll` can request `POLLRDHUP`
+/// instead of waking on unread input bytes (Finding 27).
+fn fd_is_socket(fd: i32) -> bool {
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: `fstat` on a valid open descriptor.
+    unsafe { libc::fstat(fd, &mut st) == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFSOCK }
+}
+
+/// True when `fd` (stdin pipe or socket) has reached peer EOF/hangup without
+/// consuming any unread request bytes (Finding 27).
+fn stdin_is_eof(_fd: i32, revents: i16) -> bool {
+    revents & (libc::POLLRDHUP | libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0
+}
+
+/// Write all of `bytes` to non-blocking `fd`, aborting immediately with
+/// `BrokenPipe` if any cancel fd triggers while waiting for `POLLOUT`.
+///
+/// For `CancelFd::StdinEof(f)` we poll with `events: 0` on pipes (Linux always
+/// delivers `POLLHUP|POLLERR|POLLNVAL` on peer close without waking on unread
+/// request bytes) and `events: POLLRDHUP` on sockets (waking only on peer write
+/// shutdown, never on unread request bytes) so unread requests on stdin never
+/// cause a 100% CPU busy-spin while stdout is backpressured (Finding 27).
+pub(crate) fn write_all_cancellable(fd: i32, bytes: &[u8], cancels: &[CancelFd]) -> io::Result<()> {
+    let mut written = 0usize;
+    let cancel_specs: Vec<(i32, i16)> = cancels
+        .iter()
+        .map(|c| match *c {
+            CancelFd::Readable(f) => (f, libc::POLLIN),
+            CancelFd::StdinEof(f) => (f, if fd_is_socket(f) { libc::POLLRDHUP } else { 0 }),
+        })
+        .collect();
+    let mut pfds = Vec::with_capacity(1 + cancels.len());
+    while written < bytes.len() {
+        // SAFETY: non-blocking write of valid slice to owned fd.
+        let n = unsafe { libc::write(fd, bytes[written..].as_ptr().cast(), bytes.len() - written) };
+        if n > 0 {
+            written += n as usize;
+            continue;
+        }
+        if n == 0 {
+            return Err(io::Error::new(io::ErrorKind::WriteZero, "write returned zero"));
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
+        if err.kind() != io::ErrorKind::WouldBlock {
+            return Err(err);
+        }
+
+        pfds.clear();
+        pfds.push(libc::pollfd { fd, events: libc::POLLOUT, revents: 0 });
+        for &(cfd, events) in &cancel_specs {
+            pfds.push(libc::pollfd { fd: cfd, events, revents: 0 });
+        }
+        // SAFETY: `pfds` holds valid open fds for the duration of `poll`.
+        let r = unsafe { libc::poll(pfds.as_mut_ptr(), pfds.len() as libc::nfds_t, -1) };
+        if r < 0 {
+            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(io::Error::last_os_error());
+        }
+        if pfds[0].revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"));
+        }
+        for (idx, c) in cancels.iter().enumerate() {
+            let rev = pfds[1 + idx].revents;
+            if rev == 0 {
+                continue;
+            }
+            let cancelled = match *c {
+                CancelFd::Readable(_) => true,
+                CancelFd::StdinEof(f) => stdin_is_eof(f, rev),
+            };
+            if cancelled {
+                return Err(io::Error::new(io::ErrorKind::BrokenPipe, "cancelled while writing stdout"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Open a regular file without following symlinks and without ever blocking on
+/// a FIFO, verifying `is_file()` and capping reads at `max_bytes`.
+pub(crate) fn read_bounded_regular(path: &Path, max_bytes: usize) -> Option<Vec<u8>> {
+    let file = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW).open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > max_bytes as u64 {
+        return None;
+    }
+    let mut out = Vec::with_capacity((meta.len() as usize).min(max_bytes));
+    let mut limited = file.take((max_bytes as u64).saturating_add(1));
+    limited.read_to_end(&mut out).ok()?;
+    (out.len() <= max_bytes).then_some(out)
+}
+
+/// Open a regular file safely (`O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC` + `is_file()`).
+pub(crate) fn open_regular_nonblock(path: &Path) -> io::Result<(std::fs::File, std::fs::Metadata)> {
+    let file = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path)?;
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
+    }
+    Ok((file, meta))
+}
+
+/// Open `root/name` as a verified real directory (`O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC`),
+/// atomically rejecting symlink screen directories and invalid names (Finding 6).
+pub(crate) fn open_verified_subdir(root: &Path, name: &str) -> io::Result<OwnedFd> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt as _;
+    if !valid_name(name) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("invalid screen name {name:?}")));
+    }
+    let root_c = CString::new(root.as_os_str().as_bytes()).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in root path"))?;
+    let name_c = CString::new(name).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in name"))?;
+    // SAFETY: `root_c` is NUL-terminated; opens existing root directory.
+    let rfd = unsafe { libc::open(root_c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+    if rfd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let root_fd = OwnedFd::new(rfd);
+    // SAFETY: `root_fd` is a valid directory fd, `name_c` is a validated single component.
+    let dfd = unsafe { libc::openat(root_fd.raw(), name_c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if dfd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(OwnedFd::new(dfd))
+}
+
+/// Open a regular file `file_name` directly inside a verified directory fd
+/// (`openat` with `O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC` + `is_file()`).
+pub(crate) fn open_regular_at(dir_fd: &OwnedFd, file_name: &str) -> io::Result<(std::fs::File, std::fs::Metadata)> {
+    use std::ffi::CString;
+    use std::os::fd::FromRawFd as _;
+    if file_name.is_empty() || file_name.contains('/') || file_name.contains('\0') {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid file name"));
+    }
+    let c = CString::new(file_name).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in file name"))?;
+    // SAFETY: valid directory fd and NUL-terminated single filename component.
+    let fd = unsafe { libc::openat(dir_fd.raw(), c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is freshly opened and exclusively owned.
+    let file = unsafe { std::fs::File::from_raw_fd(fd) };
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
+    }
+    Ok((file, meta))
+}
+
+/// Read a bounded regular file directly inside a verified directory fd.
+pub(crate) fn read_bounded_regular_at(dir_fd: &OwnedFd, file_name: &str, max_bytes: usize) -> Option<Vec<u8>> {
+    let (file, meta) = open_regular_at(dir_fd, file_name).ok()?;
+    if meta.len() > max_bytes as u64 {
+        return None;
+    }
+    let mut out = Vec::with_capacity((meta.len() as usize).min(max_bytes));
+    let mut limited = file.take((max_bytes as u64).saturating_add(1));
+    limited.read_to_end(&mut out).ok()?;
+    (out.len() <= max_bytes).then_some(out)
+}
+
+/// True when `file_name` exists directly inside a verified directory fd (without following symlinks).
+pub(crate) fn exists_at(dir_fd: &OwnedFd, file_name: &str) -> bool {
+    use std::ffi::CString;
+    let Ok(c) = CString::new(file_name) else { return false };
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: valid dirfd, NUL-terminated component, valid stat out-pointer.
+    unsafe { libc::fstatat(dir_fd.raw(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) == 0 }
+}
+
+/// True when `dir` is an existing real directory (not a symlink) owned by our
+/// effective user ID. (Per-operation scratch directories additionally enforce
+/// mode `0700` via [`TrustedTempDir`].)
+pub(crate) fn verify_owned_dir(dir: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(dir) else { return false };
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    meta.file_type().is_dir() && meta.uid() == uid
+}
+
+/// Open or create `dir` as a real directory (`O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC`)
+/// owned by `geteuid()`, tightening permissions to `0700` via `fchmod` if needed
+/// and verifying no group/other write bits remain (Finding 14).
+fn open_or_create_private_dir_fd(dir: &Path) -> io::Result<OwnedFd> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt as _;
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    // Verify existing non-root ancestors are not world-writable without sticky bit
+    // or owned by another non-root user.
+    let mut anc = dir.parent();
+    while let Some(p) = anc {
+        if p.as_os_str().is_empty() || p == Path::new("/") {
+            break;
+        }
+        if let Ok(m) = std::fs::metadata(p) {
+            let mode = m.mode();
+            let auid = m.uid();
+            let safe_root = auid == 0 && ((mode & 0o022) == 0 || (mode & libc::S_ISVTX) != 0);
+            let safe_self = auid == uid && (mode & 0o002) == 0;
+            if !safe_root && !safe_self {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("unsafe ancestor directory {}", p.display())));
+            }
+        }
+        anc = p.parent();
+    }
+    if std::fs::symlink_metadata(dir).is_err() {
+        let mut b = std::fs::DirBuilder::new();
+        b.recursive(true).mode(0o700);
+        b.create(dir)?;
+    }
+    let c = CString::new(dir.as_os_str().as_bytes()).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in directory path"))?;
+    // SAFETY: NUL-terminated path opened with O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC.
+    let raw = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if raw < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let fd = OwnedFd::new(raw);
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.raw(), &mut st) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if (st.st_mode & libc::S_IFMT) != libc::S_IFDIR || st.st_uid != uid {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("unsafe scratch directory {}", dir.display())));
+    }
+    if (st.st_mode & 0o022) != 0 {
+        if unsafe { libc::fchmod(fd.raw(), 0o700) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if unsafe { libc::fstat(fd.raw(), &mut st) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if (st.st_mode & 0o022) != 0 {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("scratch directory {} remains writable by others", dir.display())));
+        }
+    }
+    Ok(fd)
+}
+
+/// Remove all entries inside `dir_fd` via `unlinkat` (never following symlinks
+/// or traversing outside the pinned directory fd). Opens a fresh directory file
+/// description via `openat(dir_fd, ".")` so filesystems like btrfs see entries
+/// created after `dir_fd` was originally opened.
+fn clear_dir_fd_contents(dir_fd: &OwnedFd) {
+    use std::ffi::{CStr, CString};
+    // SAFETY: `openat(dir_fd, ".")` opens a fresh fd on the same pinned inode.
+    let fresh = unsafe { libc::openat(dir_fd.raw(), c".".as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+    if fresh < 0 {
+        return;
+    }
+    // SAFETY: `fresh` is a valid directory fd now owned by `dp`.
+    let dp = unsafe { libc::fdopendir(fresh) };
+    if dp.is_null() {
+        unsafe { libc::close(fresh) };
+        return;
+    }
+    let mut names: Vec<CString> = Vec::new();
+    loop {
+        // SAFETY: `dp` is a valid open DIR*.
+        let ent = unsafe { libc::readdir(dp) };
+        if ent.is_null() {
+            break;
+        }
+        // SAFETY: `d_name` is NUL-terminated.
+        let name = unsafe { CStr::from_ptr((*ent).d_name.as_ptr()) };
+        let bytes = name.to_bytes();
+        if bytes == b"." || bytes == b".." {
+            continue;
+        }
+        names.push(name.to_owned());
+    }
+    // SAFETY: closes `dp` and `fresh`.
+    unsafe { libc::closedir(dp) };
+    for name in &names {
+        // Try unlinking as file/symlink first, then as empty subdir.
+        // SAFETY: valid dirfd and NUL-terminated entry name.
+        if unsafe { libc::unlinkat(dir_fd.raw(), name.as_ptr(), 0) } != 0 {
+            unsafe { libc::unlinkat(dir_fd.raw(), name.as_ptr(), libc::AT_REMOVEDIR) };
+        }
+    }
+}
+
+/// Scan `base_fd` for stale operation directories matching `prefix` whose
+/// `.owner.lock` is unlocked (meaning the owning helper crashed or was killed),
+/// and reclaim them safely relative to `base_fd` (Finding 18).
+fn reclaim_stale_temp_dirs(base_fd: &OwnedFd, prefix: &str) {
+    use std::ffi::CStr;
+    // SAFETY: fresh open file description on `base_fd` so btrfs sees all current entries.
+    let fresh = unsafe { libc::openat(base_fd.raw(), c".".as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+    if fresh < 0 {
+        return;
+    }
+    let dp = unsafe { libc::fdopendir(fresh) };
+    if dp.is_null() {
+        unsafe { libc::close(fresh) };
+        return;
+    }
+    let prefix_bytes = prefix.as_bytes();
+    loop {
+        let ent = unsafe { libc::readdir(dp) };
+        if ent.is_null() {
+            break;
+        }
+        let name = unsafe { CStr::from_ptr((*ent).d_name.as_ptr()) };
+        let bytes = name.to_bytes();
+        if !bytes.starts_with(prefix_bytes) {
+            continue;
+        }
+        // SAFETY: open candidate child relative to `base_fd` without following symlinks.
+        let cfd = unsafe { libc::openat(base_fd.raw(), name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+        if cfd < 0 {
+            continue;
+        }
+        let child_fd = OwnedFd::new(cfd);
+        let lock_c = std::ffi::CString::new(".owner.lock").unwrap();
+        let lfd = unsafe { libc::openat(child_fd.raw(), lock_c.as_ptr(), libc::O_RDWR | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+        if lfd < 0 {
+            continue;
+        }
+        let lock_fd = OwnedFd::new(lfd);
+        // If we obtain LOCK_EX | LOCK_NB, the previous helper is gone!
+        if unsafe { libc::flock(lock_fd.raw(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            clear_dir_fd_contents(&child_fd);
+            unsafe {
+                libc::unlinkat(base_fd.raw(), name.as_ptr(), libc::AT_REMOVEDIR);
+                libc::flock(lock_fd.raw(), libc::LOCK_UN);
+            }
+        }
+    }
+    unsafe { libc::closedir(dp) };
+}
+
+/// Hardened per-operation private `0700` directory pinned by parent & child
+/// directory descriptors and guarded by an exclusive `.owner.lock` flock so
+/// crashes are reclaimed cleanly and cleanup never traverses mutable paths
+/// (Findings 14 & 18).
+pub(crate) struct TrustedTempDir {
+    base_fd: OwnedFd,
+    child_name: std::ffi::CString,
+    child_fd: OwnedFd,
+    lock_fd: OwnedFd,
+    path: PathBuf,
+}
+
+impl TrustedTempDir {
+    /// Exclusively allocate a private `0700` directory under `base` (tightening
+    /// `base` and verifying its ownership/mode via `fstat`/`fchmod`), reclaim
+    /// any crashed siblings with prefix `reclaim_prefix`, and lock `.owner.lock`.
+    pub(crate) fn create(base: &Path, label: &str, reclaim_prefix: &str) -> io::Result<Self> {
+        use std::ffi::CString;
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        // SAFETY: `geteuid()` has no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let base_fd = open_or_create_private_dir_fd(base)?;
+        reclaim_stale_temp_dirs(&base_fd, reclaim_prefix);
+
+        let pid = std::process::id();
+        for _ in 0..32 {
+            let seq = NEXT.fetch_add(1, Ordering::Relaxed);
+            let ns = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
+            let name_str = format!("{label}-{pid}-{seq}-{ns:09}");
+            let child_name = CString::new(name_str.as_str()).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in temp dir label"))?;
+            // SAFETY: create exclusively relative to verified `base_fd`.
+            if unsafe { libc::mkdirat(base_fd.raw(), child_name.as_ptr(), 0o700) } != 0 {
+                let err = io::Error::last_os_error();
+                if err.kind() == io::ErrorKind::AlreadyExists {
+                    continue;
+                }
+                return Err(err);
+            }
+            let cfd = unsafe { libc::openat(base_fd.raw(), child_name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+            if cfd < 0 {
+                let err = io::Error::last_os_error();
+                unsafe { libc::unlinkat(base_fd.raw(), child_name.as_ptr(), libc::AT_REMOVEDIR) };
+                return Err(err);
+            }
+            let child_fd = OwnedFd::new(cfd);
+            let mut st: libc::stat = unsafe { std::mem::zeroed() };
+            if unsafe { libc::fchmod(child_fd.raw(), 0o700) } != 0
+                || unsafe { libc::fstat(child_fd.raw(), &mut st) } != 0
+                || (st.st_mode & libc::S_IFMT) != libc::S_IFDIR
+                || st.st_uid != uid
+                || (st.st_mode & 0o777) != 0o700
+            {
+                unsafe { libc::unlinkat(base_fd.raw(), child_name.as_ptr(), libc::AT_REMOVEDIR) };
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied, "private temp dir failed mode/ownership check"));
+            }
+            let lock_c = CString::new(".owner.lock").unwrap();
+            let lfd = unsafe { libc::openat(child_fd.raw(), lock_c.as_ptr(), libc::O_CREAT | libc::O_RDWR | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint) };
+            if lfd < 0 {
+                let err = io::Error::last_os_error();
+                unsafe { libc::unlinkat(base_fd.raw(), child_name.as_ptr(), libc::AT_REMOVEDIR) };
+                return Err(err);
+            }
+            let lock_fd = OwnedFd::new(lfd);
+            if unsafe { libc::flock(lock_fd.raw(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                clear_dir_fd_contents(&child_fd);
+                unsafe { libc::unlinkat(base_fd.raw(), child_name.as_ptr(), libc::AT_REMOVEDIR) };
+                return Err(io::Error::new(io::ErrorKind::WouldBlock, "couldn't lock temp dir owner file"));
+            }
+            return Ok(Self { base_fd, child_name, child_fd, lock_fd, path: base.join(name_str) });
+        }
+        Err(io::Error::new(io::ErrorKind::AlreadyExists, "couldn't allocate unique private temp directory"))
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn dir_fd(&self) -> &OwnedFd {
+        &self.child_fd
+    }
+
+    /// Free bytes available to this user on the scratch directory's filesystem.
+    pub(crate) fn available_bytes(&self) -> Option<u64> {
+        let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+        // SAFETY: `fstatvfs` on our pinned directory fd.
+        if unsafe { libc::fstatvfs(self.child_fd.raw(), &mut vfs) } == 0 { Some((vfs.f_bavail as u64).saturating_mul(vfs.f_frsize as u64)) } else { None }
+    }
+}
+
+impl Drop for TrustedTempDir {
+    fn drop(&mut self) {
+        clear_dir_fd_contents(&self.child_fd);
+        // SAFETY: remove exclusively relative to pinned `base_fd` before releasing lock.
+        unsafe {
+            libc::unlinkat(self.base_fd.raw(), self.child_name.as_ptr(), libc::AT_REMOVEDIR);
+            libc::flock(self.lock_fd.raw(), libc::LOCK_UN);
+        }
+    }
+}
+
+/// Private per-uid base directory on disk (`/var/tmp/olo-screens-UID`) for
+/// fallback scratch and large export files so they never share a public temp
+/// tree or exhaust tmpfs runtime memory.
+pub(crate) fn disk_scratch_base() -> PathBuf {
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    PathBuf::from(format!("/var/tmp/olo-screens-{uid}"))
+}
+
+/// Unified private fallback runtime directory when `XDG_RUNTIME_DIR` is unset
+/// (matching `crates/screen-pane/src/screens.rs::fallback_runtime_dir`, Finding 43):
+/// prefers a real non-symlink `/run/user/<uid>` owned by `<uid>` with private
+/// permissions `(mode & 0o077) == 0`, else private `0700` `/var/tmp/olo-runtime-<uid>`
+/// (never `/tmp`).
+fn fallback_runtime_dir_in(uid: libc::uid_t, std_run: &Path, var_tmp_dir: &Path) -> PathBuf {
+    if std::fs::symlink_metadata(std_run).is_ok_and(|m| m.file_type().is_dir() && m.uid() == uid && (m.mode() & 0o077) == 0) {
+        return std_run.to_path_buf();
+    }
+    let fallback = var_tmp_dir.join(format!("olo-runtime-{uid}"));
+    let _ = open_or_create_private_dir_fd(&fallback);
+    fallback
+}
+
+pub(crate) fn fallback_runtime_dir() -> PathBuf {
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    fallback_runtime_dir_in(uid, Path::new(&format!("/run/user/{uid}")), Path::new("/var/tmp"))
+}
+
+fn runtime_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(fallback_runtime_dir)
+}
+
+/// Where running screens keep their runtime descriptors (`NAME.json`,
+/// `NAME.control`, `NAME.owner.json`), matching `apps/screen/src/screens.rs::dir`.
+pub(crate) fn screens_runtime_dir() -> PathBuf {
+    let rt = runtime_dir();
+    let new = rt.join("olo-screens");
+    if std::fs::symlink_metadata(&new).is_ok() {
+        return new;
+    }
+    let old = rt.join("tabula-screens");
+    if std::fs::symlink_metadata(&old).is_ok() {
+        return old;
+    }
+    new
+}
+
+/// Both runtime directory names `follow` watches from startup so an older host
+/// creating `tabula-screens` after `follow` began is still noticed.
+pub(crate) fn screens_runtime_dir_candidates() -> Vec<PathBuf> {
+    let rt = runtime_dir();
+    vec![rt.join("olo-screens"), rt.join("tabula-screens")]
+}
+
+/// Where screens keep persistent state (`$XDG_STATE_HOME/olo/screens`),
+/// matching `olo_xdg::state_dir().join("screens")`.
+pub(crate) fn screens_state_dir() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/state")).join("olo/screens")
+}
+
+/// Bounded read of a runtime screen descriptor (`NAME.json`, max 64 KiB).
+pub(crate) fn read_runtime_screen(path: &Path) -> Option<RuntimeScreen> {
+    let bytes = read_bounded_regular(path, 64 * 1024)?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Whether `/proc/{pid}/cmdline` identifies an `olo-session` or `tabula-session`
+/// executable (matching `crates/screen-pane/src/screens.rs::is_session_of`).
+pub(crate) fn is_session_cmdline(cmdline: &[u8]) -> bool {
+    let first = cmdline.split(|b| *b == 0).next().unwrap_or_default();
+    let base = first.rsplit(|b| *b == b'/').next().unwrap_or(first);
+    base == b"olo-session" || base == b"tabula-session"
+}
+
+/// Whether process `pid` is alive (not zombie), runs `olo-session` /
+/// `tabula-session`, and carries `OLO_SCREEN={name}` in its environment.
+pub(crate) fn screen_pid_running(name: &str, pid: i32) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
+    let Some(state) = stat.rsplit_once(')').and_then(|(_, rest)| rest.trim_start().as_bytes().first().copied()) else {
+        return false;
+    };
+    if matches!(state, b'Z' | b'X' | b'x') {
+        return false;
+    }
+    let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { return false };
+    if !is_session_cmdline(&cmdline) {
+        return false;
+    }
+    let Ok(environ) = std::fs::read(format!("/proc/{pid}/environ")) else { return false };
+    let wanted = format!("OLO_SCREEN={name}");
+    environ.split(|b| *b == 0).any(|v| v == wanted.as_bytes())
+}
+
+/// Raw `pidfd_open(pid, 0)` returning the OS error so callers can distinguish
+/// `ESRCH` (already exited) from resource/kernel failures (`EMFILE`, `ENOSYS`).
+pub(crate) fn pidfd_open_result(pid: i32) -> io::Result<OwnedFd> {
+    if pid <= 0 {
+        return Err(io::Error::from_raw_os_error(libc::ESRCH));
+    }
+    // SAFETY: Linux `pidfd_open(pid, 0)` returns a new fd or -1.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0 as libc::c_uint) as i32 };
+    if fd >= 0 { Ok(OwnedFd::new(fd)) } else { Err(io::Error::last_os_error()) }
+}
+
+/// Open a `pidfd` for `pid`, or `None` if it has already exited.
+pub(crate) fn pidfd_open(pid: i32) -> Option<OwnedFd> {
+    pidfd_open_result(pid).ok()
+}
+
+/// True when `pidfd` has become readable (meaning the pinned process exited).
+pub(crate) fn pidfd_exited(fd: &OwnedFd) -> bool {
+    let mut pfd = libc::pollfd { fd: fd.raw(), events: libc::POLLIN, revents: 0 };
+    // SAFETY: valid owned pidfd polled with timeout 0.
+    let r = unsafe { libc::poll(&mut pfd, 1, 0) };
+    r > 0 && pfd.revents != 0
+}
+
+pub(crate) enum PinResult {
+    Alive(OwnedFd),
+    Exited,
+    Failed(io::Error),
+}
+
+/// Pin `pid` via `pidfd_open` BEFORE validating `check(pid)`, then verify the
+/// pinned process is still alive after validation (eliminating exit/PID-reuse
+/// TOCTOU races).
+pub(crate) fn pin_live_pid(pid: i32, check: impl FnOnce(i32) -> bool) -> PinResult {
+    match pidfd_open_result(pid) {
+        Ok(fd) => {
+            if check(pid) && !pidfd_exited(&fd) {
+                PinResult::Alive(fd)
+            } else {
+                PinResult::Exited
+            }
+        }
+        Err(e) if e.raw_os_error() == Some(libc::ESRCH) => PinResult::Exited,
+        Err(e) => PinResult::Failed(e),
+    }
+}
+
+/// Find a currently running screen `name`, its runtime directory, and a pinned
+/// `pidfd` for its original session process.
+pub(crate) fn find_running_screen_pinned(name: &str) -> Option<(PathBuf, RuntimeScreen, OwnedFd)> {
+    for rt in screens_runtime_dir_candidates() {
+        let path = rt.join(format!("{name}.json"));
+        if let Some(screen) = read_runtime_screen(&path)
+            && screen.name == name
+            && let PinResult::Alive(pidfd) = pin_live_pid(screen.pid, |p| screen_pid_running(name, p))
+        {
+            return Some((rt, screen, pidfd));
+        }
+    }
+    None
+}
+
+/// Whether `exe` (resolved from `/proc/PID/exe`) is an Olo viewer or Rex
+/// helper permitted to hold a screen's `.control` lock (matches
+/// `crates/screen-pane/src/screens.rs::is_controller_exe`, excluding unrelated
+/// binaries such as `olo-screenshot`).
+pub(crate) fn is_controller_exe(exe: &Path) -> bool {
+    let Some(raw) = exe.file_name().and_then(|n| n.to_str()) else { return false };
+    let clean = raw.trim_end_matches(" (deleted)");
+    clean == "olo-screen" || clean == "tabula-screen" || clean == "olo-rex" || clean.starts_with("olo-rex-link")
+}
+
+/// Parse `"<pid>"` or `"<pid> <start_ticks>"` from a `.control` or
+/// `.control.lock` sidecar (matching `crates/screen-pane/src/screens.rs`).
+pub(crate) fn parse_control_lock_meta(bytes: &[u8]) -> Option<(i32, Option<u64>)> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let mut parts = text.split_whitespace();
+    let pid = parts.next()?.parse::<i32>().ok().filter(|&p| p > 0)?;
+    let ticks = parts.next().and_then(|s| s.parse::<u64>().ok());
+    Some((pid, ticks))
+}
+
+/// Process start ticks since boot (`/proc/{pid}/stat` field 22), matching
+/// `crates/screen-pane/src/screens.rs::proc_start_ticks`.
+pub(crate) fn proc_start_ticks(pid: i32) -> Option<u64> {
+    parent_and_start(pid).map(|(_, ticks)| ticks)
+}
+
+/// Open the stable per-screen `NAME.control.lock` file (`O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC`,
+/// mode `0600`), verifying regular-file type and ownership by `geteuid()`.
+pub(crate) fn open_stable_control_lock(path: &Path) -> io::Result<std::fs::File> {
+    // SAFETY: `geteuid()` has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(path)?;
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() || meta.uid() != uid {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("unsafe control lock {}", path.display())));
+    }
+    Ok(file)
+}
+
+/// Whether `pid` is a live (non-zombie) controller process, optionally verified
+/// against its expected `/proc/{pid}/stat` start ticks to reject PID reuse (Finding 8).
+pub(crate) fn is_controller_pid_alive_with_ticks(pid: i32, expected_ticks: Option<u64>) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
+    let Some((_, rest)) = stat.rsplit_once(')') else { return false };
+    let mut fields = rest.split_whitespace();
+    let Some(state) = fields.next().and_then(|s| s.as_bytes().first().copied()) else {
+        return false;
+    };
+    if matches!(state, b'Z' | b'X' | b'x') {
+        return false;
+    }
+    if let Some(want) = expected_ticks {
+        let Some(actual) = fields.nth(18).and_then(|s| s.parse::<u64>().ok()) else { return false };
+        if actual != want {
+            return false;
+        }
+    }
+    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| is_controller_exe(&exe))
+}
+
+/// Read the active controller `(pid, expected_ticks)` from `NAME.control` and
+/// optional `NAME.control.lock` sidecar.
+pub(crate) fn read_control_meta(rt: &Path, name: &str) -> Option<(i32, Option<u64>)> {
+    let bytes = read_bounded_regular(&rt.join(format!("{name}.control")), 64)?;
+    let (pid, inline_ticks) = parse_control_lock_meta(&bytes)?;
+    let expected_ticks =
+        inline_ticks.or_else(|| read_bounded_regular(&rt.join(format!("{name}.control.lock")), 64).and_then(|b| parse_control_lock_meta(&b)).filter(|(p, _)| *p == pid).and_then(|(_, t)| t));
+    Some((pid, expected_ticks))
+}
+
+/// If `NAME.control` is stale (dead or PID-reused) and unlocked, clean it up
+/// safely under `NAME.control.lock` + `NAME.control` `LOCK_EX` (Finding 8).
+pub(crate) fn try_cleanup_stale_control(rt: &Path, name: &str) {
+    let lock_path = rt.join(format!("{name}.control.lock"));
+    let ctl_path = rt.join(format!("{name}.control"));
+    let Ok(stable) = open_stable_control_lock(&lock_path) else { return };
+    // SAFETY: valid owned fd.
+    if unsafe { libc::flock(stable.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return;
+    }
+    if let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(&ctl_path)
+        && let Ok(fm) = file.metadata()
+        && fm.file_type().is_file()
+        && unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0
+    {
+        // Re-check liveness while holding BOTH exclusive locks.
+        let still_live = read_control_meta(rt, name).is_some_and(|(pid, ticks)| is_controller_pid_alive_with_ticks(pid, ticks));
+        if !still_live && std::fs::symlink_metadata(&ctl_path).is_ok_and(|pm| pm.file_type().is_file() && pm.dev() == fm.dev() && pm.ino() == fm.ino()) {
+            let _ = std::fs::remove_file(&ctl_path);
+            let _ = stable.set_len(0);
+        }
+        unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+    }
+    unsafe { libc::flock(stable.as_raw_fd(), libc::LOCK_UN) };
+}
+
+/// Scan `file` ranges for every needle in `needles` without loading whole large binaries.
+fn file_contains_all_in_ranges(file: &std::fs::File, ranges: &[(u64, u64)], needles: &[&[u8]]) -> bool {
+    let overlap = needles.iter().map(|n| n.len()).max().unwrap_or(0);
+    let mut found = vec![false; needles.len()];
+    let mut buf = vec![0u8; 64 * 1024 + overlap];
+    for &(start, len) in ranges {
+        let mut pos = 0u64;
+        let mut carry = 0usize;
+        while pos < len {
+            let chunk = ((len - pos) as usize).min(64 * 1024);
+            let Ok(got) = file.read_at(&mut buf[carry..carry + chunk], start + pos) else { break };
+            if got == 0 {
+                break;
+            }
+            let hay = &buf[..carry + got];
+            for (i, needle) in needles.iter().enumerate() {
+                if !found[i] && hay.windows(needle.len()).any(|w| w == *needle) {
+                    found[i] = true;
+                }
+            }
+            if found.iter().all(|&f| f) {
+                return true;
+            }
+            let keep = (carry + got).min(overlap);
+            buf.copy_within(carry + got - keep..carry + got, 0);
+            carry = keep;
+            pos += got as u64;
+        }
+    }
+    found.iter().all(|&f| f)
+}
+
+/// Inspect `program` (ELF64 `.rodata`/`.data` sections, or non-ELF script up to
+/// 64 KiB) for all literal markers in `needles` without spawning the binary.
+fn program_contains_markers(program: &Path, needles: &[&[u8]]) -> io::Result<bool> {
+    let file = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC).open(program)?;
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "host olo-screen binary is not a regular file"));
+    }
+    let file_len = meta.len();
+    let mut head = [0u8; 64];
+    let is_elf64 = file.read_exact_at(&mut head, 0).is_ok() && head[..4] == *b"\x7fELF" && head[4] == 2 && head[5] == 1;
+    let ranges = if is_elf64 {
+        let shoff = u64_of(&head, 0x28);
+        let shentsize = u16_of(&head, 0x3a);
+        let shnum = u16_of(&head, 0x3c);
+        let mut ranges = Vec::new();
+        if shentsize >= 64 && shnum > 0 && shnum <= 4096 {
+            for i in 0..shnum {
+                let mut sh = [0u8; 64];
+                if file.read_exact_at(&mut sh, shoff.saturating_add(i * shentsize)).is_err() {
+                    break;
+                }
+                let sh_type = u32_of(&sh, 4);
+                let sh_flags = u64_of(&sh, 8);
+                let sh_offset = u64_of(&sh, 24);
+                let sh_size = u64_of(&sh, 32);
+                // SHT_PROGBITS (1), SHF_ALLOC (2), NOT SHF_EXECINSTR (4) -> .rodata / .data.
+                if sh_type == 1 && (sh_flags & 0x2) != 0 && (sh_flags & 0x4) == 0 && sh_size > 0 && sh_offset < file_len {
+                    ranges.push((sh_offset, sh_size.min(file_len - sh_offset)));
+                }
+            }
+        }
+        if ranges.is_empty() {
+            ranges.push((0, file_len.min(64 * 1024 * 1024)));
+        }
+        ranges
+    } else {
+        vec![(0, file_len.min(64 * 1024))]
+    };
+    Ok(file_contains_all_in_ranges(&file, &ranges, needles))
+}
+
+/// Verify whether the host's installed `bin/olo-screen` (if present under
+/// `prefix()`) honors `olo-rex-link` helper PIDs and `NAME.control.lock`
+/// leases (Finding 10).
+pub(crate) fn host_cli_honors_helper_control() -> Result<(), String> {
+    let program = prefix().join("bin/olo-screen");
+    if std::fs::metadata(&program).is_err() {
+        // No host `olo-screen` installed under `prefix()` (e.g. isolated test rigs).
+        return Ok(());
+    }
+    let supported = program_contains_markers(&program, &[b"olo-rex-link", b".control.lock"]).map_err(|e| format!("couldn't inspect host olo-screen: {e}"))?;
+    if supported { Ok(()) } else { Err("This host's installed olo-screen is too old to honor remote Take Control; run `olo screen install` to upgrade.".into()) }
+}
+
+/// True when the installed host `olo-screen` binary/script supports `--part`
+/// for discontiguous history video exports (Finding 44).
+pub(crate) fn host_cli_supports_export_part(program: &Path) -> bool {
+    program_contains_markers(program, &[b"--part"]).unwrap_or(false)
+}
+
+fn read_owner_file(path: &Path) -> Option<ScreenOwner> {
+    let bytes = read_bounded_regular(path, 64 * 1024)?;
+    let owner = serde_json::from_slice::<ScreenOwner>(&bytes).ok()?;
+    (!owner.block_id.is_empty()).then_some(owner)
+}
+
+/// True when `owner` is unbound (legacy record) or matches the running screen
+/// session's `(pid, started, start_ticks)` identity (Finding 54).
+pub(crate) fn owner_matches_running(owner: &ScreenOwner, s: &RuntimeScreen) -> bool {
+    if owner.screen_pid.is_some_and(|p| p != s.pid) {
+        return false;
+    }
+    if owner.screen_started.is_some_and(|st| st != s.started) {
+        return false;
+    }
+    if let Some(expected_ticks) = owner.screen_start_ticks
+        && proc_start_ticks(s.pid).is_some_and(|actual| actual != expected_ticks)
+    {
+        return false;
+    }
+    true
+}
+
+/// Read `NAME.owner.json` for a RUNNING screen `s`, discarding stale records
+/// bound to a different session generation (Finding 54).
+pub(crate) fn read_owner_for_running(rt: &Path, state_root: &Path, name: &str, s: &RuntimeScreen) -> Option<ScreenOwner> {
+    for path in [rt.join(format!("{name}.owner.json")), state_root.join(name).join("owner.json")] {
+        if let Some(owner) = read_owner_file(&path)
+            && owner_matches_running(&owner, s)
+        {
+            return Some(owner);
+        }
+    }
+    None
+}
+
+/// Read `NAME.owner.json` from the runtime directory, falling back to the
+/// persistent copy in `$XDG_STATE_HOME/olo/screens/NAME/owner.json`.
+pub(crate) fn read_owner(rt: &Path, state_root: &Path, name: &str) -> Option<ScreenOwner> {
+    for path in [rt.join(format!("{name}.owner.json")), state_root.join(name).join("owner.json")] {
+        if let Some(owner) = read_owner_file(&path) {
+            return Some(owner);
+        }
+    }
+    None
+}
+
+/// Remove any runtime `NAME.owner.json` for `name` across runtime dirs (Finding 54).
+fn unlink_runtime_owner(name: &str) {
+    if !valid_name(name) {
+        return;
+    }
+    for rt in screens_runtime_dir_candidates() {
+        let _ = std::fs::remove_file(rt.join(format!("{name}.owner.json")));
+    }
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) {
+    let Some(parent) = path.parent() else { return };
+    if std::fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("owner.json");
+    let tmp = parent.join(format!(".{fname}.{}.tmp", std::process::id()));
+    if std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(&tmp).and_then(|mut f| f.write_all(bytes)).is_ok() {
+        if std::fs::rename(&tmp, path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
+/// Record which Rex pane controls screen `name` (`NAME.owner.json` beside
+/// `NAME.json` and `owner.json` in the screen's state folder), serialized per
+/// screen with `flock`, writing ONLY when the pane changed or either copy is
+/// missing or diverged (review1 change 8 + Astra finding 27).
+fn record_owner(name: &str, is_start: bool) {
+    if !valid_name(name) {
+        return;
+    }
+    let Some(block_id) = std::env::var("REX_BLOCK").ok().filter(|b| !b.is_empty()) else { return };
+    let session_id = std::env::var("REX_SESSION").unwrap_or_default();
+    let rt = screens_runtime_dir();
+    let state_root = screens_state_dir();
+    let state_dir = state_root.join(name);
+    let runtime_screen_exists = rt.join(format!("{name}.json")).is_file();
+    let state_exists = state_dir.is_dir();
+    if !is_start && !runtime_screen_exists && !state_exists {
+        return;
+    }
+
+    // Serialize per-screen owner updates so concurrent actions cannot leave
+    // runtime and persistent copies disagreeing.
+    let lock_path = if is_start || state_exists {
+        let _ = std::fs::create_dir_all(&state_dir);
+        state_dir.join(".owner.lock")
+    } else {
+        let _ = std::fs::create_dir_all(&rt);
+        rt.join(format!(".{name}.owner.lock"))
+    };
+    let _owner_lock = std::fs::OpenOptions::new().create(true).write(true).truncate(false).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(&lock_path).ok().inspect(|f| {
+        // SAFETY: blocking flock on exclusively opened lock file.
+        unsafe {
+            libc::flock(f.as_raw_fd(), libc::LOCK_EX);
+        }
+    });
+
+    let runtime_owner = rt.join(format!("{name}.owner.json"));
+    let state_owner = state_dir.join("owner.json");
+    let rt_existing = read_owner_file(&runtime_owner);
+    let st_existing = read_owner_file(&state_owner);
+    let existing = rt_existing.as_ref().or(st_existing.as_ref());
+
+    // Finding 54: bind owner record to the active session's `(pid, started, start_ticks)`.
+    let rt_screen = read_runtime_screen(&rt.join(format!("{name}.json"))).filter(|s| s.name == name);
+    let screen_pid = rt_screen.as_ref().map(|s| s.pid);
+    let screen_started = rt_screen.as_ref().map(|s| s.started);
+    let screen_start_ticks = screen_pid.and_then(proc_start_ticks);
+
+    let started_by = if is_start { Some(OwnerPane { host_key: None, session_id: session_id.clone(), block_id: block_id.clone() }) } else { existing.and_then(|o| o.started_by.clone()) };
+
+    let need_runtime = is_start || runtime_screen_exists;
+    let need_state = is_start || state_exists;
+    let matches_target = |o: &ScreenOwner| {
+        o.is_same_pane(&session_id, &block_id)
+            && (!is_start || o.started_by == started_by)
+            && (screen_pid.is_none() || o.screen_pid == screen_pid)
+            && (screen_started.is_none() || o.screen_started == screen_started)
+    };
+    let rt_ok = !need_runtime || rt_existing.as_ref().is_some_and(matches_target);
+    let st_ok = !need_state || st_existing.as_ref().is_some_and(matches_target);
+    let copies_agree = !need_runtime || !need_state || rt_existing == st_existing;
+    if rt_ok && st_ok && copies_agree {
+        return;
+    }
+
+    // If one authoritative copy already matches this pane and the other merely
+    // diverged or went missing, repair the missing/stale copy from it.
+    if let Some(auth) = rt_existing.as_ref().filter(|o| matches_target(o)).or_else(|| st_existing.as_ref().filter(|o| matches_target(o)))
+        && let Ok(bytes) = serde_json::to_vec_pretty(auth)
+    {
+        if need_runtime && rt_existing.as_ref() != Some(auth) {
+            write_atomic(&runtime_owner, &bytes);
+        }
+        if need_state && st_existing.as_ref() != Some(auth) {
+            write_atomic(&state_owner, &bytes);
+        }
+        return;
+    }
+
+    let (pid, began) = tab_program().map_or((None, None), |(p, b)| (Some(p), Some(b)));
+    let rex_socket = std::env::var("REX_SERVER_SOCKET").ok().filter(|s| !s.is_empty()).map(|s| s.strip_prefix("unix://").unwrap_or(&s).to_owned());
+
+    let owner = ScreenOwner { host_key: None, session_id, block_id, started_by, pid, began, rex_socket, at: now_ms(), screen_pid, screen_started, screen_start_ticks };
+    let Ok(bytes) = serde_json::to_vec_pretty(&owner) else { return };
+    if need_runtime {
+        write_atomic(&runtime_owner, &bytes);
+    }
+    if need_state {
+        write_atomic(&state_owner, &bytes);
     }
 }
 
@@ -149,6 +1244,19 @@ pub fn run(args: Vec<String>) -> ! {
             println!("{USAGE}");
             std::process::exit(0);
         }
+        Some("--protocol") => {
+            let mut caps = vec!["control-ack", "warning-status", "history-frame-error", "history-snapshot-done", "export-part-ranges", "stop-expected-started"];
+            let prog = prefix().join("bin/olo-screen");
+            if !prog.is_file() || host_cli_supports_export_part(&prog) {
+                caps.push("discontiguous_part");
+            }
+            say(json!({
+                "proto": PROTO,
+                "commands": ["follow", "stream", "history-stream", "export"],
+                "capabilities": caps,
+            }));
+            std::process::exit(0);
+        }
         Some("install") => install(&args[1..]),
         Some("status") => {
             say(status());
@@ -156,13 +1264,89 @@ pub fn run(args: Vec<String>) -> ! {
         }
         Some("default") => default(&args[1..]),
         Some("remove") => remove(),
+        Some("follow") => crate::screen_follow::run(&args[1..]),
+        Some("stream") => crate::screen_stream::run(&args[1..]),
+        // Distinct binary wire verb (`history-stream NAME`, or `history --wire NAME`)
+        // so human/agent `olo screen --on host history NAME` keeps forwarding to
+        // host `olo-screen history NAME` unchanged (Astra finding 12).
+        Some("history-stream") => crate::screen_history::run(&args[1..]),
+        Some("history") if args.len() == 3 && ((args[1] == "--wire" && valid_name(&args[2])) || (valid_name(&args[1]) && args[2] == "--wire")) => {
+            let name = if args[1] == "--wire" { args[2].clone() } else { args[1].clone() };
+            crate::screen_history::run(&[name]);
+        }
+        Some("export") => crate::screen_export::run(&args[1..]),
         // (The window that shows screens is a window: the desktop's.)
         Some("watch") => fail("watching a screen is done from the Olo desktop; here, `olo screen --on host look NAME` is a picture of it"),
         Some("start") => start(&args),
+        Some("stop") => stop_cmd(&args),
         // (Its own: what waits for a tab's program to end.)
         Some("keep-until") => keep_until(&args[1..]),
         Some(_) => exec(&args),
     }
+}
+
+/// `stop NAME [--expected-started N]`: validates session generation under
+/// `NAME.lifecycle.lock` before forwarding `stop NAME` to host `olo-screen`,
+/// and unlinks `NAME.owner.json` on success (Findings 3 & 54).
+fn stop_cmd(args: &[String]) -> ! {
+    let mut forward: Vec<String> = vec!["stop".to_owned()];
+    let mut name: Option<String> = None;
+    let mut expected_started: Option<u64> = None;
+    let mut i = 1usize;
+    while i < args.len() {
+        if args[i] == "--expected-started" {
+            let Some(v) = args.get(i + 1) else {
+                fail("--expected-started needs a session timestamp");
+            };
+            let parsed = v.parse::<u64>().unwrap_or_else(|_| fail("--expected-started must be an integer"));
+            expected_started = Some(parsed);
+            i += 2;
+        } else {
+            if name.is_none() && !args[i].starts_with("--") {
+                name = Some(args[i].clone());
+            }
+            forward.push(args[i].clone());
+            i += 1;
+        }
+    }
+    if let Some(expected) = expected_started {
+        let Some(ref n) = name else {
+            fail("stop needs a screen's name");
+        };
+        if !valid_name(n) {
+            fail(format_args!("invalid screen name {n:?}"));
+        }
+        // Check under `NAME.lifecycle.lock` and release BEFORE spawning host
+        // `olo-screen stop` so `olo-screen` can take the same lock without deadlock.
+        let rt = screens_runtime_dir();
+        let _ = std::fs::create_dir_all(&rt);
+        let lock_path = rt.join(format!("{n}.lifecycle.lock"));
+        let life_lock = std::fs::OpenOptions::new().create(true).read(true).write(true).truncate(false).mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(&lock_path).ok();
+        if let Some(ref f) = life_lock {
+            // SAFETY: blocking flock on exclusively opened lifecycle lock file.
+            unsafe {
+                libc::flock(f.as_raw_fd(), libc::LOCK_EX);
+            }
+        }
+        let running = screens_runtime_dir_candidates().into_iter().find_map(|d| read_runtime_screen(&d.join(format!("{n}.json"))).filter(|s| s.name == *n && screen_pid_running(n, s.pid)));
+        drop(life_lock);
+        match running {
+            None => fail(format_args!("screen {n} is not running")),
+            Some(s) if s.started != expected => fail(format_args!("screen {n} was replaced by a newer session; refusing to stop it")),
+            Some(_) => {}
+        }
+    }
+    let mut tool = screen_tool(&forward);
+    let status = match tool.status() {
+        Ok(s) => s,
+        Err(e) => fail(format_args!("{}: {e}", tool.get_program().to_string_lossy())),
+    };
+    if status.success()
+        && let Some(ref n) = name
+    {
+        unlink_runtime_owner(n);
+    }
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 /// The Olo here's `olo-screen`, to be run with `args`: its own programs
@@ -180,9 +1364,63 @@ fn screen_tool(args: &[String]) -> Command {
     tool
 }
 
-/// `olo-screen ARGS…` of the Olo here.
+/// `olo-screen ARGS…` of the Olo here. When run from a Rex pane on an
+/// ownership-updating command, records `owner.json` ONLY after `olo-screen`
+/// succeeds (so a rejected action never overwrites ownership, and `take --new`
+/// attributes to the screen that was actually created).
 fn exec(args: &[String]) -> ! {
     let mut tool = screen_tool(args);
+    let cmd = args.first().map(String::as_str);
+    let has_block = std::env::var_os("REX_BLOCK").is_some_and(|b| !b.is_empty());
+    if has_block
+        && let Some(cmd) = cmd
+        && OWNER_ACTIONS.contains(&cmd)
+    {
+        if cmd == "take" {
+            let is_new = args[1..].iter().any(|a| a == "--new");
+            let out = match tool.stdin(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit()).output() {
+                Ok(out) => out,
+                Err(e) => fail(format_args!("olo-screen: {e}")),
+            };
+            {
+                let mut stdout = io::stdout().lock();
+                let _ = stdout.write_all(&out.stdout);
+                let _ = stdout.flush();
+            }
+            if out.status.success() {
+                let target = serde_json::from_slice::<serde_json::Value>(&out.stdout)
+                    .ok()
+                    .and_then(|v| v["name"].as_str().map(str::to_owned))
+                    .or_else(|| (!is_new).then(|| args[1..].iter().find(|a| !a.starts_with("--")).cloned()).flatten());
+                if let Some(name) = target {
+                    record_owner(&name, is_new);
+                }
+            }
+            std::process::exit(out.status.code().unwrap_or(1));
+        }
+        let status = match tool.status() {
+            Ok(s) => s,
+            Err(e) => fail(format_args!("{}: {e}", tool.get_program().to_string_lossy())),
+        };
+        if status.success()
+            && let Some(name) = args[1..].iter().find(|a| a.as_str() != "--quick" && !a.starts_with("--"))
+        {
+            record_owner(name, false);
+        }
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    if cmd == Some("delete") {
+        let status = match tool.status() {
+            Ok(s) => s,
+            Err(e) => fail(format_args!("{}: {e}", tool.get_program().to_string_lossy())),
+        };
+        if status.success()
+            && let Some(name) = args[1..].iter().find(|a| !a.starts_with("--"))
+        {
+            unlink_runtime_owner(name);
+        }
+        std::process::exit(status.code().unwrap_or(1));
+    }
     let e = tool.exec();
     fail(format_args!("{}: {e}", tool.get_program().to_string_lossy()));
 }
@@ -203,24 +1441,34 @@ fn start(args: &[String]) -> ! {
         let _ = stdout.flush();
     }
     if out.status.success()
-        && !keep
         && let Ok(screen) = serde_json::from_slice::<serde_json::Value>(&out.stdout)
-        && let (Some(name), Some(session)) = (screen["name"].as_str(), screen["pid"].as_i64())
-        && let Some((owner, began)) = tab_program()
-        && let Some((_, session_began)) = parent_and_start(session as i32)
+        && let Some(name) = screen["name"].as_str()
     {
-        // (In the screen's process group, so that it is seen with it.
-        // Its own file: this program, as it was started.)
-        let me = std::env::current_exe().map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(" (deleted)"))).unwrap_or_else(|_| "olo-rex-link".into());
-        let kept = Command::new(me)
-            .args(["screen", "keep-until", name, &owner.to_string(), &began.to_string(), &session.to_string(), &session_began.to_string()])
-            .process_group(session as i32)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-        if let Err(e) = kept {
-            eprintln!("olo screen: {name} will stay until it is stopped (what would stop it with this tab couldn't start: {e})");
+        if std::env::var_os("REX_BLOCK").is_some_and(|b| !b.is_empty()) {
+            record_owner(name, true);
+        } else {
+            // Finding 54: a non-Rex start must not inherit a prior Rex pane's runtime owner.
+            unlink_runtime_owner(name);
+        }
+        if !keep
+            && let Some(session) = screen["pid"].as_i64()
+            && let Some((owner, began)) = tab_program()
+            && let Some((_, session_began)) = parent_and_start(session as i32)
+        {
+            // (In the screen's process group, so that it is seen with it.
+            // Execute our own running image via `/proc/self/exe` on Linux so
+            // replacing or pruning the helper binary never breaks spawning.)
+            let me = if Path::new("/proc/self/exe").exists() { PathBuf::from("/proc/self/exe") } else { std::env::current_exe().unwrap_or_else(|_| "olo-rex-link".into()) };
+            let kept = Command::new(me)
+                .args(["screen", "keep-until", name, &owner.to_string(), &began.to_string(), &session.to_string(), &session_began.to_string()])
+                .process_group(session as i32)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            if let Err(e) = kept {
+                eprintln!("olo screen: {name} will stay until it is stopped (what would stop it with this tab couldn't start: {e})");
+            }
         }
     }
     std::process::exit(out.status.code().unwrap_or(1));
@@ -787,5 +2035,132 @@ mod tests {
                 assert!(here.contains(version), "{library} has no {version}: {here:?}");
             }
         }
+    }
+
+    #[test]
+    fn review_2_25_33_controller_exe_session_cmdline_and_timeout_ceil() {
+        // Findings 2 & 25: `olo-screenshot` is NOT a controller; `olo-rex` and `olo-rex-link*` ARE.
+        assert!(!is_controller_exe(Path::new("/usr/bin/olo-screenshot")));
+        assert!(!is_controller_exe(Path::new("/usr/bin/sleep")));
+        assert!(is_controller_exe(Path::new("/usr/bin/olo-screen")));
+        assert!(is_controller_exe(Path::new("/usr/bin/tabula-screen")));
+        assert!(is_controller_exe(Path::new("/usr/bin/olo-rex")));
+        assert!(is_controller_exe(Path::new("/tmp/olo-rex-link-abc123-x86_64 (deleted)")));
+
+        // Finding 25: only `olo-session` / `tabula-session` basenames pass session identity.
+        assert!(is_session_cmdline(b"/usr/bin/olo-session\0--headless\0"));
+        assert!(is_session_cmdline(b"olo-session\0"));
+        assert!(is_session_cmdline(b"/opt/bin/tabula-session\0"));
+        assert!(!is_session_cmdline(b"/bin/sleep\060\0"));
+        assert!(!is_session_cmdline(b"/usr/bin/not-olo-session\0"));
+
+        // Finding 33: positive sub-ms remainders round UP to 1 ms so poll never spins.
+        assert_eq!(timeout_ms_ceil(Duration::ZERO), 0);
+        assert_eq!(timeout_ms_ceil(Duration::from_nanos(1)), 1);
+        assert_eq!(timeout_ms_ceil(Duration::from_micros(999)), 1);
+        assert_eq!(timeout_ms_ceil(Duration::from_millis(1)), 1);
+        assert_eq!(timeout_ms_ceil(Duration::from_micros(1_001)), 2);
+    }
+
+    fn thread_cpu_ns() -> u64 {
+        let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+        unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+        (ts.tv_sec.max(0) as u64).saturating_mul(1_000_000_000).saturating_add(ts.tv_nsec.max(0) as u64)
+    }
+
+    /// Finding 27: `write_all_cancellable` MUST NOT spin at 100% CPU when
+    /// stdout is full and unread request bytes sit on stdin (both pipe and
+    /// Unix stream socket), and MUST still cancel immediately when stdin closes.
+    #[test]
+    fn review2_w2_write_all_cancellable_no_cpu_spin_with_unread_stdin() {
+        use std::os::unix::net::UnixStream;
+
+        // (A) Pipe stdin with unread data + full stdout pipe.
+        let mut out_pipe = [-1i32; 2];
+        let mut in_pipe = [-1i32; 2];
+        assert_eq!(unsafe { libc::pipe2(out_pipe.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) }, 0);
+        assert_eq!(unsafe { libc::pipe2(in_pipe.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) }, 0);
+        let out_rd = OwnedFd::new(out_pipe[0]);
+        let out_wr = OwnedFd::new(out_pipe[1]);
+        let in_rd = OwnedFd::new(in_pipe[0]);
+        let in_wr = OwnedFd::new(in_pipe[1]);
+        let unread = b"{\"op\":\"frame_at\",\"req\":1,\"at\":100}\n";
+        assert!(unsafe { libc::write(in_wr.raw(), unread.as_ptr().cast(), unread.len()) } > 0);
+
+        let wr_fd = out_wr.raw();
+        let cancel_fd = in_rd.raw();
+        let t = std::thread::spawn(move || {
+            let big = vec![b'x'; 512 * 1024];
+            let cpu0 = thread_cpu_ns();
+            let res = write_all_cancellable(wr_fd, &big, &[CancelFd::StdinEof(cancel_fd)]);
+            let cpu1 = thread_cpu_ns();
+            (res, cpu1.saturating_sub(cpu0))
+        });
+        std::thread::sleep(Duration::from_millis(120));
+        drop(in_wr);
+        let (res, cpu_ns) = t.join().unwrap();
+        assert!(res.is_err(), "closing stdin must cancel blocked write_all_cancellable");
+        assert!(cpu_ns < 25_000_000, "Finding 27: pipe write_all_cancellable spun CPU ({:.1} ms CPU in 120 ms wall) with unread stdin!", cpu_ns as f64 / 1e6);
+        drop(out_rd);
+        drop(out_wr);
+        drop(in_rd);
+
+        // (B) Unix socket stdin with unread data + full stdout pipe.
+        let mut out_pipe2 = [-1i32; 2];
+        assert_eq!(unsafe { libc::pipe2(out_pipe2.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) }, 0);
+        let out_rd2 = OwnedFd::new(out_pipe2[0]);
+        let out_wr2 = OwnedFd::new(out_pipe2[1]);
+        let (sock_rd, mut sock_wr) = UnixStream::pair().unwrap();
+        sock_rd.set_nonblocking(true).unwrap();
+        sock_wr.write_all(unread).unwrap();
+        let wr_fd2 = out_wr2.raw();
+        let cancel_fd2 = sock_rd.as_raw_fd();
+        let t2 = std::thread::spawn(move || {
+            let big = vec![b'y'; 512 * 1024];
+            let cpu0 = thread_cpu_ns();
+            let res = write_all_cancellable(wr_fd2, &big, &[CancelFd::StdinEof(cancel_fd2)]);
+            let cpu1 = thread_cpu_ns();
+            (res, cpu1.saturating_sub(cpu0))
+        });
+        std::thread::sleep(Duration::from_millis(120));
+        drop(sock_wr);
+        let (res2, cpu_ns2) = t2.join().unwrap();
+        assert!(res2.is_err(), "closing Unix socket stdin must cancel blocked write_all_cancellable");
+        assert!(cpu_ns2 < 25_000_000, "Finding 27: socket write_all_cancellable spun CPU ({:.1} ms CPU in 120 ms wall) with unread stdin!", cpu_ns2 as f64 / 1e6);
+        drop(out_rd2);
+        drop(out_wr2);
+        drop(sock_rd);
+    }
+
+    /// Finding 43: `fallback_runtime_dir_in` prefers a private owned `/run/user/<uid>`,
+    /// rejects world-readable or symlinked dirs, and falls back to `0700` under
+    /// `/var/tmp` (never `/tmp`).
+    #[test]
+    fn review2_w3_runtime_dir_fallback_prefers_private_run_user_and_never_uses_tmp() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let uid = unsafe { libc::geteuid() };
+        let base = PathBuf::from(format!("/var/tmp/olo-r2-w3-rt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let good_run = base.join("good-run");
+        let wide_run = base.join("wide-run");
+        let missing_run = base.join("missing-run");
+        let var_tmp = base.join("vartmp");
+        std::fs::create_dir_all(&good_run).unwrap();
+        std::fs::set_permissions(&good_run, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::create_dir_all(&wide_run).unwrap();
+        std::fs::set_permissions(&wide_run, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::create_dir_all(&var_tmp).unwrap();
+
+        assert_eq!(fallback_runtime_dir_in(uid, &good_run, &var_tmp), good_run);
+        let fb1 = fallback_runtime_dir_in(uid, &wide_run, &var_tmp);
+        assert_eq!(fb1, var_tmp.join(format!("olo-runtime-{uid}")));
+        assert_eq!(std::fs::symlink_metadata(&fb1).unwrap().mode() & 0o777, 0o700);
+        let fb2 = fallback_runtime_dir_in(uid, &missing_run, &var_tmp);
+        assert_eq!(fb2, fb1);
+
+        let real_fb = fallback_runtime_dir();
+        assert!(!real_fb.starts_with("/tmp"), "fallback runtime dir must never be under /tmp: {}", real_fb.display());
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

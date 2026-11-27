@@ -1200,6 +1200,8 @@ after a burst it says a change).
 | `crates/app_server` | The compositor (Smithay, forked from Anvil). Draws the BeOS window decorator (yellow tabs), manages windows/workspaces, serves IPC. |
 | `crates/session` | `olo-session`: starts and supervises app_server, Deskbar and the desktop; in-place reload and upgrade (see below). |
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
+| `crates/screen-codec` | `olo-screen-codec`: an Agent Screen's recording (`.olof`) and its 64 × 64 tiles, read and written; no GUI dependency, so the host's helper uses it too. |
+| `crates/screen-pane` | `olo-screen-pane`: the pane that shows one Agent Screen (Live, History, Stats, Passwords) over a `ScreenSource`: this computer's, or a host's by a stream. Agent Screens mounts it; Rex will. |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/app` | `olo-app`, the Application Kit: loopers (a thread and its queue, taken one message at a time, asleep when there's none), handlers and messengers with typed messages, timers, `ask` and its `Answer`, `Latest` (what would flood a queue, gathered) and the pool that work longer than a frame runs on. No drawing. |
 | `crates/interface` | `olo-interface`, the Interface Kit: a window on a looper of its own; views (`View`: its state, the messages it takes, the `body` that says what it shows) and the elements they're made of, kept and laid out between frames (taffy); what each draws kept as a display list (`Painter`, `canvas`); the display thread (`Stage`), which draws the frames, scrolls and springs without the looper; text, the Wayland client and the GPU renderer, all Olo's own. |
@@ -22502,7 +22504,7 @@ The person's side is the window (`olo-screen`, or `olo-screen
 watch NAME`; on the kit): the screens in a sidebar and the chosen
 one's Live tab, the screen with the agent's pointer drawn in and its
 latest action under it. Live shows the screen's own frames as it draws
-them, never copied (`viewer::stream_live`, `olo_capture::live`):
+them, never copied (`olo_screen_pane::local::stream_live`, `olo_capture::live`):
 - The screen's app_server captures each frame on the GPU into one of
   three dmabufs in turn. Frames come only when the screen changed, at
   its refresh (agent screens start at 120 Hz, `screens::fastest`).
@@ -22859,7 +22861,7 @@ clipboard is taken off it (an agent's screen never has the person's
 clipboard on its own); what they copied from the screen stays on
 theirs. It's joined off the UI thread (two displays' connections).
 
-### Moving windows to and from screens (apps/screen/src/moving.rs)
+### Moving windows to and from screens (crates/screen-pane/src/moving.rs)
 
 The person can put any of their windows on an agent screen (for an agent
 to work in it: a Terminal tab, a Chrome window, a document), and give a
@@ -23217,7 +23219,103 @@ installed and ready to use").
   policy naming the host's screens; a host's Olo brought up to date by
   the desktop when it connects.
 
-### Passwords for agent screens (apps/screen/src/shares.rs)
+### A screen's pane, and a host's screens served live (crates/screen-pane, crates/screen-codec, rex-link's `screen follow|stream|history-stream|export`)
+
+Ben, 2026-11-27: "in the olo desktop agent screens app you can see both
+the local screens and the screens for any of the connected rex hosts.
+also, in the rex app itself you should see the screens in the activity
+sidebar nested level under the agent that is controlling them, and when
+selecting one it should show the same pane we show in the agent screens
+app for the screen with the history/stats/passwords and live view etc."
+What is here is the ground for that (the design's steps 1, 3 and 4:
+`/var/tmp/olo-agents/screens/design.md` while it is being built); what
+shows it to the person comes next (TODO: Rex's client end, its hub and
+socket, the hosts in Agent Screens' sidebar, the rows and the pane in
+Rex).
+
+- **One pane, in a crate of its own** (`olo-screen-pane`: `ScreenPane`,
+  the Live, History, Stats and Passwords tabs as Agent Screens had them,
+  moved out of `apps/screen` whole: `picture`, `history`, `record`,
+  `replay`, `stats`, `shares`, `export`, `clip`, `moving`, `screens`).
+  It shows a screen by a **source** (`trait ScreenSource`, `source.rs`):
+  `LocalScreenSource` (`local.rs`: this computer's screens, as before:
+  frames from app_server, shared not copied; `clip::join`; the player)
+  and `StreamScreenSource` (`stream.rs`: a screen somewhere else, over
+  any pair of byte streams a `StreamOpener` gives it). Agent Screens
+  mounts it over the local source; its pictures are the same to the
+  pixel before and after (48 of 48: every tab, an empty list, a stopped
+  screen, light and dark at 1×, 1.5× and 2×; the builder's
+  `compare_shots.py`, and the lead's own run of it).
+- **One codec** (`olo-screen-codec`, no GUI dependency: the `.olof`
+  recording's reader and index, the 64 × 64 tiles and their deltas):
+  the pane and the host's helper (static, musl) both read recordings
+  and frames with it, so there is never a second decoder. Rex's build
+  script watches it (`apps/rex/build.rs`): a fix there rebuilds the
+  helper inside Rex.
+- **The wire** (`rex-link/src/screen_wire.rs`, in the helper's library:
+  the pane uses the same types). Every length is checked against a
+  stated most before anything is allocated. `olo-rex-link screen
+  --protocol` says what the helper can do (`capabilities`); a pane
+  offers nothing its host's helper hasn't, and says so in words.
+- **`screen follow`**: one process a host, asleep in one `poll`:
+  inotify on the screens' folders (and their parents until they are
+  there), a pidfd for each running screen. A snapshot, then each change
+  as a line; who controls a screen (`NAME.owner.json`, written only
+  when it changes). At rest: no wakeups, no bytes.
+- **`screen stream NAME`**: the screen live. Nothing is captured or
+  sent while nothing is painted; a frame is the changed tiles, packed
+  and compressed as one zstd stream (measured against one a tile on the
+  same frames: 4% smaller for typing, 29% for a scrolling page, and no
+  slower); at most two frames unacknowledged; input and control are
+  read apart from capture, so a slow frame never delays a key. Release
+  build, a 1440 × 900 screen: at rest 0 wakeups and 0 bytes in ten
+  seconds; typing, 16 frames a second, 2.9 kB a frame, 0.2% of a core;
+  a page scrolling in Chrome, 15 frames a second, 98 kB a frame, 0.6%;
+  from a key sent to its frame back over SSH on one machine, 47 ms.
+- **Control** is asked for and answered (`ClientMsg::ControlSeq`,
+  `ServerMsg::Control`): the pane holds it only once the host says so
+  for that asking, shows a refusal's reason, and sends input only while
+  it holds. One controller at a time, by a lock that is never unlinked
+  (`NAME.control.lock`, the holder's pid and its start time beside
+  `NAME.control`); an agent's own actions hold it shared, so Take
+  Control waits for an action that is running. It is let go when the
+  stream ends however it ends; and what the controller still had
+  pressed is let go by the screen's compositor itself
+  (`Request::OwnInput`, below).
+- **What a controller still holds is let go when it goes**
+  (`Request::OwnInput`, crates/protocol; app_server's
+  `IpcState::owned_input`, `AnvilState::input_closed`). A connection
+  that says `own_input` has what it presses from then on (a key, a
+  keysym, a button, a finger) kept as its own, and whatever of it is
+  still down when the connection ends, however it ends, is let go, the
+  last pressed first. The pane's local control and the host's helper
+  say it on each new input connection: killed outright with a key down
+  (the helper lets go itself at an orderly end, and can't then), they
+  left the key down in the screen for good (a code review, 2026-11-27).
+  Not the rule for every connection: a tool that presses in one
+  connection and lets go in the next (`tsession down … up`, a drag in
+  steps) keeps what it holds; and what another connection has let go is
+  no longer the first's to let go. Nothing is looked up or kept while
+  nobody owns input (real input never passes there). Tried against a
+  real headless app_server by `tools/dev/own-input-check` (its three
+  cases), and measured with it on release builds (`--cost 3000`): a
+  batch of a key pressed and let go, asked and answered, 33.5 and 35.9
+  µs before; 32.1 and 37.9 µs through a connection that owns its input,
+  32.4 and 43.6 µs through one that doesn't (two runs each, a host
+  under a load of sixty: no difference that can be told from the
+  runs'). An app_server from before answers with an error, and things
+  are as they were.
+- **`screen history-stream NAME`** and **`screen export NAME`**: the
+  recorded history (its actions and its frames' index, then a frame at
+  a time on request, as tile deltas) and an MP4 made on the host and
+  streamed back, into a file of the pane's own making that is renamed
+  into place when whole.
+- **Its two code reviews** (Astra 6.2: 31 findings on the pane, 36 on
+  the host's side, then 61 on the whole; fixed by the two builders with
+  a test each): what is left, and what waits for the steps to come, is
+  in the TODO.
+
+### Passwords for agent screens (crates/screen-pane/src/shares.rs)
 
 Agents on a screen get the passwords the person chose, and only those:
 items shared with every screen (Screen ▸ Passwords for Every Screen…)
