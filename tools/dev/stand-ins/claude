@@ -1,22 +1,27 @@
 #!/bin/bash
 # A stand-in for Claude Code, for Olo's tests (run it by its path, `tools/dev/stand-ins/claude RECORD`: its name
 # is what tells it apart): it draws Claude Code's screens (working, asking leave to run a command with "1. Yes"
-# chosen, at its own prompt), and writes into RECORD what it is answered ("answer:[]" is Return) and told. No
+# chosen, at its own prompt), and writes into RECORD what it is answered ("answer:[]" is Return) and told (reads.sh: it reads as
+# the agent reads; with `two` after RECORD, a second question after the first). No
 # agent, no account.
 # In Rex, whose server names a script's program by its interpreter, run it under a copy of bash named for the
 # agent (`cp /usr/bin/bash DIR/claude; DIR/claude tools/dev/stand-ins/claude RECORD`, as try.py agents does).
 out=$1
+. "${BASH_SOURCE%/*}/reads.sh"
 RULE=$(printf '─%.0s' $(seq 70))
 pad() { for _ in $(seq 70); do echo; done; }
 # (As Claude Code 2.1.331 draws them, 2026-11-24: its field and its mode under what it does at work and at
 # rest; its question with a third answer that would switch the person's mode, never Return's.)
 DASHED=$(printf '╌%.0s' $(seq 70))
 working() { pad; printf '❯ Do what the brief says.\n● Read(brief.md)\n✻ Thinking… (12s)\n%s\n❯ \n%s\n  ⏸ manual mode on · esc to interrupt · ← for agents\n' "$RULE" "$RULE"; }
-asking() { pad; printf "● Bash(touch one.txt)\n%s\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n Make one.txt\n%s\n │ touch one.txt\n%s\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to this folder from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n Esc to cancel · Tab to amend\n" "$RULE" "$DASHED" "$DASHED"; }
+asking() { pad; printf "● Bash(touch $1.txt)\n%s\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n Make $1.txt\n%s\n │ touch $1.txt\n%s\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to this folder from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n Esc to cancel · Tab to amend\n" "$RULE" "$DASHED" "$DASHED"; }
 idle() { pad; printf '● Done with this part.\n✻ Crunched for 2s\n%s\n❯ \n%s\n  ⏸ manual mode on · ? for shortcuts\n' "$RULE" "$RULE"; }
+full_screen; asks_for_the_mouse
 working; sleep 3
-asking; IFS= read -rsn1 key; printf 'answer:[%s]\n' "$key" >> "$out"
+asking one; answer
+# (`two`: a second question, of another command, for what is tried at a question beside its answer.)
+if [ "${2:-}" = two ]; then working; sleep 1; asking two; answer; fi
 working; sleep 2
-idle; IFS= read -r line; printf 'said:[%s]\n' "$line" >> "$out"
+idle; told; printf 'said:[%s]\n' "$line" >> "$out"
 working; sleep 2
-idle; IFS= read -r line; printf 'said again:[%s]\n' "$line" >> "$out"
+idle; told; printf 'said again:[%s]\n' "$line" >> "$out"

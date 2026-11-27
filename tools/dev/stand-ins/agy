@@ -1,18 +1,23 @@
 #!/bin/bash
 # A stand-in for the Antigravity CLI, for Olo's tests (run it as `bash tools/dev/stand-ins/agy RECORD`: its name is what
 # tells it apart): it draws the screens recorded from agy 1.5.15 (working, asking leave to run a command, at its
-# prompt), and writes into RECORD what it is answered ("answer:[]" is Return) and told. No agent, no account.
+# prompt), and writes into RECORD what it is answered ("answer:[]" is Return) and told (reads.sh: it reads as
+# the agent reads; with `two` after RECORD, a second question after the first). No agent, no account.
 # In Rex, whose server names a script's program by its interpreter, run it under a copy of bash named for the
 # agent (`cp /usr/bin/bash DIR/agy; DIR/agy tools/dev/stand-ins/agy RECORD`, as try.py agents does).
 out=$1
+. "${BASH_SOURCE%/*}/reads.sh"
 RULE=$(printf '─%.0s' $(seq 70))
 pad() { for _ in $(seq 70); do echo; done; }
 working() { pad; printf '> Do what the brief says.\n● Read(brief.md) (ctrl+o to expand)\n⣽  Generating...\n%s\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n%s\nesc to cancel\n' "$RULE" "$RULE"; }
-asking() { pad; printf "● Bash(rm one.txt) (ctrl+o to expand)\nCommand\n%s\nRequesting permission for:\n   rm one.txt\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'rm one.txt'\n  3. Yes, and always allow for commands that start with 'rm one.txt' (Persist to settings.json)\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel\n" "$RULE"; }
+asking() { pad; printf "● Bash(rm $1.txt) (ctrl+o to expand)\nCommand\n%s\nRequesting permission for:\n   rm $1.txt\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'rm $1.txt'\n  3. Yes, and always allow for commands that start with 'rm $1.txt' (Persist to settings.json)\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel\n" "$RULE"; }
 idle() { pad; printf '  DONE\n%s\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n%s\n? for shortcuts\n' "$RULE" "$RULE"; }
+full_screen
 working; sleep 3
-asking; IFS= read -rsn1 key; printf 'answer:[%s]\n' "$key" >> "$out"
+asking one; answer
+# (`two`: a second question, of another command, for what is tried at a question beside its answer.)
+if [ "${2:-}" = two ]; then working; sleep 1; asking two; answer; fi
 working; sleep 2
-idle; IFS= read -r line; printf 'said:[%s]\n' "$line" >> "$out"
+idle; told; printf 'said:[%s]\n' "$line" >> "$out"
 working; sleep 2
-idle; IFS= read -r line; printf 'said again:[%s]\n' "$line" >> "$out"
+idle; told; printf 'said again:[%s]\n' "$line" >> "$out"

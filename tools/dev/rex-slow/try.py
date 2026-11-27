@@ -270,7 +270,8 @@ elif what == "agents":
     sys.exit(subprocess.run(["/usr/bin/python3", f"{HERE}/at_once.py", os.path.abspath(__file__), "claude", "codex", "agy", "--", "agents-one"]).returncode)
 elif what in ("claude", "codex", "agy") and args[:1] == ["agents-one"]:
     # One coding agent's stand-in (tools/dev/stand-ins: it works, asks leave to run a command with "1. Yes" chosen,
-    # waits at its own prompt, works again and waits again, writing what it is answered and told), as at_once.py runs
+    # and of a second, waits at its own prompt, works again and waits again, writing what it is answered and told;
+    # it asks its terminal for what its agent asks: the mouse and the kitty protocol's keys), as at_once.py runs
     # it (`try.py AGENT agents-one`). Keep It Going and Auto Approve turned on by the app's commands, as an agent
     # would ask: Auto Approve then asks the person, who presses Turn On. The question is answered with Return once
     # its time has come (shortened: OLO_REX_AUTO_APPROVE_SECS), the countdown showing meanwhile; the agent at its
@@ -289,7 +290,10 @@ elif what in ("claude", "codex", "agy") and args[:1] == ["agents-one"]:
     named = f"{D}/agents/{agent}"
     os.makedirs(os.path.dirname(named), exist_ok=True)
     shutil.copy("/usr/bin/bash", named)
-    with Rig(f"exec {named} {R3}/tools/dev/stand-ins/{agent} {record}", delay=0, env=["OLO_REX_AUTO_APPROVE_SECS=4", "OLO_REX_KEEP_GOING_SECS=3"]) as r:
+    with contextlib.suppress(FileNotFoundError): os.remove(record + ".mouse")
+    reports = lambda: len(open(record + ".mouse").read().split()) if os.path.exists(record + ".mouse") else 0
+    answers = lambda: read().count("answer:[")
+    with Rig(f"exec {named} {R3}/tools/dev/stand-ins/{agent} {record} two", delay=0, env=["OLO_REX_AUTO_APPROVE_SECS=4", "OLO_REX_KEEP_GOING_SECS=3"]) as r:
         time.sleep(1.0)
         r.invoke("agent.keep_going_toggle")
         r.invoke("agent.auto_approve_toggle")
@@ -300,12 +304,49 @@ elif what in ("claude", "codex", "agy") and args[:1] == ["agents-one"]:
         if button and alert:
             c = alert["content"]
             r.ts("click", r.name, str(int(c["x"] + button["x"] + button["width"] / 2)), str(int(c["y"] + button["y"] + button["height"] / 2)))
-        counting = r.wait(lambda: next((n for n in r.nodes() if n.get("role") == "Status" and "Yes in" in str(n.get("name") or "")), None), 12)
-        check(f"{agent}: the question counts down", counting, (counting or {}).get("name"))
+        counting = lambda: next((n for n in r.nodes() if n.get("role") == "Status" and "Yes in" in str(n.get("name") or "")), None)
+        first = r.wait(counting, 12)
+        check(f"{agent}: the question counts down", first, (first or {}).get("name"))
+        # The pointer over the pane while its question waits, as a person's is who looks at it: moved across it,
+        # the pane clicked (to bring it forward), the wheel turned (to read a long command). Claude Code and Codex
+        # ask to be told of all of it, every move; none of it is typing, and the question is still answered. (Each
+        # took the question for the person, for good, until 2026-11-27: Ben saw no countdown on a question that
+        # had waited minutes. The stand-ins asked for no mouse then, and this passed.)
+        c = r.win["content"]
+        at = lambda dx, dy: (str(int(c["x"] + c["width"] * dx)), str(int(c["y"] + c["height"] * dy)))
+        was = reports()
+        for dx, dy in ((0.45, 0.5), (0.6, 0.55), (0.5, 0.6)):
+            r.ts("move", r.name, *at(dx, dy))
+        r.ts("click", r.name, *at(0.5, 0.6))
+        r.ts("wheel", r.name, "-1")
         answered = r.wait(lambda: "answer:[]" in read(), 15)
-        check(f"{agent}: answered Yes (Return) once its time came", answered, read())
-        told = r.wait(lambda: f"said:[{said}]" in read(), 20)
-        check(f"{agent}: told to keep going at its prompt, once quiet", told, read())
+        check(f"{agent}: answered Yes (Return) once its time came, the pointer moved, clicked and the wheel turned over it meanwhile", answered, read())
+        told_of_the_mouse = r.wait(lambda: reports() > was, 3) if agent != "agy" else reports() == 0
+        check(f"{agent}: " + ("its program was told of the pointer (so the above is of a pane that hears it)" if agent != "agy" else "which asks for no mouse, was told of none"), told_of_the_mouse, reports())
+        # Its second question: a key pressed there (Ctrl+E, which answers nothing: the question stays) makes it
+        # the person's. The countdown goes, and Return is not pressed for them, however long it waits. (Keys with
+        # Control, and every key of a program that asked for the kitty protocol's, go by the server's own encoder:
+        # those were not counted as typing until 2026-11-27, and Return followed four seconds after an Escape.)
+        second = r.wait(lambda: answers() == 1 and counting(), 12)
+        check(f"{agent}: its second question counts down too", second, (second or {}).get("name") if isinstance(second, dict) else second)
+        r.ts("key", r.name, "29", "18")
+        gone = r.wait(lambda: not counting(), 3, every=0.2)
+        check(f"{agent}: a key pressed at it: no longer counting down", gone and "key:[" in read(), read())
+        time.sleep(6)
+        check(f"{agent}: and not answered for the person, well past its time", answers() == 1 and not counting(), read())
+        r.ts("key", r.name, "28")
+        theirs = r.wait(lambda: answers() == 2, 5)
+        check(f"{agent}: answered by the person's own Return", theirs, read())
+        # At its prompt, quiet: told to keep going, the pointer moving over the pane all the while (the pointer
+        # is not typing here either: each move began the quiet again, so an agent under a moving pointer was
+        # never told).
+        until, n = time.time() + 14, 0
+        while time.time() < until and f"said:[{said}]" not in read():
+            n += 1
+            r.ts("move", r.name, *at(0.4 + 0.02 * (n % 8), 0.5))
+            time.sleep(0.3)
+        told = f"said:[{said}]" in read()
+        check(f"{agent}: told to keep going at its prompt, once quiet, the pointer moving over it", told, read())
         time.sleep(9)
         check(f"{agent}: not told again within the hour", told and "said again" not in read(), read())
     if not ok:

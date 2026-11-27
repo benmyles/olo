@@ -4158,6 +4158,25 @@ impl RexHub {
         self.write_input(key, data, None);
     }
 
+    /// What the pointer did over a pane, for a program that asked to be
+    /// told (a press, a release, a move, a step of the wheel, and the
+    /// wheel's arrows where it asked for those): its input like any
+    /// other, but not typed by the person. A question waiting there is
+    /// still Auto Approve's, and Keep It Going's quiet goes on: only
+    /// keys and text make a question the person's, as in Terminal. They
+    /// went as typing until 2026-11-27: Claude Code and Codex ask for
+    /// every move of the pointer (mode 1003), so the pointer crossing a
+    /// pane, a click to bring it forward or the wheel turned to read a
+    /// long command each took the question for the person, for good,
+    /// and its countdown never showed (Ben, of a question that had
+    /// waited so: "it seems auto approve still doesn't work in rex
+    /// terminal? i see no countdown"). Auto Approve presses Return only
+    /// with the mark seen on Yes, so a click or an arrow that moves the
+    /// mark is no danger: it waits while the mark is elsewhere.
+    pub fn send_pointer(&self, key: &BlockKey, data: Vec<u8>) {
+        self.write(key, data, None);
+    }
+
     /// What a pane has on: Keep It Going, Auto Approve.
     pub fn help(&self, key: &BlockKey) -> Help {
         help_of(key)
@@ -4212,11 +4231,18 @@ impl RexHub {
     }
 
     pub fn write_input(&self, key: &BlockKey, data: Vec<u8>, connection: Option<&ControlClient>) {
-        // (Typed by the person: a question waiting is theirs.)
-        {
-            let _in = self.rt.enter();
-            self.inner.agent_typed(key);
-        }
+        self.typed(key);
+        self.write(key, data, connection);
+    }
+
+    /// Typed by the person in a pane (a key, text, a paste): a question
+    /// waiting there is theirs.
+    fn typed(&self, key: &BlockKey) {
+        let _in = self.rt.enter();
+        self.inner.agent_typed(key);
+    }
+
+    fn write(&self, key: &BlockKey, data: Vec<u8>, connection: Option<&ControlClient>) {
         if let Some(tx) = self.writer_for_key(key, connection) {
             let seq = self.input_typed(key, &data);
             let text = String::from_utf8_lossy(&data).into_owned();
@@ -4257,6 +4283,13 @@ impl RexHub {
     }
 
     pub fn send_rex_key(&self, key: &BlockKey, event: RexKeyEvent) {
+        // (A key is typed whichever way it goes: these, the keys the
+        // server encodes (all of a program's that asked for the kitty
+        // protocol's, Escape among them, and every key with Control or
+        // Alt), left a question counting down under the person's own
+        // key until 2026-11-27: Escape pressed at a question, and
+        // Return was still pressed for it four seconds later.)
+        self.typed(key);
         if let Some(tx) = self.writer_for_key(key, None) {
             // (A key the host's own bindings are asked about: not one to predict.)
             let seq = self.input_typed(key, &[0x1b]);

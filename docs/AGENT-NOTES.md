@@ -4099,6 +4099,24 @@ their host's"):
   What the real one does with a key is tried in one of the helpers'
   own tmux sessions (`tmux -L olo-agents send-keys -t =NAME:0.0
   Enter`), on a specimen brief that touches nothing.
+- **A stand-in asks its terminal for what the real program asks, not
+  only draws what it draws.** Claude Code (2.1.332) and Codex turn on
+  the alternate screen, the mouse with every move of it (1000, 1002,
+  1003, in SGR form 1006), focus reports, bracketed paste and the kitty
+  keyboard protocol, and keep them on at a question; Antigravity the
+  alternate screen and bracketed paste alone. The stand-ins asked for
+  none, and Rex's Auto Approve passed its check for three days while
+  the pointer crossing a real Claude Code pane stopped it
+  (2026-11-27). To list what a program asks: run it in a pty of your
+  own (Python's `pty.fork`, a mock of its model's API behind it) and
+  collect the `ESC [ ? N h` it writes. When a person reports what a
+  check says works, the first question is what the real program does
+  that the stand-in doesn't.
+- **A test desktop's pointer is somewhere**: after a click on an alert
+  that then closes, the pointer is over the window beneath, which is
+  told of it (a pane whose program hears the mouse gets a report). A
+  script's click is a person's click, with a pointer left where it
+  was.
 - **Auto Approve asked for through the commands socket asks the
   person** (an alert, "Turn On"): a test presses it, as a person.
 - **After anything run against the person's test server, look at

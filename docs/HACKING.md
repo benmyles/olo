@@ -28823,15 +28823,38 @@ then Return once the mark is seen on it), or the
 message (Settings ▸ Keep It Going's) then Return 150 ms later into the
 agent's own prompt, its turn over, never into a chooser. Typing in the
 pane, or Stop in the countdown over its screen's top right, makes the
-question the person's (`Help::theirs`, kept). While a question counts
+question the person's (`Help::theirs`, kept). **Typing is keys and
+text, whichever way they go** (`RexHub::write_input`, and
+`send_rex_key` for the keys the server encodes: every key with Control
+or Alt, and all of a program's that asked for the kitty protocol's);
+**what the pointer does is not typing** (`RexHub::send_pointer`: a
+press, a release, a move, the wheel's steps and its arrows, for a
+program that asked to be told). Claude Code and Codex ask for every
+move of the pointer (mode 1003), and each report went as typing until
+2026-11-27: the pointer crossing such a pane, a click to bring it
+forward, or the wheel turned to read a long command took the question
+for the person for good, and no countdown showed (Ben: "it seems auto
+approve still doesn't work in rex terminal? i see no countdown"); it
+also began Keep It Going's quiet again at every cell crossed. A click
+or an arrow that moves the chooser's mark is no danger: Return is
+pressed only with the mark seen on Yes. While a question counts
 down the window is redrawn once a second, and not otherwise. The tab,
 the pane's head and its Activity row carry the marks
 (`widgets::agent_marks`), and the tab's words say "kept going" and
 "auto approving". `tools/dev/rex-slow/try.py agents` tries all three
 agents' stand-ins (`tools/dev/stand-ins/{claude,codex,agy}`, each under
 a copy of bash named for its agent) end to end, the three at once
-(`at_once.py`), in 25 seconds. The stand-ins draw what the agents
-themselves draw, checked against them: a real one in the agents' tmux
+(`at_once.py`), in 35 seconds: a question answered with the pointer
+moved, clicked and the wheel turned over it meanwhile; a second made
+the person's by a key that answers nothing (no Return pressed for
+them, well past its time); told to keep going under a moving pointer.
+The stand-ins ask their terminal for what their agents ask
+(`stand-ins/reads.sh`: a screen of their own; for Claude Code and
+Codex the mouse, every move of it, and the kitty protocol's keys) and
+read as they read (a report of the mouse read away, a key that is no
+answer written down): they asked for none of it until 2026-11-27, and
+the check passed for three days over the bug above. The stand-ins draw
+what the agents themselves draw, checked against them: a real one in the agents' tmux
 on a specimen task (a command it needs leave for: `cp` in a scratch
 folder), its screens kept as it asks and as it waits
 (`tools/dev/agents peek NAME 40 > claude-asking.txt`), and read as Olo

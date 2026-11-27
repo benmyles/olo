@@ -7758,7 +7758,7 @@ fn render_single_pane(
             if let Some(bytes) = sent {
                 vis_mouse.drag_anchor.set(None);
                 vis_mouse.reported_at.set(Some((col, row)));
-                hub.send_input(&bk_mouse, bytes);
+                hub.send_pointer(&bk_mouse, bytes);
                 cx.stop_propagation();
                 return;
             }
@@ -7787,7 +7787,7 @@ fn render_single_pane(
                 let sent = br_drag.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Motion, held, key_mods(&e.modifiers), cell);
                 if let Some(bytes) = sent {
                     vis_drag.reported_at.set(Some(cell));
-                    the_hub().send_input(&bk_drag, bytes);
+                    the_hub().send_pointer(&bk_drag, bytes);
                 }
             }
             if held.is_some() || e.pressed_button.is_none() {
@@ -7812,7 +7812,7 @@ fn render_single_pane(
             let sent = br_right.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Press, Some(VtButton::Right), key_mods(&e.modifiers), cell);
             if let Some(bytes) = sent {
                 vis_right.reported_at.set(Some(cell));
-                the_hub().send_input(&bk_rclick, bytes);
+                the_hub().send_pointer(&bk_rclick, bytes);
                 cx.stop_propagation();
                 return;
             }
@@ -7887,7 +7887,7 @@ fn render_single_pane(
         };
         drop(g);
         if !bytes.is_empty() {
-            the_hub().send_input(&bk_scroll, bytes);
+            the_hub().send_pointer(&bk_scroll, bytes);
         }
         cx.stop_propagation();
     })
@@ -7899,7 +7899,7 @@ fn render_single_pane(
         match sent {
             Some(bytes) => {
                 vis_middle.reported_at.set(Some(cell));
-                the_hub().send_input(&bk_middle, bytes);
+                the_hub().send_pointer(&bk_middle, bytes);
             }
             None => {
                 if let Some(slot) = wins().map.get(&win_id) {
@@ -7936,7 +7936,7 @@ fn render_single_pane(
                 };
                 vis_up.reported_at.set(None);
                 if let Some(bytes) = sent {
-                    the_hub().send_input(&bk_up, bytes);
+                    the_hub().send_pointer(&bk_up, bytes);
                 }
             };
             screen_canvas = if out { screen_canvas.on_mouse_up_out(button, release) } else { screen_canvas.on_mouse_up(button, release) };

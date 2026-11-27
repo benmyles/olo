@@ -875,6 +875,22 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **An agent's screen is read from what the pane shows, not from where
+  the program is drawing** (found by the investigator of the Auto
+  Approve report, 2026-11-27: "`BlockRuntime::screen_bottom` reads
+  `viewport_row_text` (`GHOSTTY_POINT_TAG_VIEWPORT`), so for a
+  non-alt-screen agent scrolled up in Ghostty scrollback,
+  `agent_screen()` reads the scrolled viewport until scrolled back
+  down"). A pane left scrolled up into its history has no question as
+  far as Auto Approve, Keep It Going and the Activity row can tell.
+  The three agents draw on the alternate screen today (no history to
+  scroll), so it bites an agent run with its full-screen mode off, or
+  a command of the person's own. To do: read the active screen's rows
+  (`crates/rex-vt`: a row's text by the active point, beside
+  `viewport_row_text`), with a rig check that scrolls a stand-in's
+  pane up while its question waits. Terminal's reading to be checked
+  for the same.
+
 - **Agent Screens on the Rex host itself: what is left** (Ben,
   2026-11-26: "there should be an option for agents on a rex host to use
   olo agent screens on the host itself without having to use them on
@@ -11947,6 +11963,8 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Auto Approve in Rex: no countdown on a real Claude Code question**~~ (done 2026-11-27; Ben, of a question that had waited minutes with Auto Approve on: "it seems auto approve still doesn't work in rex terminal? i see no countdown... unless i just need to upgrade maybe there's a fix in a newer build?"). Not the build. Claude Code and Codex ask their terminal to be told of every move of the pointer, and Rex counted each report as the person typing: the pointer crossing the pane, a click to bring it forward, or the wheel turned to read a long command made the question "the person's" for good. Found twice over: a second investigator with the real Claude Code 2.1.332 against a mock model on the rig's far host (untouched: counted down and answered; the pointer moved 25 px, one click, or one notch of the wheel: the countdown gone at once, never answered), and my own stand-in once it asked for the mouse. The pointer's reports are no longer typing (`RexHub::send_pointer`); and the reverse was wrong too and is fixed: keys the server encodes (Escape and every key with Control or Alt, for a program that asked for the kitty protocol's) did not count as typing, so Return was pressed four seconds after an Escape. `try.py agents` tries both with stand-ins that now ask for what the real programs ask; it fails on the build before (no countdown for Claude Code and Codex; a second Return after the person's key).
 
 - ~~**A build of the tree served this host's live agents service for two minutes**~~ (2026-11-26, 10:15:25 to 10:17:46 UTC; the ShiftUp lead: "we cannot watch or reach them. Please put it back now"). Put back at once (the registry on disk was untouched), and the five things that met are each closed, with tests: Escape takes Cancel in an alert wherever it stands (it took the first button, and Rex's stop alert's first is the stop; a picture's script pressed it); Rex's demo runs no helper; a service hands over only to a helper put beside its own file; what a service keeps is found from the home and another home has another socket; every `tsession` has a Rex server socket nothing listens on and an agents folder of its own. As their lead asked: a registry that can't be read is a failure (69), never an empty list; a replacement of the service there is said in their file first; and `~/.local/state/olo/host-upgrade.hold` holds it. AGENT-NOTES has the whole of it.
 
