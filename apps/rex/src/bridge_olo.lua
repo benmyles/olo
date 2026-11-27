@@ -170,6 +170,8 @@ if cmd == "op" then
   if stdin and stdin ~= "" then
     a.stdin = base64_of(stdin)
     if os.getenv("OLO_BRIDGE_STDIN_KEPT") ~= "1" then os.remove(stdin) end
+    -- (So the desktop was sent something that may be made into
+    -- something: see `ask`.)
   end
   local reads = { ["-i"] = true, ["--in-file"] = true, ["--template"] = true, ["--env-file"] = true }
   local files, i = {}, 1
@@ -211,11 +213,15 @@ if not app then fail("no Olo desktop is connected to this Rex server now (open t
 -- caller that went on to do it here could do it twice (a vault item
 -- made on the desktop and again by the host's own `op`). 75 then: not
 -- known, try again.)
+-- (`op` is 75 from its first asking: it may change a vault, and an
+-- error from the asking itself doesn't say whether the desktop got it.
+-- The other commands' first asking stays 69: a link opened twice is
+-- better than one not opened.)
 local asked_once = false
 local function ask(name, with)
   local r, why = rex.call("client.perform", { client_id = app, action = name, args = with, session_id = session, block_id = block, timeout_ms = 30000 })
   if not r then
-    if asked_once then fail("the Olo desktop was asked and its answer was lost (" .. fmt_err(why) .. "): whether it was done isn't known; nothing more was done here", 75) end
+    if asked_once or cmd == "op" then fail("the Olo desktop was asked and its answer was lost (" .. fmt_err(why) .. "): whether it was done isn't known; nothing more was done here", 75) end
     fail(fmt_err(why), 69)
   end
   asked_once = true

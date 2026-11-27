@@ -883,6 +883,23 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Left from Astra's confirming review of the pointer and the bridge**
+  (2026-11-27, `/var/tmp/olo-reviews/astra-e95bcee5e0/astra-review.md`;
+  its 1, 2, 4, 6 to 10 are fixed in the commits after it). In its words:
+  "A pointer event can get ahead of an already-decided Return, even on a
+  fast connection. The timer chooses Return, clears `pending` and
+  releases the pane lock. If its worker pauses there, the UI can find
+  nothing to postpone and its input queue can deliver Down. … Serialize
+  the final eligibility check and enqueue with pointer input on the same
+  pane queue … A second desktop showing the same pane also has its own
+  `Watch`. Its clicks bypass the first desktop's timer entirely." And:
+  "Raw wheel and drag behavior is still unverified. To check on each
+  supported agent … A chooser that selects another row on a wheel step
+  or a held-button move can therefore change the selection just before
+  the deadline": to try with the real Claude Code and Codex (does the
+  wheel, or a drag, move a permission chooser's mark?), and to make the
+  stand-ins' marks move as the real ones do.
+
 - **Left from Astra's third code review** (2026-11-27,
   `/var/tmp/olo-reviews/astra-3bb707db3e/astra-review.md`, 43 findings
   of five commits; what was fixed is in the commits that followed it).

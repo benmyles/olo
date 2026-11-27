@@ -108,39 +108,92 @@ if [ ! -d "$OLO_BRIDGE_DIR" ] || [ ! -O "$OLO_BRIDGE_DIR" ]; then
 	echo "olo: bridge dir $OLO_BRIDGE_DIR is not owned by uid $uid" >&2
 	exit 1
 fi
-# op's standard input, kept for olo.lua to send where the command takes
-# it (`-`: `op item create -`, `op item delete -`; `op inject` without
-# -i; a file given to `op item edit`, never a pipe: an agent's shell may
-# leave one open, and it would be waited on for ever) and it is a pipe
-# or a file, never a terminal. At most 1 MiB.
-takes=no
-if [ "$OLO_BRIDGE_CMD" = op ]; then
-	case " $* " in *" - "*) takes=yes ;; esac
-	if [ "${1:-}" = inject ]; then
-		case " $* " in *" -i "* | *" --in-file "* | *" -i="* | *" --in-file="*) ;; *) takes=yes ;; esac
-	fi
-	[ "${1:-} ${2:-}" = "item edit" ] && [ -f /dev/stdin ] && takes=yes
-fi
-# (Its copy is made here and nowhere named from outside: a variable of
-# that name inherited from a caller named a file of the caller's, which
-# was then removed with the answer. A code review, 2026-11-27, as the
-# rest of this: the copy is removed if this is interrupted; a copy that
-# couldn't be written whole is an error, not a shorter input.)
+# (And this account's alone: a folder found there open to a group stays
+# so where it can't be closed, and nothing is kept in it then.)
+case $(ls -ld "$OLO_BRIDGE_DIR" 2> /dev/null) in
+drwx------*) ;;
+*)
+	echo "olo: bridge dir $OLO_BRIDGE_DIR is open to others and couldn't be closed to them" >&2
+	exit 1
+	;;
+esac
+# Whether this `op` reads its standard input (`takes`), told as `op`
+# itself reads its arguments (apps/op/src/main.rs, `Args::parse`: an
+# option that is no switch takes the next argument as its value): a `-`
+# among its words (`op item create -`), `inject` with no `--in-file`, or
+# `item edit`. By each argument, never by the line joined: a title with
+# " - " in it ("Production - DB") is not a `-`, and an option before the
+# command (`op --account work inject`) doesn't hide it. (Kept the same
+# in `olo` and in the stand-in for `op`.)
+op_takes_input() {
+	takes=no
+	op_w1=
+	op_w2=
+	op_dash=no
+	op_in=no
+	op_skip=no
+	for op_a in "$@"; do
+		if [ "$op_skip" = yes ]; then
+			op_skip=no
+			continue
+		fi
+		case $op_a in
+		--) break ;;
+		-) op_dash=yes ;;
+		-i | --in-file)
+			op_in=yes
+			op_skip=yes
+			;;
+		-i=* | --in-file=*) op_in=yes ;;
+		-*=*) ;;
+		--reveal | --otp | --force | -f | --no-newline | -n | --no-masking | --raw | --help | -h | --version | -v | --debug | --no-color | --iso-timestamps | --cache | --include-archive | --all | --favorite | --long | --dry-run | --archive | --generate-password | --ssh-generate-key) ;;
+		-*) op_skip=yes ;;
+		*)
+			if [ -z "$op_w1" ]; then
+				op_w1=$op_a
+			elif [ -z "$op_w2" ]; then
+				op_w2=$op_a
+			fi
+			;;
+		esac
+	done
+	[ "$op_dash" = yes ] && takes=yes
+	[ "$op_w1" = inject ] && [ "$op_in" = no ] && takes=yes
+	[ "$op_w1 $op_w2" = "item edit" ] && [ -f /dev/stdin ] && takes=yes
+	return 0
+}
+# op's standard input, copied for olo.lua to send where the command
+# takes it and it is a pipe or a file. At most 1 MiB. The copy has no
+# name from the moment it is made (opened, then unlinked, and read again
+# through its descriptor): nothing of a secret is left on disk whatever
+# ends this, a kill that no trap sees included, and nothing of it can
+# be another run's. (Its name was passed about, and removed by a trap,
+# until a code review, 2026-11-27.)
 unset OLO_BRIDGE_STDIN OLO_BRIDGE_STDIN_KEPT
-if [ "$takes" = yes ] && [ ! -t 0 ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ]; }; then
-	OLO_BRIDGE_STDIN=$(umask 077 && mktemp "$OLO_BRIDGE_DIR/stdin.XXXXXX") || exit 1
-	trap 'rm -f "$OLO_BRIDGE_STDIN"' EXIT
-	trap 'rm -f "$OLO_BRIDGE_STDIN"; trap - EXIT; exit 130' INT TERM HUP
-	if ! head -c 1048577 > "$OLO_BRIDGE_STDIN"; then
+takes=no
+[ "$OLO_BRIDGE_CMD" = op ] && op_takes_input "$@"
+if [ "$takes" = yes ] && [ -t 0 ]; then
+	echo "olo op: this reads its input, and the Olo desktop can't read this terminal: give it a pipe or a file (\`olo op ${1:-inject} … < FILE\`)" >&2
+	exit 2
+fi
+if [ "$takes" = yes ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ]; }; then
+	olo_copy=$(umask 077 && mktemp "$OLO_BRIDGE_DIR/stdin.XXXXXX") || exit 1
+	if ! exec 3<> "$olo_copy" || ! rm -f "$olo_copy"; then
+		rm -f "$olo_copy"
 		echo "olo: op's standard input couldn't be kept to send to the Olo desktop ($OLO_BRIDGE_DIR)" >&2
 		exit 1
 	fi
-	if [ "$(wc -c < "$OLO_BRIDGE_STDIN")" -gt 1048576 ]; then
+	if ! head -c 1048577 >&3; then
+		echo "olo: op's standard input couldn't be kept to send to the Olo desktop ($OLO_BRIDGE_DIR)" >&2
+		exit 1
+	fi
+	if [ "$(wc -c < /dev/fd/3)" -gt 1048576 ]; then
 		echo "olo: op's standard input is more than 1 MiB: too much to send to the Olo desktop" >&2
 		exit 1
 	fi
-	# (Said to olo.lua: the copy is this script's to remove. An olo.lua
-	# beside an `olo` from before this removes it itself, as it did.)
+	# (Said to olo.lua: nothing there for it to remove. An olo.lua beside
+	# an `olo` from before removes the copy itself, as it did.)
+	OLO_BRIDGE_STDIN=/dev/fd/3
 	OLO_BRIDGE_STDIN_KEPT=1
 	export OLO_BRIDGE_STDIN OLO_BRIDGE_STDIN_KEPT
 fi
@@ -179,16 +232,6 @@ if [ "$OLO_SCREEN_ON" = desktop ]; then
 	if [ "$rc" = 69 ]; then
 		echo "olo screen: a screen on this host itself needs no desktop: \`olo screen --on host …\` (\`olo screen status\` says whether Olo is here; \`olo screen install\` puts it)" >&2
 	fi
-	exit "$rc"
-fi
-# What op was given on its standard input was copied for olo.lua to
-# send: the copy is this script's to put away, whatever the answer (and
-# if it is interrupted: the trap set where it was made).
-if [ -n "${OLO_BRIDGE_STDIN:-}" ]; then
-	${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"
-	rc=$?
-	rm -f "$OLO_BRIDGE_STDIN"
-	trap - EXIT
 	exit "$rc"
 fi
 # (OLO_BRIDGE_REX: another way to say `rex`, for Olo's own tests.)

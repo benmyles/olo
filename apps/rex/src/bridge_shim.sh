@@ -37,6 +37,52 @@ asked() {
 	exit "$status"
 }
 
+# Whether this `op` reads its standard input (`takes`), told as `op`
+# itself reads its arguments (apps/op/src/main.rs, `Args::parse`: an
+# option that is no switch takes the next argument as its value): a `-`
+# among its words (`op item create -`), `inject` with no `--in-file`, or
+# `item edit`. By each argument, never by the line joined: a title with
+# " - " in it ("Production - DB") is not a `-`, and an option before the
+# command (`op --account work inject`) doesn't hide it. (Kept the same
+# in `olo` and in the stand-in for `op`.)
+op_takes_input() {
+	takes=no
+	op_w1=
+	op_w2=
+	op_dash=no
+	op_in=no
+	op_skip=no
+	for op_a in "$@"; do
+		if [ "$op_skip" = yes ]; then
+			op_skip=no
+			continue
+		fi
+		case $op_a in
+		--) break ;;
+		-) op_dash=yes ;;
+		-i | --in-file)
+			op_in=yes
+			op_skip=yes
+			;;
+		-i=* | --in-file=*) op_in=yes ;;
+		-*=*) ;;
+		--reveal | --otp | --force | -f | --no-newline | -n | --no-masking | --raw | --help | -h | --version | -v | --debug | --no-color | --iso-timestamps | --cache | --include-archive | --all | --favorite | --long | --dry-run | --archive | --generate-password | --ssh-generate-key) ;;
+		-*) op_skip=yes ;;
+		*)
+			if [ -z "$op_w1" ]; then
+				op_w1=$op_a
+			elif [ -z "$op_w2" ]; then
+				op_w2=$op_a
+			fi
+			;;
+		esac
+	done
+	[ "$op_dash" = yes ] && takes=yes
+	[ "$op_w1" = inject ] && [ "$op_in" = no ] && takes=yes
+	[ "$op_w1 $op_w2" = "item edit" ] && [ -f /dev/stdin ] && takes=yes
+	return 0
+}
+
 [ -n "${REX_SESSION:-}" ] || real "$@"
 
 case $me in
@@ -159,45 +205,66 @@ wl-paste)
 	real "$@"
 	;;
 op)
-	# What op is given on its input (where it reads any: `olo`'s own rule,
-	# the same words) is kept here first, so that whichever op takes it,
-	# the desktop's or, where the desktop can't be asked or may not do it
-	# (69), the host's own, gets it whole: `olo` reads it to send it, and
-	# the host's own op then found it read and gone (a piped `op inject`
-	# got an empty template). Kept in a file of this run's own, in a
-	# folder only this account opens, removed however this ends, and
-	# opened then unlinked before the host's own op runs: nothing of it
-	# is on disk while that does. (It was handed between the two scripts
-	# by a name with this shell's pid in it, under a folder others may
-	# share: a file left by an earlier run could be fed to op, and an
-	# interrupted one left the input lying. A code review, 2026-11-27.)
-	takes=no
-	case " $* " in *" - "*) takes=yes ;; esac
-	if [ "${1:-}" = inject ]; then
-		case " $* " in *" -i "* | *" --in-file "* | *" -i="* | *" --in-file="*) ;; *) takes=yes ;; esac
+	# What op is given on its input, where it reads any, is kept here
+	# first, so that whichever op takes it, the desktop's or, where the
+	# desktop can't be asked or may not do it (69), the host's own, gets
+	# it whole: `olo` reads it to send it, and the host's own op then
+	# found it read and gone (a piped `op inject` got an empty template).
+	# Kept in a file with no name: made in the bridge's folder, which is
+	# this account's alone, opened and unlinked before a byte is written,
+	# and read again through its descriptor. Nothing of it is on disk
+	# under a name at any moment, whatever ends this; none of it is ever
+	# another run's; and the host's own op gets it as its input and no
+	# other descriptor. (Two code reviews, 2026-11-27: it was a file
+	# named by this shell's pid, then one removed by a trap.)
+	op_takes_input "$@"
+	if [ "$takes" = yes ] && [ -t 0 ]; then
+		# (Typed at a terminal: the host's own op reads it there. The
+		# desktop has none of this terminal to read, and was sent an
+		# empty input.)
+		real "$@"
 	fi
-	[ "${1:-} ${2:-}" = "item edit" ] && [ -f /dev/stdin ] && takes=yes
-	if [ "$takes" = yes ] && [ ! -t 0 ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ]; }; then
+	if [ "$takes" = yes ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ]; }; then
 		keep="${XDG_RUNTIME_DIR:-${TMPDIR:-/var/tmp}}/olo-rex-bridge-$(id -u 2> /dev/null || echo 0)"
-		[ -L "$keep" ] || mkdir -p -m 0700 "$keep" 2> /dev/null || true
-		if [ -L "$keep" ] || [ ! -d "$keep" ] || [ ! -O "$keep" ]; then
-			echo "$me: $keep isn't a folder of this account's own: its input can't be kept" >&2
+		if [ ! -L "$keep" ]; then
+			mkdir -p -m 0700 "$keep" 2> /dev/null || true
+			chmod 0700 "$keep" 2> /dev/null || true
+		fi
+		case $(ls -ld "$keep" 2> /dev/null) in
+		drwx------*) [ -O "$keep" ] || keep= ;;
+		*) keep= ;;
+		esac
+		if [ -z "$keep" ]; then
+			echo "$me: no folder of this account's own to keep its input in (${XDG_RUNTIME_DIR:-${TMPDIR:-/var/tmp}}/olo-rex-bridge-…)" >&2
 			exit 1
 		fi
 		kept=$(umask 077 && mktemp "$keep/op-input.XXXXXX") || exit 1
-		trap 'rm -f "$kept"' EXIT
-		trap 'rm -f "$kept"; trap - EXIT; exit 130' INT TERM HUP
-		if ! cat > "$kept"; then
+		if ! exec 3<> "$kept" || ! rm -f "$kept"; then
+			rm -f "$kept"
 			echo "$me: its input couldn't be kept ($keep)" >&2
 			exit 1
 		fi
-		"$here/olo" op "$@" < "$kept"
+		if ! head -c 1048577 >&3; then
+			echo "$me: its input couldn't be kept ($keep)" >&2
+			exit 1
+		fi
+		if [ "$(wc -c < /dev/fd/3)" -gt 1048576 ]; then
+			# More than the desktop is sent: the host's own op, given
+			# all of it (what was read, then the rest as it comes).
+			{
+				cat /dev/fd/3
+				cat
+			} | {
+				exec 3<&-
+				real "$@"
+			}
+			exit $?
+		fi
+		"$here/olo" op "$@" < /dev/fd/3 3<&-
 		status=$?
 		[ "$status" -eq 69 ] || exit "$status"
-		exec 3< "$kept"
-		rm -f "$kept"
-		trap - EXIT INT TERM HUP
-		real "$@" <&3
+		exec < /dev/fd/3 3<&-
+		real "$@"
 	fi
 	asked op "$@"
 	real "$@"

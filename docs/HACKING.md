@@ -28930,15 +28930,20 @@ forward, or the wheel turned to read a long command took the question
 for the person for good, and no countdown showed (Ben: "it seems auto
 approve still doesn't work in rex terminal? i see no countdown"); it
 also began Keep It Going's quiet again at every cell crossed. A click
-or the wheel's arrows may move the chooser's mark, and Return is
-pressed on what the screen here shows: so after a button pressed or
-let go, or the wheel's arrows (`send_pointer_press`), a question
-counting down is not answered for `agent::SETTLE` (1.5 s), time for
-what the program made of it to be drawn here, and is read again then
-(`Watch::touched`: a pause, never a stop; a click 100 ms before the
-countdown's end that moved the mark to "don't ask again" would have
-had Return confirm that). Moves and the wheel's steps are passive.
-While a question counts
+may move the chooser's mark, and Return is pressed on what the screen
+here shows, which is from before the click until the program has
+drawn again. So a click in the pane already in front is the person's,
+as a key is (`send_pointer_press(…, in_front)`, `RexHub::has_focus`
+asked before the click brings the pane forward), and the wheel's
+arrows are keys (`send_input`). A click that brings a pane forward,
+and its release, is neither typing nor nothing: the question stays
+Auto Approve's and is not answered for `agent::SETTLE` (1.5 s) after
+it, then read again (`Watch::touched`: a pause, never a stop). Moves,
+and the wheel's steps told to a program that hears the mouse, are
+passive. (Two code reviews, 2026-11-27: with every click passive, one
+100 ms before the countdown's end that moved the mark to "don't ask
+again" had Return confirm that; a pause alone leaves the same to a
+repaint slower than the pause.) While a question counts
 down the window is redrawn once a second, and not otherwise. The tab,
 the pane's head and its Activity row carry the marks
 (`widgets::agent_marks`), and the tab's words say "kept going" and
@@ -30579,19 +30584,29 @@ Rex server, as every Rex client offers its own
   passwords, screens and files came back as 1, so with the permission
   off a host's `xdg-open` failed instead of being the host's own. And
   what `op` is given on its input is kept by the stand-in itself
-  before anyone reads it (where `op` reads any: `olo`'s own rule), in a
-  file of that run's own in the bridge's private folder, removed
-  however the run ends; `olo` is given it as its input, and on 69 the
-  host's own `op` gets it whole, opened and unlinked first so nothing
-  of it is on disk while `op` runs. `olo` removes its own copy always,
-  also when cut off, and clears the variables of its own that a caller
-  may have inherited. An answer lost after the desktop has the request
-  is 75, not 69: whether it was done isn't known, and the host's own
-  is not run on top of it. Before, a piped `op inject` that was
-  refused reached the host's own `op` with nothing to read:
+  before anyone reads it, in a file with no name: made in the bridge's
+  folder (this account's alone, or nothing is kept), opened and
+  unlinked before a byte is written, and read again through its
+  descriptor (`/dev/fd/3`). `olo` is given it as its input and keeps
+  its own copy for olo.lua the same way; on 69 the host's own `op`
+  gets it whole as its input, and no other descriptor. Nothing of a
+  secret has a name on disk at any moment, so nothing is left however
+  a run ends (a kill no trap sees included) and none of it can be
+  another run's. Whether `op` reads its input is told as `op` reads
+  its arguments (`op_takes_input`, the same in both scripts: a title
+  with " - " in it is no `-`, which made a lookup wait on an agent's
+  open pipe for ever; an option before the command doesn't hide it).
+  Typed at a terminal, it is the host's own `op` (the desktop has no
+  terminal of the host's to read); more than 1 MiB, the host's own
+  too, given all of it. `olo` clears the variables of its own that a
+  caller may have inherited. For `op`, any asking of the desktop that
+  fails is 75, not 69, and so is any command's answer lost after the
+  desktop has answered once: whether it was done isn't known, and the
+  host's own isn't run on top of it (a vault item made twice). Before
+  all this, a piped `op inject` that was refused reached the host's
+  own `op` with nothing to read:
   `a_refused_op_gives_the_hosts_own_its_input`, through the real
-  scripts, with the run cut off and an inherited variable among its
-  cases.) Kept in step at each connection as the skill is
+  scripts.) Kept in step at each connection as the skill is
   (`bridge::commands_there`, `.olo-commands`). Tried on the rig: copied
   on the host and pasted back through this computer's clipboard; a
   host's picture opened in Viewer here; with the clipboard not granted,

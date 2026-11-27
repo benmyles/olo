@@ -1363,10 +1363,13 @@ mod commands_tests {
     /// they were made 69; from then the stand-in went on to the host's
     /// own `op` with its input already read and gone (a code review,
     /// 2026-11-27). Answered by the desktop, or failed there, the host's
-    /// own isn't run; and nothing of the input is left behind either way,
-    /// nor when the run is cut off while the desktop is asked (the session
-    /// closed: both scripts put their copies away). A file a caller's own
-    /// environment names as "the input's copy" is the caller's, and stays.
+    /// own isn't run. The input's copies have no name on disk at any
+    /// moment, so nothing is left however the run ends, a kill no trap
+    /// sees included. `op`'s arguments are read as `op` reads them (a
+    /// title with a dash in it reads no input; an option before the
+    /// command doesn't hide it); more than the desktop is sent goes to the
+    /// host's own, whole. A file a caller's own environment names as "the
+    /// input's copy" is the caller's, and stays.
     #[test]
     fn a_refused_op_gives_the_hosts_own_its_input() {
         // (A folder of this run's own, made new: never one found there and emptied.)
@@ -1434,35 +1437,74 @@ mod commands_tests {
         assert_eq!(run(75), (75, format!("sent: {template}\n")));
         assert!(left().is_empty(), "{:?}", left());
 
-        // Cut off while the desktop is asked (its session closed: the signal goes to all of it):
-        // neither script leaves its copy of the input.
+        // While the desktop is asked, nothing of the input has a name on disk; and cut off there by a
+        // kill no trap sees (all of it at once, as a session that is closed for good), nothing is left
+        // and the host's own op isn't run.
         use std::io::Write as _;
         use std::os::unix::process::CommandExt as _;
         let _ = std::fs::remove_file(&log);
-        let mut cut = std::process::Command::new(shims.join("op"))
-            .arg("inject")
-            .current_dir(&dir)
-            .env("PATH", format!("{}:{}:/usr/bin:/bin", shims.display(), own.display()))
-            .env("LOG", &log)
-            .env("REX_SESSION", "session:1")
-            .env("XDG_RUNTIME_DIR", &run_dir)
-            .env("OLO_BRIDGE_REX", dir.join("rex"))
-            .env("REX_WAITS", "20")
-            .stdin(std::process::Stdio::piped())
-            .process_group(0)
-            .spawn()
-            .unwrap();
+        let stand_in = |args: &[&str]| {
+            let mut c = std::process::Command::new(shims.join("op"));
+            c.args(args)
+                .current_dir(&dir)
+                .env("PATH", format!("{}:{}:/usr/bin:/bin", shims.display(), own.display()))
+                .env("LOG", &log)
+                .env("REX_SESSION", "session:1")
+                .env("XDG_RUNTIME_DIR", &run_dir)
+                .env("OLO_BRIDGE_REX", dir.join("rex"))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .process_group(0);
+            c
+        };
+        let logged = || std::fs::read_to_string(&log).unwrap_or_default();
+        let mut cut = stand_in(&["inject"]).env("REX_WAITS", "30").spawn().unwrap();
         cut.stdin.take().unwrap().write_all(template.as_bytes()).unwrap();
-        // (Until the desktop has been sent it: both copies are on disk then.)
         let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while !std::fs::read_to_string(&log).is_ok_and(|l| l.contains("sent: user")) && std::time::Instant::now() < until {
+        while !logged().contains("sent: user") && std::time::Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        assert_eq!(left().len(), 2, "its two copies while the desktop is asked: {:?}", left());
-        let _ = std::process::Command::new("kill").args(["-HUP", &format!("-{}", cut.id())]).status();
-        let _ = cut.wait();
+        assert!(logged().contains("sent: user"), "the desktop was sent it: {}", logged());
+        assert!(left().is_empty(), "no copy of the input has a name while the desktop is asked: {:?}", left());
+        let killed = std::process::Command::new("kill").args(["-KILL", &format!("-{}", cut.id())]).status().unwrap();
+        assert!(killed.success(), "the run was cut off");
+        assert!(!cut.wait().unwrap().success(), "and ended by that, not by itself");
         assert!(left().is_empty(), "cut off: {:?}", left());
-        assert!(!std::fs::read_to_string(&log).unwrap_or_default().contains("own op"), "and the host's own op isn't run");
+        assert!(!logged().contains("own op"), "and the host's own op isn't run");
+
+        // A title with " - " in it is no `-`: nothing is read from an input that is a pipe left open
+        // (an agent's shell leaves one), and the lookup comes back at once.
+        let _ = std::fs::remove_file(&log);
+        let mut look = stand_in(&["item", "get", "Production - DB"]).spawn().unwrap();
+        let held_open = look.stdin.take().unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut ended = None;
+        while ended.is_none() && std::time::Instant::now() < until {
+            ended = look.try_wait().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        if ended.is_none() {
+            let _ = std::process::Command::new("kill").args(["-KILL", &format!("-{}", look.id())]).status();
+            let _ = look.wait();
+        }
+        drop(held_open);
+        assert!(ended.is_some_and(|s| s.success()), "a lookup whose title has a dash in it waited on its input");
+        assert_eq!(logged(), "sent: \n");
+        // An option before the command doesn't hide that it reads its input.
+        let _ = std::fs::remove_file(&log);
+        let mut inject = stand_in(&["--account", "work", "inject"]).spawn().unwrap();
+        inject.stdin.take().unwrap().write_all(template.as_bytes()).unwrap();
+        assert!(inject.wait().unwrap().success());
+        assert_eq!(logged(), format!("sent: {template}\n"));
+        // More than the desktop is sent (1 MiB): the host's own op, given all of it; the desktop isn't asked.
+        let _ = std::fs::remove_file(&log);
+        let big = "x".repeat(1_200_000);
+        let mut much = stand_in(&["inject"]).spawn().unwrap();
+        much.stdin.take().unwrap().write_all(big.as_bytes()).unwrap();
+        assert!(much.wait().unwrap().success());
+        assert_eq!(logged(), format!("own op inject: {big}\n"), "all of it, to the host's own, and nothing sent");
+        assert!(left().is_empty(), "{:?}", left());
 
         // A caller's own file, named by a variable of the bridge's inherited from it: left alone.
         let theirs = dir.join("theirs.txt");
