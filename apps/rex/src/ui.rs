@@ -1442,7 +1442,7 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None, width: None });
+        let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None, width: None, area: Rc::new(std::cell::Cell::new(olo_kit::Size::default())) });
 
         // (The demo's other windows, opened as it starts, for the live
         // lint and for pictures: `OLO_REX_DEMO_OPEN=app.hosts`, the
@@ -2601,7 +2601,8 @@ impl RexWindow {
             }
             "layer.new_floating" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
-                    hub.create_floating_layer(&hk, &sess.session_id, [0.16, 0.14, 0.68, 0.68]);
+                    // (In the middle of the panes' area, both ways.)
+                    hub.create_floating_layer(&hk, &sess.session_id, [0.16, 0.16, 0.68, 0.68]);
                 }
             }
             "terminal.copy" => {
@@ -3823,7 +3824,9 @@ impl RexWindow {
                     cx.invalidate();
                 });
             }
-            let width = Some((total_w - side_w).max(200.0));
+            // (Less the tabs' own column where they stand at the side: with
+            // it counted in, a pane's head kept buttons it had no room for.)
+            let width = Some((total_w - side_w - if is_side_strip && strip_el.is_some() { widgets::STRIP_SIDE_WIDTH } else { 0.0 }).max(200.0));
             if child.read(cx).width != width {
                 child.update(cx, |pv, cx| {
                     pv.width = width;
@@ -6916,6 +6919,10 @@ pub struct PanesView {
     /// width was shared, the sidebar's in it, and a head kept buttons it
     /// had no room for: Opus's look at Activity, 2026-11-24.)
     width: Option<f32>,
+    /// How large its own area is, as it was last laid out: what a
+    /// floating layer's place is a share of, and what a drag of one is
+    /// measured against.
+    area: Rc<std::cell::Cell<olo_kit::Size<Pixels>>>,
 }
 
 impl View for PanesView {
@@ -6945,7 +6952,15 @@ impl View for PanesView {
         let tiled_layer = win_view.layers.iter().find(|l| l.layer_kind() == LayerKind::Tiled).cloned();
         let floating_layers: Vec<_> = win_view.layers.iter().filter(|l| l.layer_kind() == LayerKind::Floating).cloned().collect();
 
-        let mut layer_stack = div().relative().size_full();
+        // (Its own size known as it is laid out, and said again when it
+        // changes; what floats in it is cut at its edges.)
+        let (area_now, area_told) = (self.area.clone(), cx.messenger());
+        let mut layer_stack = div().relative().size_full().overflow_hidden().on_bounds_changed(move |b: &Bounds<Pixels>, _| {
+            if area_now.get() != b.size {
+                area_now.set(b.size);
+                area_told.send(());
+            }
+        });
 
         let vp_w = self.width.unwrap_or_else(|| f32::from(cx.viewport_size().width)).max(200.0);
         if let Some(zoom_id) = &win_view.zoomed_block_id {
@@ -6976,7 +6991,7 @@ impl View for PanesView {
         }
 
         // Render floating layers and minimized capsules over the tiled area!
-        let mut minimized_bar = div().absolute().right(px(m::SPACING)).bottom(px(m::SPACING)).flex().flex_row().gap(px(m::TIGHT));
+        let mut minimized_bar = div().absolute().right(px(m::SPACING)).bottom(px(m::SPACING)).occlude().flex().flex_row().gap(px(m::TIGHT));
         let mut has_minimized = false;
 
         for fl in floating_layers {
@@ -6985,137 +7000,188 @@ impl View for PanesView {
                 let lid = fl.layer_id.clone();
                 let hk = host_key.clone();
                 let sid = sess.session_id.clone();
-                let title = fl.blocks.first().map(|b| if b.label.is_empty() { "Floating".to_owned() } else { b.label.clone() }).unwrap_or_else(|| "Floating".to_owned());
-                minimized_bar = minimized_bar.child(Button::new(title).small().on_click(move |_, _| {
+                // (Its head put away: the same icon and name, so it is the same pane brought back.)
+                let chip = fl.blocks.first().map(|b| {
+                    let bk = BlockKey { host_key: host_key.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
+                    let (title, activity) = float_said(&bk, &b.label, is_local);
+                    (title, activity, crate::hub::help_of(&bk))
+                });
+                let (title, activity, help) = chip.unwrap_or_else(|| ("Floating Terminal".to_owned(), AgentActivity::Idle, crate::agent::Help::default()));
+                minimized_bar = minimized_bar.child(float_chip(format!("rex-float-restore-{lid}"), title, activity, help, move || {
                     the_hub().set_layer_minimized(&hk, &sid, &lid, false);
                 }));
             } else if let Some(b) = fl.blocks.first() {
+                // Its place is a share of the panes' own area, and kept
+                // inside it. (It was a share of the whole window, set
+                // down from the panes' corner: with the sidebar open it
+                // ran past the window's right edge, and its frame, its
+                // buttons and its corner with it.)
                 let [bx, by, bw, bh] = fl.bounds;
-                let vp = cx.viewport_size();
-                let left = (f32::from(vp.width) * bx as f32).max(16.0);
-                let top = (f32::from(vp.height) * by as f32).max(16.0);
-                let width = (f32::from(vp.width) * bw as f32).max(260.0);
-                let height = (f32::from(vp.height) * bh as f32).max(180.0);
+                let area = self.area.get();
+                let (area_w, area_h) = if f32::from(area.width) > 1.0 && f32::from(area.height) > 1.0 {
+                    (f32::from(area.width), f32::from(area.height))
+                } else {
+                    // (Before the first layout says: the width it was given, and the window's height less its bars.)
+                    (vp_w, (f32::from(cx.viewport_size().height) - 90.0).max(180.0))
+                };
+                let width = (area_w * bw as f32).clamp(260.0_f32.min(area_w), area_w);
+                let height = (area_h * bh as f32).clamp(180.0_f32.min(area_h), area_h);
+                let left = (area_w * bx as f32).clamp(0.0, (area_w - width).max(0.0));
+                let top = (area_h * by as f32).clamp(0.0, (area_h - height).max(0.0));
                 let bk = BlockKey { host_key: host_key.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
-                let lid_min = fl.layer_id.clone();
-                let lid_raise = fl.layer_id.clone();
-                let hk_m = host_key.clone();
-                let sid_m = sess.session_id.clone();
-                let hk_r = host_key.clone();
-                let sid_r = sess.session_id.clone();
-                let fl_title = if b.label.is_empty() { "Floating Terminal".to_owned() } else { b.label.clone() };
-                let drag_move_start = Rc::new(std::cell::Cell::new(None::<(Point<Pixels>, [f64; 4])>));
-                let dm1 = drag_move_start.clone();
-                let dm2 = drag_move_start.clone();
-                let lid_mv = fl.layer_id.clone();
-                let hk_mv = host_key.clone();
-                let sid_mv = sess.session_id.clone();
-                let vp_w = f32::from(vp.width).max(320.0) as f64;
-                let vp_h = f32::from(vp.height).max(200.0) as f64;
+                let focused = win_view.focused_block_id.as_deref() == Some(b.block_id.as_str());
+                let (hk, sid, lid) = (host_key.clone(), sess.session_id.clone(), fl.layer_id.clone());
+                // (Named as every pane is, with the icon of what runs in it.)
+                let (fl_title, fl_activity) = float_said(&bk, &b.label, is_local);
+                let fl_help = crate::hub::help_of(&bk);
                 let init_bounds = fl.bounds;
-
-                let drag_res_start = Rc::new(std::cell::Cell::new(None::<(Point<Pixels>, [f64; 4])>));
-                let dr1 = drag_res_start.clone();
-                let dr2 = drag_res_start.clone();
-                let lid_rs = fl.layer_id.clone();
-                let hk_rs = host_key.clone();
-                let sid_rs = sess.session_id.clone();
+                // Brought to the front and typed into: by a press anywhere on it.
+                let front: Rc<dyn Fn()> = {
+                    let (hk, sid, lid, bk) = (hk.clone(), sid.clone(), lid.clone(), bk.clone());
+                    Rc::new(move || {
+                        the_hub().raise_layer(&hk, &sid, &lid);
+                        the_hub().focus_block(&bk.host_key, &bk.session_id, &bk.block_id);
+                    })
+                };
+                // (How far the pointer went, as a share of the panes' area.)
+                let moved = {
+                    let area = self.area.clone();
+                    move |from: Point<Pixels>, to: Point<Pixels>| {
+                        let area = area.get();
+                        let (w, h) = (f32::from(area.width).max(200.0), f32::from(area.height).max(160.0));
+                        (f64::from((f32::from(to.x) - f32::from(from.x)) / w), f64::from((f32::from(to.y) - f32::from(from.y)) / h))
+                    }
+                };
+                let (press_body, press_bar, press_corner) = (front.clone(), front.clone(), front.clone());
+                let (moved_bar, moved_corner) = (moved.clone(), moved);
+                let (hk_move, sid_move, lid_move) = (hk.clone(), sid.clone(), lid.clone());
+                let (hk_size, sid_size, lid_size) = (hk.clone(), sid.clone(), lid.clone());
+                let (hk_min, sid_min, lid_min) = (hk.clone(), sid.clone(), lid.clone());
+                let (hk_close, sid_close, lid_close) = (hk.clone(), sid.clone(), lid.clone());
 
                 layer_stack = layer_stack.child(
                     div()
+                        .id(olo_kit::SharedString::from(format!("rex-float-{lid}")))
                         .absolute()
                         .left(px(left))
                         .top(px(top))
                         .w(px(width))
                         .h(px(height))
+                        // (What is under it hears nothing of what happens
+                        // on it. A press went on to the tiled pane under
+                        // the pointer, which took the focus straight
+                        // back: the floating pane could not be typed
+                        // into, and Close Pane closed the pane under it.)
+                        .occlude()
                         .flex()
                         .flex_col()
-                        .on_mouse_down(MouseButton::Left, move |_, _| {
-                            the_hub().raise_layer(&hk_r, &sid_r, &lid_raise);
+                        .on_mouse_down(MouseButton::Left, move |_, cx| {
+                            press_body();
+                            cx.stop_propagation();
                         })
-                        .child(overlays::overlay_card_back("Floating Terminal"))
+                        .child(float_under())
                         .child(
+                            // Its bar, a pane's head: moved by it, and its
+                            // two buttons at the right. (What a drag began with is kept
+                            // with the bar, by its name, across the
+                            // redraws each step of the drag causes: kept
+                            // in a cell made anew at each of them, a drag
+                            // went one step and stopped.)
                             div()
-                                .h(px(24.0))
-                                .px(px(m::SPACING))
+                                .id(olo_kit::SharedString::from(format!("rex-float-bar-{lid}")))
+                                .relative()
+                                .h(px(crate::settings::PANE_HEADER))
+                                .flex_shrink_0()
+                                .pl(px(pad.0))
+                                .pr(px(HEADER_END))
                                 .flex()
                                 .flex_row()
                                 .items_center()
-                                .justify_between()
+                                .gap(px(m::TIGHT))
                                 .cursor(CursorStyle::OpenHand)
                                 .on_mouse_down(MouseButton::Left, move |e, cx| {
-                                    dm1.set(Some((e.position, init_bounds)));
+                                    cx.node_state::<FloatDrag>().0 = Some((e.position, init_bounds));
+                                    press_bar();
                                     cx.stop_propagation();
                                 })
-                                .on_drag_move(move |e: &MouseMoveEvent, _| {
+                                .on_drag_move(move |e: &MouseMoveEvent, cx| {
+                                    let drag = cx.node_state::<FloatDrag>();
+                                    let Some((from, was)) = drag.0 else { return };
                                     if e.pressed_button != Some(MouseButton::Left) {
+                                        drag.0 = None;
                                         return;
                                     }
-                                    let Some((origin, orig)) = dm2.get() else { return };
-                                    let dx = (f32::from(e.position.x) - f32::from(origin.x)) as f64 / vp_w;
-                                    let dy = (f32::from(e.position.y) - f32::from(origin.y)) as f64 / vp_h;
-                                    let nx = (orig[0] + dx).clamp(0.02, (0.98 - orig[2]).max(0.02));
-                                    let ny = (orig[1] + dy).clamp(0.02, (0.98 - orig[3]).max(0.02));
-                                    the_hub().resize_layer(&hk_mv, &sid_mv, &lid_mv, [nx, ny, orig[2], orig[3]]);
+                                    let (dx, dy) = moved_bar(from, e.position);
+                                    let x = (was[0] + dx).clamp(0.0, (1.0 - was[2]).max(0.0));
+                                    let y = (was[1] + dy).clamp(0.0, (1.0 - was[3]).max(0.0));
+                                    the_hub().resize_layer(&hk_move, &sid_move, &lid_move, [x, y, was[2], was[3]]);
                                 })
-                                .child(StringView::new(fl_title).bold(true).cut(true))
-                                .child(Button::new("—").small().on_click(move |_, _| {
-                                    the_hub().set_layer_minimized(&hk_m, &sid_m, &lid_min, true);
-                                })),
+                                .on_window_mouse_up(|e, cx| {
+                                    if e.button == MouseButton::Left {
+                                        cx.node_state::<FloatDrag>().0 = None;
+                                    }
+                                })
+                                .child(head_ground(focused, style::key(("float-head", focused))))
+                                .child(head_icon(fl_activity, fl_help))
+                                .child(div().flex_1().min_w_0().child(head_title(fl_title, focused)))
+                                .child(
+                                    // (A press on a button is the button's, not the beginning of a move.)
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(m::TIGHT))
+                                        .on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation())
+                                        .child(GlyphButton::new("Minimize Floating Terminal", Glyph::Minimize).id(format!("rex-float-minimize-{lid}")).quiet(!focused).on_click(move |_, _| {
+                                            the_hub().set_layer_minimized(&hk_min, &sid_min, &lid_min, true);
+                                        }))
+                                        .child(GlyphButton::new("Close Floating Terminal", Glyph::Close).id(format!("rex-float-close-{lid}")).quiet(!focused).on_click(move |_, _| {
+                                            the_hub().close_layer(&hk_close, &sid_close, &lid_close);
+                                        })),
+                                ),
                         )
                         .child(
                             div()
                                 .relative()
                                 .flex_1()
                                 .min_h_0()
-                                .p(px(2.0))
-                                .child(render_single_pane(
-                                    bk,
-                                    &host_label,
-                                    is_local,
-                                    win_view.focused_block_id.as_deref() == Some(b.block_id.as_str()),
-                                    false,
-                                    false,
-                                    width,
-                                    &settings,
-                                    &active_theme,
-                                    &metrics,
-                                    pad,
-                                    win_id,
-                                    cx,
-                                ))
+                                .child(render_single_pane(bk, &host_label, is_local, focused, false, false, width, &settings, &active_theme, &metrics, pad, win_id, cx))
                                 .child(
-                                    // Bottom-right corner resize handle for floating layers.
-                                    canvas(|g, b| {
-                                        let p = theme::palette();
-                                        let c = style::shade(&p, p.panel_background, 1.4);
-                                        style::fill_rect(g, Bounds::new(point(b.right() - px(6.0), b.bottom() - px(2.0)), size(px(5.0), px(1.5))), c);
-                                        style::fill_rect(g, Bounds::new(point(b.right() - px(2.0), b.bottom() - px(6.0)), size(px(1.5), px(5.0))), c);
-                                    })
-                                    .paint_key(71)
-                                    .absolute()
-                                    .right(px(1.0))
-                                    .bottom(px(1.0))
-                                    .w(px(12.0))
-                                    .h(px(12.0))
-                                    .cursor(CursorStyle::ResizeUpLeftDownRight)
-                                    .on_mouse_down(MouseButton::Left, move |e, cx| {
-                                        dr1.set(Some((e.position, init_bounds)));
-                                        cx.stop_propagation();
-                                    })
-                                    .on_drag_move(move |e: &MouseMoveEvent, _| {
-                                        if e.pressed_button != Some(MouseButton::Left) {
-                                            return;
-                                        }
-                                        let Some((origin, orig)) = dr2.get() else { return };
-                                        let dx = (f32::from(e.position.x) - f32::from(origin.x)) as f64 / vp_w;
-                                        let dy = (f32::from(e.position.y) - f32::from(origin.y)) as f64 / vp_h;
-                                        let nw = (orig[2] + dx).clamp(0.24, (0.98 - orig[0]).max(0.24));
-                                        let nh = (orig[3] + dy).clamp(0.22, (0.98 - orig[1]).max(0.22));
-                                        the_hub().resize_layer(&hk_rs, &sid_rs, &lid_rs, [orig[0], orig[1], nw, nh]);
-                                    }),
+                                    // Its bottom right corner: sized by it.
+                                    canvas(move |g, b| float_grip(g, b, focused))
+                                        .id(olo_kit::SharedString::from(format!("rex-float-corner-{lid}")))
+                                        .paint_key(style::key(("float-grip", focused)))
+                                        .absolute()
+                                        .right(px(0.0))
+                                        .bottom(px(0.0))
+                                        .w(px(FLOAT_GRIP))
+                                        .h(px(FLOAT_GRIP))
+                                        .cursor(CursorStyle::ResizeUpLeftDownRight)
+                                        .on_mouse_down(MouseButton::Left, move |e, cx| {
+                                            cx.node_state::<FloatDrag>().0 = Some((e.position, init_bounds));
+                                            press_corner();
+                                            cx.stop_propagation();
+                                        })
+                                        .on_drag_move(move |e: &MouseMoveEvent, cx| {
+                                            let drag = cx.node_state::<FloatDrag>();
+                                            let Some((from, was)) = drag.0 else { return };
+                                            if e.pressed_button != Some(MouseButton::Left) {
+                                                drag.0 = None;
+                                                return;
+                                            }
+                                            let (dx, dy) = moved_corner(from, e.position);
+                                            let w = (was[2] + dx).clamp(0.24, (1.0 - was[0]).max(0.24));
+                                            let h = (was[3] + dy).clamp(0.22, (1.0 - was[1]).max(0.22));
+                                            the_hub().resize_layer(&hk_size, &sid_size, &lid_size, [was[0], was[1], w, h]);
+                                        })
+                                        .on_window_mouse_up(|e, cx| {
+                                            if e.button == MouseButton::Left {
+                                                cx.node_state::<FloatDrag>().0 = None;
+                                            }
+                                        }),
                                 ),
-                        ),
+                        )
+                        .child(float_line()),
                 );
             }
         }
@@ -7424,63 +7490,9 @@ fn render_single_pane(
         let pane_help = crate::hub::help_of(&bk);
         let key = style::key((focused, pane_w as i32));
 
-        let head_bg = canvas(move |g, b| {
-            let p = theme::palette();
-            // Every pane's head on the panel's ground, the chosen tab's
-            // face, which opens onto the heads under it: the keyboard in
-            // a pane on the right left the tab open onto a darker band
-            // when the head it was in alone had that ground. Where the
-            // keyboard is, the title says (a weight heavier, the others
-            // quieter) and the line under it.
-            g.paint_quad(olo_kit::fill(b, style::c(p.panel_background)));
-            style::hline_above(g, b.left(), b.right(), b.bottom(), pane_edge(&p));
-            if focused {
-                // And a line along its foot in the look's colour for
-                // where the keyboard is, two points in whole device
-                // pixels. (It was a bar of an ochre no look has, two and
-                // a half points; with no line at all, the grounds alone
-                // didn't say which pane it was, least of all in dark:
-                // Opus's review, 2026-11-22.)
-                let line = style::snap(g, Bounds::from_corners(point(b.left(), b.bottom() - px(2.0)), b.bottom_right()));
-                style::fill_rect(g, line, style::c(p.keyboard_navigation));
-            }
-        })
-        .paint_key(key)
-        .absolute()
-        .inset_0();
-
-        let icon_el = {
-            let pane_help = pane_help.clone();
-            let ikey = style::key(("pane-icon", activity as u8, &pane_help));
-            canvas(move |g, b| {
-                // Same `m::LABEL_ROW` box as title, pills, and LinkButton so
-                // every element in the pane header shares one snapped baseline
-                // at 1×, 1.25×, 1.5×, 1.75×, and 2×.
-                let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-                let icon_b = style::snap_centred(g, point(b.left() + px(ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
-                paint_activity_icon(g, icon_b, activity, &pane_help);
-            })
-            .paint_key(ikey)
-            .w(px(ROW_ICON))
-            .h(px(m::LABEL_ROW))
-            .flex_shrink_0()
-        };
-
-        let title_el = {
-            let p = theme::palette();
-            let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
-            let title_w = if focused { FontWeight::MEDIUM } else { FontWeight::NORMAL };
-            let title_paint = title_paint.clone();
-            let tkey = style::key(("pane-title", &title_paint, focused, style::ink_key(Some(title_ink))));
-            canvas(move |g, b| {
-                let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, title_paint.clone(), style::PLAIN_SIZE, style::ui_font(title_w), title_ink, b.size.width);
-                g.agent(agent::Node::label(title_paint.clone(), r));
-            })
-            .paint_key(tkey)
-            .w_full()
-            .min_w_0()
-            .h(px(m::LABEL_ROW))
-        };
+        let head_bg = head_ground(focused, key);
+        let icon_el = head_icon(activity, pane_help.clone());
+        let title_el = head_title(title_paint.clone(), focused);
 
         let mut bar = div()
             .relative()
@@ -8232,6 +8244,226 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, help: c
 /// ratio then.
 #[derive(Default)]
 struct SplitDrag(Option<(Point<Pixels>, f32)>);
+
+/// A pane's head's ground: the panel's, a line along its foot, and
+/// where the keyboard is a line there in the look's colour. A tiled
+/// pane's head and a floating pane's bar, alike.
+fn head_ground(focused: bool, key: u64) -> Element {
+    canvas(move |g, b| {
+        let p = theme::palette();
+        // Every pane's head on the panel's ground, the chosen tab's
+        // face, which opens onto the heads under it: the keyboard in
+        // a pane on the right left the tab open onto a darker band
+        // when the head it was in alone had that ground. Where the
+        // keyboard is, the title says (a weight heavier, the others
+        // quieter) and the line under it.
+        g.paint_quad(olo_kit::fill(b, style::c(p.panel_background)));
+        style::hline_above(g, b.left(), b.right(), b.bottom(), pane_edge(&p));
+        if focused {
+            // And a line along its foot in the look's colour for
+            // where the keyboard is, two points in whole device
+            // pixels. (It was a bar of an ochre no look has, two and
+            // a half points; with no line at all, the grounds alone
+            // didn't say which pane it was, least of all in dark:
+            // Opus's review, 2026-11-22.)
+            let line = style::snap(g, Bounds::from_corners(point(b.left(), b.bottom() - px(2.0)), b.bottom_right()));
+            style::fill_rect(g, line, style::c(p.keyboard_navigation));
+        }
+    })
+    .paint_key(key)
+    .absolute()
+    .inset_0()
+}
+
+/// The icon in a pane's head: what runs in it, and how it stands.
+fn head_icon(activity: AgentActivity, pane_help: crate::agent::Help) -> Element {
+    let ikey = style::key(("pane-icon", activity as u8, &pane_help));
+    canvas(move |g, b| {
+        // Same `m::LABEL_ROW` box as title, pills, and LinkButton so
+        // every element in the pane header shares one snapped baseline
+        // at 1×, 1.25×, 1.5×, 1.75×, and 2×.
+        let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        let icon_b = style::snap_centred(g, point(b.left() + px(ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
+        paint_activity_icon(g, icon_b, activity, &pane_help);
+    })
+    .paint_key(ikey)
+    .w(px(ROW_ICON))
+    .h(px(m::LABEL_ROW))
+    .flex_shrink_0()
+    .into_element()
+}
+
+/// The title in a pane's head: a weight heavier where the keyboard is,
+/// quieter elsewhere; cut with "…" where it has no room.
+fn head_title(title: String, focused: bool) -> Element {
+    let p = theme::palette();
+    let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
+    let title_w = if focused { FontWeight::MEDIUM } else { FontWeight::NORMAL };
+    let tkey = style::key(("pane-title", &title, focused, style::ink_key(Some(title_ink))));
+    canvas(move |g, b| {
+        let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(title_w), title_ink, b.size.width);
+        g.agent(agent::Node::label(title.clone(), r));
+    })
+    .paint_key(tkey)
+    .w_full()
+    .min_w_0()
+    .h(px(m::LABEL_ROW))
+    .into_element()
+}
+
+/// What a floating pane is called (as every pane is: `hub::pane_title`)
+/// and how what runs in it stands; its label, where the pane isn't
+/// known yet.
+fn float_said(bk: &BlockKey, label: &str, is_local: bool) -> (String, AgentActivity) {
+    let br = the_hub().state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(bk).cloned();
+    br.map(|br| {
+        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+        (g.said(if is_local { crate::hub::local_home() } else { None }.as_deref()), g.agent_activity)
+    })
+    .unwrap_or_else(|| (if label.is_empty() { "Floating Terminal".to_owned() } else { label.to_owned() }, AgentActivity::Idle))
+}
+
+/// A floating pane put away: its head alone, small, at the panes' foot
+/// (the same icon and name, the card's line round it and its shadow
+/// under it), and a button: pressed, the pane is back. (It was a push
+/// button with the pane's label: no icon, nothing to say it was a pane,
+/// and in a dark look its edge was lost on the terminal under it.)
+fn float_chip(id: String, title: String, activity: AgentActivity, help: crate::agent::Help, on_restore: impl Fn() + 'static) -> Element {
+    let font = style::ui_font(FontWeight::NORMAL);
+    let text_w = f32::from(style::text_width(title.clone(), style::PLAIN_SIZE, font.clone())).ceil().min(FLOAT_CHIP_NAME);
+    let width = m::TIGHT + ROW_ICON + m::TIGHT + text_w + m::SPACING;
+    let name = format!("Restore {title}");
+    let key = style::key(("float-chip", &title, activity as u8, &help));
+    let face = widgets::control(id, width, crate::settings::PANE_HEADER, move |g, r, s| {
+        let p = theme::palette();
+        let r = style::snap(g, r);
+        let over = s.enabled && (s.hovered || s.pressed);
+        // (Under the pointer a push button's face, as the head's own marks have: raised, sunk while pressed.)
+        if over {
+            widgets::button_face(g, r, s);
+        } else {
+            style::fill_rect(g, r, style::c(p.panel_background));
+        }
+        let text_middle = style::baseline_at(g, r.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        let icon_b = style::snap_centred(g, point(r.left() + px(m::TIGHT + ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
+        paint_activity_icon(g, icon_b, activity, &help);
+        let ink = if over { style::c(p.control_text) } else { style::secondary_text(&p) };
+        style::label_fit(g, r.left() + px(m::TIGHT + ROW_ICON + m::TIGHT), r.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), ink, px(text_w + 1.0));
+        if !over {
+            style::frame_rect(g, r, float_edge(&p));
+        }
+    })
+    .look(key)
+    .agent("Button", name.clone(), None)
+    .tip(name)
+    .on_click(move |_, _| on_restore());
+    div().relative().flex_shrink_0().child(float_shadow()).child(face).into_element()
+}
+
+/// The widest a put-away floating pane's name is drawn: cut with "…" past it.
+const FLOAT_CHIP_NAME: f32 = 180.0;
+
+/// The soft shadow alone, under something small that floats over the panes (a put-away pane's chip).
+fn float_shadow() -> Element {
+    canvas(|g, b| {
+        let card = style::snap(g, Bounds::from_corners(point(b.left() + px(FLOAT_SHADOW), b.top() + px(FLOAT_SHADOW)), point(b.right() - px(FLOAT_SHADOW), b.bottom() - px(FLOAT_SHADOW))));
+        style::soft_shadow(g, card, &theme::palette());
+    })
+    .paint_key(74)
+    .absolute()
+    .top(px(-FLOAT_SHADOW))
+    .left(px(-FLOAT_SHADOW))
+    .right(px(-FLOAT_SHADOW))
+    .bottom(px(-FLOAT_SHADOW))
+    .into_element()
+}
+
+/// Under a floating pane's card: its ground, the panel's, and round it
+/// a soft shadow, as whatever floats over the rest has. Larger than the
+/// card by [`FLOAT_SHADOW`] on each side, for the shadow.
+fn float_under() -> Element {
+    canvas(|g, b| {
+        let p = theme::palette();
+        let card = style::snap(g, Bounds::from_corners(point(b.left() + px(FLOAT_SHADOW), b.top() + px(FLOAT_SHADOW)), point(b.right() - px(FLOAT_SHADOW), b.bottom() - px(FLOAT_SHADOW))));
+        style::soft_shadow(g, card, &p);
+        style::fill_rect(g, card, style::c(p.panel_background));
+        g.agent(agent::Node { role: "Dialog", name: Some("Floating Terminal".into()), bounds: card, enabled: true, ..Default::default() });
+    })
+    .paint_key(72)
+    .absolute()
+    .top(px(-FLOAT_SHADOW))
+    .left(px(-FLOAT_SHADOW))
+    .right(px(-FLOAT_SHADOW))
+    .bottom(px(-FLOAT_SHADOW))
+    .into_element()
+}
+
+/// Over a floating pane's card: a line all round it that reads over a
+/// terminal's ground in every look. (A raised panel's light top and
+/// left edge is white on a white terminal: the card had no edge there
+/// at all.) Drawn last, on the card's own bounds, over the outermost
+/// pixel of its head and its terminal, so nothing in the card covers
+/// it and nothing shows between it and them at any scale: drawn under
+/// them, with them a point inside, at 1.25× the head and the terminal
+/// covered its right side, and at 1.5× a pixel of the ground stood
+/// between it and the head's line at the left. It takes no pointer.
+fn float_line() -> Element {
+    canvas(|g, b| style::frame_rect(g, b, float_edge(&theme::palette()))).paint_key(73).absolute().inset_0().into_element()
+}
+
+/// A floating pane's grip, in its bottom right corner: three ridges
+/// across the corner, the longest ten points, three points apart, each
+/// a stair of whole device pixels at every scale, in the ink of the
+/// head's marks (quieter while another pane has the keyboard). (It was
+/// two legs of an L a shade darker than the panel: a second corner
+/// inside the corner, which read as a crop mark, black on a dark
+/// terminal, and a hairline at some scales: both reviewers,
+/// 2026-11-27.)
+fn float_grip(g: &mut Painter, b: Bounds<Pixels>, focused: bool) {
+    let p = theme::palette();
+    let s = g.scale_factor();
+    // (A ridge one device pixel thick below 2×: two-pixel stairs three
+    // points apart ran together into a dotted triangle at 1.5×.)
+    let step = style::line_pixels(s);
+    let whole = |points: f32| (points * s).round().max(1.0);
+    let corner = style::snap(g, b).bottom_right();
+    let (right, bottom) = (f32::from(corner.x) * s - whole(3.0), f32::from(corner.y) * s - whole(3.0));
+    let ink = if focused { style::secondary_text(&p) } else { style::secondary_text(&p).opacity(0.7) };
+    for ridge in 0..3 {
+        let long = whole(10.0 - 3.0 * ridge as f32);
+        let steps = (long / step).floor() as i32;
+        for at in 0..steps {
+            let (x, y) = (right - long + at as f32 * step, bottom - step - at as f32 * step);
+            style::fill_rect(g, Bounds::from_corners(point(px(x / s), px(y / s)), point(px((x + step) / s), px((y + step) / s))), ink);
+        }
+    }
+}
+
+/// How far a floating pane's shadow reaches past its card: whole device
+/// pixels at every quarter scale, so the card under it is the card's
+/// own pixels. (Ten points is 12.5 and 17.5 pixels at 1.25× and 1.75×:
+/// the ground stood a pixel out past the line there.)
+const FLOAT_SHADOW: f32 = 12.0;
+
+/// A floating pane's grip's box, in its bottom right corner: what takes the pointer.
+const FLOAT_GRIP: f32 = 16.0;
+
+/// The line round a floating pane's card: a clear step off the lines
+/// between panes and off a terminal's ground, in every look. Near black
+/// in a light look, as a push button's outline is; in a dark one a
+/// light grey, half way from the panel to white. (A third of the way,
+/// it was close to the dividers' tone and the card read as more of the
+/// grid: Opus's review, 2026-11-27. The palette's own `control_border`
+/// is near black in a dark look, darker than a terminal's ground: no
+/// edge at all, measured.)
+fn float_edge(p: &olo_theme::Palette) -> olo_kit::Hsla {
+    if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.5)) } else { style::shade(p, p.panel_background, 1.75) }
+}
+
+/// A floating layer being moved or sized: where the pointer took it,
+/// and its place then (shares of the panes' area).
+#[derive(Default)]
+struct FloatDrag(Option<(Point<Pixels>, [f64; 4])>);
 
 /// How far either side of a split's line the pointer catches it; over
 /// a line across, and under it. (Under it is the head of the pane below,

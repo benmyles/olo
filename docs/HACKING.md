@@ -4426,8 +4426,8 @@ it.
   folded workspaces), is `style::latch(g, r, open, color)`,
   BOutlineListView's: pointing right while what's under it is away,
   down while it shows (`PaneSwitch`'s too).
-- `widgets::GlyphButton::new(name, Glyph::Plus | Close | SplitRight |
-  SplitDown)` (`.id`, `.enabled`, `.on_click`): a small button that is
+- `widgets::GlyphButton::new(name, Glyph::Plus | Close | Minimize |
+  SplitRight | SplitDown)` (`.id`, `.enabled`, `.on_click`): a small button that is
   only its mark, 18 points square (`GLYPH_BUTTON`), for an action set
   right against what it acts on in a dense row (a pane's head: split
   it, close it; a heading in a list: add to it). At rest the mark
@@ -4437,8 +4437,14 @@ it.
   each of several that do the same to different things its own `id`;
   `.quiet(true)` draws the mark fainter at rest, on something that
   isn't the one in use (a pane without the keyboard).
+  `widgets::button_face(g, bounds, state)` is that face by itself,
+  raised, and sunk while pressed: for a control of an app's own
+  drawing (`widgets::control`) that is a button under the pointer
+  (Rex's put-away floating pane), never a flat tint of its own.
   The marks are `style`'s, each on whole device pixels at every scale:
-  `plus_mark(g, center, across, thick, color)`, `close_mark(g, center,
+  `plus_mark(g, center, across, thick, color)`, `minimize_mark(g,
+  center, across, color)` (one line along the foot of that square, a
+  split mark's line thick: put out of the way, kept), `close_mark(g, center,
   across, color)`, `split_mark(g, center, down, color)` (a pane and
   the line a split would draw, its halves equal; every edge counted in
   device pixels from its corner and no part drawn twice, so a
@@ -31260,6 +31266,39 @@ open onto a darker band); the focused one has its title a weight
 heavier and a line along its foot, two points of the palette's
 `keyboard_navigation`, and its cursor filled; the others' cursors are
 an outline, as Terminal's (hidden, a shell at its prompt looked hung).
+
+*A floating pane* (Pane > New Floating Terminal, `layer.new_floating`;
+remade 2026-11-27) is a pane like the others, over them: its bar is a
+pane's own head (`head_ground`, `head_icon`, `head_title`, the three a
+tiled pane's head is made of: the same icon, title, height and line
+where the keyboard is), with Minimize and Close at its right
+(`Glyph::Minimize`, `Glyph::Close`; `RexHub::set_layer_minimized`,
+`close_layer`). Round its card one line (`float_line`, `float_edge`:
+near black in a light look, a light grey in a dark one, where the
+palette's `control_border` is darker than a terminal's ground), drawn
+last on the card's own bounds, over the outermost pixel of its head
+and its terminal, so nothing covers it and nothing shows between it
+and them at any scale; under it the kit's soft shadow (`float_under`,
+a canvas `FLOAT_SHADOW` larger each side: twelve points, whole pixels
+at every quarter scale, so the ground it fills is the card's own
+pixels). Its place is a share of the panes' own area
+(`PanesView::area`, measured as the area is laid out:
+`on_bounds_changed`), kept inside it and cut at its edges; new, it is
+in the middle. It is moved by its head and sized by its bottom right
+corner (`float_grip`: three ridges across the corner, stairs of whole
+device pixels, in the head marks' ink; sixteen points square to the
+pointer), what a drag began with kept with the element across the
+redraws each step causes (`cx.node_state::<FloatDrag>()`, as a split's
+divider keeps its own). It takes every press on it (`.occlude()`, and
+the press goes no further), which brings it to the front and puts the
+keyboard in it; it is made with the keyboard in it
+(`session_new_layer(…, focus: true, …)`; a layout brought from
+elsewhere, `migrate.rs`, leaves the keyboard where it was). Put away
+(Minimize), it is its head alone at the panes' bottom right
+(`float_chip`: the icon, the name, the card's line and shadow; a
+button, `widgets::control`, with a push button's face under the
+pointer), and pressed it is back as it was. Tried end to end:
+`tools/dev/rex-slow/floating.py [BIN]`.
 
 *Scrollback* has the kit's `SlimScrollBar` over each pane's right
 edge, in rows (`ScrollbarState`'s `offset`, `len`, `total`;

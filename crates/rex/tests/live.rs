@@ -194,7 +194,7 @@ async fn workspace_layout_and_ownership() -> Result {
         assert_eq!(r.payload["blocks"][0]["block_id"], b);
     }
     let floated = ctrl.session_float_block(&s, b2, Some([0.1, 0.1, 0.6, 0.5])).await?.payload;
-    let layer = ctrl.session_new_layer(&s, Some(&w), [0.1, 0.1, 0.4, 0.4], None).await?.payload;
+    let layer = ctrl.session_new_layer(&s, Some(&w), [0.1, 0.1, 0.4, 0.4], false, None).await?.payload;
     let layer_id = layer["layer_id"].as_str().unwrap();
     ctrl.session_resize_layer(&s, layer_id, [0.2, 0.2, 0.4, 0.4]).await?;
     ctrl.session_lower_layer(&s, layer_id).await?;

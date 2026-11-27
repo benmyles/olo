@@ -825,7 +825,11 @@ impl ControlClient {
         self.call_raw("session.float_block", Some(p)).await
     }
 
-    pub async fn session_new_layer(&self, session_id: &str, window_id: Option<&str>, bounds: [f64; 4], shell_options: Option<Value>) -> Result<RpcResult<Value>, RexError> {
+    /// (`focus`: the new layer's pane is the one typed into. The server
+    /// leaves the focus where it was unless told: a floating pane the
+    /// person asked for came up with the typing still in the pane under
+    /// it.)
+    pub async fn session_new_layer(&self, session_id: &str, window_id: Option<&str>, bounds: [f64; 4], focus: bool, shell_options: Option<Value>) -> Result<RpcResult<Value>, RexError> {
         let mut block = json!({ "flavor": "com.superlogical.terminal.shell" });
         if let Some(o) = shell_options {
             block["options"] = o;
@@ -833,6 +837,7 @@ impl ControlClient {
         let mut p = json!({
             "session_id": session_id,
             "bounds": bounds,
+            "focus": focus,
             "layout": { "block": block },
         });
         if let Some(w) = window_id {

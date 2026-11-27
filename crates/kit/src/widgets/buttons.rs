@@ -287,6 +287,10 @@ pub enum Glyph {
     Plus,
     /// Close, or take away, what it is set against.
     Close,
+    /// Put what it is set against out of the way, kept (a floating
+    /// pane made small): a line at the glyph's foot, level with a
+    /// close ×'s beside it.
+    Minimize,
     /// Split what it is set against, side by side.
     SplitRight,
     /// Split it, one above the other.
@@ -373,6 +377,7 @@ impl IntoElement for GlyphButton {
             match glyph {
                 Glyph::Plus => style::plus_mark(g, center, 10.0, 1.5, ink),
                 Glyph::Close => style::close_mark(g, center, 7.0, ink),
+                Glyph::Minimize => style::minimize_mark(g, center, 8.0, ink),
                 Glyph::SplitRight => style::split_mark(g, center, false, ink),
                 Glyph::SplitDown => style::split_mark(g, center, true, ink),
             }
@@ -599,6 +604,14 @@ impl IntoElement for LinkButton {
 /// About's Software Update).
 fn dims_itself() -> bool {
     theme::palette().mode == olo_theme::ThemeMode::Dark
+}
+
+/// A push button's face, with no label, as it stands in `s` (raised;
+/// sunk while pressed): for a control of an app's own drawing that is a
+/// button while the pointer is on it, as a [`GlyphButton`] is (Rex's
+/// put-away floating pane). Never a flat tint of its own for that.
+pub fn button_face(g: &mut Painter, r: Bounds<Pixels>, s: ControlState) {
+    paint_button(g, r, s, "", false, false, style::DETAIL_SIZE, false);
 }
 
 #[allow(clippy::too_many_arguments)]

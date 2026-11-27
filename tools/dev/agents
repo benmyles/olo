@@ -1161,12 +1161,35 @@ def trusts_own_folder(name):
     text = screen(name) or ""
     if "Yes, I trust this folder" not in text or folder(name) not in text:
         return False
-    # (Its choices are "❯ No, exit" then "Yes, I trust this folder", unnumbered.)
-    for k in ("Down", "C-m"):
-        press(name, k)
+
+    def marked():
+        """The choice its mark stands on: "yes", "no", or None (the question is gone)."""
+        for line in (screen(name) or "").splitlines():
+            line = line.strip()
+            if line.startswith("❯") and "Yes, I trust this folder" in line:
+                return "yes"
+            if line.startswith("❯") and "No, exit" in line:
+                return "no"
+        return None
+
+    # Its choices are "❯ No, exit" then "Yes, I trust this folder", unnumbered,
+    # and Enter takes the one the mark stands on. Answered by where the mark is
+    # seen to stand, never by timing: the question takes no key in its first
+    # moments (a Down pressed as it showed was lost, one 0.3 s later moved the
+    # mark: tried, 2026-11-27), so "Down, wait, Enter" confirmed "No, exit" and
+    # a look ended one second after its start, with nothing to say why.
+    for _ in range(10):
+        at = marked()
+        if at == "yes":
+            press(name, "C-m")
+            print(f"agents: {name}: its own folder trusted ({folder(name)})")
+            return True
+        if at is None:
+            return False
+        press(name, "Down")
         time.sleep(0.3)
-    print(f"agents: {name}: its own folder trusted ({folder(name)})")
-    return True
+    print(f"agents: {name} asks whether to trust its own folder ({folder(name)}), and its mark wouldn't move to Yes: answer it (`agents keys {name} down enter`, once `agents peek {name}` shows the mark on Yes)")
+    return False
 
 
 def watch(stuck_min, only=None, at_most=None, among=None):

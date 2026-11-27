@@ -775,7 +775,7 @@ pub async fn rebuild(
             let start = if li == 0 {
                 w.layers.first().and_then(|l| l.blocks.first()).map(|b| b.block_id.clone())
             } else {
-                let made_layer = client.session_new_layer(&sid, Some(&w.window_id), layer.bounds, shell_in(layer.panes.first().and_then(Option::as_ref))).await?.payload;
+                let made_layer = client.session_new_layer(&sid, Some(&w.window_id), layer.bounds, false, shell_in(layer.panes.first().and_then(Option::as_ref))).await?.payload;
                 layer_id = made_layer["layer_id"].as_str().map(str::to_owned);
                 made_layer["block_ids"][0].as_str().or_else(|| made_layer["block_id"].as_str()).map(str::to_owned)
             };

@@ -119,7 +119,7 @@ class Rig:
         json.dump(settings, open(f"{config}/rex.json", "w"))
         self.screen_w = int(self.size.split("x")[0]) / 2
         if self.scale: self.ts("scale", self.name, str(self.scale))
-        if self.look: self.ts("look", self.name, self.look)
+        if self.look: self.ts("theme", self.name, self.look)
         time.sleep(1.2)
         self.rex("new", "typing", "--json", "--", "sh", "-c", PROGRAMS.get(self.program, self.program))
         self.agent = agent

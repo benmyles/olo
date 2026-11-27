@@ -249,9 +249,38 @@ something nobody here has is in "Blocked", with what it waits for.
   what it imports hold when it runs (its hash in the question, or the
   file pinned); `tools/dev/agents log NAME` prints the screen, not
   "its whole transcript" as its help says.
-- **A Rex tab's red dot that stays** (Ben, 2026-11-27, of a
-  screenshot): "why does this tab have a red dot? and it doesn't go
-  away when i am on it either".
+- ~~**A Rex tab's red dot that stays**~~ (Ben, 2026-11-27, of a
+  screenshot: "why does this tab have a red dot? and it doesn't go
+  away when i am on it either"). Fixed the same day: a tab's dot is
+  its own panes' and its child tabs', a pane was marked when it asked
+  (an agent blocked) and unmarked only by being the pane typed into in
+  the front window, so a child tab's question, answered from the
+  parent, by its minder or by its list, left the parent's dot for
+  good. A pane marked for a question is read once the question is
+  answered (`BlockRuntime::marked_unread`, `activity_went`); a bell's
+  mark, or an error's, still waits for the pane to be looked at.
+- **A floating pane in Rex, what is left** (remade 2026-11-27 after
+  Ben's "i can't select it or click on it or get rid of it"; HACKING,
+  "*A floating pane*"). From the two reviews of its pictures, not
+  done: the kit's close × is antialiased and reads softer than the
+  crisp marks beside it at 1× (Opus: "at whole-number scales, draw the
+  cross on whole pixels: 9×9pt … diagonals one device pixel thick …
+  Use the same drawing on the tiled heads and the tab": a change to
+  every × in Olo, to be compared before and after); the shadow under
+  it is the kit's `soft_shadow`, which a dark terminal all but
+  swallows (Opus: "black at about 60% in dark"; the line carries the
+  card there now); hover and pressed pictures of its two buttons, its
+  grip and its chip were never in a review (the chip's are the kit's
+  push button face, `widgets::button_face`). There before, theirs:
+  "the 'Sessions | Activity' labels sit about 3–4pt higher than the
+  'bash' tab title, though they share the same band" (Opus); a focused
+  tiled pane's icon "sits very close (about 1px) to the blue focus
+  line, leaving noticeably less clearance below the icon than above
+  it" (Gemini); the split marks' "interior dividing lines sit slightly
+  off-center at 1x" (Gemini: not measured). And of the code: a
+  floating layer holds one pane (no splits in it), Pane > Close Pane
+  on it goes by the pane, and its place isn't kept inside the area
+  when the window is made smaller than the card's least size.
 - **Auto mode by default for `olo agent`'s agents** (Ben, 2026-11-27):
   "enable auto mode by default for the olo rex agents but provide a
   way for the parent/launching agent to disable it if they prefer".

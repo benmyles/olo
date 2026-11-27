@@ -1508,6 +1508,19 @@ pub fn plus_mark(g: &mut Painter, center: Point<Pixels>, across: f32, thick: f32
     fill_rect(g, Bounds::from_corners(point(k.left() + arm, k.top()), point(k.right() - arm, k.bottom())), color);
 }
 
+/// A minimize mark: one line along the foot of the square `across`
+/// points across centred on `center` (where what is put out of the way
+/// goes: down), as thick as a split mark's lines and on whole device
+/// pixels. Beside a close ×, a point more across than the ×: its
+/// strokes end round, half a stroke past their square, and the two
+/// then stand on one line and are as wide.
+pub fn minimize_mark(g: &mut Painter, center: Point<Pixels>, across: f32, color: Hsla) {
+    let s = g.scale_factor();
+    let line = px(line_pixels(s.round()) / s);
+    let k = snap_centred(g, center, across, across);
+    fill_rect(g, Bounds::from_corners(point(k.left(), k.bottom() - line), k.bottom_right()), color);
+}
+
 /// A close ×, `across` points across centred on `center`, its strokes
 /// as thick as a tab's close × has them (one look for × in Olo: a
 /// tab's, a glyph button's).

@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### Rex: the floating pane in a dark look
+
+*04:14* — The same at 2×, dark: the card's line is a light grey there (the look's control outline is darker than a terminal's ground), so the card stands off the panes under it.
+
+![Rex: the floating pane in a dark look](2026-11-27/041453-rex-the-floating-pane-in-a-dark-look.png)
+
+### Rex: a floating pane that can be used
+
+*04:14* — A new floating terminal showed but could not be selected, clicked or closed (Ben). It was placed against the whole window, so it ran off the right edge with its one button; presses on it went to the pane under it; it was made without the keyboard; it had no close button; a drag went one step and stopped. Now it stands inside the panes, in the middle; its bar is a pane's own head, with Minimize and Close; a line all round it and a shadow under it; a grip of three ridges in its corner; a press anywhere on it brings it to the front and puts the keyboard in it. Put away, it is its head alone at the panes' foot.
+
+![Rex: a floating pane that can be used](2026-11-27/041452-rex-a-floating-pane-that-can-be-used.png)
+
 ### Rex: what a tweak changes, before it is changed
 
 *03:12* — A tweak's question is the tab's page itself, as an alert: what it does, and a table of each thing from what it is now to what it will be. Brush's has a box for the accounts already on the host, each named with the shell it has. It was text in columns in the fixed-width face, in a framed box set on the page (both reviewers' first look).

@@ -41,7 +41,8 @@ pub use alert::{
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, countdown_box, verdict_mark};
 pub use buttons::{
-    ArrowButton, Button, CheckBox, GLYPH_BUTTON, Glyph, GlyphButton, LinkButton, MENU_MARK_ROOM, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width,
+    ArrowButton, Button, CheckBox, GLYPH_BUTTON, Glyph, GlyphButton, LinkButton, MENU_MARK_ROOM, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_face, button_width, check_box_look,
+    link_button_width,
 };
 pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};

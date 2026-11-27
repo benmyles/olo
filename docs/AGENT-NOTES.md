@@ -1591,6 +1591,78 @@ before, it stays the other's and 108 × 64). Never taken while
 painting: two desktops showing one pane would take it from each other
 for ever.
 
+### A floating pane that could not be used: five faults at once (2026-11-27)
+
+Ben: "i just opened a new floating terminal pane and it shows but i
+can't select it or click on it or get rid of it or do anything with it
+now". Nothing had been wrong with one fault alone; the second
+investigator proved five on the rig, all there since floating layers
+were first drawn, and each is a way to get any overlay inside a view
+wrong:
+
+- **Placed against the wrong box.** Its bounds are shares of an area;
+  they were taken of the whole window (`cx.viewport_size()`) and set
+  down from the panes' corner, so with the sidebar open it ran past the
+  window's right edge, its only button with it. A view's own size is
+  known only once it is laid out: keep it (`on_bounds_changed` into a
+  cell the view holds, a redraw asked when it changes) and take shares
+  of that.
+- **Presses fell through.** An element with a listener still lets the
+  press go on to what is under it: the tiled pane under the pointer
+  took the keyboard straight back. What floats over others has
+  `.occlude()` and stops the press (`cx.stop_propagation()`).
+- **Made without the keyboard.** `session.new_layer` leaves the focus
+  where it was unless told `"focus": true`.
+- **No way to close it**, and Close Pane closed the pane under it.
+- **A drag went one step and stopped**: what it began with was kept in
+  an `Rc<Cell>` made in `body`, and each step of a drag redraws, which
+  makes the cell anew. A drag's state is kept with the element, by its
+  id (`cx.node_state::<T>()`), and ended at the window's mouse-up.
+
+And one of my own, found measuring the pictures, not seeing them: **a
+line drawn under an element's children is covered where layout rounds
+them outward.** The card's line was in its ground's canvas, the head
+and the terminal a point inside it; at 1.25× a point is 1.25 pixels,
+the children came out a whole pixel wider at the right, and the line
+there was gone (present at the left, the top and the foot, and at
+every other scale). A line that must show is drawn last, on the
+element's own bounds, over its children's outermost pixel (a canvas
+with no listener takes no pointer: hit-testing goes by listeners).
+The same rounding again a step on: a canvas set ten points outside
+its element for a shadow is 12.5 and 17.5 pixels out at 1.25× and
+1.75×, and the ground it filled "inside" stood a pixel past the line
+on two sides there; an offset that must land on the element's pixels
+is a multiple of four points (whole at every quarter scale). Measured
+in every picture since: one run of the line's colour on each of four
+sides, the shadow outside it, the head's or the terminal's ground
+inside. And a role's name is not its colour: the palette's
+`control_border`, "a push button's outline", is near black in a dark
+look, darker than a terminal's ground; tried for the card's line as a
+reviewer asked, the card had no edge at all in dark (measured, and
+not kept).
+
+*Tried*: `tools/dev/rex-slow/floating.py [BIN]` (twelve checks; the
+build before fails eleven). The rig's `look=` option had never done anything:
+it asked `tsession look`, which doesn't exist (`theme` is the word), so
+"dark" pictures from the rig came out light without a word.
+
+### Claude Code's trust question takes no key in its first moments (2026-11-27)
+
+Opus's look ended one second after its start, with no review and
+nothing to say why but its transcript: "Claude Code didn't start
+because this folder isn't trusted." `tools/dev/agents` had answered
+the folder-trust question itself, as it has since 2026-11-24, with
+Down, 0.3 s, Enter; now it saw the question within a moment of its
+being drawn, the Down was lost, and Enter confirmed the first choice,
+"No, exit". Tried in a new folder in a tmux session of its own (no
+model asked anything): a Down pressed as the question showed did not
+move the mark, the next one 0.3 s later did. So a question whose
+choices are moved between is answered **by where the mark is seen to
+stand, never by timing** (`trusts_own_folder`: Down until the screen
+shows the mark on "Yes, I trust this folder", then Enter, and no Enter
+otherwise), as the agents service's own answer to it already was
+(`--trust`: `ops.rs`).
+
 ### Rex's hub is never reached through a lock (2026-11-26)
 
 The same fault as the note above came back four days on, in the

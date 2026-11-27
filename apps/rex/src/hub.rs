@@ -171,6 +171,10 @@ pub struct BlockRuntime {
     watch_timer: Option<tokio::task::AbortHandle>,
     watch_ticker: Option<tokio::task::AbortHandle>,
     pub unread: bool,
+    /// It is unread for one reason only: its agent asked leave
+    /// ([`BlockRuntime::marked_unread`]). Such a mark goes when the
+    /// agent no longer asks.
+    unread_asked: bool,
     pub unread_cleared_at: Option<Instant>,
     pub muted: bool,
     pub last_bell: Option<Instant>,
@@ -301,6 +305,7 @@ impl BlockRuntime {
             watch_timer: None,
             watch_ticker: None,
             unread: false,
+            unread_asked: false,
             unread_cleared_at: None,
             muted: false,
             last_bell: None,
@@ -571,7 +576,41 @@ impl BlockRuntime {
         (changed, still)
     }
 
+    /// The pane is unread: its agent asks leave or failed (`now`), or
+    /// its bell rang (None).
+    pub fn marked_unread(&mut self, now: Option<AgentActivity>) {
+        self.unread_asked = now == Some(AgentActivity::Blocked) && (!self.unread || self.unread_asked);
+        self.unread = true;
+    }
+
+    /// Its agent went from `was` to `now`. **A pane marked unread
+    /// because its agent asked leave is unread no longer once the agent
+    /// no longer asks**: somebody answered (its minder, its parent, its
+    /// own Auto Approve, the person in another window), and there is
+    /// nothing left there to see. The mark was cleared only by putting
+    /// that very pane in front: a tab's dot, which is its own panes'
+    /// and its child tabs', stayed lit for as long as any child had
+    /// ever asked anything, with the tab in front and nothing to do
+    /// (Ben, 2026-11-27, of a lead's tab whose helpers' minders had
+    /// answered every question in seconds: "why does this tab have a
+    /// red dot? and it doesn't go away when i am on it either"). A
+    /// failure, or a bell, is news until it is seen, as before.
+    fn activity_went(&mut self, was: AgentActivity, now: AgentActivity) {
+        if was == AgentActivity::Blocked && now != AgentActivity::Blocked && self.unread && self.unread_asked {
+            self.unread = false;
+            self.unread_asked = false;
+            self.unread_cleared_at = Some(Instant::now());
+        }
+    }
+
     pub fn recompute_activity(&mut self) -> AgentActivity {
+        let was = self.agent_activity;
+        let now = self.activity_now();
+        self.activity_went(was, now);
+        now
+    }
+
+    fn activity_now(&mut self) -> AgentActivity {
         if let Some((act, _)) = AgentActivity::from_records(&self.program_statuses) {
             // The server's word that it works is its program's own, and
             // Claude Code goes on saying so while a shell it started is
@@ -4044,7 +4083,21 @@ impl RexHub {
         let sid = session_id.to_owned();
         let opts = self.local_shell_opts(host_key, None);
         self.with_control(host_key, move |ctrl, ep, inner| async move {
-            if ctrl.session_new_layer(&sid, None, bounds, opts).await.is_ok()
+            if ctrl.session_new_layer(&sid, None, bounds, true, opts).await.is_ok()
+                && let Ok(v) = ctrl.session_view(&sid).await
+            {
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+            }
+        });
+    }
+
+    /// A floating layer closed, and what ran in it ended.
+    pub fn close_layer(&self, host_key: &str, session_id: &str, layer_id: &str) {
+        let hk = host_key.to_owned();
+        let sid = session_id.to_owned();
+        let lid = layer_id.to_owned();
+        self.with_control(host_key, move |ctrl, ep, inner| async move {
+            if ctrl.session_close_layer(&sid, &lid).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
                 inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
@@ -8560,7 +8613,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                             let body = record.msg.clone().or_else(|| record.title.clone()).unwrap_or_else(|| g.title.clone());
                                             activity_note = Some((title, body, kind));
                                         }
-                                        g.unread |= unread;
+                                        if unread {
+                                            g.marked_unread(Some(now));
+                                        }
                                     }
                                 }
                             }
@@ -8582,7 +8637,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             "bell" => {
                                 g.last_bell = Some(Instant::now());
                                 if !g.muted {
-                                    g.unread = true;
+                                    g.marked_unread(None);
                                 }
                             }
                             _ => {}
@@ -9446,6 +9501,41 @@ mod tests {
         }
         assert_eq!(out, ["a:echo", "key", "a: x", "b:ls", "a:\r"]);
         assert!(typed_together(&mut waiting).is_none());
+    }
+
+    /// A pane unread because its agent asked leave is unread no longer
+    /// once it stops asking; one that failed, or whose bell rang, stays
+    /// unread until it is seen.
+    #[test]
+    fn a_pane_unread_for_a_question_is_read_once_it_is_answered() {
+        use AgentActivity::{Blocked, Error, Idle, Working};
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        // Asked, and answered by somebody else: nothing left to see.
+        b.marked_unread(Some(Blocked));
+        assert!(b.unread && b.unread_cleared_at.is_none());
+        b.activity_went(Blocked, Working);
+        assert!(!b.unread && b.unread_cleared_at.is_some(), "its question answered, the pane is read");
+        // Still asking: still unread (a change that isn't an answer changes nothing).
+        b.marked_unread(Some(Blocked));
+        b.activity_went(Working, Blocked);
+        assert!(b.unread);
+        // It failed: news until seen, whatever it does next.
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        b.marked_unread(Some(Error));
+        b.activity_went(Error, Idle);
+        assert!(b.unread, "a failure is unread until it is seen");
+        // Asked, and its bell rang besides: the bell is still to be seen.
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        b.marked_unread(Some(Blocked));
+        b.marked_unread(None);
+        b.activity_went(Blocked, Working);
+        assert!(b.unread, "a bell is unread until it is seen");
+        // Failed first, then asked: the failure is still to be seen.
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        b.marked_unread(Some(Error));
+        b.marked_unread(Some(Blocked));
+        b.activity_went(Blocked, Working);
+        assert!(b.unread);
     }
 
     #[test]
