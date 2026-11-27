@@ -2402,26 +2402,30 @@ def _resolve_say_target(name):
 def _rex_state_and_screen(target_id):
     r = olo("status", target_id, "--json", timeout=40)
     if r.returncode != 0:
-        return "unknown", ""
+        return "unknown", "", False
     try:
         said = json.loads(r.stdout)
     except ValueError:
-        return "unknown", ""
+        return "unknown", "", False
     st = said.get("state") or "unknown"
     raw = olo("read", target_id, "--lines", "45", timeout=40)
-    return st, (raw.stdout if raw.returncode == 0 else "\n".join(said.get("tail") or []))
+    if raw.returncode == 0:
+        return st, raw.stdout, True
+    tail = said.get("tail") or []
+    return st, "\n".join(tail), bool(tail)
 
 
 def say(name, text, now=False):
     """Reliably send and submit a message to a helper (by name or owned Rex
     `sa-*` ID). For Rex tabs, ALWAYS passes `--enter --paste --verify` (bare
     `olo agent send` without `--enter` only types into the prompt box without
-    submitting!) and verifies the prompt box actually cleared, retrying a
-    safe non-`--force` Enter once if the words still sit in the field."""
+    submitting!), honors the service's structured `delivered` field (failing
+    closed on `delivered: false`), and verifies the prompt box actually
+    cleared without treating an unreadable screen as empty."""
     refuse_nested()
     kind, target_id, helper_name = _resolve_say_target(name)
     if kind == "rex":
-        st, _ = _rex_state_and_screen(target_id)
+        st, _, _ = _rex_state_and_screen(target_id)
         if st in ("exited", "gone"):
             sys.exit(f"agents: {name} isn't running")
         if st in ("waiting_approval", "waiting_question"):
@@ -2437,29 +2441,45 @@ def say(name, text, now=False):
                 tm["said_at"] = now_said
                 save_trusted_meta(helper_name, tm)
         r = olo("send", target_id, "--enter", "--paste", "--verify", "--json", "--text", text, check=True)
+        try:
+            send_reply = json.loads(r.stdout) if r.stdout.strip() else {}
+        except ValueError:
+            send_reply = {}
+        delivered = send_reply.get("delivered") if isinstance(send_reply, dict) else None
+        if delivered is False:
+            sys.exit(f"agents: send to {name} was not verified delivered (`delivered=false`): check `olo agent status {target_id}`")
         words = " ".join(text.split())[:24]
 
         def cleared(within):
             until = time.time() + within
             while time.time() < until:
-                cur_st, scr = _rex_state_and_screen(target_id)
+                cur_st, scr, readable = _rex_state_and_screen(target_id)
                 if cur_st in ("waiting_approval", "waiting_question", "exited"):
                     return True
-                held = field_of(scr)
-                if not held or (words and words not in " ".join(held.split())):
-                    return True
+                if readable:
+                    held = field_of(scr)
+                    if not held or (words and words not in " ".join(held.split())):
+                        return True
                 time.sleep(0.5)
             return False
 
         if not cleared(5):
-            # Retry Enter safely WITHOUT `--force` so an approval box that
-            # appeared in the meantime is never accidentally confirmed.
-            cur_st, _ = _rex_state_and_screen(target_id)
-            if cur_st not in ("waiting_approval", "waiting_question"):
-                olo("send", target_id, "--key", "Enter")
-            if not cleared(5):
-                sys.exit(f"agents: sent to {name}, but its input field still holds the draft: check `olo agent status {target_id}`")
-        _, scr_after = _rex_state_and_screen(target_id)
+            # Only fall back to a client-side non-`--force` Enter if an older
+            # service didn't return a structured `delivered` verdict AND the
+            # screen is readable without an active dialog.
+            if delivered is None:
+                cur_st, _, readable = _rex_state_and_screen(target_id)
+                if readable and cur_st not in ("waiting_approval", "waiting_question", "exited", "unknown"):
+                    olo("send", target_id, "--key", "Enter")
+                    if cleared(5):
+                        pass
+                    else:
+                        sys.exit(f"agents: sent to {name}, but its input field still holds the draft or could not be verified: check `olo agent status {target_id}`")
+                else:
+                    sys.exit(f"agents: sent to {name}, but its input field could not be verified cleared: check `olo agent status {target_id}`")
+            else:
+                sys.exit(f"agents: sent to {name}, but its input field still holds the draft or could not be verified: check `olo agent status {target_id}`")
+        _, scr_after, _ = _rex_state_and_screen(target_id)
         queued = "to send immediately" in "\n".join(scr_after.splitlines()[-12:]) or "Press up to edit queued messages" in "\n".join(scr_after.splitlines()[-6:])
         if queued and now:
             olo("send", target_id, "--key", "Alt+m")

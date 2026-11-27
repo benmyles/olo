@@ -689,6 +689,58 @@ try:
         send_calls = [c for c in calls if c[0] == "send"]
         assert send_calls and "--enter" in send_calls[0] and "--paste" in send_calls[0] and "--verify" in send_calls[0], send_calls
         assert all("--force" not in c for c in send_calls), f"say must never pass --force: {send_calls}"
+
+        # A23: delivered=false must fail closed (never succeed or send bare client-side Enter):
+        calls.clear()
+        def fake_olo_undelivered(*a, **kw):
+            calls.append(a)
+            if a[0] == "list":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({
+                    "parent_certain": True, "parent_window_id": "win-lead",
+                    "subagents": [{"id": "sa-abc123", "parent_window_id": "win-lead", "window_id": "win-child", "state": "done"}],
+                }), "")
+            if a[0] == "status":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({"state": "done", "tail": []}), "")
+            if a[0] == "read":
+                return subprocess.CompletedProcess(list(a), 0, f"{R}\n>\n{R}\n", "")
+            if a[0] == "send":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({"ok": True, "delivered": False}), "")
+            return subprocess.CompletedProcess(list(a), 0, "", "")
+        agents.olo = fake_olo_undelivered
+        expect_exit(lambda: agents.say("sa-abc123", "Check build"), "delivered=false")
+        assert len([c for c in calls if c[0] == "send"]) == 1, f"must not issue bare Enter retry on delivered=false: {calls}"
+
+        # A23: failed status/read during post-send verification must NOT be treated as field cleared:
+        calls.clear()
+        orig_sleep = agents.time.sleep
+        orig_time = agents.time.time
+        fake_now = [1000.0]
+        def fake_sleep(dt):
+            fake_now[0] += max(dt, 2.0)
+        try:
+            agents.time.sleep = fake_sleep
+            agents.time.time = lambda: fake_now[0]
+            status_calls = [0]
+            def fake_olo_unreadable(*a, **kw):
+                calls.append(a)
+                if a[0] == "list":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({
+                        "parent_certain": True, "parent_window_id": "win-lead",
+                        "subagents": [{"id": "sa-abc123", "parent_window_id": "win-lead", "window_id": "win-child", "state": "done"}],
+                    }), "")
+                if a[0] == "status":
+                    status_calls[0] += 1
+                    if status_calls[0] == 1:
+                        return subprocess.CompletedProcess(list(a), 0, json.dumps({"state": "done", "tail": []}), "")
+                    return subprocess.CompletedProcess(list(a), 1, "", "service unavailable")
+                if a[0] == "send":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"ok": True, "delivered": True}), "")
+                return subprocess.CompletedProcess(list(a), 1, "", "read failed")
+            agents.olo = fake_olo_unreadable
+            expect_exit(lambda: agents.say("sa-abc123", "Check build"), "could not be verified")
+        finally:
+            agents.time.sleep = orig_sleep
+            agents.time.time = orig_time
 finally:
     agents.olo = orig_olo2
     agents._REX[:] = orig_rex2
