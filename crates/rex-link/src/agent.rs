@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, codex_threads, project_name, start_ticks, uuid};
-use crate::procs::{Proc, all_procs};
+use crate::procs::{Proc, all_procs_stat, subtree_procs};
 
 const USAGE: &str = "usage: olo-rex-link agent <trust PATH...|inspect>";
 
@@ -575,20 +575,29 @@ fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc
             candidates.push(root);
         }
         candidates.extend(collect_descendants(item.shell_pid, by_ppid));
-        let mut matches: Vec<(&Proc, Vec<String>)> = Vec::new();
+        let mut matches: Vec<(&Proc, Vec<String>, String)> = Vec::new();
         for p in candidates {
             let argv = read_argv(p.pid);
             let exe = read_exe(p.pid);
             if let Some((kind, args)) = agent_of(&argv, &p.comm, &exe)
                 && kind == item.cli
             {
-                matches.push((p, args));
+                matches.push((p, args, exe));
             }
         }
         if !matches.is_empty() {
-            let pids: Vec<(i32, u64)> = matches.iter().map(|(p, _)| (p.pid, start_ticks(p.pid))).collect();
-            // Prefer the deepest/leaf matching agent process (avoids shell wrapper scripts).
-            let (leaf, args) = matches.pop().unwrap();
+            let pids: Vec<(i32, u64)> = matches.iter().map(|(p, _, _)| (p.pid, start_ticks(p.pid))).collect();
+            // Prefer the deepest/leaf matching agent process across wrapper
+            // scripts/interpreters (e.g. bash/node wrapper -> agent binary),
+            // without stepping down into a child with the same executable
+            // (a fork-before-exec or sub-invocation of the agent itself).
+            let mut chosen = 0usize;
+            for i in 1..matches.len() {
+                if !matches[i].2.is_empty() && matches[i].2 != matches[chosen].2 {
+                    chosen = i;
+                }
+            }
+            let (leaf, args, _) = matches.swap_remove(chosen);
             return Some((leaf, args, pids));
         }
     }
@@ -1185,24 +1194,27 @@ fn run_inspect() -> i32 {
 /// whole, the tool call it waits on, the programs it runs. One pass over
 /// `/proc` for all of them.
 pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResult> {
-    struct Batch<'a> {
-        items: &'a [InspectItemRequest],
+    inspect_items_with(items, |_| {})
+}
+
+fn inspect_items_with(items: &[InspectItemRequest], mut before_transcript: impl FnMut(Option<i32>)) -> Vec<InspectItemResult> {
+    fn build_index(procs: &[Proc]) -> (HashMap<i32, &Proc>, HashMap<i32, Vec<&Proc>>) {
+        let by_pid: HashMap<i32, &Proc> = procs.iter().map(|p| (p.pid, p)).collect();
+        let mut by_ppid: HashMap<i32, Vec<&Proc>> = HashMap::new();
+        for p in procs {
+            by_ppid.entry(p.ppid).or_default().push(p);
+        }
+        (by_pid, by_ppid)
     }
-    let req = Batch { items };
 
     let places = Places::here();
-    let procs = all_procs();
-    let by_pid: HashMap<i32, &Proc> = procs.iter().map(|p| (p.pid, p)).collect();
-    let mut by_ppid: HashMap<i32, Vec<&Proc>> = HashMap::new();
-    for p in &procs {
-        by_ppid.entry(p.ppid).or_default().push(p);
-    }
-    let need_codex = req.items.iter().any(|i| i.cli == "codex");
+    let mut global_procs: Option<Vec<Proc>> = None;
+    let need_codex = items.iter().any(|i| i.cli == "codex");
     let rollouts = if need_codex { codex_rollouts(&places) } else { HashMap::new() };
     let mut codex_open: Option<Vec<(String, String)>> = None;
     let mut taken: HashSet<String> = HashSet::new();
 
-    for item in req.items {
+    for item in items {
         if let Some(ref ks) = item.known_session_id
             && !ks.is_empty()
         {
@@ -1210,12 +1222,29 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
         }
     }
 
-    let mut results = Vec::with_capacity(req.items.len());
-    for item in req.items {
-        let found = find_agent_proc(item, &by_pid, &by_ppid);
-        let (pid, proc_cwd, args, agent_pids) = match found {
-            Some((p, args, pids)) => (Some(p.pid), read_cwd(p.pid), args, pids),
-            None => (None, String::new(), Vec::new(), Vec::new()),
+    // Phase 1: locate each agent process (walking only `shell_pid`'s subtree
+    // when known), resolve its session/transcript, and read its transcript.
+    struct Pending<'a> {
+        item: &'a InspectItemRequest,
+        pid: Option<i32>,
+        cli_session_id: Option<String>,
+        session_confidence: &'static str,
+        transcript_path: Option<PathBuf>,
+        inspected: TranscriptInspection,
+    }
+    let mut pending = Vec::with_capacity(items.len());
+    for item in items {
+        let (pid, proc_cwd, args, agent_pids) = {
+            let local = if item.shell_pid > 0 { subtree_procs(item.shell_pid) } else { None };
+            let procs_ref: &[Proc] = match &local {
+                Some(v) => v.as_slice(),
+                None => global_procs.get_or_insert_with(all_procs_stat).as_slice(),
+            };
+            let (by_pid, by_ppid) = build_index(procs_ref);
+            match find_agent_proc(item, &by_pid, &by_ppid) {
+                Some((p, args, pids)) => (Some(p.pid), read_cwd(p.pid), args, pids),
+                None => (None, String::new(), Vec::new(), Vec::new()),
+            }
         };
         let cwd = if !proc_cwd.is_empty() { proc_cwd } else { item.cwd.clone() };
         let item_places = places_for_pid(pid, &places);
@@ -1237,6 +1266,8 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
             &mut taken,
         );
 
+        before_transcript(pid);
+
         let inspected = match transcript_path.as_deref() {
             Some(p) if item.cli == "claude" => inspect_claude_transcript(p),
             Some(p) if item.cli == "agy" => inspect_agy_transcript(p),
@@ -1244,30 +1275,50 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
             _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None, pending_tools: Vec::new() },
         };
 
-        let background_shells = pid.map(|p| find_background_shells(&item.cli, p, &by_ppid)).unwrap_or_default();
+        pending.push(Pending { item, pid, cli_session_id, session_confidence, transcript_path, inspected });
+    }
+
+    // Phase 2: read each agent's live child processes STRICTLY AFTER reading
+    // its transcript so any background shell started before the turn ended is
+    // never missed due to a stale pre-transcript `/proc` snapshot.
+    let mut fresh_global: Option<Vec<Proc>> = None;
+    let mut results = Vec::with_capacity(pending.len());
+    for p_item in pending {
+        let background_shells = match p_item.pid {
+            Some(p) => {
+                let local = subtree_procs(p);
+                let procs_ref: &[Proc] = match &local {
+                    Some(v) => v.as_slice(),
+                    None => fresh_global.get_or_insert_with(all_procs_stat).as_slice(),
+                };
+                let (_, fresh_by_ppid) = build_index(procs_ref);
+                find_background_shells(&p_item.item.cli, p, &fresh_by_ppid)
+            }
+            None => Vec::new(),
+        };
         let has_active_task = background_shells.iter().any(|s| s.kind == "task");
-        let waiting_on = if pid.is_none() {
+        let waiting_on = if p_item.pid.is_none() {
             None
         } else if has_active_task {
             Some("own_run")
-        } else if matches!(inspected.state, "done" | "waiting" | "aborted" | "idle") {
+        } else if matches!(p_item.inspected.state, "done" | "waiting" | "aborted" | "idle") {
             Some("someone")
         } else {
             None
         };
 
         results.push(InspectItemResult {
-            id: item.id.clone(),
-            pid,
-            alive: pid.is_some(),
-            cli_session_id,
-            session_confidence: (session_confidence != "none").then_some(session_confidence),
-            transcript_path: transcript_path.map(|p| p.display().to_string()),
-            last_message: inspected.last_message,
-            transcript_state: inspected.state,
-            transcript_error: inspected.error,
-            pending_tool: inspected.pending_tool,
-            pending_tools: inspected.pending_tools,
+            id: p_item.item.id.clone(),
+            pid: p_item.pid,
+            alive: p_item.pid.is_some(),
+            cli_session_id: p_item.cli_session_id,
+            session_confidence: (p_item.session_confidence != "none").then_some(p_item.session_confidence),
+            transcript_path: p_item.transcript_path.map(|p| p.display().to_string()),
+            last_message: p_item.inspected.last_message,
+            transcript_state: p_item.inspected.state,
+            transcript_error: p_item.inspected.error,
+            pending_tool: p_item.inspected.pending_tool,
+            pending_tools: p_item.inspected.pending_tools,
             background_shells,
             waiting_on,
         });
@@ -1415,5 +1466,95 @@ mod tests {
         assert_eq!(r_agy.last_message.as_deref(), Some("DONE: full untruncated antigravity reply\nwith multiple lines"));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A background shell spawned by the agent after `inspect_items` begins
+    /// (while `/proc` is being scanned) and before the turn's `end_turn`
+    /// assistant message is read from its transcript must be reported in
+    /// `background_shells` with `waiting_on: Some("own_run")`, never missed
+    /// due to reusing a stale pre-transcript `/proc` snapshot.
+    #[test]
+    fn a_background_shell_spawned_before_transcript_end_is_never_missed() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = PathBuf::from(format!("/var/tmp/olo-inspect-bg-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake_claude = dir.join("claude");
+        let trigger = dir.join("spawn-now");
+        let ready = dir.join("bg-pid");
+        let sid = "11111111-2222-3333-4444-555555555555";
+        let tx = dir.join(format!("{sid}.jsonl"));
+        std::fs::write(&tx, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Start the wait.\"}}\n").unwrap();
+        // Fake `claude` process: starts with 0 children; once `trigger` appears,
+        // spawns a background bash with Claude Code's wrapper shape and records its PID.
+        std::fs::write(
+            &fake_claude,
+            format!(
+                "#!/bin/bash\nwhile [ ! -f '{}' ]; do sleep 0.01; done\n/bin/bash -c \"source /dev/null 2>/dev/null || true && eval 'echo STARTED_WAITING; sleep 45' < /dev/null && pwd -P >| /dev/null\" </dev/null >/dev/null 2>&1 &\nBG=$!\necho $BG > '{}'\nwait\n",
+                trigger.display(),
+                ready.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake_claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut child = std::process::Command::new(&fake_claude).spawn().unwrap();
+        let claude_pid = child.id() as i32;
+        // Wait until the script has exec'd so `/proc/{pid}/cmdline` shows `claude`.
+        let start_deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while !read_argv(claude_pid).iter().any(|a| a.ends_with("/claude")) && std::time::Instant::now() < start_deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let item = InspectItemRequest {
+            id: "sa-race".into(),
+            cli: "claude".into(),
+            shell_pid: claude_pid,
+            cwd: dir.display().to_string(),
+            known_session_id: Some(sid.into()),
+            known_transcript: Some(tx.display().to_string()),
+            started_at: 0,
+        };
+
+        let results = inspect_items_with(&[item], |_| {
+            // Simulate Claude spawning its background bash AND then writing its closing
+            // `end_turn` message AFTER `inspect_items`'s initial process lookup.
+            std::fs::write(&trigger, "go").unwrap();
+            let dl = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let bg_pid: i32 = loop {
+                if let Ok(s) = std::fs::read_to_string(&ready)
+                    && let Ok(p) = s.trim().parse::<i32>()
+                    && read_argv(p).iter().any(|a| a.contains("STARTED_WAITING"))
+                {
+                    break p;
+                }
+                assert!(std::time::Instant::now() < dl, "background bash did not start");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
+            assert!(bg_pid > 0);
+            let mut f = OpenOptions::new().append(true).open(&tx).unwrap();
+            writeln!(f, "{{\"type\":\"assistant\",\"message\":{{\"id\":\"m1\",\"stop_reason\":\"end_turn\",\"content\":[{{\"type\":\"text\",\"text\":\"OWN_SHELL_STARTED\"}}]}}}}").unwrap();
+        });
+
+        // Clean up spawned child tree before asserting.
+        if let Ok(s) = std::fs::read_to_string(&ready)
+            && let Ok(bg_pid) = s.trim().parse::<i32>()
+            && let Some(sub) = subtree_procs(bg_pid)
+        {
+            for p in sub {
+                // SAFETY: killing only test-spawned descendants in `bg_pid`'s subtree.
+                unsafe { libc::kill(p.pid, libc::SIGKILL) };
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert_eq!(r.transcript_state, "done");
+        assert_eq!(r.last_message.as_deref(), Some("OWN_SHELL_STARTED"));
+        assert_eq!(r.background_shells.len(), 1, "expected 1 background shell, got {r:?}");
+        assert_eq!(r.background_shells[0].cmd, "echo STARTED_WAITING; sleep 45");
+        assert_eq!(r.waiting_on, Some("own_run"));
     }
 }

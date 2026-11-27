@@ -28,22 +28,107 @@ pub(crate) struct Proc {
     pub(crate) user_manager: bool,
 }
 
-pub(crate) fn proc_of(pid: i32) -> Option<Proc> {
+pub(crate) fn proc_stat_of(pid: i32) -> Option<Proc> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let (open, close) = (stat.find('(')?, stat.rfind(')')?);
     let comm = stat[open + 1..close].to_owned();
     let mut rest = stat[close + 2..].split_whitespace();
     let state = rest.next()?.chars().next()?;
     let ppid = rest.next()?.parse().ok()?;
+    Some(Proc { pid, ppid, uid: 0, comm, state, user_manager: false })
+}
+
+pub(crate) fn proc_of(pid: i32) -> Option<Proc> {
+    let mut p = proc_stat_of(pid)?;
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-    let uid = status.lines().find_map(|l| l.strip_prefix("Uid:"))?.split_whitespace().next()?.parse().ok()?;
+    p.uid = status.lines().find_map(|l| l.strip_prefix("Uid:"))?.split_whitespace().next()?.parse().ok()?;
     // (The account's own systemd: `systemd --user`.)
-    let user_manager = comm == "systemd" && std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.split(|&b| b == 0).any(|w| w == b"--user"));
-    Some(Proc { pid, ppid, uid, comm, state, user_manager })
+    p.user_manager = p.comm == "systemd" && std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.split(|&b| b == 0).any(|w| w == b"--user"));
+    Some(p)
 }
 
 pub(crate) fn all_procs() -> Vec<Proc> {
     std::fs::read_dir("/proc").map(|d| d.filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok()).filter_map(proc_of).collect()).unwrap_or_default()
+}
+
+pub(crate) fn all_procs_stat() -> Vec<Proc> {
+    std::fs::read_dir("/proc").map(|d| d.filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok()).filter_map(proc_stat_of).collect()).unwrap_or_default()
+}
+
+/// Direct children of `pid` from `/proc/{pid}/task/*/children`.
+/// Returns `None` if the kernel does not expose `task/*/children` (caller falls back to `all_procs_stat`).
+fn direct_children(pid: i32) -> Option<Vec<i32>> {
+    use std::collections::HashSet;
+    use std::io::ErrorKind;
+    let task_dir = format!("/proc/{pid}/task");
+    let mut kids = Vec::new();
+    let mut seen = HashSet::new();
+    for pass in 0..2 {
+        let rd = match std::fs::read_dir(&task_dir) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Some(kids),
+            Err(_) => return None,
+        };
+        let mut thread_vanished = false;
+        for entry in rd.flatten() {
+            let tid_path = entry.path();
+            let children_path = tid_path.join("children");
+            match std::fs::read_to_string(&children_path) {
+                Ok(text) => {
+                    for tok in text.split_whitespace() {
+                        if let Ok(cpid) = tok.parse::<i32>()
+                            && seen.insert(cpid)
+                        {
+                            kids.push(cpid);
+                        }
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::NotFound => {
+                    // If the thread directory still exists, the kernel lacks CONFIG_PROC_CHILDREN.
+                    if tid_path.exists() {
+                        return None;
+                    }
+                    // Thread exited mid-scan; its children were reparented to another thread of `pid`.
+                    thread_vanished = true;
+                }
+                Err(_) => return None,
+            }
+        }
+        if !thread_vanished || pass == 1 {
+            break;
+        }
+    }
+    Some(kids)
+}
+
+/// Reads `root_pid` and all of its descendants via `/proc/{pid}/task/*/children`
+/// and `/proc/{pid}/stat`, without scanning unrelated processes on the host.
+/// Returns `None` only if `task/*/children` is unavailable on this kernel.
+pub(crate) fn subtree_procs(root_pid: i32) -> Option<Vec<Proc>> {
+    use std::collections::HashSet;
+    if root_pid <= 0 {
+        return Some(Vec::new());
+    }
+    let Some(root) = proc_stat_of(root_pid) else {
+        return Some(Vec::new());
+    };
+    let mut out = vec![root];
+    let mut stack = vec![root_pid];
+    let mut seen = HashSet::new();
+    seen.insert(root_pid);
+    while let Some(p) = stack.pop() {
+        let kids = direct_children(p)?;
+        for cpid in kids {
+            if seen.insert(cpid)
+                && let Some(proc) = proc_stat_of(cpid)
+                && proc.ppid == p
+            {
+                out.push(proc);
+                stack.push(cpid);
+            }
+        }
+    }
+    Some(out)
 }
 
 /// Codex's home (`CODEX_HOME`, else `~/.codex`).

@@ -1039,10 +1039,10 @@ impl Service {
             Ok(e) => e,
             Err(e) => return Response::err("status", e, 1),
         };
+        let looked = self.look(&entry, false).await;
         let inspected = self.inspect(std::slice::from_ref(&entry)).await;
         let info = inspected.get(&entry.id);
         let entry = self.entry(&entry.id).unwrap_or(entry);
-        let looked = self.look(&entry, false).await;
         let (cls, screen) = (looked.cls, looked.screen);
         let now = now_unix_ms();
         let since = |at: u64| if at > 0 { now.saturating_sub(at) / 1000 } else { 0 };
@@ -1055,8 +1055,13 @@ impl Service {
         let mut payload = summary_json(&entry, state, cls.summary.as_deref(), 1, 0);
         payload["minder"] = json!(self.lock().reg.minder_of(&entry.id).map(|m| m.id.clone()));
         // (The turn it is in, or last ended: the cursor of what it answers.)
-        payload["answers"] = json!(self.lock().live.get(&entry.id).and_then(|l| l.answers));
-        if let Some(p) = looked.pid {
+        let (answers, live_pid) = {
+            let st = self.lock();
+            let live = st.live.get(&entry.id);
+            (live.and_then(|l| l.answers), live.and_then(|l| l.pid))
+        };
+        payload["answers"] = json!(answers);
+        if let Some(p) = live_pid.or(entry.last_pid).or(looked.pid) {
             payload["pid"] = json!(p);
         }
         payload["running"] = json!(state != SubagentLiveState::Exited);

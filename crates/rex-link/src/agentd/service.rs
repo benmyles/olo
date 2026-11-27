@@ -466,8 +466,10 @@ impl Service {
             (live.read.clone(), live.out_seq, activity, status_msg, live.rows)
         };
         let mut survey = false;
+        let mut live_read = false;
         let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), &mut survey).await {
             Ok(screen) => {
+                live_read = true;
                 let mut cls = classify_screen_rich(entry.cli, activity, &screen, true);
                 if cls.summary.is_none() {
                     cls.summary = status_msg;
@@ -484,6 +486,23 @@ impl Service {
         if let Some(live) = st.live.get_mut(&entry.id) {
             if cls.state != SubagentLiveState::Exited {
                 live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone() });
+            }
+            // Any live reading that sees a turn on (`cls.in_turn`) proves the
+            // child took up what it was given, even if its turn finishes before
+            // the watcher's `QUIET` debounce fires `transition()`. Clear the
+            // cached transition dedupe state and invalidate any stale pre-turn
+            // confirmation task so the turn's end is never swallowed against
+            // the pre-turn rest.
+            if live_read
+                && cls.in_turn
+                && let Some(given) = live.expects.take()
+            {
+                live.answers = Some(given.cursor);
+                live.seen_working = true;
+                live.held_until = None;
+                live.last_state = None;
+                live.last_key = None;
+                live.check_gen = live.check_gen.wrapping_add(1);
             }
             live.survey_stays = survey;
             (out, chg, pid) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid));

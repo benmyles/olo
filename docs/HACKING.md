@@ -32057,6 +32057,29 @@ agents through the night, could not move to it.
   screen is where item 32 was read: a working Claude agent's `summary`
   was Claude Code's word of its effort, "◈ max · /effort", set at the
   right under its work. `doing_line` passes over it.)
+  **Read in the right order, and only the agent's own processes**
+  (2026-11-27). A status read every process on the host first
+  (`all_procs`: two files each, 7,000 opens on this server, 122 ms at
+  rest and one to three seconds under load) and the agent's
+  conversation file after: an agent that started its shell and ended
+  its turn in that time was "done, no shell, `waiting_on: someone`"
+  for a moment, the old list of processes beside the new file. A live
+  test met it two times in five under the suite's own load, and a
+  `watch` or a `run` that asks at that moment takes a working agent
+  for a finished one. Found by a second investigator, on six failures
+  of six with the times of each step. Now the conversation file is
+  read first and the agent's process tree after it, and the tree is
+  the agent's own alone (`procs::subtree_procs`:
+  `/proc/PID/task/*/children` from its shell down, the whole table
+  only where a kernel hasn't that file); `status` reads the screen
+  before either. One reading of one agent, release build: 122 ms and
+  43.9 million instructions before, 1.2 ms and 0.95 million after
+  (thirty agents: 134 ms and 3.9 ms).
+  `a_background_shell_spawned_before_transcript_end_is_never_missed`
+  starts the shell and ends the turn between the two readings: fails
+  every time before. (With a status that fast, `look` itself takes up
+  what a child was given when it sees its turn on: the 120 ms a
+  status used to take had let `transition` do it first.)
 - *Which turn a rest belongs to* (`state::rest_now`, `Live::expects`,
   `answers`; the ShiftUp lead's items 27 and 34, 2026-11-26: "`start
   agy --resume ID --prompt …` reports `done` 1.4 s after the start,
