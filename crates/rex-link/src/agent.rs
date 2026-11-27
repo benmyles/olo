@@ -485,46 +485,26 @@ fn classify_bg_process(cmd: &str) -> &'static str {
 /// own_run` of every one (the ShiftUp lead's item 51, and a review of
 /// Olo's own lost for it, 2026-11-27). Anything run from the CLI's own
 /// package is the CLI's.
-/// Matches by what the process actually *is* (its `argv[0]` basename,
-/// `/proc/<pid>/exe` basename, `comm`, or for Node-hosted MCP/LSP
-/// servers its script path) rather than substrings anywhere in its
-/// arguments; Codex's helper and `$CODEX_HOME/packages/` root apply
-/// only when `cli == "codex"`.
-fn clis_own_process(cli: &str, argv: &[String], exe: &str, comm: &str, codex_home: &Path) -> bool {
-    if comm == "sleep" && argv.len() == 2 {
-        return true;
-    }
-    let prog = argv.first().map(String::as_str).unwrap_or("");
-    let base_low = |p: &str| Path::new(p).file_name().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
-    let (prog_base, exe_base, comm_low) = (base_low(prog), base_low(exe), comm.to_ascii_lowercase());
-    let is_helper =
-        |name: &str| matches!(name, "olo-rex-link" | "ripgrep" | "app-server" | "mcp-server" | "language-server" | "rust-analyzer" | "pyright" | "gopls" | "clangd" | "tsserver" | "playwright-mcp");
-    if is_helper(&prog_base) || is_helper(&exe_base) || is_helper(&comm_low) {
-        return true;
-    }
-    if matches!(prog_base.as_str(), "node" | "nodejs" | "bun" | "deno")
-        && argv.get(1).is_some_and(|script| {
-            let s = script.to_ascii_lowercase();
-            s.contains("/@modelcontextprotocol/") || s.contains("/mcp-server") || s.contains("/playwright-mcp") || s.contains("/language-server") || s.contains("/tsserver")
-        })
-    {
-        return true;
-    }
-    if cli == "codex" {
-        if prog_base == "codex-code-mode-host" || exe_base == "codex-code-mode-host" || comm_low == "codex-code-mode" {
-            return true;
-        }
-        let codex_pkgs = codex_home.join("packages");
-        let under_codex_pkgs =
-            |p: &str| !p.is_empty() && !codex_home.as_os_str().is_empty() && !Path::new(p).components().any(|c| matches!(c, std::path::Component::ParentDir)) && Path::new(p).starts_with(&codex_pkgs);
-        if under_codex_pkgs(prog) || under_codex_pkgs(exe) {
-            return true;
-        }
-    }
-    false
+fn clis_own_process(cmd: &str, comm: &str, argc: usize) -> bool {
+    let low = cmd.to_ascii_lowercase();
+    low.contains("olo-rex-link")
+        || low.contains("ripgrep")
+        || low.contains("app-server")
+        || low.contains("mcp-server")
+        || low.contains("modelcontextprotocol")
+        || low.contains("language-server")
+        || low.contains("rust-analyzer")
+        || low.contains("pyright")
+        || low.contains("gopls")
+        || low.contains("clangd")
+        || low.contains("tsserver")
+        || low.contains("playwright-mcp")
+        || low.contains("codex-code-mode-host")
+        || low.split_whitespace().next().is_some_and(|program| program.contains("/.codex/packages/"))
+        || (comm == "sleep" && argc == 2)
 }
 
-fn find_background_shells(cli: &str, agent_pid: i32, places: &Places, by_ppid: &HashMap<i32, Vec<&Proc>>) -> Vec<BackgroundShellInfo> {
+fn find_background_shells(cli: &str, agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) -> Vec<BackgroundShellInfo> {
     let mut out = Vec::new();
     // The agent's own shells first, each one whole: a shell the agent
     // started for a command of its own is what it waits on, whatever
@@ -567,11 +547,10 @@ fn find_background_shells(cli: &str, agent_pid: i32, places: &Places, by_ppid: &
         if argv.is_empty() {
             continue;
         }
-        let exe = read_exe(p.pid);
-        if clis_own_process(cli, &argv, &exe, &p.comm, &places.codex) {
+        let cmd = argv.join(" ");
+        if clis_own_process(&cmd, &p.comm, argv.len()) {
             continue;
         }
-        let cmd = argv.join(" ");
         // Skip wrapper shells whose direct child is already in the list (keep the leaf command).
         let is_wrapper = matches!(p.comm.as_str(), "sh" | "bash" | "zsh" | "dash") && by_ppid.get(&p.pid).is_some_and(|k| !k.is_empty());
         if is_wrapper {
@@ -1265,7 +1244,7 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
             _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None, pending_tools: Vec::new() },
         };
 
-        let background_shells = pid.map(|p| find_background_shells(&item.cli, p, &item_places, &by_ppid)).unwrap_or_default();
+        let background_shells = pid.map(|p| find_background_shells(&item.cli, p, &by_ppid)).unwrap_or_default();
         let has_active_task = background_shells.iter().any(|s| s.kind == "task");
         let waiting_on = if pid.is_none() {
             None
@@ -1328,38 +1307,23 @@ mod tests {
     /// agent's is.
     #[test]
     fn a_clis_own_helper_is_not_the_agents_run() {
-        let codex_home = Path::new("/home/u/.codex");
-        let argv = |cmd: &str| cmd.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
-        for (cli, cmd, exe, comm, home) in [
-            (
-                "codex",
-                "/home/u/.codex/packages/standalone/releases/0.172.0-x86_64-unknown-linux-musl/bin/codex-code-mode-host --listen unix:///run/user/1000/c.sock",
-                "",
-                "codex-code-mode",
-                codex_home,
-            ),
-            ("codex", "/home/u/.codex/packages/standalone/releases/0.173.0-x86_64-unknown-linux-musl/bin/some-later-helper", "", "some-later-help", codex_home),
-            ("codex", "/var/tmp/custom-codex/packages/standalone/bin/helper", "", "helper", Path::new("/var/tmp/custom-codex")),
-            ("codex", "node /usr/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js /tmp", "/usr/bin/node", "node", codex_home),
-            ("agy", "rust-analyzer", "/usr/bin/rust-analyzer", "rust-analyzer", codex_home),
-            ("codex", "sleep 45", "/usr/bin/sleep", "sleep", codex_home),
+        for (cmd, comm, argc) in [
+            ("/home/u/.codex/packages/standalone/releases/0.172.0-x86_64-unknown-linux-musl/bin/codex-code-mode-host --listen unix:///run/user/1000/c.sock", "codex-code-mode", 3),
+            ("/home/u/.codex/packages/standalone/releases/0.173.0-x86_64-unknown-linux-musl/bin/some-later-helper", "some-later-help", 1),
+            ("node /usr/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js /tmp", "node", 3),
+            ("rust-analyzer", "rust-analyzer", 1),
+            ("sleep 45", "sleep", 2),
         ] {
-            assert!(clis_own_process(cli, &argv(cmd), exe, comm, home), "{cli}: {cmd}");
+            assert!(clis_own_process(cmd, comm, argc), "{cmd}");
         }
-        for (cli, cmd, exe, comm, home) in [
-            ("codex", "cargo test -p olo-rex", "/usr/bin/cargo", "cargo", codex_home),
-            ("codex", "python3 /var/tmp/x/verify.py --all", "/usr/bin/python3", "python3", codex_home),
+        for (cmd, comm, argc) in [
+            ("cargo test -p olo-rex", "cargo", 4),
+            ("python3 /var/tmp/x/verify.py --all", "python3", 3),
             // (A script of the agent's that happens to be kept under a folder of that name elsewhere.)
-            ("codex", "bash /srv/work/.codex/packages/run-tests.sh", "/usr/bin/bash", "bash", codex_home),
-            // A Python test runner whose script name mentions Codex's helper must NOT be hidden.
-            ("codex", "python3 test-codex-code-mode-host.py", "/usr/bin/python3", "python3", codex_home),
-            // A directly executed test program under a project-local `.codex/packages/` must NOT be hidden.
-            ("codex", "/srv/work/project/.codex/packages/run-tests", "/srv/work/project/.codex/packages/run-tests", "run-tests", codex_home),
-            // Codex's helper exception applies only to Codex, never another CLI.
-            ("agy", "/home/u/.codex/packages/standalone/releases/0.172.0-x86_64-unknown-linux-musl/bin/codex-code-mode-host --listen unix:///run/user/1000/c.sock", "", "codex-code-mode", codex_home),
-            ("codex", "sleep 5 10", "/usr/bin/sleep", "sleep", codex_home),
+            ("bash /srv/work/.codex/packages/run-tests.sh", "bash", 2),
+            ("sleep 5 10", "sleep", 3),
         ] {
-            assert!(!clis_own_process(cli, &argv(cmd), exe, comm, home), "{cli}: {cmd}");
+            assert!(!clis_own_process(cmd, comm, argc), "{cmd}");
         }
     }
 

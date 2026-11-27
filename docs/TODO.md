@@ -883,6 +883,36 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The agents' own helpers, told from an agent's tasks** (Astra's
+  second review, its 16, and its review of the fix,
+  `/var/tmp/olo-reviews/astra-201b04c4f4/astra-review.md`, 8 to 12). The
+  filter (`clis_own_process`, crates/rex-link/src/agent.rs) hides what
+  has a helper's word anywhere in its command line: "a Python test
+  runner whose script is named `test-codex-code-mode-host.py`
+  disappears from `background_shells`", as does a program run from a
+  project's own `.codex/packages/`. A version that went by the
+  program's exact name was tried for an hour and taken back: it showed
+  Olo's own helper as a task ("Rex installs `olo-rex-link-ID-ARCH`.
+  When an agent has that helper running a watch … the release helper
+  now counts as a task for the duration of the watch"), and "a real
+  task running `node /work/mcp-server-tests/verify.js` disappears …
+  adding `--enable-source-maps` before the script … that long-lived
+  server then keeps an idle Codex at `waiting_on: own_run`". Showing a
+  helper as a task is the worse fault (an agent never seen at rest), so
+  the wide filter stays until one is written that goes by the program's
+  own name, an interpreter's script by its path's parts, the helper's
+  installed names, and the resolved Codex home, with both reviews'
+  cases as its tests. `tools/dev/agents` has its own copy of the test
+  for an older service (`at_rest`): to go when no such service is left.
+- **A command cut short on an agent's screen with no mark that says
+  so** (the same review, its 3): "In the supported older Claude layout,
+  a Bash command can show `cargo test &&` on one row and `cargo fmt` on
+  the next. The parser takes the first row and breaks. With no fold
+  marker or trailing ellipsis, the service authorizes both rows after
+  checking only the first … Use one completeness result from the
+  parser." The list (`--approve-all-but`) asks for whatever is folded
+  or ends in an ellipsis; this is what it can still take for whole.
+
 - **Left from Astra's confirming review of the pointer and the bridge**
   (2026-11-27, `/var/tmp/olo-reviews/astra-e95bcee5e0/astra-review.md`;
   its 1, 2, 4, 6 to 10 are fixed in the commits after it). In its words:

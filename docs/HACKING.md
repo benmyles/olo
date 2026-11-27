@@ -32275,7 +32275,17 @@ agents through the night, could not move to it.
   command whole as the agent shows it, its lines joined: a pattern
   sees `cd x && git push > log`, never only its first words, which is
   all an agent's own allow rules judge; for what has no command, the
-  tool and the question's words); if no pattern is found in it and the
+  tool and the question's words). **A command the agent has folded on
+  its screen ("⋯ 19 lines hidden") or cut short is never the list's to
+  allow**: it is asked, like what a pattern names. The list judged the
+  lines that showed, and a `git push` on a hidden line went through;
+  and for a day it allowed such a command by the same one found whole
+  in the agent's conversation file, which can't be told for certain to
+  be this box's call (two that begin alike, one written late, another
+  session's file) and names the tool otherwise than the screen does
+  (two code reviews, 2026-11-27:
+  `a_folded_command_is_never_allowed_by_a_list`). The yes is given for
+  the box it judged (`approve --box`). If no pattern is found in it and the
   box has exactly one plain "yes, this once", it answers through
   `approve --once`'s own steps (the choice by what it means, the mark
   seen on it, the box seen to go) and nobody is told there was a

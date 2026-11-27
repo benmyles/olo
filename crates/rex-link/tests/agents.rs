@@ -2685,14 +2685,15 @@ fn a_childs_tab_is_never_the_services_to_size() {
     assert_eq!((again["columns"].as_u64(), again["rows"].as_u64()), (Some(91), Some(33)), "the size a desktop gave it holds: {again}");
 }
 
-/// A folded approval command (`⋯ N lines hidden`) is judged by `--approve-all-but`
-/// only when its whole text is matched in the agent's transcript: (a) a hidden
-/// excepted command (`git push`) is never auto-approved; (b) a folded command
-/// whose matched whole text has nothing excepted is allowed once; (c) a folded
-/// command with no matching transcript is asked, not allowed; (d) an unfolded
-/// command is allowed as before.
+/// A command the agent has folded on its screen (`⋯ N lines hidden`) is never
+/// `--approve-all-but`'s to allow: it is asked, whatever its conversation file
+/// holds. (a) with what the list excepts on a hidden line (`git push`: it was
+/// allowed by the lines that showed); (b) with a harmless tail, known whole from
+/// the conversation file (allowed for a day by that match: which call is this
+/// box's can't be told for certain); (c) with no conversation file. (d) A
+/// command shown whole is allowed as before.
 #[test]
-fn a_folded_command_is_allowed_by_a_list_only_when_its_whole_text_is_known() {
+fn a_folded_command_is_never_allowed_by_a_list() {
     let Some(rig) = Rig::start("folded") else { return };
     rig.stand_in("claude");
     std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+push\\b\n").unwrap();
@@ -2749,15 +2750,18 @@ fn a_folded_command_is_allowed_by_a_list_only_when_its_whole_text_is_known() {
     assert!(moved.join().unwrap() && gone.join().unwrap());
     rig.wait_state("worker", "working");
 
-    // (b) Same folded command with nothing excepted in the hidden tail, matched in transcript: allowed once!
+    // (b) The same folded command with nothing excepted in its hidden tail, whole in the conversation
+    // file: asked all the same, no key sent.
     write_pending_bash(Some("cargo test --workspace\necho all checks ok\necho done"));
     let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
     let before = rig.keys("worker").len();
-    let gone = rig.when_typed("worker", b"\r", working());
     rig.show("worker", &folded_asking("cargo test --workspace", 19));
-    assert!(gone.join().unwrap(), "folded command with clean whole text in transcript should be allowed");
-    rig.typed_since("worker", before, b"\r", "Return on Yes once");
-    assert_eq!(woken(c, "1").0, 124, "clean folded command should not wake parent");
+    let (code, out, err) = woken(c, "15");
+    assert_eq!(code, 0, "a folded command is asked, its whole text known or not: {out}{err}");
+    assert_eq!(rig.keys("worker").len(), before, "and no Return is sent for it");
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.json(&["approve", "worker", "--once", "--json"]);
+    assert!(gone.join().unwrap());
     rig.wait_state("worker", "working");
 
     // (c) Folded command with NO transcript to match: NO key sent, wakes parent!

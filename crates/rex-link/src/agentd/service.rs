@@ -1147,33 +1147,28 @@ impl Service {
             // service says yes, once, itself and at once, to anything no
             // pattern of the list names, and nobody is told there was a
             // question (`leave.rs`). What a pattern names, what couldn't
-            // be read off the screen whole (a folded or truncated command
-            // with no certain transcript match for the same tool), and a
-            // box with no plain "yes, this once" go to whoever answers
-            // for it, as before.
+            // be read off the screen whole, and a box with no plain "yes,
+            // this once" go to whoever answers for it, as before.
+            // A command the agent has folded on its screen ("⋯ 19 lines
+            // hidden"), or cut short, is never the list's to allow: it
+            // judged the lines that showed, and `git push` on a hidden
+            // line went through (a code review, 2026-11-27). Nor is it
+            // allowed by the same command found whole in the agent's
+            // conversation file, as it was for a day: which call there
+            // is this box's can't be told for certain (two that begin
+            // alike, one written late, another session's file), and the
+            // tool is named otherwise there, so a pattern on `^Bash:`
+            // missed. What isn't read whole is asked.
             let whole_asked = again.cls.approval.as_ref().and_then(|ap| {
                 let cut = ap.folded_lines.is_some()
                     || ap.command.as_deref().is_some_and(|c| {
                         let t = c.trim_end();
                         t.ends_with('…') || t.ends_with("...")
                     });
-                if !cut {
-                    return super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question);
-                }
-                let rec = approval.as_ref()?;
-                if rec["command_from"].as_str() != Some("transcript") {
+                if cut {
                     return None;
                 }
-                let full_cmd = rec["command"].as_str().filter(|c| !c.trim().is_empty())?;
-                let rec_tool = rec["tool"].as_str();
-                if let (Some(st), Some(rt)) = (ap.tool.as_deref(), rec_tool) {
-                    let (sl, rl) = (st.to_ascii_lowercase(), rt.to_ascii_lowercase());
-                    let same_tool = sl == rl || (sl == "bash" && matches!(rl.as_str(), "bash" | "run_command" | "exec_command"));
-                    if !same_tool {
-                        return None;
-                    }
-                }
-                super::leave::asked(rec_tool.or(ap.tool.as_deref()), Some(full_cmd), &ap.question)
+                super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)
             });
             if state == SubagentLiveState::WaitingApproval
                 && let Some(list) = service.leave_of(&id)
@@ -1183,7 +1178,14 @@ impl Service {
                 && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1
             {
                 let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, block: None, child: None };
-                let answered = service.approve(&json!({ "args": [id.clone(), "--once", "--json"] }), &from).await;
+                // (For the box it judged: another that stands by the time
+                // the answer is given is not answered by this.)
+                let mut args = vec![json!(id.clone()), json!("--once")];
+                if let Some(key) = service.box_key(&id, Some(ap)) {
+                    args.extend([json!("--box"), json!(key)]);
+                }
+                args.push(json!("--json"));
+                let answered = service.approve(&json!({ "args": args }), &from).await;
                 if answered.ok {
                     service.leave_given(&id, &asked);
                     return;
