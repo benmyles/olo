@@ -330,6 +330,37 @@ mod tests {
         let ap_m = approval_to_json(ap_prompt, &mismatch_only);
         assert_eq!(ap_m["command"], json!("rm -f /var/tmp/x"));
         assert!(ap_m["transcript_candidates"].as_array().is_some_and(|a| a.len() == 1));
+        assert_eq!((&ap_j["command_from"], &ap_m["command_from"]), (&json!("screen"), &json!("screen")), "the box's own text, whole on the screen");
+
+        // A box is told with its own command, never a like one's (ShiftUp's item 39): two commands that begin
+        // alike for forty characters, the one before still listed as waiting.
+        let before = "git -C /home/u/worktrees/shiftup-v2/cc-setup show 0f8dcff6 --stat";
+        let own = "git -C /home/u/worktrees/shiftup-v2/cc-setup log --oneline 16f71b91..0f8dcff6";
+        let call = |command: &str| json!({"tool": "run_command", "command": command});
+        let box_of = |command: &str, folded: Option<usize>| olo_agent_screen::ApprovalPrompt { command: Some(command.to_owned()), folded_lines: folded, ..ap_prompt.clone() };
+        // Whole on the screen: its own call's, with the other listed first; the screen's, where only the other waits.
+        let told = approval_to_json(&box_of(own, None), &[call(before), call(own)]);
+        assert_eq!((&told["command"], &told["command_from"]), (&json!(own), &json!("screen")));
+        let told = approval_to_json(&box_of(own, None), &[call(before)]);
+        assert_eq!(told["command"], json!(own), "never the call before's: {told}");
+        assert!(told["transcript_candidates"].as_array().is_some_and(|a| a.len() == 1));
+        // Wrapped on the screen (a line's end in a word's middle): still its own, by its whole text.
+        let wrapped = "git -C /home/u/worktrees/shiftup-v2/cc-setup log --one\n   line 16f71b91..0f8dcff6";
+        assert_eq!(approval_to_json(&box_of(wrapped, None), &[call(before), call(own)])["transcript_candidates"], serde_json::Value::Null, "its own call is found");
+        // Only its head on the screen (folded, or cut): the one call that begins so gives the whole of it;
+        let head = "git -C /home/u/worktrees/shiftup-v2/cc-setup log --oneline 16f7…";
+        let told = approval_to_json(&box_of(head, Some(2)), &[call(before), call(own)]);
+        assert_eq!((&told["command"], &told["command_from"]), (&json!(own), &json!("transcript")));
+        // no call that begins so, or two different ones that do: no command at all, and why.
+        let both = "git -C /home/u/worktrees/shiftup-v2/cc-setup …";
+        for (shown, waiting) in [(head, vec![call(before)]), (both, vec![call(before), call(own)])] {
+            let told = approval_to_json(&box_of(shown, None), &waiting);
+            assert_eq!((&told["command"], &told["command_from"]), (&serde_json::Value::Null, &serde_json::Value::Null), "{told}");
+            assert!(told["command_note"].as_str().is_some_and(|n| n.contains("only the head")) && told["screen_command"] == json!(shown));
+        }
+        // (The same command asked twice is one command.)
+        let told = approval_to_json(&box_of(head, Some(2)), &[call(own), call(own)]);
+        assert_eq!(told["command"], json!(own));
 
         // Claude folder-trust dialog is WaitingQuestion (never WaitingApproval)
         let trust = "────────────────────\n Accessing workspace:\n /var/tmp/wt\n Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel\n";

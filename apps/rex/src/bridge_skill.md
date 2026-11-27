@@ -273,6 +273,17 @@ model or reasoning effort is used.
 - **Event-driven watch (zero polling, multi-agent & cursor-safe)**:
   `olo agent watch [<ID|NAME>… | --all] [--since CURSOR] [--parent WIN] [--on question,approval,escalation,idle,done,error,exit] [--match TEXT] [--regex PAT] [--timeout 90] [--json]`
   Always pass `--since CURSOR` (from `start`, `list`, `send`, `approve`, or the prior `watch`) and keep `--timeout` under your shell tool timeout (e.g. `90` seconds), looping on exit code **124** (`{"ok":false,"event":"timeout","cursor":...,"code":124}`). Exit codes: `0` event, `124` timeout, `2` usage/validation error, `69` it can't be done from here (no Rex server on this host; or a child asking what isn't its to ask), `75` the service ended while it did something that must not be done twice (`start`, `send`, `approve`, `stop`: look with `list` before asking again; `watch`, `list`, `status` and `read` simply ask the next service). `--on idle` matches both `idle` and `done`; `--on done` matches strictly `done`. If the event cursor resets (e.g. after a fresh start), `watch` returns `{"ok":true,"event":"reset","cursor":...}` immediately; if events were evicted from the 2000-event ring buffer, `gap:true` is set.
+- **What a box asks leave for is that box's own command, or none.**
+  `status --json` and an approval's event give `approval.command`,
+  with `approval.command_from`: `"screen"` (what the box itself shows,
+  whole), `"transcript"` (the whole command of the call in the agent's
+  transcript that is certainly the box's: its whole text is what the
+  box shows, or it is the one call that begins as a cut box does), or
+  `null` with `approval.command_note` where the box shows only the head
+  of its command and no call is certainly its own (read the box:
+  `approval.screen_command` is what it shows, `olo agent read` the
+  rest). Never a likely one: a call that only began like the box's was
+  once given as the box's command. Judge a yes from `command` only.
 - **Approve or deny a pending tool approval safely**:
   `olo agent approve <ID|NAME> --once | --session | --no [--reason TEXT] [--json]`
   Picks the one choice of that kind by what it means, wherever it stands in the list (`approval.choices[].kind`: `once`, `allow_session`, `dont_ask_again`, `switch_mode`, `no`, `no_always`, `other`): `--once` the yes for this once ("Yes", "Yes, run command", "Yes, but ask again next time"), `--session` the yes kept for this conversation alone (Antigravity's "Yes, and always allow in this conversation"), `--no` the no for this once (never "No, and block reads"). Two of the kind asked for, or none, is refused with the choices named.

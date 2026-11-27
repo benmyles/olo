@@ -305,39 +305,61 @@ pub fn effective_state(cls: &ScreenClassification, tx_state: Option<&str>, tx_er
     (cls.state, None, false)
 }
 
-fn norm_cmd(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase()
-}
-
-/// Merges screen-parsed approval prompt with uncompleted transcript tool calls ONLY when a transcript
-/// call actually agrees with what is shown on screen (`H14`). On parallel tool calls where another
-/// uncompleted tool does not match the screen, keeps the screen's command/tool and exposes candidates.
+/// What a box asks leave for, as it is told: what the screen shows of
+/// it, with the whole command (and arguments) of the call in the
+/// agent's transcript that is **certainly** the box's own, and of no
+/// other.
+///
+/// A call is the box's own when its whole command is what the box
+/// shows (spaces apart: a long command is wrapped on the screen); or,
+/// where the box shows only the head of its command (folded, or cut
+/// with "…"), when it is the one call that begins so. Never by a
+/// likeness: this took any call whose first 24 characters were the
+/// box's, or that held the box's words anywhere, and the first such
+/// call it found. Every `git -C /a/long/worktree …` is every other's
+/// like by that; with the call before still listed as waiting, a box
+/// was told with the box before's command and its own choices (the
+/// ShiftUp lead, 2026-11-27, item 39: "a yes judged from that command
+/// would have been a yes to another command"). Where no call is
+/// certainly the box's: the command is the screen's, if the screen
+/// shows it whole; and none at all (`command_note` says why) if the
+/// screen shows only its head. `command_from` says which: "transcript",
+/// "screen", or null.
+///
+/// (`H14`: of several calls that wait, one that isn't the box's never
+/// lends it its command. A box that shows no command, an edit's, takes
+/// the one call that waits, if it is of the box's kind of tool.)
 pub fn approval_to_json(ap: &olo_agent_screen::ApprovalPrompt, pending_tools: &[Value]) -> Value {
-    let screen_cmd_norm = ap.command.as_deref().map(norm_cmd).unwrap_or_default();
+    let squeezed = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    let screen = ap.command.as_deref().map(squeezed).unwrap_or_default();
+    let cut = ap.folded_lines.is_some() || screen.ends_with('…') || screen.ends_with("...");
+    let shown = screen.trim_end_matches('…').trim_end_matches("...");
+    let whole_of = |t: &Value| t.get("command").and_then(Value::as_str).map(squeezed).filter(|c| !c.is_empty());
     let screen_tool_norm = ap.tool.as_deref().map(|s| s.to_ascii_lowercase());
 
-    let matched: Option<&Value> = if pending_tools.is_empty() {
-        None
-    } else if !screen_cmd_norm.is_empty() {
-        pending_tools.iter().find(|t| {
-            t.get("command").and_then(Value::as_str).is_some_and(|c| {
-                let cn = norm_cmd(c);
-                !cn.is_empty()
-                    && (cn.contains(&screen_cmd_norm) || screen_cmd_norm.contains(&cn) || {
-                        let prefix_len = screen_cmd_norm.len().min(cn.len()).min(24);
-                        prefix_len >= 6 && cn.as_bytes()[..prefix_len] == screen_cmd_norm.as_bytes()[..prefix_len]
+    let matched: Option<&Value> = if screen.is_empty() {
+        match pending_tools {
+            [only] => {
+                let tool_ok = screen_tool_norm.as_deref().is_none_or(|st| {
+                    only.get("tool").and_then(Value::as_str).is_some_and(|tt| {
+                        let ttl = tt.to_ascii_lowercase();
+                        ttl == st || (st == "bash" && matches!(ttl.as_str(), "bash" | "run_command" | "exec_command"))
                     })
-            })
-        })
-    } else if pending_tools.len() == 1 {
-        let only = &pending_tools[0];
-        let tool_ok = screen_tool_norm.as_deref().is_none_or(|st| {
-            only.get("tool").and_then(Value::as_str).is_some_and(|tt| {
-                let ttl = tt.to_ascii_lowercase();
-                ttl == st || (st == "bash" && matches!(ttl.as_str(), "bash" | "run_command" | "exec_command"))
-            })
-        });
-        tool_ok.then_some(only)
+                });
+                tool_ok.then_some(only)
+            }
+            _ => None,
+        }
+    } else if let Some(same) = pending_tools.iter().find(|t| whole_of(t).is_some_and(|c| c == screen || (cut && c == shown))) {
+        Some(same)
+    } else if cut && shown.len() >= 6 {
+        // (The one call that begins as the box's head does; several
+        // that do are one only if they are the same command.)
+        let begin: Vec<&Value> = pending_tools.iter().filter(|t| whole_of(t).is_some_and(|c| c.starts_with(shown))).collect();
+        match begin.as_slice() {
+            [first, rest @ ..] if rest.iter().all(|t| whole_of(t) == whole_of(first)) => Some(*first),
+            _ => None,
+        }
     } else {
         None
     };
@@ -346,11 +368,14 @@ pub fn approval_to_json(ap: &olo_agent_screen::ApprovalPrompt, pending_tools: &[
     let tx_cmd = matched.and_then(|t| t.get("command")).and_then(Value::as_str);
     let tx_args = matched.and_then(|t| t.get("arguments")).cloned();
 
-    let command = match (ap.command.as_deref(), tx_cmd) {
-        (Some(_), Some(full)) if ap.folded_lines.is_some() || full.len() > ap.command.as_deref().map_or(0, str::len) => Some(full.to_owned()),
-        (Some(s), _) => Some(s.to_owned()),
-        (None, Some(full)) => Some(full.to_owned()),
-        (None, None) => None,
+    let (command, from, note): (Option<String>, Option<&str>, Option<&str>) = match (ap.command.as_deref(), tx_cmd) {
+        (Some(_), Some(full)) if cut || full.len() > ap.command.as_deref().map_or(0, str::len) => (Some(full.to_owned()), Some("transcript"), None),
+        // (Only its head on the screen, and no call certainly its own:
+        // no command is better than a likely one.)
+        (Some(_), None) if cut => (None, None, Some("the box shows only the head of its command, and no call in the agent's transcript is certainly its own: read the box itself")),
+        (Some(s), _) => (Some(s.to_owned()), Some("screen"), None),
+        (None, Some(full)) => (Some(full.to_owned()), Some("transcript"), None),
+        (None, None) => (None, None, None),
     };
     let tool = tx_tool.map(str::to_owned).or_else(|| ap.tool.clone());
     let choices: Vec<Value> = ap
@@ -370,12 +395,16 @@ pub fn approval_to_json(ap: &olo_agent_screen::ApprovalPrompt, pending_tools: &[
         "question": ap.question,
         "tool": tool,
         "command": command,
+        "command_from": from,
         "screen_command": ap.command,
         "arguments": tx_args,
         "folded_lines": ap.folded_lines,
         "selected_index": ap.selected_index,
         "choices": choices,
     });
+    if let Some(note) = note {
+        out["command_note"] = json!(note);
+    }
     if matched.is_none() && !pending_tools.is_empty() {
         out["transcript_candidates"] = Value::Array(pending_tools.to_vec());
     }

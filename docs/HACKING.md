@@ -31433,7 +31433,19 @@ agents through the night, could not move to it.
   so far?", which hid a permission prompt for 25 minutes) is set aside
   by the service with the survey's own key (`olo_agent_screen::
   parse_survey`, `screen_under_survey`: three times at most, and one
-  that stays is said in `status`). A question is answered by what a
+  that stays is said in `status`). **What a box asks leave for is that
+  box's own command, or none** (`state::approval_to_json`, 2026-11-27):
+  `approval.command` is what the box shows where it shows it whole
+  (`command_from: "screen"`), else the whole command of the one call
+  waiting in the agent's transcript that is certainly the box's (its
+  text, spaces aside, is the box's; or it alone begins as a cut box
+  does: `"transcript"`), else `null` with `command_note` (the box shows
+  only its command's head, and no call is certainly its own:
+  `screen_command` is what it shows). Never a likely one: it was joined
+  by its first 24 characters, and a ShiftUp reader's `git -C …/cc-setup
+  log …` box was told with the box before's `git -C …/cc-setup show …`
+  and its own choices; a yes judged from that is a yes to another
+  command. A question is answered by what a
   choice means, wherever it stands (`approve --once | --session | --no`,
   `spec::Answer`): the one choice of that kind, the mark seen on its very
   label before Return and Escape otherwise; two of a kind, or none, is
