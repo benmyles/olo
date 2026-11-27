@@ -48,6 +48,12 @@ pub struct SubagentEvent {
     /// item 34, 2026-11-26).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answers: Option<u64>,
+    /// For a `minding` event (told to a shared minder on its own watch):
+    /// what changed (`added`, `removed`, `rules`), which minder it is
+    /// for, and the agent's rules file path, what it is, and where it
+    /// works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minding: Option<Value>,
 }
 
 const MAX_EVENT_LOG: usize = 2000;
@@ -76,8 +82,12 @@ impl SubagentEventLog {
         let mut log = Self::with_start_seq(start_seq.max(events.last().map_or(0, |e| e.seq)));
         let skip = events.len().saturating_sub(MAX_EVENT_LOG);
         for ev in events.into_iter().skip(skip) {
-            let key = if ev.dedupe_key.is_empty() { ev.event.clone() } else { ev.dedupe_key.clone() };
-            log.last_by_id.insert(ev.id.clone(), (ev.state, key, ev.seq));
+            // `minding` and `escalation` are recorded beside the child's state
+            // (`push_beside`) and must not overwrite state deduplication on restore.
+            if ev.event != super::minder::ESCALATION && ev.event != super::minder::MINDING {
+                let key = if ev.dedupe_key.is_empty() { ev.event.clone() } else { ev.dedupe_key.clone() };
+                log.last_by_id.insert(ev.id.clone(), (ev.state, key, ev.seq));
+            }
             log.events.push_back(ev);
         }
         log
@@ -137,10 +147,11 @@ impl SubagentEventLog {
     }
 
     /// The last thing written of the child `id` itself (how it stood:
-    /// not what was said beside it): what stands of it, as far as the
-    /// log knows.
+    /// not what was said beside it — neither an `escalation` nor a
+    /// minder's `minding` roster/rules update): what stands of it, as
+    /// far as the log knows.
     pub fn last_state_of(&self, id: &str) -> Option<&SubagentEvent> {
-        self.events.iter().rev().find(|e| e.id == id && e.event != super::minder::ESCALATION)
+        self.events.iter().rev().find(|e| e.id == id && e.event != super::minder::ESCALATION && e.event != super::minder::MINDING)
     }
 
     /// Finds the earliest event strictly after `since` matching `predicate`.

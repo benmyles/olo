@@ -182,3 +182,61 @@ fn the_app_shows_and_asks_what_a_hosts_service_says() {
         let _ = olo_agent(&helper, &lead_block, &["stop", "late", "--force", "--json"]);
     });
 }
+
+/// A minder's agents are the ones it minds, whoever stands under its
+/// row in a list: stopped before it, and nobody else's with them.
+#[test]
+fn a_minders_agents_are_found_by_who_minds_them() {
+    let agent = |id: &str, minded_by: Option<&str>, session: &str| crate::subagents::NativeSubagent {
+        id: id.to_owned(),
+        name: Some(id.to_owned()),
+        host_key: "h".into(),
+        session_id: session.into(),
+        window_id: format!("win-{id}"),
+        block_id: format!("block-{id}"),
+        parent_window_id: "win-lead".into(),
+        parent_block_id: None,
+        cli: crate::subagents::AgentCli::Claude,
+        model: "m".into(),
+        effort: "e".into(),
+        title: id.to_owned(),
+        role: None,
+        cwd: None,
+        resume_id: None,
+        cli_session_id: None,
+        transcript_path: None,
+        desktop_policy: crate::subagents::DesktopPolicy::None,
+        stream_mode: false,
+        started_at: 1,
+        exited_at: None,
+        exit_code: None,
+        last_pid: None,
+        created_rev: 0,
+        seen_live: true,
+        exited_by_sync: false,
+        session_confidence: None,
+        add_dirs: Vec::new(),
+        command: Vec::new(),
+        minds: None,
+        minded_by: minded_by.map(str::to_owned),
+        shared_minder: false,
+    };
+    let mut gone = agent("gone", Some("m1"), "s");
+    gone.exited_at = Some(2);
+    let entries = vec![
+        agent("m1", None, "s"),
+        agent("a", Some("m1"), "s"),
+        agent("m2", None, "s"),
+        agent("b", Some("m2"), "s"),
+        agent("c", Some("m1"), "s"),
+        agent("loose", None, "s"),
+        gone,
+        agent("elsewhere", Some("m1"), "other"),
+    ];
+    // Its own two, in the list's order, then itself. Not the other minder's, not one nobody minds, not one
+    // that has ended, not another session's.
+    assert_eq!(minder_and_its_agents(&entries, "h", "s", "win-m1"), ["win-a", "win-c", "win-m1"]);
+    assert_eq!(minder_and_its_agents(&entries, "h", "s", "win-m2"), ["win-b", "win-m2"]);
+    // A tab the records don't have (closed meanwhile): itself alone, as asked.
+    assert_eq!(minder_and_its_agents(&entries, "h", "s", "win-none"), ["win-none"]);
+}

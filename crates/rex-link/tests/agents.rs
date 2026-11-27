@@ -55,6 +55,7 @@ struct Rig {
     session: String,
     lead_window: String,
     lead_block: String,
+    extra_env: Vec<(String, String)>,
 }
 
 impl Drop for Rig {
@@ -75,6 +76,10 @@ impl Rig {
     /// A Rex server of this test's own with one session and one tab in
     /// it (the lead's); none where Rex isn't installed.
     fn start(tag: &str) -> Option<Self> {
+        Self::start_with_env(tag, &[])
+    }
+
+    fn start_with_env(tag: &str, extra_env: &[(&str, &str)]) -> Option<Self> {
         if !Path::new(REX).is_file() {
             eprintln!("skipped: {REX} isn't installed");
             return None;
@@ -87,7 +92,15 @@ impl Rig {
         }
         let sock = dir.join("rex.sock");
         let server = Self::serve(&dir, &sock);
-        let mut rig = Self { dir, sock, server, session: String::new(), lead_window: String::new(), lead_block: String::new() };
+        let mut rig = Self {
+            dir,
+            sock,
+            server,
+            session: String::new(),
+            lead_window: String::new(),
+            lead_block: String::new(),
+            extra_env: extra_env.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+        };
         rig.lead();
         Some(rig)
     }
@@ -170,6 +183,9 @@ impl Rig {
         let mut cmd = Command::new(HELPER);
         cmd.current_dir(self.dir.join("work")).env("PWD", self.dir.join("work"));
         Self::scratch_env(&self.dir, &self.sock, &mut cmd);
+        for (k, v) in &self.extra_env {
+            cmd.env(k, v);
+        }
         cmd
     }
 
@@ -1506,10 +1522,14 @@ impl<'a> Minding<'a> {
         assert!(Command::new("mkfifo").arg(rig.staged(stand_in, "fifo")).status().unwrap().success());
     }
 
-    fn of(rig: &'a Rig, stand_in: &str, minded_id: &str) -> Self {
+    fn of(rig: &'a Rig, stand_in: &str, dir_id: &str) -> Self {
         rig.wait("the minder's stand-in to listen", || rig.staged(stand_in, "ready").exists());
         let service = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("minders").is_dir()).expect("the service's folder has its minders'");
-        Self { rig, stand_in: stand_in.to_owned(), dir: service.join("minders").join(minded_id) }
+        Self { rig, stand_in: stand_in.to_owned(), dir: service.join("minders").join(dir_id) }
+    }
+
+    fn rules_of(&self, agent_id: &str) -> PathBuf {
+        self.dir.parent().unwrap().join(agent_id).join("rules.md")
     }
 
     fn env(&self) -> String {
@@ -1536,10 +1556,11 @@ impl<'a> Minding<'a> {
     }
 }
 
-/// A minder (`agents::minder`): started with its agent, it alone is told
-/// what the agent asks, and answers it; it reaches that agent and nothing
-/// else; what it escalates is on the parent's own watch; and its report
-/// once the agent has ended is its last word.
+/// A shared minder (`agents::minder`): started before its agent as a
+/// child tab of the lead, with its agent nested under it; it alone is
+/// told what its agent asks, and answers it; it reaches its agents and
+/// nothing else; what it escalates is on the parent's own watch; and
+/// its report once its last agent has ended is its last word.
 #[test]
 fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     let Some(rig) = Rig::start("minder") else { return };
@@ -1549,21 +1570,23 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     let rules = "Approve `cargo test`.\nRefuse any push, and say to open a pull request instead.";
     let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", rules, "--minder-env", "STAND_IN_NAME=minds-worker"]);
     let worker_id = started["id"].as_str().unwrap();
-    let minder = Minding::of(&rig, "minds-worker", worker_id);
+    let minder_id = started["minder"]["id"].as_str().unwrap();
+    let minder = Minding::of(&rig, "minds-worker", minder_id);
     assert_eq!(
-        (&started["minder"]["name"], &started["minder"]["cli"], &started["minder"]["model"], &started["minder"]["effort"]),
-        (&json!("worker-minder"), &json!("claude"), &json!("stand-in-big"), &json!("max")),
+        (&started["minder"]["name"], &started["minder"]["cli"], &started["minder"]["model"], &started["minder"]["effort"], &started["minder"]["reused"]),
+        (&json!("minder"), &json!("claude"), &json!("stand-in-big"), &json!("max"), &json!(false)),
         "{started}"
     );
 
-    // What it is: a child tab of the agent it minds, said so wherever either is listed; its rules and its one command in its folder.
+    // What it is: a child tab of the lead (`role: "minder"`, `minds: null`), with `worker` nested under it (`parent_window_id == minder.window_id`, `minded_by == minder.id`); `worker`'s rules in `minders/WORKER_ID/rules.md` and the minder's command in `minders/MINDER_ID/mind`.
     let listed = rig.json(&["list", "--all", "--json"]);
     let row = |name: &str| listed["subagents"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap_or_else(|| panic!("{name} isn't listed: {listed}")).clone();
-    assert_eq!((&row("worker-minder")["parent_window_id"], &row("worker-minder")["minds"], &row("worker-minder")["role"]), (&started["window_id"], &started["id"], &json!("minder")), "{listed}");
-    assert_eq!((&row("worker")["minder"], &row("other")["minder"]), (&started["minder"]["id"], &Value::Null), "{listed}");
-    assert_eq!(std::fs::read_to_string(minder.dir.join("rules.md")).unwrap(), rules);
+    assert_eq!((&row("minder")["parent_window_id"], &row("minder")["minds"], &row("minder")["role"]), (&json!(rig.lead_window), &Value::Null, &json!("minder")), "{listed}");
+    assert_eq!((&row("worker")["parent_window_id"], &row("worker")["minded_by"], &row("worker")["minder"]), (&started["minder"]["window_id"], &json!(minder_id), &json!(minder_id)), "{listed}");
+    assert_eq!((&row("other")["parent_window_id"], &row("other")["minder"]), (&json!(rig.lead_window), &Value::Null), "{listed}");
+    assert_eq!(std::fs::read_to_string(minder.rules_of(worker_id)).unwrap(), rules);
     assert_eq!(std::fs::metadata(minder.dir.join("mind")).unwrap().permissions().mode() & 0o777, 0o700);
-    // What it was started with: the shell and the three tools that read; its command the one thing allowed in the shell, reading allowed, nothing asked; the parent's rules in its standing instructions.
+    // What it was started with: the shell and the three tools that read; its command the one thing allowed in the shell, reading allowed, nothing asked; shared-minder instructions in its system prompt.
     let line = minder.run("tr '\\0' '\\n' < /proc/$PPID/cmdline");
     let args: Vec<&str> = line.lines().collect();
     let after = |flag: &str| args.iter().position(|a| *a == flag).and_then(|i| args.get(i + 1)).copied().unwrap_or_else(|| panic!("no {flag} in {args:?}"));
@@ -1572,22 +1595,32 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     assert_eq!(allowed, ["Read", "Grep", "Glob", &format!("Bash({} *)", minder.dir.join("mind").display())], "{args:?}");
     assert!(args.contains(&"--strict-mcp-config"), "{args:?}");
     let told = line.split("--append-system-prompt\n").nth(1).unwrap_or_default();
-    // (With where its agent works: rules that speak of a folder are read against that.)
-    assert!(
-        told.starts_with(&format!("You are a minder. Your whole job is one other agent, \"worker\" (Claude Code, stand-in, working in {})", rig.dir.join("work").display()))
-            && told.contains(&format!("----\n{rules}\n----")),
-        "{told}"
-    );
-    assert!(args.last().unwrap().starts_with("Begin minding \"worker\" now. Run: ") && args.last().unwrap().contains(&format!("watch --since {}", started["cursor"])), "{args:?}");
+    assert!(told.starts_with("You are a minder. Your job is to watch over the agents that run as child tabs under yours.") && told.contains("list --json"), "{told}");
+    assert!(args.last().unwrap().starts_with("Begin minding now. Run: ") && args.last().unwrap().contains("watch --since "), "{args:?}");
 
-    // The agent asks leave. Its minder is told; the parent's watch is not woken by it.
-    let mut cursor = started["cursor"].as_u64().unwrap();
+    // `mind list --json` shows strictly its own minded agents with their `what`, `cwd` and `rules` path (never `other`).
+    let mlist = minder.mind("list --json");
+    let msubs = mlist["subagents"].as_array().unwrap();
+    assert_eq!(msubs.len(), 1, "minder sees only its minded agents: {mlist}");
+    assert_eq!((&msubs[0]["name"], &msubs[0]["rules"]), (&json!("worker"), &json!(minder.rules_of(worker_id).display().to_string())), "{mlist}");
+    assert!(msubs[0]["what"].as_str().is_some_and(|w| w.contains("Claude Code") && w.contains(&rig.dir.join("work").display().to_string())), "{mlist}");
+
+    // The minder hears `minding` (`added`) for `worker` naming its rules file, and the lead's watch does NOT.
+    let added = minder.mind("watch --since 0 --on minding,question,approval,idle,error,exit --timeout 15 --json");
+    assert_eq!(
+        (&added["event"], &added["name"], &added["minding"]["action"], &added["minding"]["rules"]),
+        (&json!("minding"), &json!("worker"), &json!("added"), &json!(minder.rules_of(worker_id).display().to_string())),
+        "{added}"
+    );
+    let mut cursor = added["cursor"].as_u64().unwrap();
+
+    // The agent asks leave. Its minder is told; the parent's watch is not woken by it (nor by `minding`).
     rig.show("worker", &asking("cargo test", 0));
-    let asked = minder.mind(&format!("watch --since {cursor} --on question,approval,idle,error,exit --timeout 15 --json"));
+    let asked = minder.mind(&format!("watch --since {cursor} --on minding,question,approval,idle,error,exit --timeout 15 --json"));
     assert_eq!((&asked["name"], &asked["event"]), (&json!("worker"), &json!("waiting_approval")), "{asked}");
     assert!(asked["approval"]["command"].as_str().unwrap().contains("cargo test"), "{asked}");
-    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &cursor.to_string(), "--on", "approval,question,escalation", "--timeout", "2", "--json"]);
-    assert_eq!(code, 124, "the parent was woken by what is its minder's to answer: {out}");
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", "0", "--on", "approval,question,escalation,minding", "--timeout", "2", "--json"]);
+    assert_eq!(code, 124, "the parent was woken by what is its minder's to answer or by minding: {out}");
     let (code, out, _) = rig.olo(&["watch", "worker", "--on", "approval", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "…nor by how it stands now: {out}");
     // (The parent can still see it, and answer it itself, if it looks.)
@@ -1596,16 +1629,15 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     // The minder says yes, once: typed into the agent as the parent's own yes is.
     let before = rig.keys("worker").len();
     let gone = rig.when_typed("worker", b"\r", working());
-    let approved = minder.mind("approve --once --json");
+    let approved = minder.mind("approve worker --once --json");
     assert!(gone.join().unwrap(), "{approved}");
     assert_eq!((&approved["chosen_label"], &approved["dismissed"]), (&json!("Yes"), &json!(true)), "{approved}");
     rig.typed_since("worker", before, b"\r", "what was typed into it");
     cursor = asked["cursor"].as_u64().unwrap();
 
-    // What isn't a minder's: any other agent, and anything but watching, reading, answering and escalating, whatever pane it says it is.
+    // What isn't a minder's: any other agent, and anything but listing, watching, reading, answering and escalating, whatever pane it says it is.
     for refused in [
         "stop worker --force",
-        "list --all --json",
         "start --command -- true",
         "prune",
         "mind worker --off",
@@ -1624,58 +1656,66 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     assert!(minder.olo("stop worker --force").contains("status=69"));
     // (Nor a yes that is kept, even for its own agent.)
     assert!(minder.olo("approve worker --session").contains("status=69"));
+    // (`list --all` from a minder even with spoofed REX_BLOCK shows only its own agents, never `other`.)
+    let spoofed_list = minder.run(&format!("REX_BLOCK={} {} {HELPER} agent list --all --json", rig.lead_block, minder.env()));
+    assert!(!spoofed_list.contains(other["id"].as_str().unwrap()), "minder saw another child of the lead: {spoofed_list}");
     assert_eq!((&rig.status("worker")["running"], &rig.status("other")["running"]), (&json!(true), &json!(true)));
     assert_eq!(other["name"], "other");
 
     // What the rules don't cover goes up: an event on the parent's own watch, about the agent, in the minder's words.
     rig.show("worker", &asking("git push origin main", 0));
-    let asked = minder.mind(&format!("watch --since {cursor} --on question,approval,idle,error,exit --timeout 15 --json"));
+    let asked = minder.mind(&format!("watch --since {cursor} --on minding,question,approval,idle,error,exit --timeout 15 --json"));
     assert!(asked["approval"]["command"].as_str().unwrap().contains("git push"), "{asked}");
     let lead_from = cursor;
     cursor = asked["cursor"].as_u64().unwrap();
     let before = rig.keys("worker").len();
     let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("git push origin main", 2));
     let gone = rig.when_typed("worker", b"\r", working());
-    let refused = minder.mind("approve --no --reason 'No pushes: open a pull request instead.' --json");
+    let refused = minder.mind("approve worker --no --reason 'No pushes: open a pull request instead.' --json");
     assert!(moved.join().unwrap() && gone.join().unwrap(), "{refused}");
     assert_eq!(refused["chosen_label"], "No", "{refused}");
     assert!(rig.keys("worker")[before..].starts_with(b"\x1b[B\x1b[B"), "down to No, never Return on Yes: {:?}", String::from_utf8_lossy(&rig.keys("worker")[before..]));
     // (Its words whole, as a shell gives them: nothing in them is run.)
     let said = "worker asked to push to main ($HOME, \"quoted\"). Refused by your rule; it was told to open a pull request.";
-    let up = minder.mind(&format!("escalate '{said}' --json"));
-    assert_eq!((&up["event"], &up["name"]), (&json!("escalation"), &json!("worker")), "{up}");
+    let up = minder.mind(&format!("escalate worker '{said}' --json"));
+    assert_eq!((&up["event"], &up["name"], &up["id"]), (&json!("escalation"), &json!("worker"), &json!(worker_id)), "{up}");
     let heard = rig.json(&["watch", "--all", "--since", &lead_from.to_string(), "--timeout", "15", "--json"]);
     assert_eq!(
         (&heard["event"], &heard["name"], &heard["summary"], &heard["cursor"]),
         (&json!("escalation"), &json!("worker"), &json!(said), &up["cursor"]),
         "the first thing the parent hears since before the question: {heard}"
     );
+    // (And `mind escalate "TEXT"` without an agent name escalates about the minder itself.)
+    let self_msg = "Minder self-check: running low on context.";
+    let self_up = minder.mind(&format!("escalate '{self_msg}' --json"));
+    assert_eq!((&self_up["event"], &self_up["name"], &self_up["id"]), (&json!("escalation"), &json!("minder"), &json!(minder_id)), "{self_up}");
+    let self_heard = rig.json(&["watch", "--all", "--since", &heard["cursor"].to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!((&self_heard["event"], &self_heard["name"], &self_heard["summary"]), (&json!("escalation"), &json!("minder"), &json!(self_msg)), "{self_heard}");
     // (Once: the next watch from there has nothing; and a watch for other things alone isn't woken by it.)
-    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &heard["cursor"].to_string(), "--on", "escalation,approval", "--timeout", "1", "--json"]);
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &self_heard["cursor"].to_string(), "--on", "escalation,approval", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "{out}");
     let (code, out, _) = rig.olo(&["watch", "--all", "--since", &lead_from.to_string(), "--on", "approval,question", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "{out}");
 
     // Asked of: who minds it, by what rules, and what was answered, in order.
     let of = rig.json(&["mind", "worker", "--json"]);
-    assert_eq!((&of["minder"]["id"], &of["rules"]), (&started["minder"]["id"], &json!(rules)), "{of}");
+    assert_eq!((&of["minder"]["id"], &of["rules"]), (&json!(minder_id), &json!(rules)), "{of}");
     let did: Vec<&str> = of["answered"].as_array().unwrap().iter().filter_map(|a| a["did"].as_str()).collect();
     assert_eq!(did, ["approve", "approve", "escalate"], "{of}");
     // (Each with the minder that gave it.)
-    assert!(of["answered"].as_array().unwrap().iter().all(|a| a["by"] == started["minder"]["id"]), "{of}");
+    assert!(of["answered"].as_array().unwrap().iter().all(|a| a["by"] == minder_id), "{of}");
     assert_eq!(of["answered"][2]["said"], said);
     let (code, out, _) = rig.olo(&["mind", "worker"]);
-    assert!(code == 0 && out.starts_with("worker is minded by worker-minder (claude:stand-in-big:max)\n") && out.contains("escalate"), "{out}");
+    assert!(code == 0 && out.starts_with("worker is minded by minder (claude:stand-in-big:max)\n") && out.contains("escalate"), "{out}");
 
-    // The agent ends. Its minder hears it and reports; that is its last word: it is stopped at once, well before its time is up.
+    // The agent ends (last agent of this minder). Its minder hears it and reports; that is its last word: it is stopped at once, well before its time is up.
     rig.tell("worker", "exit 0");
-    let ended = minder.mind(&format!("watch --since {cursor} --on question,approval,idle,error,exit --timeout 15 --json"));
+    let ended = minder.mind(&format!("watch --since {cursor} --on minding,question,approval,idle,error,exit --timeout 15 --json"));
     assert_eq!((&ended["name"], &ended["state"]), (&json!("worker"), &json!("exited")), "{ended}");
     let reported = Instant::now();
-    let report = minder.mind("escalate 'worker has ended. Approved: cargo test. Refused: a push.' --json");
+    let report = minder.mind("escalate worker 'worker has ended. Approved: cargo test. Refused: a push.' --json");
     let heard = rig.json(&["watch", "--all", "--since", &ended["cursor"].to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
     assert_eq!((&heard["event"], &heard["state"], &heard["cursor"]), (&json!("escalation"), &json!("exited"), &report["cursor"]), "{heard}");
-    let minder_id = started["minder"]["id"].as_str().unwrap();
     rig.wait("the minder to be stopped after its report", || rig.status(minder_id)["running"] == false);
     assert!(reported.elapsed() < Duration::from_millis(2500), "stopped by its report, not by its time running out: {:?}", reported.elapsed());
     // (Its end isn't news: nothing more is said of it to the parent.)
@@ -1683,10 +1723,11 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     assert_eq!(code, 124, "{out}");
 }
 
-/// A minder for an agent that runs already (`olo agent mind`): attached,
-/// its rules changed, taken off; one that ends by itself is said to the
-/// parent, whose own the agent's asking is again; and one whose agent has
-/// ended doesn't outlive it.
+/// A minder for an agent that runs already (`olo agent mind`): attached
+/// (reparented under the minder), its rules changed in place without
+/// restarting the minder, taken off (reparented back under the lead);
+/// one that ends by itself is said to the parent, whose own the agent's
+/// asking is again; and an empty minder doesn't outlive its last agent.
 #[test]
 fn a_minder_is_attached_changed_and_taken_off() {
     let Some(rig) = Rig::start("minding") else { return };
@@ -1723,33 +1764,39 @@ fn a_minder_is_attached_changed_and_taken_off() {
     assert!(code == 1 && err.contains("no minder"), "{err}");
     assert_eq!(rig.json(&["mind", "worker", "--json"])["minder"], Value::Null);
 
-    // Attached to it as it runs, the rules from a file (read where it was asked).
+    // Attached to it as it runs, the rules from a file (read where it was asked): `worker` moves under `minder`.
     std::fs::write(rig.dir.join("work/rules.md"), "Approve `cargo test`.\n").unwrap();
     let first = mind(&["worker", "--with", "claude:stand-in-big:max", "--rules", "rules.md"], "m1");
-    let m1 = Minding::of(&rig, "m1", &worker_id);
-    assert_eq!((&first["minder"]["name"], &first["replaced"]), (&json!("worker-minder"), &Value::Null), "{first}");
-    assert_eq!(std::fs::read_to_string(m1.dir.join("rules.md")).unwrap(), "Approve `cargo test`.\n");
+    let m1_id = first["minder"]["id"].as_str().unwrap().to_owned();
+    let m1 = Minding::of(&rig, "m1", &m1_id);
+    assert_eq!((&first["minder"]["name"], &first["replaced"], &first["parent_window_id"]), (&json!("minder"), &Value::Null, &first["minder"]["window_id"]), "{first}");
+    assert_eq!(std::fs::read_to_string(m1.rules_of(&worker_id)).unwrap(), "Approve `cargo test`.\n");
     let from = first["cursor"].as_u64().unwrap();
+    let added = m1.mind(&format!("watch --since {from} --on minding,question,approval --timeout 15 --json"));
+    assert_eq!((&added["event"], &added["minding"]["action"], &added["name"]), (&json!("minding"), &json!("added"), &json!("worker")), "{added}");
     rig.show("worker", &asking("cargo test", 0));
-    let asked = m1.mind(&format!("watch --since {from} --timeout 15 --json"));
+    let asked = m1.mind(&format!("watch --since {} --timeout 15 --json", added["cursor"]));
     assert_eq!(asked["event"], "waiting_approval", "{asked}");
     let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval,escalation", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "{out}");
 
-    // New rules: the same minder begun anew with them (the one before stopped, and its end not said: the parent asked for it).
-    let second = mind(&["worker", "--rules-text", "Approve nothing."], "m2");
-    let m2 = Minding::of(&rig, "m2", &worker_id);
-    assert_eq!((&second["replaced"], &second["minder"]["model"], &second["minder"]["effort"]), (&first["minder"]["id"], &json!("stand-in-big"), &json!("max")), "{second}");
-    assert_ne!(second["minder"]["id"], first["minder"]["id"]);
-    assert_eq!(std::fs::read_to_string(m2.dir.join("rules.md")).unwrap(), "Approve nothing.");
-    assert!(m2.run("tr '\\0' '\\n' < /proc/$PPID/cmdline").contains("----\nApprove nothing.\n----"));
+    // New rules: rewritten and sent to the SAME running minder via a `minding` (`rules`) event — NO restart!
+    let second = rig.json(&["mind", "worker", "--rules-text", "Approve nothing.", "--json"]);
+    assert_eq!(
+        (&second["replaced"], &second["minder"]["id"], &second["minder"]["model"], &second["minder"]["effort"]),
+        (&Value::Null, &json!(m1_id), &json!("stand-in-big"), &json!("max")),
+        "{second}"
+    );
+    assert_eq!(std::fs::read_to_string(m1.rules_of(&worker_id)).unwrap(), "Approve nothing.");
+    let r_ev = m1.mind(&format!("watch --since {} --on minding,question,approval --timeout 15 --json", second["cursor"]));
+    assert_eq!((&r_ev["event"], &r_ev["minding"]["action"], &r_ev["minding"]["rules"]), (&json!("minding"), &json!("rules"), &json!(m1.rules_of(&worker_id).display().to_string())), "{r_ev}");
     let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval,escalation", "--timeout", "1", "--json"]);
-    assert_eq!(code, 124, "a minder put in another's place was said to have ended, or the question came to the parent between them: {out}");
-    // (What stands asked is the new minder's to answer: it is told how the agent stands.)
-    assert_eq!(m2.mind("status --json")["state"], "waiting_approval");
+    assert_eq!(code, 124, "updating rules woke the parent: {out}");
+    // (And the running minder can still inspect `worker`.)
+    assert_eq!(m1.mind("status worker --json")["state"], "waiting_approval");
 
-    // A minder that ends by itself, its agent still running: the parent is told, and what the agent asks is the parent's again, from where it was.
-    rig.tell("m2", "exit 3");
+    // A minder that ends by itself, its agent still running: `worker` moves back under the lead, the parent is told, and what the agent asks is the parent's again.
+    rig.tell("m1", "exit 3");
     let heard = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
     assert_eq!((&heard["event"], &heard["name"]), (&json!("escalation"), &json!("worker")), "{heard}");
     // (How it ended is said as it was first heard: its program's status, or that its tab closed, whichever word came first.)
@@ -1757,32 +1804,38 @@ fn a_minder_is_attached_changed_and_taken_off() {
     assert!(how.starts_with("Its minder ended (exited (code 3))") || how.starts_with("Its minder ended (its tab was closed)"), "{heard}");
     assert!(how.ends_with("what it asks comes to you again."), "{heard}");
     assert_eq!(rig.json(&["mind", "worker", "--json"])["minder"], Value::Null);
+    assert_eq!(rig.status("worker")["parent_window_id"], json!(rig.lead_window));
     let now_mine = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "approval", "--timeout", "15", "--json"]);
     assert!(now_mine["approval"]["command"].as_str().unwrap().contains("cargo test"), "{now_mine}");
 
-    // Taken off: stopped, nothing said of its end, and the asking the parent's again.
+    // Taken off (`--off`): `worker` moves back under the lead, minder receives `minding` (`removed`), nothing escalated to lead, asking is the parent's again, and the empty minder ends after its timeout.
     let third = mind(&["worker", "--with", "claude:stand-in-big:high"], "m3");
-    let _m3 = Minding::of(&rig, "m3", &worker_id);
-    assert_eq!(std::fs::read_to_string(m1.dir.join("rules.md")).unwrap(), "Approve nothing.", "no rules given: those it had");
+    let m3_id = third["minder"]["id"].as_str().unwrap().to_owned();
+    let m3 = Minding::of(&rig, "m3", &m3_id);
+    assert_eq!(std::fs::read_to_string(m3.rules_of(&worker_id)).unwrap(), "Approve nothing.", "no rules given: those it had");
+    let _ = m3.mind(&format!("watch --since {} --on minding --timeout 15 --json", third["cursor"]));
     let (code, out, _) = rig.olo(&["watch", "worker", "--on", "approval", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "{out}");
     let off = rig.json(&["mind", "worker", "--off", "--json"]);
-    assert_eq!((&off["stopped"], &off["minder"]), (&third["minder"]["id"], &Value::Null), "{off}");
-    rig.wait("the minder taken off to be gone", || rig.status(third["minder"]["id"].as_str().unwrap())["running"] == false);
+    assert_eq!((&off["detached_from"], &off["minder"], &off["parent_window_id"]), (&json!(m3_id), &Value::Null, &json!(rig.lead_window)), "{off}");
+    assert_eq!(rig.status("worker")["parent_window_id"], json!(rig.lead_window));
+    let rem = m3.mind("watch --since 0 --on minding --timeout 15 --json");
+    assert_eq!((&rem["event"], &rem["minding"]["action"], &rem["name"]), (&json!("minding"), &json!("removed"), &json!("worker")), "{rem}");
     let (code, out, _) = rig.olo(&["watch", "--all", "--since", &heard["cursor"].to_string(), "--on", "escalation", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "{out}");
     assert_eq!(rig.json(&["watch", "worker", "--on", "approval", "--timeout", "15", "--json"])["state"], "waiting_approval");
+    rig.wait("the empty minder taken off to end after its time", || rig.status(&m3_id)["running"] == false);
 
-    // A minder whose agent has ended and that says nothing: stopped when its time is up, not left minding nothing.
+    // A minder whose last agent has ended and that says nothing: stopped when its time is up, not left minding nothing.
     let fourth = mind(&["worker", "--with", "claude:stand-in-big:max"], "m4");
-    let fourth = fourth["minder"]["id"].as_str().unwrap();
-    let _m4 = Minding::of(&rig, "m4", &worker_id);
+    let fourth_id = fourth["minder"]["id"].as_str().unwrap().to_owned();
+    let _m4 = Minding::of(&rig, "m4", &fourth_id);
     let ended = Instant::now();
     rig.tell("worker", "exit 0");
     rig.wait_state("worker", "exited");
     std::thread::sleep(Duration::from_millis(1200));
-    assert_eq!(rig.status(fourth)["running"], true, "it has three seconds to report");
-    rig.wait("the minder of an agent that ended to be stopped", || rig.status(fourth)["running"] == false);
+    assert_eq!(rig.status(&fourth_id)["running"], true, "it has three seconds to report");
+    rig.wait("the minder of an agent that ended to be stopped", || rig.status(&fourth_id)["running"] == false);
     assert!(ended.elapsed() > Duration::from_millis(2800), "{:?}", ended.elapsed());
     // (And an agent that has ended takes no minder.)
     let (code, _, err) = rig.olo(&["mind", "worker", "--with", "claude:m:e"]);
@@ -1799,7 +1852,7 @@ fn a_minder_that_fell_behind_answers_only_what_stands() {
     rig.stand_in("claude");
     Minding::expect(&rig, "m");
     let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", "Approve cargo test.", "--minder-env", "STAND_IN_NAME=m"]);
-    let minder = Minding::of(&rig, "m", started["id"].as_str().unwrap());
+    let minder = Minding::of(&rig, "m", started["minder"]["id"].as_str().unwrap());
     let from = started["cursor"].as_u64().unwrap();
     let cursor = || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
     // (A screen shown and written down as the agent's state.)
@@ -1823,16 +1876,16 @@ fn a_minder_that_fell_behind_answers_only_what_stands() {
     // While it judges that one, another takes its place. Its yes is not a yes to that: nothing is typed.
     shown(&asking("rm -rf build", 0));
     let before = rig.keys("worker").len();
-    let said = minder.run(&format!("{} {} approve --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    let said = minder.run(&format!("{} {} approve worker --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
     assert!(said.contains("isn't what you were last told of") && said.contains("status=1"), "{said}");
     assert_eq!(rig.keys("worker").len(), before, "something was typed into the agent");
     assert_eq!(rig.status("worker")["state"], "waiting_approval");
     // It looks again, is told what stands asked, and answers that.
-    let stands = minder.mind("status --json");
+    let stands = minder.mind("status worker --json");
     assert!(stands["approval"]["command"].as_str().unwrap().contains("rm -rf build"), "{stands}");
     let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("rm -rf build", 2));
     let gone = rig.when_typed("worker", b"\r", working());
-    let refused = minder.mind("approve --no --reason 'Not in the rules.' --json");
+    let refused = minder.mind("approve worker --no --reason 'Not in the rules.' --json");
     assert!(moved.join().unwrap() && gone.join().unwrap());
     assert_eq!((&refused["chosen_label"], &refused["dismissed"]), (&json!("No"), &json!(true)), "{refused}");
 
@@ -2001,8 +2054,7 @@ fn a_minder_that_begins_is_told_what_stands() {
         let all: Vec<&str> = ["mind"].into_iter().chain(args.iter().copied()).chain(env.iter().map(String::as_str)).chain(["--json"]).collect();
         rig.json(&all)
     };
-    let started = rig.start_child("claude", "worker", &[]);
-    let worker_id = started["id"].as_str().unwrap().to_owned();
+    let _started = rig.start_child("claude", "worker", &[]);
     let cursor = || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
     let shown = |screen: &str| {
         let before = cursor();
@@ -2022,31 +2074,35 @@ fn a_minder_that_begins_is_told_what_stands() {
 
     // 1. A minder attached while it asks. The cursor it begins with is after the question; it is told the question all the same, at once.
     let one = mind(&["worker", "--with", "claude:stand-in-big:max", "--rules-text", "Escalate every write."], "m1");
-    let m1 = Minding::of(&rig, "m1", &worker_id);
+    let m1 = Minding::of(&rig, "m1", one["minder"]["id"].as_str().unwrap());
     let (said, took) = first_watch(&m1, &one, 20);
     assert!(told(&said)["approval"]["command"].as_str().unwrap().contains("printf hello"), "a minder attached to an agent already asking wasn't told what it asks: {said}");
     assert!(took < Duration::from_secs(4), "told only after {took:?}");
     // It passes the question up and leaves it standing: it is not told it again.
-    m1.mind("escalate 'It asks to write out.txt.' --json");
+    m1.mind("escalate worker 'It asks to write out.txt.' --json");
     let (said, _) = first_watch(&m1, &told(&said), 1);
     assert!(said.contains("status=124"), "told the same standing question twice: {said}");
 
-    // 2. Its rules replaced while the agent still asks: the minder begun anew is told at once.
-    let two = mind(&["worker", "--rules-text", "Approve writes of out.txt."], "m2");
-    let m2 = Minding::of(&rig, "m2", &worker_id);
-    let (said, took) = first_watch(&m2, &two, 20);
+    // 2. Its rules replaced while the agent still asks: the SAME minder is told of the new rules and re-told the standing question at once without restarting.
+    let a_ev = m1.mind("watch --since 0 --on minding --timeout 15 --json");
+    assert_eq!(a_ev["minding"]["action"], "added", "{a_ev}");
+    let two = rig.json(&["mind", "worker", "--rules-text", "Approve writes of out.txt.", "--json"]);
+    assert_eq!(two["minder"]["id"], one["minder"]["id"], "rules updated without restarting the minder: {two}");
+    let r_ev = m1.mind(&format!("watch --since {} --on minding --timeout 15 --json", two["cursor"]));
+    assert_eq!(r_ev["minding"]["action"], "rules", "{r_ev}");
+    let (said, took) = first_watch(&m1, &two, 20);
     assert!(told(&said)["approval"]["command"].as_str().unwrap().contains("printf hello") && took < Duration::from_secs(4), "after {took:?}: {said}");
 
     // 3. That minder killed while the agent asks, and another attached: told at once, and its yes is typed.
-    rig.tell("m2", "exit 9");
+    rig.tell("m1", "exit 9");
     rig.wait("the killed minder to be gone", || rig.json(&["mind", "worker", "--json"])["minder"].is_null());
     let three = mind(&["worker", "--with", "claude:stand-in-big:max"], "m3");
-    let m3 = Minding::of(&rig, "m3", &worker_id);
+    let m3 = Minding::of(&rig, "m3", three["minder"]["id"].as_str().unwrap());
     let (said, took) = first_watch(&m3, &three, 20);
     assert!(told(&said)["approval"]["command"].as_str().unwrap().contains("printf hello") && took < Duration::from_secs(4), "after {took:?}: {said}");
     let before = rig.keys("worker").len();
     let gone = rig.when_typed("worker", b"\r", working());
-    let approved = m3.mind("approve --once --json");
+    let approved = m3.mind("approve worker --once --json");
     assert!(gone.join().unwrap(), "{approved}");
     rig.typed_since("worker", before, b"\r", "what was typed into it");
     // (Each answer is kept with the minder that gave it: the first's escalation, the third's yes.)
@@ -2054,18 +2110,20 @@ fn a_minder_that_begins_is_told_what_stands() {
     let by: Vec<(&str, &Value)> = of["answered"].as_array().unwrap().iter().map(|a| (a["did"].as_str().unwrap(), &a["by"])).collect();
     assert_eq!(by, [("escalate", &one["minder"]["id"]), ("approve", &three["minder"]["id"])], "{of}");
 
-    // An agent at work: a minder that begins is told nothing (what was last written of it, its question, no longer stands).
+    // An agent at work: a fresh minder that begins is told nothing (what was last written of it, its question, no longer stands).
     rig.wait_state("worker", "working");
     rig.json(&["mind", "worker", "--off", "--json"]);
+    rig.json(&["stop", three["minder"]["id"].as_str().unwrap(), "--force", "--json"]);
     let four = mind(&["worker", "--with", "claude:stand-in-big:max"], "m4");
-    let m4 = Minding::of(&rig, "m4", &worker_id);
+    let m4 = Minding::of(&rig, "m4", four["minder"]["id"].as_str().unwrap());
     let (said, _) = first_watch(&m4, &four, 1);
     assert!(said.contains("status=124"), "told of a question that was answered before it began: {said}");
     // …and an agent at rest: told that it rests, once.
     shown(&idle("Wrote out.txt."));
     rig.json(&["mind", "worker", "--off", "--json"]);
+    rig.json(&["stop", four["minder"]["id"].as_str().unwrap(), "--force", "--json"]);
     let five = mind(&["worker", "--with", "claude:stand-in-big:max"], "m5");
-    let m5 = Minding::of(&rig, "m5", &worker_id);
+    let m5 = Minding::of(&rig, "m5", five["minder"]["id"].as_str().unwrap());
     let (said, took) = first_watch(&m5, &five, 20);
     assert!(told(&said)["state"] == "idle" && took < Duration::from_secs(4), "after {took:?}: {said}");
     let (said, _) = first_watch(&m5, &told(&said), 1);
@@ -2600,7 +2658,7 @@ fn leave_is_given_by_a_list_and_what_it_names_is_asked() {
         "--env",
         "STAND_IN_NAME=lm",
     ]);
-    let lm = Minding::of(&rig, "lm", started["id"].as_str().unwrap());
+    let lm = Minding::of(&rig, "lm", minded["minder"]["id"].as_str().unwrap());
     let c = minded["cursor"].as_u64().unwrap();
     rig.show("worker", &asking("git commit -am wip", 0));
     let told = lm.mind(&format!("watch --since {c} --on question,approval,idle,error,exit --timeout 15 --json"));
@@ -2609,7 +2667,7 @@ fn leave_is_given_by_a_list_and_what_it_names_is_asked() {
     assert_eq!(code, 124, "what the list names went to the parent though the child has a minder: {out}");
     let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("git commit -am wip", 2));
     let gone = rig.when_typed("worker", b"\r", working());
-    lm.mind("approve --no --json");
+    lm.mind("approve worker --no --json");
     assert!(moved.join().unwrap() && gone.join().unwrap());
     let before = rig.keys("worker").len();
     let gone = rig.when_typed("worker", b"\r", working());
@@ -2839,4 +2897,2195 @@ fn prune_takes_the_asking_tabs_own_records_and_no_others() {
     assert!(code == 0 && said.starts_with("Pruned 2 exited subagent record(s) of this session, every tab's."), "{said}");
     assert_eq!(names(&rig.json(&["list", "--all", "--fast", "--json"])), ["mine-runs working"]);
     rig.json(&["stop", "mine-runs", "--force", "--json"]);
+}
+
+/// Three agents started with `--minder` share ONE minder and nest under
+/// it (`lead ▸ minder ▸ {alpha, beta, gamma}`, N + 1 = 4 child tabs);
+/// two agents asking the exact same command are answered differently by
+/// their own rules; a fourth agent attached by `--minder NAME` reaches
+/// the running minder via a `minding` (`added`) event; one agent's exit
+/// leaves the minder running for the rest; an unminded agent stays
+/// directly under the lead and is unreachable to the minder.
+#[test]
+fn a_shared_minder_minds_multiple_agents_by_their_own_rules() {
+    let Some(rig) = Rig::start("shared") else { return };
+    rig.stand_in("claude");
+
+    // An unminded agent: stays directly under the lead, no minder started.
+    let solo = rig.start_child("claude", "solo", &[]);
+    assert_eq!((&solo["parent_window_id"], &solo["minder"]), (&json!(rig.lead_window), &Value::Null), "{solo}");
+
+    Minding::expect(&rig, "shared-m");
+    let rules_a = "Approve `cargo test`.";
+    let rules_b = "Refuse `cargo test` and tell it to run `cargo check` instead.";
+    let rules_c = "Escalate everything.";
+    let a = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", rules_a, "--minder-env", "STAND_IN_NAME=shared-m"]);
+    let b = rig.start_child("claude", "beta", &["--minder", "claude:stand-in-big:max", "--rules-text", rules_b]);
+    let c = rig.start_child("claude", "gamma", &["--minder", "claude:stand-in-big:max", "--rules-text", rules_c]);
+
+    let minder_id = a["minder"]["id"].as_str().unwrap().to_owned();
+    let minder_win = a["minder"]["window_id"].as_str().unwrap().to_owned();
+    assert_eq!((&a["minder"]["reused"], &b["minder"]["reused"], &c["minder"]["reused"]), (&json!(false), &json!(true), &json!(true)), "{a}\n{b}\n{c}");
+    assert_eq!((&b["minder"]["id"], &c["minder"]["id"]), (&json!(minder_id), &json!(minder_id)), "all 3 share one minder");
+
+    // Tree shape in `list --json`: lead ▸ minder ▸ {alpha, beta, gamma}, plus solo directly under lead.
+    let listed = rig.json(&["list", "--json"]);
+    let subs = listed["subagents"].as_array().unwrap();
+    // 1 solo + 1 minder + 3 minded agents = 5 child tabs (the 3 minded agents + 1 minder = N + 1 = 4 tabs).
+    assert_eq!(subs.len(), 5, "{listed}");
+    let row = |name: &str| subs.iter().find(|s| s["name"] == name).unwrap_or_else(|| panic!("missing {name}: {listed}")).clone();
+    assert_eq!(
+        (&row("minder")["parent_window_id"], &row("minder")["role"], &row("minder")["minds"], &row("minder")["children"]),
+        (&json!(rig.lead_window), &json!("minder"), &Value::Null, &json!(3)),
+        "{listed}"
+    );
+    for n in ["alpha", "beta", "gamma"] {
+        assert_eq!((&row(n)["parent_window_id"], &row(n)["minded_by"], &row(n)["minder"]), (&json!(minder_win), &json!(minder_id), &json!(minder_id)), "{n}: {listed}");
+    }
+    assert_eq!((&row("solo")["parent_window_id"], &row("solo")["minded_by"], &row("solo")["minder"]), (&json!(rig.lead_window), &Value::Null, &Value::Null), "{listed}");
+
+    let minder = Minding::of(&rig, "shared-m", &minder_id);
+    // `mind list --json` returns its 3 agents (never `solo`) with each agent's own rules file path.
+    let mlist = minder.mind("list --json");
+    let msubs = mlist["subagents"].as_array().unwrap();
+    let mut mnames: Vec<&str> = msubs.iter().filter_map(|s| s["name"].as_str()).collect();
+    mnames.sort();
+    assert_eq!(mnames, ["alpha", "beta", "gamma"], "{mlist}");
+    for (name, id, expected_rules) in [("alpha", a["id"].as_str().unwrap(), rules_a), ("beta", b["id"].as_str().unwrap(), rules_b), ("gamma", c["id"].as_str().unwrap(), rules_c)] {
+        let item = msubs.iter().find(|s| s["name"] == name).unwrap();
+        let rpath = item["rules"].as_str().unwrap();
+        assert_eq!(std::fs::read_to_string(rpath).unwrap(), expected_rules, "{name} rules at {rpath}");
+        assert_eq!(rpath, minder.rules_of(id).display().to_string());
+    }
+    assert!(minder.olo("status solo").contains("status=1"), "minder cannot reach unminded sibling `solo`");
+
+    // Minder receives `minding` (`added`) for all 3 agents in order.
+    let mut cur = 0u64;
+    for expected in ["alpha", "beta", "gamma"] {
+        let ev = minder.mind(&format!("watch --since {cur} --on minding --timeout 15 --json"));
+        assert_eq!((&ev["event"], &ev["name"], &ev["minding"]["action"]), (&json!("minding"), &json!(expected), &json!("added")), "{ev}");
+        cur = ev["cursor"].as_u64().unwrap();
+    }
+
+    // Both `alpha` and `beta` ask the EXACT SAME command (`cargo test`):
+    // `alpha` is approved by its rules; `beta` is refused by its rules.
+    rig.show("alpha", &asking("cargo test", 0));
+    rig.show("beta", &asking("cargo test", 0));
+    let mut saw = std::collections::HashSet::new();
+    for _ in 0..2 {
+        let asked = minder.mind(&format!("watch --since {cur} --on minding,question,approval,idle,error,exit --timeout 15 --json"));
+        assert_eq!(asked["event"], "waiting_approval", "{asked}");
+        let who = asked["name"].as_str().unwrap().to_owned();
+        cur = asked["cursor"].as_u64().unwrap();
+        assert!(saw.insert(who.clone()), "duplicate event for {who}: {asked}");
+        if who == "alpha" {
+            let before = rig.keys("alpha").len();
+            let gone = rig.when_typed("alpha", b"\r", working());
+            let ok = minder.mind("approve alpha --once --json");
+            assert!(gone.join().unwrap() && ok["chosen_label"] == "Yes", "{ok}");
+            rig.typed_since("alpha", before, b"\r", "alpha approved once");
+        } else {
+            assert_eq!(who, "beta");
+            let before = rig.keys("beta").len();
+            let moved = rig.when_typed("beta", b"\x1b[B\x1b[B", asking("cargo test", 2));
+            let gone = rig.when_typed("beta", b"\r", working());
+            let no = minder.mind("approve beta --no --reason 'Run cargo check instead.' --json");
+            assert!(moved.join().unwrap() && gone.join().unwrap() && no["chosen_label"] == "No", "{no}");
+            assert!(rig.keys("beta")[before..].starts_with(b"\x1b[B\x1b[B"));
+        }
+    }
+    assert_eq!(saw.len(), 2);
+    // Each agent's own `answers.jsonl` recorded only its own answer.
+    let of_a = rig.json(&["mind", "alpha", "--json"]);
+    let of_b = rig.json(&["mind", "beta", "--json"]);
+    assert_eq!(of_a["answered"].as_array().unwrap().len(), 1, "{of_a}");
+    assert_eq!(of_b["answered"].as_array().unwrap().len(), 1, "{of_b}");
+    assert!(of_a["answered"][0]["said"].to_string().contains("--once"), "{of_a}");
+    assert!(of_b["answered"][0]["said"].to_string().contains("--no"), "{of_b}");
+
+    // Unminded `solo` asking leave wakes the lead's watch directly.
+    let solo_from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.show("solo", &asking("ls -la", 0));
+    let solo_ev = rig.json(&["watch", "--all", "--since", &solo_from.to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    assert_eq!((&solo_ev["name"], &solo_ev["event"]), (&json!("solo"), &json!("waiting_approval")), "{solo_ev}");
+
+    // 4th agent added while minder runs using `--minder NAME` (no colons): reaches minder via `minding` (`added`).
+    let d = rig.start_child("claude", "delta", &["--minder", "minder", "--rules-text", "Approve `cargo fmt`."]);
+    assert_eq!((&d["minder"]["id"], &d["minder"]["reused"], &d["parent_window_id"]), (&json!(minder_id), &json!(true), &json!(minder_win)), "{d}");
+    let d_ev = minder.mind(&format!("watch --since {cur} --on minding --timeout 15 --json"));
+    assert_eq!(
+        (&d_ev["event"], &d_ev["name"], &d_ev["minding"]["action"], &d_ev["minding"]["rules"]),
+        (&json!("minding"), &json!("delta"), &json!("added"), &json!(minder.rules_of(d["id"].as_str().unwrap()).display().to_string())),
+        "{d_ev}"
+    );
+    cur = d_ev["cursor"].as_u64().unwrap();
+
+    // One agent (`alpha`) exits: minder hears it, escalates a report for `alpha`, and STAYS RUNNING for the rest (past the 3 s timeout!).
+    let lead_before_exit = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.tell("alpha", "exit 0");
+    let a_exit = minder.mind(&format!("watch --since {cur} --on minding,question,approval,idle,error,exit --timeout 15 --json"));
+    assert_eq!((&a_exit["name"], &a_exit["state"]), (&json!("alpha"), &json!("exited")), "{a_exit}");
+    minder.mind("escalate alpha 'alpha finished cleanly (1 approval).' --json");
+    let heard = rig.json(&["watch", "--all", "--since", &lead_before_exit.to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!((&heard["name"], &heard["event"], &heard["state"]), (&json!("alpha"), &json!("escalation"), &json!("exited")), "{heard}");
+    std::thread::sleep(Duration::from_millis(3500));
+    assert_eq!(rig.status(&minder_id)["running"], true, "minder must keep running while beta/gamma/delta live");
+}
+
+/// Stopping a shared minder (`stop MINDER`, `stop MINDER --tree`),
+/// closing its tab directly, or an API error on the minder NEVER stops
+/// its minded agents: each moves back under the minder's parent tab
+/// (verified in `list`, `status`, and `agent follow`), unminded, and
+/// the lead receives an escalation on each. `stop --tree` on a lead tab
+/// (both a child sub-lead and a top-level lead window) STILL stops
+/// everything under it.
+#[test]
+fn stopping_or_losing_a_shared_minder_never_stops_its_agents() {
+    let Some(rig) = Rig::start("keepalive") else { return };
+    rig.stand_in("claude");
+
+    // Start `agent follow` so we verify every reparenting is pushed live to Rex!
+    let mut follow = rig.helper().args(["agent", "follow"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let follow_frames = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let follow_reader = {
+        let (frames, out) = (follow_frames.clone(), follow.stdout.take().unwrap());
+        std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                    frames.lock().unwrap().push(v);
+                }
+            }
+        })
+    };
+    let frame_mark = || follow_frames.lock().unwrap().len();
+    let assert_parent_after = |since_idx: usize, agent_id: &str, expected_parent: &str| {
+        rig.wait(&format!("follow to report {agent_id} under {expected_parent} after frame {since_idx}"), || {
+            follow_frames.lock().unwrap()[since_idx..].iter().rev().find(|f| f["t"] == "agent" && f["agent"]["id"] == agent_id).is_some_and(|f| f["agent"]["parent_window_id"] == expected_parent)
+        });
+        let last = follow_frames.lock().unwrap()[since_idx..].iter().rev().find(|f| f["t"] == "agent" && f["agent"]["id"] == agent_id).cloned().expect("agent frame after boundary");
+        assert_eq!(last["agent"]["parent_window_id"], json!(expected_parent), "last follow frame after {since_idx} has wrong parent: {last}");
+    };
+    let escalations_after = |since_seq: u64| -> Vec<Value> {
+        let Some(service_dir) = std::fs::read_dir(rig.dir.join("agents")).ok().into_iter().flatten().flatten().map(|d| d.path()).find(|d| d.join("events.jsonl").exists()) else {
+            return Vec::new();
+        };
+        std::fs::read_to_string(service_dir.join("events.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|ev| ev["seq"].as_u64().unwrap_or(0) > since_seq && ev["event"] == "escalation")
+            .collect()
+    };
+
+    let m0 = frame_mark();
+    Minding::expect(&rig, "km1");
+    let a1 = rig.start_child("claude", "a1", &["--minder", "claude:stand-in-big:max", "--rules-text", "r1", "--minder-env", "STAND_IN_NAME=km1"]);
+    let a2 = rig.start_child("claude", "a2", &["--minder", "claude:stand-in-big:max", "--rules-text", "r2"]);
+    let (a1_id, a2_id) = (a1["id"].as_str().unwrap().to_owned(), a2["id"].as_str().unwrap().to_owned());
+    let m1_id = a1["minder"]["id"].as_str().unwrap().to_owned();
+    let _m1 = Minding::of(&rig, "km1", &m1_id);
+    assert_parent_after(m0, &a1_id, a1["minder"]["window_id"].as_str().unwrap());
+
+    let expect_both_escalated = |since: u64, what: &str| {
+        let mut cur = since;
+        let mut names = std::collections::HashSet::new();
+        for _ in 0..2 {
+            let ev = rig.json(&["watch", "--all", "--since", &cur.to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+            assert!(ev["summary"].as_str().is_some_and(|s| s.starts_with("Its minder ended") && s.ends_with("what it asks comes to you again.")), "{what}: {ev}");
+            names.insert(ev["name"].as_str().unwrap().to_owned());
+            cur = ev["cursor"].as_u64().unwrap();
+        }
+        assert_eq!(names, ["a1".to_owned(), "a2".to_owned()].into_iter().collect(), "{what}");
+        for n in ["a1", "a2"] {
+            let st = rig.status(n);
+            assert_eq!((&st["running"], &st["parent_window_id"], &st["minder"]), (&json!(true), &json!(rig.lead_window), &Value::Null), "{what} left {n} broken: {st}");
+        }
+    };
+
+    // 1. `olo agent stop MINDER --force`: only minder stops; a1 & a2 stay alive under lead and lead is told.
+    let f1 = frame_mark();
+    let from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let stopped = rig.json(&["stop", &m1_id, "--force", "--json"]);
+    assert_eq!(stopped["stopped"], json!([m1_id]), "stopping minder must never stop its agents: {stopped}");
+    expect_both_escalated(from, "stop MINDER");
+    assert_parent_after(f1, &a1_id, &rig.lead_window);
+    assert_parent_after(f1, &a2_id, &rig.lead_window);
+
+    let reattach = |stand_in: &str| -> (String, String, Minding<'_>) {
+        let fm = frame_mark();
+        Minding::expect(&rig, stand_in);
+        let stage = format!("STAND_IN_DIR={}", rig.dir.join("stage").display());
+        let path = format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display());
+        let named = format!("STAND_IN_NAME={stand_in}");
+        let r1 = rig.json(&["mind", "a1", "--with", "claude:stand-in-big:max", "--env", &stage, "--env", &path, "--env", &named, "--json"]);
+        let r2 = rig.json(&["mind", "a2", "--with", "claude:stand-in-big:max", "--json"]);
+        assert_eq!(r1["minder"]["id"], r2["minder"]["id"], "reattached both to one shared minder");
+        let mid = r1["minder"]["id"].as_str().unwrap().to_owned();
+        let mwin = r1["minder"]["window_id"].as_str().unwrap().to_owned();
+        assert_parent_after(fm, &a1_id, &mwin);
+        assert_parent_after(fm, &a2_id, &mwin);
+        let m = Minding::of(&rig, stand_in, &mid);
+        (mid, mwin, m)
+    };
+
+    // 2. `olo agent stop MINDER --tree --force`: STILL stops ONLY minder, never a1 or a2!
+    let (m2_id, _, _m2) = reattach("km2");
+    let f2 = frame_mark();
+    let from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let stopped = rig.json(&["stop", &m2_id, "--tree", "--force", "--json"]);
+    assert_eq!(stopped["stopped"], json!([m2_id]), "stop MINDER --tree must never stop its agents: {stopped}");
+    expect_both_escalated(from, "stop MINDER --tree");
+    assert_parent_after(f2, &a1_id, &rig.lead_window);
+    assert_parent_after(f2, &a2_id, &rig.lead_window);
+
+    // 3. Minder's tab closed directly on Rex server (`session.close_window`): a1 & a2 stay alive under lead, lead is told.
+    let (_, m3_win, _m3) = reattach("km3");
+    let f3 = frame_mark();
+    let from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.rex("session.close_window", json!({ "session_id": rig.session, "window_id": m3_win }));
+    expect_both_escalated(from, "minder tab closed");
+    assert_parent_after(f3, &a1_id, &rig.lead_window);
+    assert_parent_after(f3, &a2_id, &rig.lead_window);
+
+    // 4. Minder hits an API error (process stays alive at prompt in `error` state): a1 & a2 released under lead, lead told, and next `--minder` starts a fresh healthy minder.
+    let (m4_id, _, _m4) = reattach("km4");
+    let f4 = frame_mark();
+    let from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.show("km4", &format!("● Working\n  ⎿  API Error: Connection lost mid-response\n{}\n❯ \n", rule()));
+    expect_both_escalated(from, "minder API error");
+    assert_parent_after(f4, &a1_id, &rig.lead_window);
+    assert_parent_after(f4, &a2_id, &rig.lead_window);
+    Minding::expect(&rig, "km5");
+    let fresh = rig.start_child("claude", "a3", &["--minder", "claude:stand-in-big:max", "--rules-text", "r3", "--minder-env", "STAND_IN_NAME=km5"]);
+    assert_ne!(fresh["minder"]["id"], json!(m4_id), "must not reuse an errored minder: {fresh}");
+    let _m5 = Minding::of(&rig, "km5", fresh["minder"]["id"].as_str().unwrap());
+
+    // 5. `stop --tree` on a child lead tab (`sublead ▸ minder ▸ {s1, s2}`) stops ALL of them quietly (zero escalations).
+    let sublead = rig.start_child("claude", "sublead", &[]);
+    let sub_block = sublead["block_id"].as_str().unwrap().to_owned();
+    Minding::expect(&rig, "sub-m");
+    let s1 = rig.start_child_from(Some(&sub_block), "claude", "s1", &["--minder", "claude:stand-in-big:max", "--rules-text", "rs1", "--minder-env", "STAND_IN_NAME=sub-m"]);
+    let s2 = rig.start_child_from(Some(&sub_block), "claude", "s2", &["--minder", "claude:stand-in-big:max", "--rules-text", "rs2"]);
+    let sub_minder_id = s1["minder"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(s2["minder"]["id"], json!(sub_minder_id));
+    let _sm = Minding::of(&rig, "sub-m", &sub_minder_id);
+    let sub_from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let stopped_sub = rig.json(&["stop", "sublead", "--tree", "--force", "--json"]);
+    assert_eq!(stopped_sub["stopped"].as_array().unwrap().len(), 4, "sublead + minder + s1 + s2: {stopped_sub}");
+    for id in [sublead["id"].as_str().unwrap(), sub_minder_id.as_str(), s1["id"].as_str().unwrap(), s2["id"].as_str().unwrap()] {
+        assert_eq!(rig.status(id)["running"], false, "{id} should be stopped");
+    }
+    assert!(escalations_after(sub_from).is_empty(), "recursive stop sublead --tree must emit zero escalations: {:?}", escalations_after(sub_from));
+
+    // 6. `stop <lead_window> --tree` on the top-level lead's own tab stops every descendant quietly (zero escalations).
+    let top_from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let stopped_top = rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+    assert!(stopped_top["stopped"].as_array().unwrap().len() >= 4, "all remaining children under lead stopped: {stopped_top}");
+    assert!(rig.json(&["list", "--json"])["subagents"].as_array().unwrap().is_empty(), "nothing left live under lead");
+    assert!(escalations_after(top_from).is_empty(), "recursive stop lead --tree must emit zero escalations: {:?}", escalations_after(top_from));
+
+    drop(follow.stdin.take());
+    let _ = follow.wait();
+    let _ = follow_reader.join();
+}
+
+/// `OLO_REX_AGENTS_MINDS_MOST` caps how many live agents one shared
+/// minder minds (default 12; set to 2 here): the 3rd agent spawns a 2nd
+/// minder (`minder-2`); targeting a full minder by `--minder NAME` is
+/// refused; and giving a new agent to an empty minder before its
+/// shutdown timeout cancels its shutdown.
+#[test]
+fn a_shared_minder_splits_at_minds_most_and_cancels_shutdown_when_reused() {
+    let Some(rig) = Rig::start_with_env("most", &[("OLO_REX_AGENTS_MINDS_MOST", "2"), ("OLO_REX_AGENTS_MINDER_REPORTS_MS", "5000")]) else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "cap-m1");
+    let w1 = rig.start_child("claude", "w1", &["--minder", "claude:stand-in-big:max", "--rules-text", "r1", "--minder-env", "STAND_IN_NAME=cap-m1"]);
+    let w2 = rig.start_child("claude", "w2", &["--minder", "claude:stand-in-big:max", "--rules-text", "r2"]);
+    assert_eq!(w1["minder"]["id"], w2["minder"]["id"]);
+    let m1_id = w1["minder"]["id"].as_str().unwrap().to_owned();
+    let _m1 = Minding::of(&rig, "cap-m1", &m1_id);
+
+    // Explicitly naming the full minder is refused cleanly.
+    let (code, _, err) = rig.olo(&["start", "claude", "--model", "stand-in", "--effort", "none", "--name", "too-many", "--minder", "minder"]);
+    assert!(code == 1 && err.contains("the most is 2"), "{code}: {err}");
+
+    // The 3rd agent with `--minder claude:stand-in-big:max` spawns a 2nd minder (`minder-2`).
+    Minding::expect(&rig, "cap-m2");
+    let w3 = rig.start_child("claude", "w3", &["--minder", "claude:stand-in-big:max", "--rules-text", "r3", "--minder-env", "STAND_IN_NAME=cap-m2"]);
+    let m2_id = w3["minder"]["id"].as_str().unwrap().to_owned();
+    assert_ne!(m2_id, m1_id, "3rd agent must get a 2nd minder when MINDS_MOST=2");
+    assert_eq!(w3["minder"]["name"], "minder-2", "{w3}");
+    let _m2 = Minding::of(&rig, "cap-m2", &m2_id);
+
+    // Last agent of `minder-2` exits -> 5 s countdown starts. Give it `w4` before the timer fires -> countdown cancelled!
+    rig.tell("w3", "exit 0");
+    rig.wait_state("w3", "exited");
+    std::thread::sleep(Duration::from_millis(500));
+    let w4 = rig.start_child("claude", "w4", &["--minder", "minder-2", "--rules-text", "r4"]);
+    assert_eq!(w4["minder"]["id"], json!(m2_id), "w4 attached to minder-2 before timeout: {w4}");
+    std::thread::sleep(Duration::from_millis(5200));
+    assert_eq!(rig.status(&m2_id)["running"], true, "giving minder-2 a new agent must cancel its empty-minder shutdown");
+
+    // Once `w4` exits too and nothing replaces it, `minder-2` ends itself after ~5 s.
+    rig.tell("w4", "exit 0");
+    rig.wait_state("w4", "exited");
+    rig.wait("empty minder-2 to end after its time", || rig.status(&m2_id)["running"] == false);
+    assert_eq!(rig.status(&m1_id)["running"], true, "minder-1 still has w1 and w2");
+}
+
+/// An older 1:1 minder (`minds: Some(agent_id)`, nested under its one
+/// agent, with `minders/AGENT_ID/mind`) already present in `registry.json`
+/// when the new service starts keeps minding its agent end-to-end:
+/// watches, approves, hides approvals from the lead, escalates, refuses
+/// `list` (old 1:1 gate), and stops cleanly on `--off`.
+#[test]
+fn an_old_kind_minder_in_the_registry_keeps_minding_after_takeover() {
+    let Some(rig) = Rig::start("legacy") else { return };
+    rig.stand_in("claude");
+
+    // Create a worker under lead, and a child tab under worker (the old 1:1 shape).
+    let worker = rig.start_child("claude", "worker", &[]);
+    let worker_id = worker["id"].as_str().unwrap().to_owned();
+    let worker_block = worker["block_id"].as_str().unwrap().to_owned();
+    let old_m = rig.start_child_from(Some(&worker_block), "claude", "worker-minder", &[]);
+    let old_m_id = old_m["id"].as_str().unwrap().to_owned();
+
+    // Retire the service cleanly and wait for its process to exit completely (after its final `write_now`),
+    // then patch `registry.json` to the exact old 1:1 minder schema (`minds: Some(worker_id)`, no `minded_by`) and write the legacy `minders/WORKER_ID/mind` script.
+    let old_pid = rig.service_pid().expect("service pid before retire");
+    let service_dir = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("registry.json").exists()).expect("service dir");
+    let retired = rig.helper().args(["agent", "retire"]).output().unwrap();
+    assert!(retired.status.success(), "{}", String::from_utf8_lossy(&retired.stderr));
+    rig.wait("retired service process to exit", || !Path::new(&format!("/proc/{old_pid}")).exists());
+    let reg_path = service_dir.join("registry.json");
+    let mut reg: Value = serde_json::from_str(&std::fs::read_to_string(&reg_path).unwrap()).unwrap();
+    for entry in reg["entries"].as_array_mut().unwrap() {
+        if entry["id"] == old_m_id {
+            entry["role"] = json!("minder");
+            entry["minds"] = json!(worker_id);
+        }
+        entry.as_object_mut().unwrap().remove("minded_by");
+    }
+    std::fs::write(&reg_path, serde_json::to_string_pretty(&reg).unwrap()).unwrap();
+    let mind_dir = service_dir.join("minders").join(&worker_id);
+    std::fs::create_dir_all(&mind_dir).unwrap();
+    std::fs::write(mind_dir.join("rules.md"), "Approve `cargo test`.\n").unwrap();
+    let script_path = mind_dir.join("mind");
+    std::fs::write(&script_path, olo_rex_link::agents::minder::script(HELPER, &worker_id)).unwrap();
+    std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    // Next `olo agent` starts the new service over the legacy registry.
+    let of = rig.json(&["mind", "worker", "--json"]);
+    assert_eq!(of["minder"]["id"], json!(old_m_id), "new service recognizes old 1:1 minder: {of}");
+
+    let legacy = Minding::of(&rig, "worker-minder", &worker_id);
+    // Old 1:1 gate still refuses `list` (code 69).
+    assert!(legacy.olo("list --json").contains("status=69"), "old 1:1 minder must still be refused `list`");
+
+    // Worker asks leave: hidden from lead, delivered to old-kind minder's legacy `mind watch`, approved via legacy `mind approve --once` (no agent name!).
+    let from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.show("worker", &asking("cargo test", 0));
+    let asked = legacy.mind(&format!("watch --since {from} --on question,approval --timeout 15 --json"));
+    assert_eq!((&asked["name"], &asked["event"]), (&json!("worker"), &json!("waiting_approval")), "{asked}");
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "lead should not be woken while old-kind minder runs: {out}");
+
+    let gone = rig.when_typed("worker", b"\r", working());
+    let ap = legacy.mind("approve --once --json");
+    assert!(gone.join().unwrap() && ap["dismissed"] == true, "{ap}");
+
+    // Legacy `mind escalate "TEXT"` (no agent name) escalates about `worker`.
+    let up = legacy.mind("escalate 'Legacy minder note.' --json");
+    assert_eq!((&up["event"], &up["name"]), (&json!("escalation"), &json!("worker")), "{up}");
+    let heard = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!((&heard["name"], &heard["summary"]), (&json!("worker"), &json!("Legacy minder note.")), "{heard}");
+
+    // `--off` stops the old-kind minder directly, as before.
+    let off = rig.json(&["mind", "worker", "--off", "--json"]);
+    assert_eq!((&off["stopped"], &off["minder"]), (&json!(old_m_id), &Value::Null), "{off}");
+    rig.wait("old-kind minder to stop on --off", || rig.status(&old_m_id)["running"] == false);
+}
+
+/// Measures the service at rest for 10 seconds with 1 shared minder
+/// (actively holding `mind watch`) and 3 live agents, verifying both
+/// tab count (`N + 1 = 4` child tabs; 5 Rex windows including lead)
+/// and idle efficiency (near-zero CPU and wakeups/s).
+#[test]
+fn a_shared_minder_and_three_agents_cost_four_tabs_and_rest_quietly() {
+    let Some(rig) = Rig::start("idlecost") else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "idle-m");
+    let a = rig.start_child("claude", "a", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=idle-m"]);
+    let b = rig.start_child("claude", "b", &["--minder", "claude:stand-in-big:max", "--rules-text", "r"]);
+    let c = rig.start_child("claude", "c", &["--minder", "claude:stand-in-big:max", "--rules-text", "r"]);
+    let minder_id = a["minder"]["id"].as_str().unwrap().to_owned();
+    assert_eq!((&b["minder"]["id"], &c["minder"]["id"]), (&json!(minder_id), &json!(minder_id)));
+    let minder = Minding::of(&rig, "idle-m", &minder_id);
+
+    // Tab count: N = 3 agents + 1 minder = N + 1 = 4 child tabs (5 Rex windows including the lead tab).
+    let listed = rig.json(&["list", "--json"]);
+    assert_eq!(listed["subagents"].as_array().unwrap().len(), 4, "3 agents + 1 minder = 4 child tabs: {listed}");
+    let view = rig.rex("session.view", json!({ "session_id": rig.session }));
+    assert_eq!(view["windows"].as_array().unwrap().len(), 5, "1 lead + 1 minder + 3 agents = 5 windows: {view}");
+
+    // Drain the 3 initial `minding` events so the minder's watch sits genuinely blocked at rest.
+    let mut cur = 0u64;
+    for _ in 0..3 {
+        let ev = minder.mind(&format!("watch --since {cur} --on minding --timeout 15 --json"));
+        cur = ev["cursor"].as_u64().unwrap();
+    }
+    // Let all 3 agents rest at prompt and settle startup tasks before measuring.
+    for n in ["a", "b", "c"] {
+        rig.show(n, &idle("Ready."));
+        rig.wait_state(n, "idle");
+    }
+    // Spawn a real blocking `mind watch` as the minder and verify it is
+    // genuinely connected and blocked in the service BEFORE sampling 10 s at rest.
+    let minder_block = rig.status(&minder_id)["block_id"].as_str().unwrap().to_owned();
+    let mut watch_cmd = Command::new(minder.dir.join("mind"));
+    Rig::scratch_env(&rig.dir, &rig.sock, &mut watch_cmd);
+    let mut watch_child = watch_cmd
+        .env("REX_SESSION", &rig.session)
+        .env("REX_BLOCK", &minder_block)
+        .args(["watch", "--since", &cur.to_string(), "--on", "minding,question,approval,error,exit", "--timeout", "25", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn blocking mind watch");
+    let pid = rig.service_pid().expect("service pid");
+    // Wait until the watch process has connected and is sitting idle (still running after startup settles).
+    let watch_pid = watch_child.id();
+    rig.wait("mind watch to block on service socket", || {
+        let sleeping = std::fs::read_to_string(format!("/proc/{watch_pid}/stat")).ok().and_then(|s| s.rsplit_once(") ").map(|(_, r)| r.starts_with("S "))).unwrap_or(false);
+        sleeping && watch_child.try_wait().unwrap().is_none()
+    });
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(watch_child.try_wait().unwrap().is_none(), "mind watch exited before idle window began");
+
+    let sample = |pid: i32| -> (u64, u64, u64) {
+        let (mut ticks, mut vol, mut inv) = (0u64, 0u64, 0u64);
+        for tid in std::fs::read_dir(format!("/proc/{pid}/task")).unwrap().flatten() {
+            if let Ok(st) = std::fs::read_to_string(tid.path().join("stat"))
+                && let Some((_, rest)) = st.rsplit_once(") ")
+            {
+                let f: Vec<&str> = rest.split_whitespace().collect();
+                if f.len() > 12 {
+                    ticks += f[11].parse::<u64>().unwrap_or(0) + f[12].parse::<u64>().unwrap_or(0);
+                }
+            }
+            if let Ok(status) = std::fs::read_to_string(tid.path().join("status")) {
+                for line in status.lines() {
+                    if let Some(v) = line.strip_prefix("voluntary_ctxt_switches:") {
+                        vol += v.trim().parse::<u64>().unwrap_or(0);
+                    } else if let Some(v) = line.strip_prefix("nonvoluntary_ctxt_switches:") {
+                        inv += v.trim().parse::<u64>().unwrap_or(0);
+                    }
+                }
+            }
+        }
+        (ticks, vol, inv)
+    };
+    let (t0, v0, i0) = sample(pid);
+    let wall = Instant::now();
+    std::thread::sleep(Duration::from_secs(10));
+    let secs = wall.elapsed().as_secs_f64();
+    let (t1, v1, i1) = sample(pid);
+    // Confirm the watch stayed genuinely blocked for the entire 10 s window,
+    // then trigger an approval on `a` to prove the watch was live on the service.
+    assert!(watch_child.try_wait().unwrap().is_none(), "mind watch exited during idle window");
+    rig.show("a", &asking("cargo test", 0));
+    let woke = watch_child.wait_with_output().expect("mind watch output");
+    assert!(woke.status.success(), "mind watch failed to wake on approval: {}", String::from_utf8_lossy(&woke.stderr));
+    let woke_ev: Value = serde_json::from_slice(&woke.stdout).expect("watch json");
+    assert_eq!((&woke_ev["name"], &woke_ev["state"]), (&json!("a"), &json!("waiting_approval")), "watch woke on wrong event: {woke_ev}");
+
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    let cpu_pct = (t1.saturating_sub(t0) as f64) / hz / secs * 100.0;
+    let vol_delta = v1.saturating_sub(v0);
+    let inv_delta = i1.saturating_sub(i0);
+    let wakeups_per_s = (vol_delta as f64) / secs;
+    eprintln!("IDLE_MEASUREMENT: pid={pid} over {secs:.2}s: cpu={cpu_pct:.2}% wakeups={vol_delta} ({wakeups_per_s:.2}/s) preempted={inv_delta} child_tabs=4 session_windows=5");
+    assert!(cpu_pct < 1.0, "service used {cpu_pct:.2}% CPU at rest over {secs:.2}s");
+    assert!(wakeups_per_s < 0.5, "service woke {vol_delta} times ({wakeups_per_s:.2}/s) at rest over {secs:.2}s (rules out any 1 Hz poll)");
+}
+
+/// Round 2 (#1, #8, #10, #29):
+/// - #1: `--role minder` (CLI and JSON) refused; forged `role: "minder"` is not reused as a minder.
+/// - #8: exited record cannot act as caller via its closed `REX_BLOCK`; minder `status`/`read` on an exited ward serves frozen exit info without rereading a resumed transcript.
+/// - #10: `--minder NAME` / `--with NAME` resolve strictly among the asking tab's own minders; moving a sub-lead under a minder below it is refused (no cycle).
+/// - #29: automatic minder naming skips names colliding with the worker being started or workers nested under existing minders; moving a duplicate-named worker under one minder is refused.
+#[test]
+fn round2_1_8_10_29_authority_exited_caller_named_scope_cycles_and_names() {
+    let Some(rig) = Rig::start("r2-auth") else { return };
+    rig.stand_in("claude");
+
+    // #1: CLI and structured JSON start both refuse `--role minder`.
+    let (code, _, err) = rig.olo(&["start", "claude", "--model", "stand-in", "--effort", "none", "--name", "spoof", "--role", "minder"]);
+    assert!(code == 2 && err.to_ascii_lowercase().contains("minder"), "CLI --role minder must be refused: {code}: {err}");
+    let mut req_cmd = rig.helper().args(["agent", "request"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    req_cmd
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            json!({
+                "proto": 1, "op": "start", "args": [], "cwd": rig.dir.join("work"),
+                "session": rig.session, "block": rig.lead_block,
+                "obj": { "cli": "claude", "model": "stand-in", "effort": "none", "name": "spoof2", "role": "minder" }
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap();
+    let req_out = req_cmd.wait_with_output().unwrap();
+    let req_json: Value = serde_json::from_slice(&req_out.stdout).unwrap();
+    assert!(req_json["ok"] == false && req_json["code"] == 2, "JSON role=minder must be refused: {req_json}");
+
+    // #8a: an exited child's closed `REX_BLOCK` confers zero live authority.
+    let short = rig.start_child("claude", "short", &[]);
+    let short_block = short["block_id"].as_str().unwrap().to_owned();
+    rig.json(&["stop", "short", "--force", "--json"]);
+    let (code, _, err) = rig.olo_from(Some(&short_block), &["list", "--json"]);
+    assert_eq!(code, 69, "exited caller must be refused (69): {code}: {err}");
+
+    // #8b: minder calling `status` on an exited ward whose transcript later grows (resumed outside roster) must NOT read the new run's message.
+    let sid = "11111111-2222-3333-4444-555555555555";
+    rig.says(sid, "do work", "OLD_WARD_REPLY");
+    Minding::expect(&rig, "m-exit");
+    let ward = rig.start_child("claude", "ward", &["--session-id", sid, "--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=m-exit"]);
+    let ward_id = ward["id"].as_str().unwrap().to_owned();
+    let m_exit_id = ward["minder"]["id"].as_str().unwrap().to_owned();
+    let m_exit = Minding::of(&rig, "m-exit", &m_exit_id);
+    // Keep a second live worker so `m-exit` stays alive while we inspect exited `ward`.
+    let _keep = rig.start_child("claude", "keep", &["--minder", "claude:stand-in-big:max", "--rules-text", "r"]);
+    rig.show("ward", &idle("OLD_WARD_REPLY"));
+    rig.wait_state("ward", "done");
+    rig.tell("ward", "exit 0");
+    rig.wait_state("ward", "exited");
+    // Simulate lead resuming that conversation outside the roster and writing a secret new reply to the shared transcript.
+    rig.says(sid, "secret resumed prompt", "SECRET_RESUMED_OUTSIDE_ROSTER");
+    let st_ward = m_exit.mind(&format!("status {ward_id} --json"));
+    assert_eq!(st_ward["state"], "exited", "{st_ward}");
+    assert!(!st_ward["last_message"].as_str().unwrap_or("").contains("SECRET_RESUMED_OUTSIDE_ROSTER"), "minder must not reread resumed transcript of exited ward: {st_ward}");
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+
+    // #10a: two top-level leads in one session — Lead 1 cannot attach to Lead 2's minder by `--minder minder`.
+    let lead2_win_json = rig.rex(
+        "session.new_window",
+        json!({ "session_id": rig.session, "window_label": "lead2", "layout": { "block": { "flavor": "com.superlogical.terminal.shell", "options": { "size": { "columns": 110, "rows": 40 } } } } }),
+    );
+    let lead2_block = lead2_win_json["block_ids"][0].as_str().unwrap().to_owned();
+    Minding::expect(&rig, "m-lead2");
+    let _l2w = rig.start_child_from(Some(&lead2_block), "claude", "l2w", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=m-lead2"]);
+    // Lead 1 has NO minder of its own; naming `--minder minder` must NOT steal Lead 2's minder!
+    let (code, _, err) = rig.olo(&["start", "claude", "--model", "stand-in", "--effort", "none", "--name", "l1w", "--minder", "minder"]);
+    assert!(code != 0, "Lead 1 must not resolve Lead 2's minder by name: {code}: {err}");
+    // Cleanup lead2's tree from lead2's own block.
+    rig.olo_from(Some(&lead2_block), &["stop", lead2_win_json["window_id"].as_str().unwrap(), "--tree", "--force", "--json"]);
+
+    // #10b: moving a sub-lead under a minder below that sub-lead must be refused (no cycle!).
+    let sublead = rig.start_child("claude", "sublead", &[]);
+    let sub_block = sublead["block_id"].as_str().unwrap().to_owned();
+    Minding::expect(&rig, "sub-m");
+    let _sw = rig.start_child_from(Some(&sub_block), "claude", "sw", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=sub-m"]);
+    let sub_m_id = _sw["minder"]["id"].as_str().unwrap().to_owned();
+    let (code, _, err) = rig.olo(&["mind", "sublead", "--with", &sub_m_id]);
+    assert!(code != 0, "moving sublead under its own descendant minder must be refused: {code}: {err}");
+    rig.json(&["stop", "sublead", "--tree", "--force", "--json"]);
+
+    // #29: worker named `minder` with auto-created minder must not collide with the minder's name (`minder-2`).
+    Minding::expect(&rig, "auto-m1");
+    let w_minder = rig.start_child("claude", "minder", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=auto-m1"]);
+    assert_ne!(w_minder["minder"]["name"], json!("minder"), "auto minder name collided with worker named `minder`: {w_minder}");
+    // Start a worker named `minder-3` under `auto-m1` and then a second minder of another effort -> must skip `minder-3`!
+    let _w_m3 = rig.start_child("claude", "minder-3", &["--minder", "claude:stand-in-big:max", "--rules-text", "r"]);
+    Minding::expect(&rig, "auto-m2");
+    let w_other = rig.start_child("claude", "w-other", &["--minder", "claude:stand-in-big:high", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=auto-m2"]);
+    assert_ne!(w_other["minder"]["name"], json!("minder-3"), "auto minder name collided with nested worker `minder-3`: {w_other}");
+    assert_ne!(w_other["minder"]["name"], json!("minder"), "auto minder name collided with nested worker `minder`: {w_other}");
+}
+
+/// Round 2 (#2, #3, #4, #5):
+/// - #2: minder `watch --all --match` ignores unminded grandchildren; named `mind watch alpha` ends with words when `alpha` stops being minded by it.
+/// - #3: minder process calling `follow`, `adopt`, `retire`, `ping` directly is refused (code 69).
+/// - #4: `mind send` and minder `send --wait --out` / `--file` are refused and write no host file.
+/// - #5: minder `send` on an active approval box (bare `--enter`, `--key Down`, `--ctrl c`, `--force`) is refused with zero input typed; minder `send NAME "answer" --enter` on a recognised non-approval `WaitingQuestion` succeeds once told.
+#[test]
+fn round2_2_3_4_5_minder_gates_watches_send_and_non_approval_questions() {
+    let Some(rig) = Rig::start("r2-gates") else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "gm");
+    let alpha =
+        rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "Approve cargo test. Answer database question with postgres.", "--minder-env", "STAND_IN_NAME=gm"]);
+    let alpha_block = alpha["block_id"].as_str().unwrap().to_owned();
+    let minder_id = alpha["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "gm", &minder_id);
+    // Drain initial `added` event.
+    let added = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    assert_eq!(added["minding"]["action"], "added");
+    let mut cur = added["cursor"].as_u64().unwrap();
+
+    // #2a: unminded grandchild started by `alpha` must NEVER leak into minder's `watch --all --match`.
+    let _grand = rig.start_child_from(Some(&alpha_block), "claude", "grand", &[]);
+    let watch_thread = {
+        let env = minder.env();
+        let mind_bin = minder.dir.join("mind").display().to_string();
+        let stage = rig.dir.join("stage");
+        let stand_in = minder.stand_in.clone();
+        std::thread::spawn(move || {
+            let out_file = stage.join("grand-watch.out");
+            let fifo = stage.join(format!("{stand_in}.fifo"));
+            let cmd =
+                format!("run sh -c '{env} {mind_bin} watch --since {cur} --match GRAND_SECRET_TOKEN --timeout 2 --json > {} 2>&1; echo status=$? >> {}'\n", out_file.display(), out_file.display());
+            std::fs::OpenOptions::new().write(true).open(&fifo).unwrap().write_all(cmd.as_bytes()).unwrap();
+            let until = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&out_file)
+                    && s.contains("status=")
+                {
+                    return s;
+                }
+                assert!(Instant::now() < until, "grandchild watch did not finish");
+                std::thread::sleep(Duration::from_millis(30));
+            }
+        })
+    };
+    std::thread::sleep(Duration::from_millis(300));
+    rig.show("grand", &idle("GRAND_SECRET_TOKEN appeared in grandchild"));
+    let grand_watch_out = watch_thread.join().unwrap();
+    assert!(grand_watch_out.contains("status=124") && !grand_watch_out.contains("GRAND_SECRET_TOKEN"), "minder text watch leaked grandchild output: {grand_watch_out}");
+
+    // #3: minder process directly requesting `follow`, `adopt`, `retire`, `ping` must be refused (69).
+    let pid_before = rig.service_pid().expect("service pid");
+    for forbidden in ["retire", "ping", "follow"] {
+        let out = minder.olo(forbidden);
+        assert!(out.contains("status=69"), "minder must be refused `{forbidden}` with 69: {out}");
+    }
+    let adopt_out = minder.run(&format!("printf '{{\"agents\":[]}}' | {} {HELPER} agent adopt; echo status=$?", minder.env()));
+    assert!(adopt_out.contains("status=69"), "minder must be refused `adopt` with 69: {adopt_out}");
+    assert_eq!(rig.service_pid(), Some(pid_before), "minder must not have retired the service");
+
+    // #4: `mind send` and direct `send` with `--wait --out` or `--file` must be refused and write NO file.
+    let evil_out = rig.dir.join("minder-wrote-host-file.txt");
+    let secret_src = rig.dir.join("host-secret.txt");
+    std::fs::write(&secret_src, "HOST_SECRET_42").unwrap();
+    rig.show("alpha", &idle("Ready."));
+    rig.wait_state("alpha", "idle");
+    for bad_send in [
+        format!("{} {} send alpha 'hi' --enter --wait --out {} --timeout 2; echo status=$?", minder.env(), minder.dir.join("mind").display(), evil_out.display()),
+        format!("{} {} send alpha --file {} --enter; echo status=$?", minder.env(), minder.dir.join("mind").display(), secret_src.display()),
+        format!("{} {HELPER} agent send alpha 'hi' --enter --wait --out {} --timeout 2; echo status=$?", minder.env(), evil_out.display()),
+    ] {
+        let out = minder.run(&bad_send);
+        assert!(!out.contains("status=0"), "minder send option must be refused: {bad_send} -> {out}");
+    }
+    assert!(!evil_out.exists(), "minder must never create host file via --wait --out");
+
+    // #5a: while an approval box is active on `alpha`, minder `send` (bare `--enter`, `--key Down`, `--ctrl c`, `--force`) is refused with ZERO bytes typed.
+    rig.show("alpha", &asking("rm -rf /", 0));
+    let ap_ev = minder.mind(&format!("watch --since {cur} --on approval --timeout 15 --json"));
+    assert_eq!(ap_ev["event"], "waiting_approval", "{ap_ev}");
+    cur = ap_ev["cursor"].as_u64().unwrap();
+    let keys_before = rig.keys("alpha").len();
+    for bypass in [
+        format!("{} {} send alpha --enter; echo status=$?", minder.env(), minder.dir.join("mind").display()),
+        format!("{} {} send alpha --key Down; echo status=$?", minder.env(), minder.dir.join("mind").display()),
+        format!("{} {} send alpha --ctrl c; echo status=$?", minder.env(), minder.dir.join("mind").display()),
+        format!("{} {HELPER} agent send alpha '1' --force --enter; echo status=$?", minder.env()),
+        format!("{} {HELPER} agent send alpha --key Enter; echo status=$?", minder.env()),
+        format!("{} {HELPER} agent send alpha --ctrl c; echo status=$?", minder.env()),
+    ] {
+        let out = minder.run(&bypass);
+        assert!(!out.contains("status=0"), "minder send must not bypass approval dialog: {bypass} -> {out}");
+    }
+    assert_eq!(rig.keys("alpha").len(), keys_before, "no keys may be typed into alpha during refused minder sends");
+
+    // #5b: recognised non-approval `WaitingQuestion` — `mind send alpha "postgres" --enter` succeeds once told!
+    let question_screen = format!("Which database should I configure?\n ❯ 1. Postgres\n   2. SQLite\n Enter to select · ↑/↓ navigate · Esc to cancel\n{}\n", rule());
+    rig.show("alpha", &question_screen);
+    let q_ev = minder.mind(&format!("watch --since {cur} --on question --timeout 15 --json"));
+    assert_eq!(q_ev["event"], "waiting_question", "{q_ev}");
+    cur = q_ev["cursor"].as_u64().unwrap();
+    let before_q = rig.keys("alpha").len();
+    let q_answered = rig.when_typed("alpha", b"postgres", working());
+    let sent_q = minder.mind("send alpha 'postgres' --enter --json");
+    assert_eq!(sent_q["ok"], json!(true), "minder must be able to answer non-approval WaitingQuestion with text+--enter: {sent_q}");
+    assert!(q_answered.join().unwrap(), "alpha did not receive postgres answer");
+    assert!(rig.keys("alpha")[before_q..].windows(b"postgres".len()).any(|w| w == b"postgres"));
+
+    // #2b: named `mind watch alpha` ends with words when lead runs `mind alpha --off` (never returns alpha's next question).
+    let named_watch = {
+        let env = minder.env();
+        let mind_bin = minder.dir.join("mind").display().to_string();
+        let stage = rig.dir.join("stage");
+        let stand_in = minder.stand_in.clone();
+        std::thread::spawn(move || {
+            let out_file = stage.join("named-watch.out");
+            let fifo = stage.join(format!("{stand_in}.fifo"));
+            let cmd =
+                format!("run sh -c '{env} {mind_bin} watch alpha --since {cur} --on approval,question --timeout 15 --json > {} 2>&1; echo status=$? >> {}'\n", out_file.display(), out_file.display());
+            std::fs::OpenOptions::new().write(true).open(&fifo).unwrap().write_all(cmd.as_bytes()).unwrap();
+            let until = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&out_file)
+                    && s.contains("status=")
+                {
+                    return s;
+                }
+                assert!(Instant::now() < until, "named watch did not exit after --off");
+                std::thread::sleep(Duration::from_millis(30));
+            }
+        })
+    };
+    std::thread::sleep(Duration::from_millis(300));
+    rig.json(&["mind", "alpha", "--off", "--json"]);
+    rig.show("alpha", &asking("echo after-detach", 0));
+    let nw_out = named_watch.join().unwrap();
+    assert!(!nw_out.contains("status=0") && !nw_out.contains("after-detach"), "named watch must end on detach and never deliver post-detach questions: {nw_out}");
+}
+
+/// Round 2 (#6, #7, #9):
+/// - #6: updating an agent's rules voids what the minder was told (`told` cleared), refusing an approve decided under old rules with words to re-read rules.
+/// - #7: two askings of the exact same command are two box instances (`b1` vs `b2`): a minder grant from `b1` is refused for `b2`.
+/// - #9: `stop <OTHER_LEAD_WINDOW> --tree` from top-level Lead 1 cannot stop Lead 2's subtree.
+#[test]
+fn round2_6_7_9_rules_invalidation_box_instance_and_top_level_stop() {
+    let Some(rig) = Rig::start("r2-rules-box") else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "rbm");
+    let _a = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "Approve cargo test.", "--minder-env", "STAND_IN_NAME=rbm"]);
+    let minder_id = _a["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "rbm", &minder_id);
+    let added = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    let cur = added["cursor"].as_u64().unwrap();
+
+    // #6: minder sees approval under old rules -> lead changes rules -> minder tries to approve under old rules -> REFUSED!
+    rig.show("alpha", &asking("cargo test", 0));
+    let ev1 = minder.mind(&format!("watch --since {cur} --on approval --timeout 15 --json"));
+    assert_eq!(ev1["event"], "waiting_approval", "{ev1}");
+    rig.json(&["mind", "alpha", "--rules-text", "Refuse cargo test.", "--json"]);
+    let keys_before = rig.keys("alpha").len();
+    let stale_ap = minder.run(&format!("{} {} approve alpha --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(stale_ap.contains("status=1") && stale_ap.to_ascii_lowercase().contains("rules"), "approve under stale rules must be refused with words about rules: {stale_ap}");
+    assert_eq!(rig.keys("alpha").len(), keys_before, "no Enter may be sent under stale rules");
+
+    // #7: deliver the `minding` ("rules") revision first, then re-read status (now told of box b1),
+    // then LEAD directly answers b1, then alpha asks the EXACT SAME command (`cargo test`) again (b2) -> minder's grant from b1 must be REFUSED for b2!
+    let rules_ev = minder.mind("watch --since 0 --on minding --timeout 10 --json");
+    assert_eq!(rules_ev["minding"]["action"], "rules", "{rules_ev}");
+    let st1 = minder.mind("status alpha --json");
+    let box1 = st1["approval"]["box"].as_str().unwrap().to_owned();
+    let gone1 = rig.when_typed("alpha", b"\r", working());
+    let lead_ap = rig.json(&["approve", "alpha", "--once", "--json"]);
+    assert!(gone1.join().unwrap() && lead_ap["dismissed"] == true, "{lead_ap}");
+    rig.wait_state("alpha", "working");
+    // Exact same command asked a second time!
+    rig.show("alpha", &asking("cargo test", 0));
+    rig.wait_state("alpha", "waiting_approval");
+    let box2 = rig.status("alpha")["approval"]["box"].as_str().unwrap().to_owned();
+    assert_ne!(box1, box2, "second asking of identical command must have a new box instance");
+    let keys_before2 = rig.keys("alpha").len();
+    let reuse_ap = minder.run(&format!("{} {} approve alpha --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(reuse_ap.contains("status=1"), "minder grant for b1 must NOT authorize identical b2: {reuse_ap}");
+    assert_eq!(rig.keys("alpha").len(), keys_before2, "no Enter may be sent to b2 using b1 grant");
+
+    // #9: two top-level leads in same session — Lead 1 calling `stop <lead2_window> --tree` must be refused!
+    let lead2_win_json = rig.rex(
+        "session.new_window",
+        json!({ "session_id": rig.session, "window_label": "lead2", "layout": { "block": { "flavor": "com.superlogical.terminal.shell", "options": { "size": { "columns": 110, "rows": 40 } } } } }),
+    );
+    let lead2_win = lead2_win_json["window_id"].as_str().unwrap().to_owned();
+    let lead2_block = lead2_win_json["block_ids"][0].as_str().unwrap().to_owned();
+    let b_worker = rig.start_child_from(Some(&lead2_block), "claude", "b-worker", &[]);
+    let (code, _, err) = rig.olo(&["stop", &lead2_win, "--tree", "--force"]);
+    assert_eq!(code, 69, "Lead 1 must not recursively stop Lead 2's top-level tab: {code}: {err}");
+    assert_eq!(rig.status(b_worker["id"].as_str().unwrap())["running"], json!(true), "Lead 2's worker must still be running");
+    rig.olo_from(Some(&lead2_block), &["stop", &lead2_win, "--tree", "--force", "--json"]);
+}
+
+/// Round 2 (#24, #25, #26):
+/// - #24: a standing question whose transcript says `waiting` while the screen looks `idle` is delivered to the minder (never hidden from both lead and minder); a standing question evicted past the 2,000-event log ring is still seen by a newly attached minder.
+/// - #25: a targeted `mind watch B --on minding` does not swallow an earlier unread `rules` event for `A`; delivery state persists across service handover (`retire` + restart) without replaying already-delivered roster events.
+/// - #26: detaching (`mind --off`) a waiting worker wakes the lead's ongoing watch whose cursor had already advanced past the suppressed approval.
+#[test]
+fn round2_24_25_26_standing_questions_per_agent_cursors_and_detach_handoff() {
+    let Some(rig) = Rig::start("r2-events") else { return };
+    rig.stand_in("claude");
+
+    // #24a: worker whose transcript says `waiting` (AskUserQuestion) while screen looks `idle`.
+    let sid_q = "22222222-3333-4444-5555-666666666666";
+    {
+        let folder: String = rig.work().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let dir = rig.dir.join("home/.claude/projects").join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        let lines = [
+            json!({ "type": "user", "message": { "role": "user", "content": "start task" } }),
+            json!({
+                "type": "assistant",
+                "message": {
+                    "id": "msg_q", "role": "assistant", "stop_reason": "tool_use",
+                    "content": [{ "type": "tool_use", "id": "tu_1", "name": "AskUserQuestion", "input": { "question": "Which branch?" } }]
+                }
+            }),
+        ];
+        std::fs::write(dir.join(format!("{sid_q}.jsonl")), lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+    }
+    Minding::expect(&rig, "em1");
+    let alpha = rig.start_child("claude", "alpha", &["--session-id", sid_q, "--minder", "claude:stand-in-big:max", "--rules-text", "r-alpha-1", "--minder-env", "STAND_IN_NAME=em1"]);
+    let minder_id = alpha["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "em1", &minder_id);
+    let ev_add = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    assert_eq!((&ev_add["name"], &ev_add["minding"]["action"]), (&json!("alpha"), &json!("added")), "{ev_add}");
+
+    // Show idle prompt on screen while transcript has pending AskUserQuestion -> service records `waiting_question`.
+    rig.show("alpha", &idle("Waiting for your choice."));
+    rig.wait_state("alpha", "waiting_question");
+    // Minder's watch MUST receive `waiting_question` (not discard it because raw screen looks `idle`!).
+    let q_ev = minder.mind("watch --since 0 --on question,approval --timeout 10 --json");
+    assert_eq!((&q_ev["name"], &q_ev["state"]), (&json!("alpha"), &json!("waiting_question")), "transcript-waiting question was hidden from minder: {q_ev}");
+
+    // #25a: unread `rules` event for `alpha` (seq N) and `added` for `beta` (seq N+1):
+    // targeted `mind watch beta --on minding` must NOT swallow `alpha`'s unread `rules` event!
+    rig.json(&["mind", "alpha", "--rules-text", "r-alpha-2", "--json"]);
+    let _beta = rig.start_child("claude", "beta", &["--minder", "claude:stand-in-big:max", "--rules-text", "r-beta-1"]);
+    let b_added = minder.mind("watch beta --since 0 --on minding --timeout 15 --json");
+    assert_eq!((&b_added["name"], &b_added["minding"]["action"]), (&json!("beta"), &json!("added")), "{b_added}");
+    let a_rules = minder.mind("watch --since 0 --on minding --timeout 5 --json");
+    assert_eq!((&a_rules["name"], &a_rules["minding"]["action"]), (&json!("alpha"), &json!("rules")), "targeted watch on beta swallowed alpha's unread rules event: {a_rules}");
+
+    // #25b: service handover (`retire` + restart) preserves minder delivery state so already-delivered `minding` events are NOT replayed.
+    let old_pid = rig.service_pid().expect("service pid");
+    let ret = rig.helper().args(["agent", "retire"]).output().unwrap();
+    assert!(ret.status.success(), "{}", String::from_utf8_lossy(&ret.stderr));
+    rig.wait("retired service to exit", || !Path::new(&format!("/proc/{old_pid}")).exists());
+    // Trigger new service startup and verify minder does not receive replayed `added`/`rules` events.
+    let after_handover = minder.run(&format!("{} {} watch --since 0 --on minding --timeout 2 --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(after_handover.contains("status=124"), "handover replayed already-delivered minding events: {after_handover}");
+
+    // #26: `beta` asks leave while minded -> lead's cursor advances past that approval -> lead runs `mind beta --off` -> lead's ongoing watch wakes with `beta`'s standing approval!
+    rig.show("beta", &asking("cargo test --release", 0));
+    let b_ap = minder.mind("watch beta --since 0 --on approval --timeout 15 --json");
+    assert_eq!((&b_ap["name"], &b_ap["event"]), (&json!("beta"), &json!("waiting_approval")), "{b_ap}");
+    let lead_cursor = b_ap["cursor"].as_u64().unwrap();
+    let other = rig.start_child("claude", "other", &[]);
+    let _ = other;
+    rig.show("other", &idle("hello"));
+    rig.wait_state("other", "idle");
+    rig.wait("other idle event recorded in log", || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap() > lead_cursor);
+    let advanced = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    assert!(advanced > lead_cursor, "lead cursor should be past beta's suppressed approval");
+    let lead_watch = {
+        let dir = rig.dir.clone();
+        let sock = rig.sock.clone();
+        let session = rig.session.clone();
+        let block = rig.lead_block.clone();
+        std::thread::spawn(move || {
+            let mut cmd = Command::new(HELPER);
+            Rig::scratch_env(&dir, &sock, &mut cmd);
+            let out = cmd
+                .env("REX_SESSION", &session)
+                .env("REX_BLOCK", &block)
+                .current_dir(dir.join("work"))
+                .args(["agent", "watch", "--all", "--since", &advanced.to_string(), "--on", "approval", "--timeout", "10", "--json"])
+                .output()
+                .unwrap();
+            (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
+        })
+    };
+    std::thread::sleep(Duration::from_millis(250));
+    rig.json(&["mind", "beta", "--off", "--json"]);
+    let (wcode, wout, werr) = lead_watch.join().unwrap();
+    assert_eq!(wcode, 0, "lead ongoing watch stayed silent after --off on waiting beta: {wcode} {wout} {werr}");
+    let wv: Value = serde_json::from_str(wout.trim()).unwrap();
+    assert_eq!((&wv["name"], &wv["event"]), (&json!("beta"), &json!("waiting_approval")), "{wv}");
+
+    // #24b: standing approval survives >2,000 newer events evicting the event log ring.
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+    Minding::expect(&rig, "evict-m");
+    let ex_h = rig.start_child("claude", "ex-h", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=evict-m"]);
+    let ev_mid = ex_h["minder"]["id"].as_str().unwrap().to_owned();
+    let ev_m_block = rig.status(&ev_mid)["block_id"].as_str().unwrap().to_owned();
+    let ev_m = Minding::of(&rig, "evict-m", &ev_mid);
+    let _stand = rig.start_child("claude", "stand-w", &["--minder", &ev_mid, "--rules-text", "r"]);
+    rig.tell("ex-h", "exit 0");
+    rig.wait_state("ex-h", "exited");
+    let before_ap = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.show("stand-w", &asking("cargo build", 0));
+    rig.wait_state("stand-w", "waiting_approval");
+    rig.wait("stand-w approval recorded", || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap() > before_ap);
+    let ap_seq = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    // Flood >2,050 events over the service socket (about exited `ex-h`, so zero Rex RPCs) to evict `ap_seq` from the 2,000-entry ring!
+    let sock_path = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path().join("sock")).find(|p| p.exists()).expect("service sock");
+    let req_line = format!(
+        "{}\n",
+        json!({
+            "proto": 1, "op": "escalate", "args": ["ex-h", "ring filler"], "cwd": rig.work(),
+            "session": rig.session, "block": ev_m_block, "inherit": [], "from": "test"
+        })
+    );
+    for _ in 0..2050 {
+        use std::io::BufRead as _;
+        let mut s = std::os::unix::net::UnixStream::connect(&sock_path).unwrap();
+        s.write_all(req_line.as_bytes()).unwrap();
+        let mut r = std::io::BufReader::new(s);
+        let mut line = String::new();
+        let _ = r.read_line(&mut line);
+        if line.trim().is_empty() {
+            line.clear();
+            let _ = r.read_line(&mut line);
+        }
+    }
+    let after_flood = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    assert!(after_flood >= ap_seq + 2050, "expected >2000 events past ap_seq={ap_seq}, got {after_flood}");
+    // Despite `ap_seq` being evicted from the 2,000-event log ring, `mind watch` MUST still deliver `stand-w`'s standing approval via `live.latest_event`!
+    let ev_ap = ev_m.mind("watch stand-w --since 0 --on approval --timeout 10 --json");
+    assert_eq!((&ev_ap["name"], &ev_ap["state"]), (&json!("stand-w"), &json!("waiting_approval")), "ring eviction lost stand-w's standing approval: {ev_ap}");
+}
+
+/// Round 2 (#27, #28):
+/// - #27: when two agents under one minder exit while the minder is busy, reporting the first exit does NOT end the minder after 500 ms before it reports the second exit.
+/// - #28: an exited agent's report by immutable ID targets the exited record even after a new live agent reuses the same name; a 2-argument `escalate <unknown> "TEXT"` returns an error instead of silently escalating about the minder itself.
+#[test]
+fn round2_27_28_multi_exit_reports_and_target_attribution() {
+    let Some(rig) = Rig::start_with_env("r2-exits", &[("OLO_REX_AGENTS_MINDER_REPORTS_MS", "10000")]) else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "xm");
+    let a1 = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=xm"]);
+    let a1_id = a1["id"].as_str().unwrap().to_owned();
+    let minder_id = a1["minder"]["id"].as_str().unwrap().to_owned();
+    let b1 = rig.start_child("claude", "beta", &["--minder", "claude:stand-in-big:max", "--rules-text", "r"]);
+    let b1_id = b1["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "xm", &minder_id);
+    for _ in 0..2 {
+        let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    }
+
+    // #28b: 2-arg escalate with unknown target MUST return an error, never silently escalate about the minder itself!
+    let bad_esc = minder.run(&format!("{} {} escalate no-such-worker 'oops' --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(!bad_esc.contains("status=0"), "2-arg escalate with unknown target must fail instead of escalating about minder: {bad_esc}");
+
+    // #28a: `alpha` exits, then a NEW live `alpha` starts under the same minder -> escalating by `a1_id` attributes to `a1_id`, NOT the new live `alpha`!
+    rig.tell("alpha", "exit 0");
+    rig.wait_state(&a1_id, "exited");
+    let _ = std::fs::remove_file(rig.dir.join("stage/alpha.fifo"));
+    let _ = std::fs::remove_file(rig.dir.join("stage/alpha.ready"));
+    let a2 = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "r2"]);
+    let a2_id = a2["id"].as_str().unwrap().to_owned();
+    assert_ne!(a1_id, a2_id);
+    let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    let esc_old = minder.mind(&format!("escalate {a1_id} 'old alpha summary' --json"));
+    assert_eq!(esc_old["id"], json!(a1_id), "escalation by immutable ID must attribute to exited a1_id: {esc_old}");
+    assert_eq!(rig.json(&["mind", &a2_id, "--json"])["answered"].as_array().unwrap().len(), 0, "new live alpha must not receive old alpha's audit entry");
+    assert_eq!(rig.json(&["mind", &a1_id, "--json"])["answered"].as_array().unwrap().len(), 1);
+
+    // #27: BOTH remaining live agents (`beta` and new `alpha`) exit while minder is busy ->
+    // escalating `beta` first must NOT end the minder 500 ms later before `alpha` (`a2_id`) is reported!
+    rig.tell("beta", "exit 0");
+    rig.tell("alpha", "exit 0");
+    rig.wait_state(&b1_id, "exited");
+    rig.wait_state(&a2_id, "exited");
+    let _ = minder.mind(&format!("escalate {b1_id} 'beta done' --json"));
+    std::thread::sleep(Duration::from_millis(1200));
+    assert_eq!(rig.status(&minder_id)["running"], json!(true), "minder ended after first of two exit reports before reporting second exit");
+    let reported_all = Instant::now();
+    let _ = minder.mind(&format!("escalate {a2_id} 'new alpha done' --json"));
+    rig.wait("minder to stop once all exit reports are sent", || rig.status(&minder_id)["running"] == false);
+    assert!(reported_all.elapsed() < Duration::from_millis(5000), "minder should stop promptly once final exit report is sent (grace is 10s): {:?}", reported_all.elapsed());
+}
+
+/// Round 2 (#31, #34):
+/// - #34: a slow `follow` consumer that falls behind the 1,024-frame broadcast buffer does NOT deadlock the service on `RecvError::Lagged` and recovers with a fresh `Frame::Snapshot`.
+/// - #31: a late state frame computed before a move cannot overwrite the moved worker's new `parent_window_id` on `follow`.
+#[test]
+fn round2_31_34_frame_order_after_move_and_slow_follow_lag() {
+    let Some(rig) = Rig::start("r2-follow") else { return };
+    rig.stand_in("claude");
+
+    // #34: start a slow `follow` consumer, read its initial snapshot, pause draining, then push >1,050 frames via one `adopt` RPC.
+    let mut follow = rig.helper().args(["agent", "follow"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut reader = std::io::BufReader::new(follow.stdout.take().unwrap());
+    let mut first_line = String::new();
+    use std::io::BufRead as _;
+    reader.read_line(&mut first_line).unwrap();
+    let first: Value = serde_json::from_str(first_line.trim()).unwrap();
+    assert_eq!(first["t"], "snapshot", "{first}");
+
+    // Send 1,100 already-exited dummy entries via `adopt` to overflow the 1,024-slot broadcast channel while `follow` is not reading.
+    let dummies: Vec<Value> = (0..1100)
+        .map(|i| {
+            json!({
+                "id": format!("sa-lag{i:04}"), "name": format!("lag-{i}"), "host_key": "",
+                "session_id": rig.session, "window_id": format!("w-lag-{i}"), "block_id": format!("b-lag-{i}"),
+                "parent_window_id": rig.lead_window, "cli": "claude", "model": "m", "effort": "e",
+                "title": format!("lag-{i}"), "started_at": 1000, "exited_at": 2000, "seen_live": true
+            })
+        })
+        .collect();
+    let mut adopt = rig.helper().args(["agent", "adopt"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    adopt.stdin.take().unwrap().write_all(json!({ "agents": dummies }).to_string().as_bytes()).unwrap();
+    let adopt_out = adopt.wait_with_output().unwrap();
+    assert!(adopt_out.status.success(), "{}", String::from_utf8_lossy(&adopt_out.stderr));
+
+    // Read frames on a background thread (this triggers `RecvError::Lagged` in the service!) and simultaneously check `ping` does NOT deadlock!
+    let (resync_tx, resync_rx) = std::sync::mpsc::channel();
+    let got_resync = std::thread::spawn(move || {
+        let mut saw_snapshot = false;
+        let mut line = String::new();
+        for _ in 0..1200 {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if let Ok(v) = serde_json::from_str::<Value>(line.trim())
+                        && v["t"] == "snapshot"
+                    {
+                        saw_snapshot = true;
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = resync_tx.send(saw_snapshot);
+        (saw_snapshot, reader)
+    });
+    // `ping` must answer quickly (< 4 s), proving the service did NOT deadlock on the lagged branch!
+    let ping_at = Instant::now();
+    let mut ping_child = rig.helper().args(["agent", "ping"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let ping_ok = loop {
+        if let Ok(Some(st)) = ping_child.try_wait() {
+            break st.success();
+        }
+        if ping_at.elapsed() >= Duration::from_secs(4) {
+            let _ = ping_child.kill();
+            let _ = ping_child.wait();
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    let saw_snapshot = if ping_ok { resync_rx.recv_timeout(Duration::from_secs(5)).unwrap_or(false) } else { false };
+    // Always close/kill `follow` BEFORE joining the reader thread so a missed snapshot can never hang the test.
+    drop(follow.stdin.take());
+    let _ = follow.kill();
+    let _ = follow.wait();
+    let _ = got_resync.join();
+    assert!(ping_ok, "service deadlocked or stalled on lagged follow after {:?}", ping_at.elapsed());
+    assert!(saw_snapshot, "lagged follow consumer must receive a fresh resync snapshot");
+
+    // #31: late state frame after a move must carry the NEW `parent_window_id` and never revert to old parent.
+    let mut f2 = rig.helper().args(["agent", "follow"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let frames = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let f2_reader = {
+        let (frames, out) = (frames.clone(), f2.stdout.take().unwrap());
+        std::thread::spawn(move || {
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                    frames.lock().unwrap().push(v);
+                }
+            }
+        })
+    };
+    let w = rig.start_child("claude", "mover", &[]);
+    let w_id = w["id"].as_str().unwrap().to_owned();
+    Minding::expect(&rig, "fm1");
+    let stage_env = format!("STAND_IN_DIR={}", rig.dir.join("stage").display());
+    let path_env = format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display());
+    // Trigger a state change on `mover` AND immediately move `mover` under a shared minder while `transition` is awaiting `look`/`CONFIRM`/`inspect`!
+    rig.show("mover", &asking("cargo check", 0));
+    let moved = rig.json(&["mind", "mover", "--with", "claude:stand-in-big:max", "--rules-text", "r", "--env", &stage_env, "--env", &path_env, "--env", "STAND_IN_NAME=fm1", "--json"]);
+    let m_win = moved["minder"]["window_id"].as_str().unwrap().to_owned();
+    let m_id = moved["minder"]["id"].as_str().unwrap().to_owned();
+    // Wait for the confirmed `waiting_approval` state frame to arrive on `follow`, then verify the LAST frame for `mover` STILL has `parent_window_id == m_win`!
+    rig.wait("waiting_approval frame for mover", || frames.lock().unwrap().iter().any(|f| f["t"] == "agent" && f["agent"]["id"] == w_id && f["agent"]["state"] == "waiting_approval"));
+    std::thread::sleep(Duration::from_millis(400));
+    let last_frame = frames.lock().unwrap().iter().rev().find(|f| f["t"] == "agent" && f["agent"]["id"] == w_id).cloned().expect("frame for mover");
+    assert_eq!((&last_frame["agent"]["parent_window_id"], &last_frame["agent"]["minded_by"]), (&json!(m_win), &json!(m_id)), "late state frame reverted mover to old parent: {last_frame}");
+    drop(f2.stdin.take());
+    let _ = f2.wait();
+    let _ = f2_reader.join();
+}
+
+/// Round 2 (#12, #13, #14, #15, #16, #17):
+/// - #13: an earlier empty-minder timer does NOT shorten a subsequent empty grace period after a worker came and went.
+/// - #14: an unwritable rules directory leaves the started worker unminded under the lead with `minder_error` (never minded with no rules); a failed rules rewrite preserves the existing `rules.md` intact.
+/// - #16: an errored minder arms an empty timer instead of occupying a tab forever; a service handover during an empty minder's grace period re-arms its empty timer on `reconcile`.
+/// - #17: concurrent `start --minder` bursts with `MINDS_MOST=2` convert reservations atomically so both workers share one minder instead of double-counting load=2.
+/// - #12 & #15: concurrent moves stay consistent, and a worker exiting during attach or a minder dying during worker launch never commits a broken assignment.
+#[test]
+fn round2_12_13_14_15_16_17_launch_move_timer_and_rules_races() {
+    let Some(rig) = Rig::start_with_env("r2-races", &[("OLO_REX_AGENTS_MINDS_MOST", "2"), ("OLO_REX_AGENTS_MINDER_REPORTS_MS", "8000")]) else { return };
+    rig.stand_in("claude");
+
+    // #13: empty timer T1 (8.0 s) must NOT shorten the second empty period when a worker arrives at ~2.5 s and exits shortly after.
+    Minding::expect(&rig, "tm1");
+    let w1 = rig.start_child("claude", "w1", &["--minder", "claude:stand-in-big:max", "--rules-text", "r1", "--minder-env", "STAND_IN_NAME=tm1"]);
+    let tm1_id = w1["minder"]["id"].as_str().unwrap().to_owned();
+    let _tm1 = Minding::of(&rig, "tm1", &tm1_id);
+    let cur_w1 = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let first_empty = Instant::now();
+    rig.tell("w1", "exit 0");
+    let _ = rig.json(&["watch", "w1", "--since", &cur_w1.to_string(), "--on", "exit", "--timeout", "15", "--json"]);
+    // T1 is armed for 8.0 s from w1's exit. Wait until ~2.5 s after first_empty, attach w2, then exit w2 -> T2 should run a FULL 8.0 s (~t+11.0 s), NOT fire at t+8.0 s!
+    if let Some(rem) = (first_empty + Duration::from_millis(2500)).checked_duration_since(Instant::now()) {
+        std::thread::sleep(rem);
+    }
+    let w2 = rig.start_child("claude", "w2", &["--minder", &tm1_id, "--rules-text", "r2"]);
+    assert_eq!(w2["minder"]["id"], json!(tm1_id), "{w2}");
+    std::thread::sleep(Duration::from_millis(200));
+    let cur_w2 = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let second_empty = Instant::now();
+    rig.tell("w2", "exit 0");
+    let _ = rig.json(&["watch", "w2", "--since", &cur_w2.to_string(), "--on", "exit", "--timeout", "15", "--json"]);
+    // Wait until ~8.6 s after first_empty (0.6 s PAST T1's 8.0 s, yet ~2.5 s BEFORE T2's 8.0 s!).
+    if let Some(rem) = (first_empty + Duration::from_millis(8600)).checked_duration_since(Instant::now()) {
+        std::thread::sleep(rem);
+    }
+    let fast_list = rig.json(&["list", "--fast", "--json"]);
+    let tm1_live = fast_list["subagents"].as_array().unwrap().iter().any(|s| s["id"] == tm1_id);
+    assert!(tm1_live, "first empty timer T1 shortened second grace period (first_empty={:?}, second_empty={:?})", first_empty.elapsed(), second_empty.elapsed());
+    // After the full second grace period (~8.0 s), tm1 ends cleanly.
+    let _ = rig.json(&["watch", &tm1_id, "--since", &cur_w2.to_string(), "--on", "exit", "--timeout", "15", "--json"]);
+    assert_eq!(rig.status(&tm1_id)["running"], json!(false), "tm1 must end after full second grace period");
+
+    // #14: rules write failure must leave started worker unminded under lead with `minder_error` (never minded with no rules),
+    // and failed rules rewrite must leave existing `rules.md` untouched.
+    Minding::expect(&rig, "rm1");
+    let rw1 = rig.start_child("claude", "rw1", &["--minder", "claude:stand-in-big:max", "--rules-text", "KEEP_ME_INTACT", "--minder-env", "STAND_IN_NAME=rm1"]);
+    let rw1_id = rw1["id"].as_str().unwrap().to_owned();
+    let _rm1_id = rw1["minder"]["id"].as_str().unwrap().to_owned();
+    let service_dir = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("registry.json").exists()).expect("service dir");
+    let minders_dir = service_dir.join("minders");
+    let rw1_dir = minders_dir.join(&rw1_id);
+    // Make `rw1_dir` read-only (0500) so atomic temp-file creation in `rw1_dir` fails, then verify original `rules.md` stays intact!
+    std::fs::set_permissions(&rw1_dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let (code, _, _) = rig.olo(&["mind", "rw1", "--rules-text", "CORRUPTED_PARTIAL"]);
+    std::fs::set_permissions(&rw1_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_ne!(code, 0, "rules update in read-only dir must fail");
+    assert_eq!(std::fs::read_to_string(rw1_dir.join("rules.md")).unwrap(), "KEEP_ME_INTACT", "failed rules rewrite must leave existing rules intact");
+
+    // Make `minders_dir` read-only (0500) so creating a new agent's rules directory fails while reusing `rm1`:
+    // `rw2` must start UNMINDED under lead with `minder_error`, never registered under `rm1` with no rules!
+    std::fs::set_permissions(&minders_dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let rw2 = rig.start_child("claude", "rw2", &["--minder", "claude:stand-in-big:max", "--rules-text", "r2"]);
+    std::fs::set_permissions(&minders_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(rw2["minder_error"].is_string(), "expected minder_error on rules write failure: {rw2}");
+    let rw2_st = rig.status("rw2");
+    assert_eq!(
+        (&rw2_st["parent_window_id"], &rw2_st["minded_by"], &rw2_st["minder"]),
+        (&json!(rig.lead_window), &Value::Null, &Value::Null),
+        "worker whose rules couldn't be written must not be minded: {rw2_st}"
+    );
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+
+    // #16a: an errored shared minder releases its roster AND arms its empty timer so it doesn't sit forever.
+    Minding::expect(&rig, "em-err");
+    let ew = rig.start_child("claude", "ew", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=em-err"]);
+    let em_id = ew["minder"]["id"].as_str().unwrap().to_owned();
+    let _em = Minding::of(&rig, "em-err", &em_id);
+    rig.show("em-err", &format!("● Working\n  ⎿  API Error: Rate limit exceeded\n{}\n❯ \n", rule()));
+    rig.wait("ew released back to lead on minder error", || rig.status("ew")["minder"].is_null());
+    rig.wait("errored empty minder to end after its timer instead of sitting forever", || rig.status(&em_id)["running"] == false);
+    rig.json(&["stop", "ew", "--force", "--json"]);
+
+    // #16b: handover (`retire` + restart) while a minder is empty still re-arms its empty timer on `reconcile`.
+    Minding::expect(&rig, "em-hand");
+    let hw = rig.start_child("claude", "hw", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=em-hand"]);
+    let hm_id = hw["minder"]["id"].as_str().unwrap().to_owned();
+    rig.tell("hw", "exit 0");
+    rig.wait_state("hw", "exited");
+    let old_pid = rig.service_pid().expect("service pid");
+    let ret = rig.helper().args(["agent", "retire"]).output().unwrap();
+    assert!(ret.status.success());
+    rig.wait("retired service exit", || !Path::new(&format!("/proc/{old_pid}")).exists());
+    // Trigger new service via `list`; reconcile must re-arm the empty timer for `hm_id`.
+    let _ = rig.json(&["list", "--fast", "--json"]);
+    rig.wait("empty minder to end after handover reconcile", || rig.status(&hm_id)["running"] == false);
+
+    // #17: concurrent starts with `MINDS_MOST=2` must convert reservation to live assignment atomically so BOTH share 1 minder (not 2!).
+    Minding::expect(&rig, "conc-m1");
+    Minding::expect(&rig, "conc-m2");
+    for n in ["c1", "c2"] {
+        let fifo = rig.dir.join(format!("stage/{n}.fifo"));
+        let _ = std::fs::remove_file(&fifo);
+        assert!(Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+    }
+    let spawn_start = |name: &'static str, minder_standin: &'static str| {
+        let dir = rig.dir.clone();
+        let sock = rig.sock.clone();
+        let session = rig.session.clone();
+        let block = rig.lead_block.clone();
+        let work = rig.work();
+        std::thread::spawn(move || {
+            let mut cmd = Command::new(HELPER);
+            Rig::scratch_env(&dir, &sock, &mut cmd);
+            let out = cmd
+                .env("OLO_REX_AGENTS_MINDS_MOST", "2")
+                .env("OLO_REX_AGENTS_MINDER_REPORTS_MS", "2600")
+                .env("REX_SESSION", &session)
+                .env("REX_BLOCK", &block)
+                .current_dir(&work)
+                .args([
+                    "agent",
+                    "start",
+                    "claude",
+                    "--model",
+                    "stand-in",
+                    "--effort",
+                    "none",
+                    "--name",
+                    name,
+                    "--cwd",
+                    &work,
+                    "--env",
+                    &format!("STAND_IN_DIR={}", dir.join("stage").display()),
+                    "--env",
+                    &format!("STAND_IN_NAME={name}"),
+                    "--env",
+                    &format!("PATH={}:/usr/bin:/bin", dir.join("bin").display()),
+                    "--minder",
+                    "claude:stand-in-big:max",
+                    "--rules-text",
+                    "r",
+                    "--minder-env",
+                    &format!("STAND_IN_NAME={minder_standin}"),
+                    "--json",
+                ])
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
+            serde_json::from_slice::<Value>(&out.stdout).unwrap()
+        })
+    };
+    let t1 = spawn_start("c1", "conc-m1");
+    let t2 = spawn_start("c2", "conc-m2");
+    let (r1, r2) = (t1.join().unwrap(), t2.join().unwrap());
+    assert_eq!(r1["minder"]["id"], r2["minder"]["id"], "concurrent starts with MINDS_MOST=2 double-counted reservation and started 2 minders: {r1} vs {r2}");
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+
+    // #15: two concurrent `mind --with` moves on the same worker stay consistent (exactly one destination owns it, no duplicate removal).
+    Minding::expect(&rig, "mv-a");
+    Minding::expect(&rig, "mv-b");
+    let ma_seed = rig.start_child("claude", "ma-seed", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=mv-a"]);
+    let ma_id = ma_seed["minder"]["id"].as_str().unwrap().to_owned();
+    let ma_win = ma_seed["minder"]["window_id"].as_str().unwrap().to_owned();
+    let mb_seed = rig.start_child("claude", "mb-seed", &["--minder", "claude:stand-in-small:low", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=mv-b"]);
+    let mb_id = mb_seed["minder"]["id"].as_str().unwrap().to_owned();
+    let mb_win = mb_seed["minder"]["window_id"].as_str().unwrap().to_owned();
+    let mv_worker = rig.start_child("claude", "mv-w", &[]);
+    let mv_id = mv_worker["id"].as_str().unwrap().to_owned();
+    let spawn_move = |dest: String| {
+        let dir = rig.dir.clone();
+        let sock = rig.sock.clone();
+        let session = rig.session.clone();
+        let block = rig.lead_block.clone();
+        let work = rig.work();
+        std::thread::spawn(move || {
+            let mut cmd = Command::new(HELPER);
+            Rig::scratch_env(&dir, &sock, &mut cmd);
+            let out = cmd
+                .env("OLO_REX_AGENTS_MINDS_MOST", "2")
+                .env("OLO_REX_AGENTS_MINDER_REPORTS_MS", "2600")
+                .env("REX_SESSION", &session)
+                .env("REX_BLOCK", &block)
+                .current_dir(&work)
+                .args(["agent", "mind", "mv-w", "--with", &dest, "--rules-text", "r", "--json"])
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "move to {dest}: {}", String::from_utf8_lossy(&out.stderr));
+        })
+    };
+    let j1 = spawn_move(ma_id.clone());
+    let j2 = spawn_move(mb_id.clone());
+    j1.join().unwrap();
+    j2.join().unwrap();
+    let final_st = rig.status(&mv_id);
+    let final_m = final_st["minded_by"].as_str().expect("mv-w must be minded by one destination");
+    let expected_win = if final_m == ma_id {
+        &ma_win
+    } else {
+        assert_eq!(final_m, mb_id);
+        &mb_win
+    };
+    assert_eq!(final_st["parent_window_id"], json!(expected_win), "parent_window_id diverged from minded_by: {final_st}");
+    let ma_list = Minding::of(&rig, "mv-a", &ma_id).mind("list --fast --json");
+    let mb_list = Minding::of(&rig, "mv-b", &mb_id).mind("list --fast --json");
+    let in_a = ma_list["subagents"].as_array().unwrap().iter().any(|s| s["id"] == mv_id);
+    let in_b = mb_list["subagents"].as_array().unwrap().iter().any(|s| s["id"] == mv_id);
+    assert_ne!(in_a, in_b, "mv-w must belong to exactly one minder: in_a={in_a} in_b={in_b}");
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+
+    // #16c: transcript-only API error on a shared minder (screen stays at idle prompt) marks it unhealthy,
+    // releases its worker, prevents reuse, and arms its empty timer.
+    Minding::expect(&rig, "tx-err-m");
+    let tx_sid = "11111111-2222-3333-4444-555555555555";
+    let txw = rig.start_child("claude", "txw", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=tx-err-m"]);
+    let txm_id = txw["minder"]["id"].as_str().unwrap().to_owned();
+    let _txm = Minding::of(&rig, "tx-err-m", &txm_id);
+    // Bind `tx_sid` to `tx-err-m`'s PID via Claude's per-PID session record so `inspect` reads its transcript!
+    let txm_pid = rig.status(&txm_id)["pid"].as_i64().expect("tx-err-m pid") as i32;
+    let sess_dir = rig.dir.join("home/.claude/sessions");
+    std::fs::create_dir_all(&sess_dir).unwrap();
+    let mut pids = vec![txm_pid];
+    if let Ok(kids) = std::fs::read_to_string(format!("/proc/{txm_pid}/task/{txm_pid}/children")) {
+        pids.extend(kids.split_whitespace().filter_map(|s| s.parse::<i32>().ok()));
+    }
+    for p in pids {
+        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{p}/stat"))
+            && let Some((_, rest)) = stat.rsplit_once(") ")
+            && let Some(ticks) = rest.split_whitespace().nth(19).and_then(|s| s.parse::<u64>().ok())
+        {
+            std::fs::write(sess_dir.join(format!("{p}.json")), json!({ "pid": p, "procStart": ticks, "sessionId": tx_sid }).to_string()).unwrap();
+        }
+    }
+    let txm_cwd = service_dir.join("minders").display().to_string();
+    let txm_slug: String = txm_cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let txm_proj = rig.dir.join("home/.claude/projects").join(txm_slug);
+    std::fs::create_dir_all(&txm_proj).unwrap();
+    // Write a Claude transcript with `isApiErrorMessage: true` and show working -> idle on screen
+    // so `effective_state` detects transcript-only `Error` even while the screen stays at idle prompt.
+    let tx_file = txm_proj.join(format!("{tx_sid}.jsonl"));
+    std::fs::write(
+        &tx_file,
+        format!(
+            "{}\n{}\n",
+            json!({ "type": "user", "message": { "role": "user", "content": "Begin" }, "timestamp": "2026-11-27T00:00:00Z" }),
+            json!({ "type": "assistant", "isApiErrorMessage": true, "message": { "role": "assistant", "content": [{ "type": "text", "text": "API Error: 529 Overloaded" }] }, "timestamp": "2026-11-27T00:00:01Z" }),
+        ),
+    )
+    .unwrap();
+    rig.show("tx-err-m", &working());
+    rig.wait_state(&txm_id, "working");
+    rig.show("tx-err-m", &idle("Waiting."));
+    rig.wait("txw released on transcript-only minder error", || rig.status("txw")["minder"].is_null());
+    rig.wait("transcript-errored minder ended by empty timer", || rig.status(&txm_id)["running"] == false);
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+
+    // #12: deterministic mid-launch minder exit (`start --minder`) & mid-attach worker exit (`mind --with`).
+    let Some(rig12) = Rig::start_with_env("r2-12", &[("OLO_REX_AGENTS_MINDER_REPORTS_MS", "2600"), ("OLO_REX_AGENTS_TEST_START_HOLD_MS", "1100"), ("OLO_REX_AGENTS_TEST_MIND_HOLD_MS", "1100")]) else {
+        return;
+    };
+    rig12.stand_in("claude");
+    Minding::expect(&rig12, "die-m");
+    let seed = rig12.start_child("claude", "seed", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=die-m"]);
+    let die_m_id = seed["minder"]["id"].as_str().unwrap().to_owned();
+    let _dm = Minding::of(&rig12, "die-m", &die_m_id);
+    // Start `w-race` under `die-m` (which holds 1100 ms before `begin_attached`), and kill `die-m` mid-launch.
+    let race_fifo = rig12.dir.join("stage/w-race.fifo");
+    assert!(Command::new("mkfifo").arg(&race_fifo).status().unwrap().success());
+    let start_handle = {
+        let (dir, sock, session, block, work, target_m) = (rig12.dir.clone(), rig12.sock.clone(), rig12.session.clone(), rig12.lead_block.clone(), rig12.work(), die_m_id.clone());
+        std::thread::spawn(move || {
+            let mut cmd = Command::new(HELPER);
+            Rig::scratch_env(&dir, &sock, &mut cmd);
+            let out = cmd
+                .env("OLO_REX_AGENTS_TEST_START_HOLD_MS", "1100")
+                .env("OLO_REX_AGENTS_TEST_MIND_HOLD_MS", "1100")
+                .env("REX_SESSION", &session)
+                .env("REX_BLOCK", &block)
+                .current_dir(&work)
+                .args([
+                    "agent",
+                    "start",
+                    "claude",
+                    "--model",
+                    "stand-in",
+                    "--effort",
+                    "none",
+                    "--name",
+                    "w-race",
+                    "--cwd",
+                    &work,
+                    "--env",
+                    &format!("STAND_IN_DIR={}", dir.join("stage").display()),
+                    "--env",
+                    "STAND_IN_NAME=w-race",
+                    "--env",
+                    &format!("PATH={}:/usr/bin:/bin", dir.join("bin").display()),
+                    "--minder",
+                    &target_m,
+                    "--rules-text",
+                    "r",
+                    "--json",
+                ])
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "w-race start should fall back cleanly: {}", String::from_utf8_lossy(&out.stderr));
+            serde_json::from_slice::<Value>(&out.stdout).unwrap()
+        })
+    };
+    std::thread::sleep(Duration::from_millis(400));
+    rig12.json(&["stop", &die_m_id, "--force", "--json"]);
+    let raced = start_handle.join().unwrap();
+    assert!(raced["minder_error"].is_string() && raced["minder"].is_null(), "w-race must report minder_error when minder died mid-launch: {raced}");
+    let raced_st = rig12.status("w-race");
+    assert_eq!((&raced_st["parent_window_id"], &raced_st["minded_by"]), (&json!(rig12.lead_window), &Value::Null), "w-race must land unminded under lead: {raced_st}");
+
+    // Now test worker exiting while `mind --with` is in flight: must fail, emit no `added`, and clean up the fresh minder!
+    let dying = rig12.start_child("claude", "dying-w", &[]);
+    let dying_id = dying["id"].as_str().unwrap().to_owned();
+    Minding::expect(&rig12, "fresh-m12");
+    let mind_handle = {
+        let (dir, sock, session, block, work) = (rig12.dir.clone(), rig12.sock.clone(), rig12.session.clone(), rig12.lead_block.clone(), rig12.work());
+        std::thread::spawn(move || {
+            let mut cmd = Command::new(HELPER);
+            Rig::scratch_env(&dir, &sock, &mut cmd);
+            cmd.env("OLO_REX_AGENTS_TEST_START_HOLD_MS", "1100")
+                .env("OLO_REX_AGENTS_TEST_MIND_HOLD_MS", "1100")
+                .env("REX_SESSION", &session)
+                .env("REX_BLOCK", &block)
+                .current_dir(&work)
+                .args([
+                    "agent",
+                    "mind",
+                    "dying-w",
+                    "--with",
+                    "claude:stand-in-big:max",
+                    "--rules-text",
+                    "r",
+                    "--env",
+                    &format!("STAND_IN_DIR={}", dir.join("stage").display()),
+                    "--env",
+                    &format!("PATH={}:/usr/bin:/bin", dir.join("bin").display()),
+                    "--env",
+                    "STAND_IN_NAME=fresh-m12",
+                    "--json",
+                ])
+                .output()
+                .unwrap()
+        })
+    };
+    std::thread::sleep(Duration::from_millis(500));
+    rig12.tell("dying-w", "exit 0");
+    rig12.wait_state(&dying_id, "exited");
+    let mind_out = mind_handle.join().unwrap();
+    assert!(!mind_out.status.success(), "mind --with on exiting worker must fail: {}", String::from_utf8_lossy(&mind_out.stdout));
+    // Fresh minder started for `dying-w` must be cleaned up (not left running empty).
+    let live_minders: Vec<Value> = rig12.json(&["list", "--fast", "--json"])["subagents"].as_array().unwrap().iter().filter(|s| s["role"] == "minder").cloned().collect();
+    assert!(live_minders.is_empty(), "fresh minder for exited worker was left running: {live_minders:?}");
+}
+
+/// Round 2 (#18, #19, and legacy 1:1 rules-edit migration):
+/// - #18: `stop sublead --tree --keep-tab` must NOT leave a stale `let_go` mark that silently swallows a later independent minder exit.
+/// - #19: top-level `stop <lead_window> --tree --keep-tab` reports surviving running PIDs in its text reply instead of saying "Stopped N subagent tab(s)."
+/// - Legacy 1:1 rules edit: `mind worker --rules-text ...` on a legacy 1:1 minder migrates cleanly to a shared minder, stopping the old 1:1 minder and moving `worker` under the shared minder.
+#[test]
+fn round2_18_19_quiet_stop_survivor_report_and_legacy_rules_migration() {
+    let Some(rig) = Rig::start("r2-stop") else { return };
+    rig.stand_in("claude");
+
+    // #18: `stop sublead --tree --keep-tab` keeps tabs alive -> later independent exit of `sub-m` MUST still escalate to lead!
+    let sublead = rig.start_child("claude", "sublead", &[]);
+    let sub_block = sublead["block_id"].as_str().unwrap().to_owned();
+    Minding::expect(&rig, "sub-m18");
+    let sw = rig.start_child_from(Some(&sub_block), "claude", "sw18", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=sub-m18"]);
+    let _sm = Minding::of(&rig, "sub-m18", sw["minder"]["id"].as_str().unwrap());
+    let kept = rig.json(&["stop", "sublead", "--tree", "--keep-tab", "--json"]);
+    assert_eq!(kept["ok"], json!(true), "{kept}");
+    let from = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    // Now `sub-m18` exits independently while `sw18` is still alive: lead MUST receive the escalation!
+    rig.tell("sub-m18", "exit 2");
+    let esc = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "escalation", "--timeout", "10", "--json"]);
+    assert_eq!((&esc["event"], &esc["name"]), (&json!("escalation"), &json!("sw18")), "stale let_go swallowed independent minder exit: {esc}");
+
+    // #19: top-level `stop <lead_window> --tree --keep-tab` text reply MUST say it interrupted / still running (not "Stopped N subagent tab(s).").
+    let (code, out, err) = rig.olo(&["stop", &rig.lead_window, "--tree", "--keep-tab"]);
+    assert_eq!(code, 0, "{out}{err}");
+    assert!(out.contains("still running") || out.contains("Interrupted"), "top-level --keep-tab reply hid surviving programs: {out}");
+    rig.json(&["stop", &rig.lead_window, "--tree", "--force", "--json"]);
+
+    // Legacy 1:1 rules edit migration: `mind worker --rules-text` migrates a legacy 1:1 minder to a shared minder.
+    let worker = rig.start_child("claude", "legw", &[]);
+    let worker_id = worker["id"].as_str().unwrap().to_owned();
+    let worker_block = worker["block_id"].as_str().unwrap().to_owned();
+    let old_m = rig.start_child_from(Some(&worker_block), "claude", "legm", &[]);
+    let old_m_id = old_m["id"].as_str().unwrap().to_owned();
+    let old_pid = rig.service_pid().expect("service pid");
+    let service_dir = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("registry.json").exists()).expect("service dir");
+    assert!(rig.helper().args(["agent", "retire"]).output().unwrap().status.success());
+    rig.wait("retired service exit", || !Path::new(&format!("/proc/{old_pid}")).exists());
+    let reg_path = service_dir.join("registry.json");
+    let mut reg: Value = serde_json::from_str(&std::fs::read_to_string(&reg_path).unwrap()).unwrap();
+    for e in reg["entries"].as_array_mut().unwrap() {
+        if e["id"] == old_m_id {
+            e["role"] = json!("minder");
+            e["minds"] = json!(worker_id);
+        }
+        e.as_object_mut().unwrap().remove("minded_by");
+        e.as_object_mut().unwrap().remove("shared_minder");
+    }
+    std::fs::write(&reg_path, serde_json::to_string_pretty(&reg).unwrap()).unwrap();
+    Minding::expect(&rig, "leg-new");
+    let stage = format!("STAND_IN_DIR={}", rig.dir.join("stage").display());
+    let path = format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display());
+    let migrated = rig.json(&["mind", "legw", "--rules-text", "Approve cargo clippy.", "--env", &stage, "--env", &path, "--env", "STAND_IN_NAME=leg-new", "--json"]);
+    let new_m_id = migrated["minder"]["id"].as_str().unwrap().to_owned();
+    let new_m_win = migrated["minder"]["window_id"].as_str().unwrap().to_owned();
+    assert_ne!(new_m_id, old_m_id, "legacy rules edit should migrate to a new shared minder: {migrated}");
+    assert_eq!(migrated["replaced"], json!(old_m_id), "{migrated}");
+    rig.wait("old 1:1 minder stopped after migration", || rig.status(&old_m_id)["running"] == false);
+    let wst = rig.status("legw");
+    assert_eq!((&wst["parent_window_id"], &wst["minded_by"]), (&json!(new_m_win), &json!(new_m_id)), "{wst}");
+    assert_eq!(std::fs::read_to_string(service_dir.join("minders").join(&worker_id).join("rules.md")).unwrap(), "Approve cargo clippy.");
+}
+
+/// Round 3 Item 1 (#6, #25):
+/// After rules change, neither `status` nor an approval-only `watch` (without `minding`)
+/// may clear the pending rules revision or mint a fresh approval grant. The minder MUST
+/// receive the `minding` (`rules`) revision first — even if >2,000 newer host events have
+/// rolled the `minding` event off the log ring!
+#[test]
+fn round3_1_rules_revision_must_be_delivered_before_grant_renews() {
+    let Some(rig) = Rig::start("r3-rules-rev") else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "r3m1");
+    let a = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "Approve cargo test.", "--minder-env", "STAND_IN_NAME=r3m1"]);
+    let minder_id = a["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "r3m1", &minder_id);
+    let added = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    assert_eq!(added["minding"]["action"], "added", "{added}");
+    let cur = added["cursor"].as_u64().unwrap();
+
+    // Deliver initial approval under old rules.
+    rig.show("alpha", &asking("cargo test", 0));
+    let ev1 = minder.mind(&format!("watch --since {cur} --on approval --timeout 15 --json"));
+    assert_eq!(ev1["event"], "waiting_approval", "{ev1}");
+
+    // Lead updates rules.
+    rig.json(&["mind", "alpha", "--rules-text", "Refuse cargo test.", "--json"]);
+
+    // (a) Calling `status` without receiving the `minding` ("rules") event must NOT renew the grant!
+    let _st = minder.mind("status alpha --json");
+    let keys_before = rig.keys("alpha").len();
+    let ap_after_status = minder.run(&format!("{} {} approve alpha --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(
+        ap_after_status.contains("status=1") && ap_after_status.to_ascii_lowercase().contains("rules"),
+        "ordinary `status` must NOT clear pending rules revision or renew grant: {ap_after_status}"
+    );
+    assert_eq!(rig.keys("alpha").len(), keys_before, "no keys may be typed before rules revision is delivered");
+
+    // (b) Calling approval-only `watch --on approval` (no `minding`) must NOT clear pending rules revision or renew grant!
+    let _aw = minder.run(&format!("{} {} watch alpha --since 0 --on approval --timeout 2 --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    let ap_after_watch = minder.run(&format!("{} {} approve alpha --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(
+        ap_after_watch.contains("status=1") && ap_after_watch.to_ascii_lowercase().contains("rules"),
+        "approval-only `watch` must NOT clear pending rules revision or renew grant: {ap_after_watch}"
+    );
+    assert_eq!(rig.keys("alpha").len(), keys_before, "no keys may be typed after approval-only watch");
+
+    // (c) Evict the 2,000-event log ring with 2,050 unrelated escalations from another child.
+    let filler = rig.start_child("claude", "ring-filler", &[]);
+    let filler_block = filler["block_id"].as_str().unwrap().to_owned();
+    for i in 0..2_050 {
+        let resp = rig.raw(json!({
+            "proto": 1, "op": "escalate", "args": [format!("filler-{i}")], "cwd": rig.work(),
+            "block": filler_block, "session": rig.session,
+        }));
+        assert_eq!(resp["ok"], json!(true), "ring filler {i} failed: {resp}");
+    }
+
+    // (d) Even after the ring evicted the original `minding` event, `watch --on minding` MUST still deliver the rules revision!
+    let rules_ev = minder.mind("watch --since 0 --on minding --timeout 10 --json");
+    assert_eq!(
+        (&rules_ev["event"], &rules_ev["minding"]["action"], &rules_ev["name"]),
+        (&json!("minding"), &json!("rules"), &json!("alpha")),
+        "evicted rules revision must still be delivered on minding watch: {rules_ev}"
+    );
+
+    // (e) Now that the rules revision HAS been delivered, `status` renews the grant and `approve` succeeds!
+    let _st2 = minder.mind("status alpha --json");
+    let gone = rig.when_typed("alpha", b"\r", working());
+    let ap_ok = minder.mind("approve alpha --once --json");
+    assert_eq!(ap_ok["ok"], json!(true), "approve must succeed after rules revision was delivered: {ap_ok}");
+    assert!(gone.join().unwrap(), "alpha did not receive Enter after valid approve");
+}
+
+/// Round 3 Item 2 (#6, #7):
+/// - Revocation during arrow navigation / verify loop must stop immediately and send ZERO Escape or Enter keys.
+/// - Two identical approval boxes back-to-back with no blank screen between must NEVER get a second automatic retry Enter.
+/// - Revocation while waiting to paste a refusal `--reason` must send ZERO reason text and ZERO Enter.
+#[test]
+fn round3_2_approve_no_keys_after_revocation_and_no_retry_into_second_box() {
+    let Some(rig) = Rig::start("r3-approve") else { return };
+    rig.stand_in("claude");
+
+    Minding::expect(&rig, "r3m2");
+    let a = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "Allow all.", "--minder-env", "STAND_IN_NAME=r3m2"]);
+    let minder_id = a["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "r3m2", &minder_id);
+    let added = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    let mut cur = added["cursor"].as_u64().unwrap();
+
+    // (a) Revocation during arrow navigation / verify loop: `--no` moves 2 arrows down then waits 600ms
+    // for cursor to land (stand-in doesn't redraw). Revoking rules while in verify loop must NOT write Escape (`\x1b` alone) or Enter (`\r`)!
+    rig.show("alpha", &asking("cargo test", 0));
+    let ev1 = minder.mind(&format!("watch --since {cur} --on approval --timeout 15 --json"));
+    assert_eq!(ev1["event"], "waiting_approval", "{ev1}");
+    cur = ev1["cursor"].as_u64().unwrap();
+    let keys_start = rig.keys("alpha").len();
+    let nav_thread = {
+        let env = minder.env();
+        let mind_bin = minder.dir.join("mind").display().to_string();
+        let stage = rig.dir.join("stage");
+        let stand_in = minder.stand_in.clone();
+        std::thread::spawn(move || {
+            let out_file = stage.join("r3-nav.out");
+            let fifo = stage.join(format!("{stand_in}.fifo"));
+            let cmd = format!("run sh -c '{env} {mind_bin} approve alpha --no --json > {} 2>&1; echo status=$? >> {}'\n", out_file.display(), out_file.display());
+            std::fs::OpenOptions::new().write(true).open(&fifo).unwrap().write_all(cmd.as_bytes()).unwrap();
+            let until = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&out_file)
+                    && s.contains("status=")
+                {
+                    return s;
+                }
+                assert!(Instant::now() < until, "nav approve did not finish");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        })
+    };
+    // Wait until the first Down arrow (`\x1b[B`) hits `alpha`, then revoke rules immediately!
+    rig.wait("down arrow sent during approve --no", || rig.keys("alpha").len() >= keys_start + 3);
+    rig.json(&["mind", "alpha", "--rules-text", "Revoked mid-navigation.", "--json"]);
+    let nav_out = nav_thread.join().unwrap();
+    assert!(!nav_out.contains("status=0"), "revoked mid-navigation approve must fail: {nav_out}");
+    std::thread::sleep(Duration::from_millis(120));
+    let typed = &rig.keys("alpha")[keys_start..];
+    // Strip legitimate arrow sequences `\x1b[B` / `\x1b[A`: ZERO stray `\x1b` (Escape) and ZERO `\r` may remain!
+    let mut i = 0;
+    let mut leftover = Vec::new();
+    while i < typed.len() {
+        if i + 2 < typed.len() && typed[i] == 0x1b && typed[i + 1] == b'[' && matches!(typed[i + 2], b'A' | b'B') {
+            i += 3;
+        } else {
+            leftover.push(typed[i]);
+            i += 1;
+        }
+    }
+    assert!(leftover.is_empty(), "revoked approve must send ZERO Escape or Enter after revocation, got leftover bytes {leftover:?} (full: {typed:?})");
+
+    // Consume rules revision and refresh grant for part (b).
+    let r_ev = minder.mind("watch --since 0 --on minding --timeout 10 --json");
+    assert_eq!(r_ev["minding"]["action"], "rules", "{r_ev}");
+    let _ = minder.mind("status alpha --json");
+
+    // (b) Identical second box with no blank screen between: stand-in keeps showing the exact same box
+    // when `\r` arrives -> `approve --once` must send AT MOST ONE `\r` (never an automatic 700ms retry Enter!).
+    let keys_b = rig.keys("alpha").len();
+    let _ap_b = minder.run(&format!("{} {} approve alpha --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    std::thread::sleep(Duration::from_millis(100));
+    let enters = rig.keys("alpha")[keys_b..].iter().filter(|&&b| b == b'\r').count();
+    assert_eq!(enters, 1, "approve must send exactly ONE Enter (no automatic retry that could confirm a back-to-back identical box), sent {enters}");
+
+    // (c) Revocation during refusal `--no --reason`: box already on choice 2 ("3. No", delta=0).
+    // On Enter, stand-in draws a neutral screen (not at prompt) so approve waits up to 1.2s before pasting reason.
+    // Lead detaches (`--off`) right after Enter -> ZERO reason text may be pasted!
+    rig.show("alpha", &working());
+    rig.wait_state("alpha", "working");
+    rig.show("alpha", &asking("git push origin main", 2));
+    let ev2 = minder.mind(&format!("watch --since {cur} --on approval --timeout 15 --json"));
+    assert_eq!(ev2["event"], "waiting_approval", "{ev2}");
+    let keys_c = rig.keys("alpha").len();
+    let neutral_screen = format!("Refused.\nStill settling output...\n{}\n", rule());
+    let on_enter = rig.when_typed("alpha", b"\r", neutral_screen);
+    let reason_thread = {
+        let env = minder.env();
+        let mind_bin = minder.dir.join("mind").display().to_string();
+        let stage = rig.dir.join("stage");
+        let stand_in = minder.stand_in.clone();
+        std::thread::spawn(move || {
+            let out_file = stage.join("r3-reason.out");
+            let fifo = stage.join(format!("{stand_in}.fifo"));
+            let cmd = format!("run sh -c '{env} {mind_bin} approve alpha --no --reason NO_PASTE_AFTER_REVOKE --json > {} 2>&1; echo status=$? >> {}'\n", out_file.display(), out_file.display());
+            std::fs::OpenOptions::new().write(true).open(&fifo).unwrap().write_all(cmd.as_bytes()).unwrap();
+            let until = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&out_file)
+                    && s.contains("status=")
+                {
+                    return s;
+                }
+                assert!(Instant::now() < until, "reason approve did not finish");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        })
+    };
+    assert!(on_enter.join().unwrap(), "alpha did not receive Enter for refusal");
+    // Immediately detach minder while approve is in the 1.2s wait loop before pasting the reason!
+    rig.json(&["mind", "alpha", "--off", "--json"]);
+    let _ = reason_thread.join().unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    let typed_c = String::from_utf8_lossy(&rig.keys("alpha")[keys_c..]).into_owned();
+    assert!(!typed_c.contains("NO_PASTE_AFTER_REVOKE"), "revoked minder must NOT paste refusal reason after detach/revocation: {typed_c:?}");
+}
+
+/// Round 3 Items 3, 4, 5 (#1, #3):
+/// - Item 3a: `adopt` strips `shared_minder` and `minded_by` from imported records.
+/// - Item 3b: an ordinary (non-minder) child tab calling `adopt` is refused with code 69.
+/// - Item 4: a restricted caller (minder or exited child) sending `proto > PROTO` is refused (69) BEFORE handover and never retires the service.
+/// - Item 5: a `policy` query from a non-child peer (e.g. Rex) asking about a minder's pane succeeds with `desktop: "none"` instead of refusing with 69.
+#[test]
+fn round3_3_4_5_adopt_handover_and_policy_gates() {
+    let Some(rig) = Rig::start("r3-gates") else { return };
+    rig.stand_in("claude");
+
+    // Start an ordinary child `ord`, plus a worker `alpha` under a shared minder `r3m3`.
+    let ord = rig.start_child("claude", "ord", &[]);
+    let ord_block = ord["block_id"].as_str().unwrap().to_owned();
+    Minding::expect(&rig, "r3m3");
+    let a = rig.start_child("claude", "alpha", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=r3m3"]);
+    let minder_id = a["minder"]["id"].as_str().unwrap().to_owned();
+    let minder_block = rig.status(&minder_id)["block_id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "r3m3", &minder_id);
+
+    // Item 3a: `adopt` from lead with forged `shared_minder: true` and `minded_by` MUST clear both fields!
+    let forged_m = json!({
+        "id": "sa-forged-m", "name": "forged-m", "host_key": "",
+        "session_id": rig.session, "window_id": "w-forged-m", "block_id": "b-forged-m",
+        "parent_window_id": rig.lead_window, "cli": "claude", "model": "m", "effort": "e",
+        "title": "forged-m", "started_at": 1000, "exited_at": 2000, "seen_live": true,
+        "shared_minder": true, "minded_by": "sa-other"
+    });
+    let mut adopt = rig.helper().args(["agent", "adopt"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    adopt.stdin.take().unwrap().write_all(json!({ "agents": [forged_m] }).to_string().as_bytes()).unwrap();
+    let adopt_out = adopt.wait_with_output().unwrap();
+    assert!(adopt_out.status.success(), "{}", String::from_utf8_lossy(&adopt_out.stderr));
+    let listed = rig.json(&["list", "--all", "--fast", "--json"]);
+    let rec = listed["subagents"].as_array().unwrap().iter().find(|e| e["id"] == "sa-forged-m").expect("adopted entry");
+    assert_eq!(rec["shared_minder"], json!(false), "adopt must strip shared_minder: {rec}");
+    assert_eq!(rec["minded_by"], Value::Null, "adopt must strip minded_by: {rec}");
+
+    // Item 3b: ordinary non-minder child calling `adopt` (both via REX_BLOCK and from inside its own tab) MUST be refused with code 69!
+    let mut child_adopt = rig.helper().env("REX_BLOCK", &ord_block).args(["agent", "adopt"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    child_adopt.stdin.take().unwrap().write_all(b"{\"agents\":[]}").unwrap();
+    let child_adopt_out = child_adopt.wait_with_output().unwrap();
+    assert_eq!(child_adopt_out.status.code(), Some(69), "child caller (REX_BLOCK) must be refused `adopt` with 69: {:?}", child_adopt_out);
+    let _ = std::fs::remove_file(rig.staged("ord", "ran"));
+    rig.tell("ord", &format!("run printf '{{\"agents\":[]}}' | {} {HELPER} agent adopt; echo status=$?", minder.env()));
+    rig.wait("ord adopt ran", || rig.staged("ord", "ran").exists());
+    let ord_adopt_out = std::fs::read_to_string(rig.staged("ord", "out")).unwrap();
+    assert!(ord_adopt_out.contains("status=69"), "child caller (process ancestry) must be refused `adopt` with 69: {ord_adopt_out}");
+
+    // Item 4: restricted caller (minder via block or exited child) sending `proto: 99` must receive refusal 69 and NEVER retire the service!
+    let pid_before = rig.service_pid().expect("service pid");
+    let raw_minder_proto = rig.raw(json!({ "proto": 99, "op": "ping", "block": minder_block, "session": rig.session }));
+    assert_eq!((&raw_minder_proto["ok"], &raw_minder_proto["code"]), (&json!(false), &json!(69)), "minder proto>PROTO must be refused with 69, not trigger handover: {raw_minder_proto}");
+    std::thread::sleep(Duration::from_millis(120));
+    assert_eq!(rig.service_pid(), Some(pid_before), "minder proto>PROTO retired the service!");
+
+    // Also test exited child sending `proto: 99`:
+    rig.tell("ord", "exit 0");
+    rig.wait_state("ord", "exited");
+    let raw_exited_proto = rig.raw(json!({ "proto": 99, "op": "ping", "block": ord_block, "session": rig.session }));
+    assert_eq!((&raw_exited_proto["ok"], &raw_exited_proto["code"]), (&json!(false), &json!(69)), "exited child proto>PROTO must be refused with 69: {raw_exited_proto}");
+    std::thread::sleep(Duration::from_millis(120));
+    assert_eq!(rig.service_pid(), Some(pid_before), "exited child proto>PROTO retired the service!");
+
+    // Item 5: non-child peer (Rex / test process) querying `policy` for the minder's pane MUST succeed with `desktop: "none"`!
+    let pol = rig.raw(json!({ "proto": 1, "op": "policy", "block": minder_block, "session": rig.session }));
+    assert_eq!(pol["ok"], json!(true), "policy query for minder's pane must NOT be refused as if the minder asked: {pol}");
+    assert_eq!(pol["data"]["child"], json!(minder_id), "{pol}");
+    assert_eq!(pol["data"]["desktop"], json!("none"), "{pol}");
+    // Keep minder alive until after policy check.
+    let _ = minder.mind("list --json");
+}
+
+/// Round 3 Items 6, 7, 8, 12, 13, 14:
+/// - Item 6 (#5, #24): minder `send` refuses unrecognised `Blocked` dialog (69); enforces grant + rules_gen on transcript-only question; refuses text + `--key` outside recognised question (69).
+/// - Item 7 (#9): top-level `stop <LEAD_WIN> --tree` with missing or unmapped `REX_BLOCK` is refused (69), never falling back to `sess.active`.
+/// - Item 8 (#10): `mind NAME --with ...` resolves bare source strictly inside asker's own subtree (never takes another lead's worker).
+/// - Item 12 (#7, #24): identical second approval box after direct terminal answer + brief working is NOT deduplicated in `SubagentEventLog`.
+/// - Item 13 (#26): `mind NAME --off` returns a cursor strictly BEFORE any republished standing question so `watch --since <cursor>` catches it.
+/// - Item 14 (#28): `mind escalate "Help"` with a ward named `help` is always a self-escalation.
+#[test]
+fn round3_6_7_8_12_13_14_send_stop_mind_box_detach_escalate() {
+    let Some(rig) = Rig::start("r3-misc") else { return };
+    rig.stand_in("claude");
+
+    // Start `alpha` (with known session ID for transcript-only question test) and `help` under shared minder `r3m6`.
+    let q_sid = "66666666-7777-8888-9999-aaaaaaaaaaaa";
+    Minding::expect(&rig, "r3m6");
+    let a = rig.start_child("claude", "alpha", &["--session-id", q_sid, "--minder", "claude:stand-in-big:max", "--rules-text", "Answer questions.", "--minder-env", "STAND_IN_NAME=r3m6"]);
+    let minder_id = a["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "r3m6", &minder_id);
+    let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+    let _help_w = rig.start_child("claude", "help", &["--minder", "claude:stand-in-big:max", "--rules-text", "r"]);
+    let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+
+    // Item 14 (#28): 1-arg `mind escalate Help` when a ward is named `help` MUST succeed as a self-escalation!
+    let esc_self = minder.mind("escalate Help --json");
+    assert_eq!(esc_self["ok"], json!(true), "1-arg escalate matching a ward name must be self-escalation: {esc_self}");
+    assert_eq!(esc_self["id"], json!(minder_id), "1-arg escalate must target the minder itself: {esc_self}");
+
+    // Item 6a (#5): unrecognised `Blocked` dialog (`Activity::Blocked` -> "needs input (unrecognised dialog)") MUST be refused by minder `send` (code 69)!
+    rig.show("alpha", "\x1b]7501;state=blocked\x07Unrecognised modal dialog\nPress something to continue\n");
+    rig.wait_state("alpha", "waiting_question");
+    let _ = minder.mind("status alpha --json");
+    let k_blk = rig.keys("alpha").len();
+    let blk_send = minder.run(&format!("{} {} send alpha 'yes' --enter --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(blk_send.contains("status=69"), "minder send into unrecognised Blocked dialog must be refused with 69: {blk_send}");
+    assert_eq!(rig.keys("alpha").len(), k_blk, "zero keys may be typed into unrecognised dialog");
+
+    // Item 6c (#5): body + `--key` on a `working` screen must be refused for a minder (code 69)!
+    rig.show("alpha", &format!("\x1b]7501;state=working\x07{}", working()));
+    rig.wait_state("alpha", "working");
+    let k_wk = rig.keys("alpha").len();
+    let combo_send = minder.run(&format!("{} {HELPER} agent send alpha 'hello' --key Escape --enter --json; echo status=$?", minder.env()));
+    assert!(combo_send.contains("status=69"), "minder send with text + --key on working screen must be refused with 69: {combo_send}");
+    assert_eq!(rig.keys("alpha").len(), k_wk, "zero keys may be typed on refused text+--key send");
+
+    // Item 6b (#24): transcript-only `WaitingQuestion` (`AskUserQuestion` in transcript while screen looks `idle`) MUST enforce question grant + `rules_gen`!
+    {
+        let folder: String = rig.work().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let tdir = rig.dir.join("home/.claude/projects").join(folder);
+        std::fs::create_dir_all(&tdir).unwrap();
+        let lines = [
+            json!({ "type": "user", "message": { "role": "user", "content": "ask me" } }),
+            json!({ "type": "assistant", "message": { "id": "msg_q", "role": "assistant", "content": [{ "type": "tool_use", "id": "tu_q", "name": "AskUserQuestion", "input": { "question": "Proceed?" } }], "stop_reason": "tool_use" } }),
+        ];
+        std::fs::write(tdir.join(format!("{q_sid}.jsonl")), lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+    }
+    rig.show("alpha", &format!("\x1b]7501;state=idle\x07{}", idle("Standing by.")));
+    rig.wait_state("alpha", "waiting_question");
+    // Update rules so minder has NO valid grant for this transcript-only question!
+    rig.json(&["mind", "alpha", "--rules-text", "Escalate questions.", "--json"]);
+    let k_tx = rig.keys("alpha").len();
+    let tx_send = minder.run(&format!("{} {} send alpha 'yes' --enter --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(tx_send.contains("status=1"), "transcript-only WaitingQuestion must enforce grant/rules_gen on minder send: {tx_send}");
+    assert_eq!(rig.keys("alpha").len(), k_tx, "zero keys may be typed into transcript-only question without valid grant");
+    // Clear the synthetic AskUserQuestion transcript before testing Item 12's Working -> WaitingApproval transition.
+    rig.says(q_sid, "ask me", "answered");
+
+    // Item 13 (#26): `mind alpha --off` while approval stands returns a cursor BEFORE the republished question so `watch --since <cursor>` catches it!
+    rig.show("alpha", &asking("cargo check", 0));
+    rig.wait_state("alpha", "waiting_approval");
+    let off = rig.json(&["mind", "alpha", "--off", "--json"]);
+    let off_cursor = off["cursor"].as_u64().unwrap();
+    let lead_ev = rig.json(&["watch", "alpha", "--since", &off_cursor.to_string(), "--on", "approval", "--timeout", "8", "--json"]);
+    assert_eq!((&lead_ev["event"], &lead_ev["name"]), (&json!("waiting_approval"), &json!("alpha")), "watch --since <detach_cursor> must catch republished standing question: {lead_ev}");
+    assert!(lead_ev["cursor"].as_u64().unwrap() > off_cursor, "republished question must be strictly after detach cursor");
+
+    // Item 12 (#7, #24): identical second approval box after direct terminal handling + brief working MUST NOT be deduplicated in event log!
+    let box1 = lead_ev["approval"]["box"].as_str().unwrap().to_owned();
+    let c1 = lead_ev["cursor"].as_u64().unwrap();
+    // Simulate a person answering directly in the terminal (not through `approve`): screen goes to working, then draws the EXACT SAME box again!
+    rig.show("alpha", &working());
+    rig.wait_state("alpha", "working");
+    rig.show("alpha", &asking("cargo check", 0));
+    let lead_ev2 = rig.json(&["watch", "alpha", "--since", &c1.to_string(), "--on", "approval", "--timeout", "8", "--json"]);
+    assert_eq!(lead_ev2["event"], "waiting_approval", "identical second box must not be deduplicated away: {lead_ev2}");
+    let box2 = lead_ev2["approval"]["box"].as_str().unwrap().to_owned();
+    assert_ne!(box1, box2, "identical second box must carry a fresh box key");
+    assert!(lead_ev2["cursor"].as_u64().unwrap() > c1, "identical second box must advance cursor");
+
+    // Items 7 & 8 (#9, #10): second lead tab in the same session (which becomes `sess.active`!).
+    let lead2 = rig.rex(
+        "session.new_window",
+        json!({ "session_id": rig.session, "window_label": "lead2", "layout": { "block": { "flavor": "com.superlogical.terminal.shell", "options": { "size": { "columns": 110, "rows": 40 } } } } }),
+    );
+    let lead2_win = lead2["window_id"].as_str().unwrap().to_owned();
+    let lead2_block = lead2["block_ids"][0].as_str().unwrap().to_owned();
+    let only_b = rig.start_child_from(Some(&lead2_block), "claude", "only-b", &[]);
+    let only_b_id = only_b["id"].as_str().unwrap().to_owned();
+
+    // Item 8: Lead 1 calling `mind only-b --with ...` MUST NOT steal Lead 2's worker by bare name!
+    let (m_code, m_out, m_err) = rig.olo(&["mind", "only-b", "--with", "claude:stand-in-big:max", "--rules-text", "stolen"]);
+    assert_ne!(m_code, 0, "Lead 1 must NOT move Lead 2's worker by bare name: {m_out}{m_err}");
+    assert_eq!(rig.status(&only_b_id)["parent_window_id"], json!(lead2_win), "Lead 2's worker must stay under Lead 2");
+
+    // Item 7: `stop <lead2_win> --tree` with missing `REX_BLOCK` or unmapped `REX_BLOCK` (even though `lead2_win` is `sess.active`!) MUST be refused with 69!
+    let out_no_block = rig.helper().env("REX_SESSION", &rig.session).args(["agent", "stop", &lead2_win, "--tree", "--force"]).output().unwrap();
+    assert_eq!(out_no_block.status.code(), Some(69), "stop --tree with no REX_BLOCK must be refused (69): {:?}", out_no_block);
+    let out_bad_block = rig.helper().env("REX_SESSION", &rig.session).env("REX_BLOCK", "block:does-not-exist").args(["agent", "stop", &lead2_win, "--tree", "--force"]).output().unwrap();
+    assert_eq!(out_bad_block.status.code(), Some(69), "stop --tree with unmapped REX_BLOCK must be refused (69): {:?}", out_bad_block);
+    assert_eq!(rig.status(&only_b_id)["running"], json!(true), "Lead 2's worker must still be running after refused stop --tree");
+    rig.olo_from(Some(&lead2_block), &["stop", &lead2_win, "--tree", "--force", "--json"]);
+}
+
+/// Spawns a local WebSocket-over-Unix-socket proxy in front of `real_sock` that
+/// forwards all Rex control & data traffic transparently, except when `fail_close_and_view`
+/// is armed it returns a non-`gone` Rex API error (`code: "busy"`) for `session.close_window`
+/// and `session.view` (optionally filtered to a target `window_id` for `close_window`).
+struct FaultyRexProxy {
+    sock: PathBuf,
+    fail_all: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    fail_window: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl FaultyRexProxy {
+    #[allow(clippy::result_large_err)]
+    fn start(real_sock: PathBuf, proxy_sock: PathBuf) -> Self {
+        use futures_util::{SinkExt as _, StreamExt as _};
+        use tokio_tungstenite::tungstenite::{Message, handshake::server, http};
+        let _ = std::fs::remove_file(&proxy_sock);
+        let fail_all = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let fail_window = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (p_sock, f_all, f_win, st_flag) = (proxy_sock.clone(), fail_all.clone(), fail_window.clone(), stop.clone());
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            rt.block_on(async move {
+                let listener = tokio::net::UnixListener::bind(&p_sock).unwrap();
+                let _ = ready_tx.send(());
+                loop {
+                    tokio::select! {
+                        res = listener.accept() => {
+                            let Ok((client_stream, _)) = res else { break };
+                            let (r_sock, f_all, f_win) = (real_sock.clone(), f_all.clone(), f_win.clone());
+                            tokio::spawn(async move {
+                                let mut path = String::from("/api/control");
+                                let mut proto = String::from("rex.control.v1");
+                                let cb = |req: &server::Request, mut resp: server::Response| {
+                                    path = req.uri().path().to_owned();
+                                    if let Some(p) = req.headers().get("sec-websocket-protocol").and_then(|v| v.to_str().ok()) {
+                                        proto = p.to_owned();
+                                        resp.headers_mut().insert("sec-websocket-protocol", http::HeaderValue::from_str(&proto).unwrap());
+                                    }
+                                    Ok(resp)
+                                };
+                                let Ok(mut c_ws) = tokio_tungstenite::accept_hdr_async(client_stream, cb).await else { return };
+                                let Ok(up_stream) = tokio::net::UnixStream::connect(&r_sock).await else { return };
+                                let up_req = http::Request::builder()
+                                    .uri(format!("ws://localhost{path}"))
+                                    .header("Host", "localhost")
+                                    .header("Upgrade", "websocket")
+                                    .header("Connection", "Upgrade")
+                                    .header("Sec-WebSocket-Version", "13")
+                                    .header("Sec-WebSocket-Key", tokio_tungstenite::tungstenite::handshake::client::generate_key())
+                                    .header("Sec-WebSocket-Protocol", &proto)
+                                    .body(())
+                                    .unwrap();
+                                let Ok((mut u_ws, _)) = tokio_tungstenite::client_async(up_req, up_stream).await else { return };
+                                let is_ctrl = path == "/api/control";
+                                loop {
+                                    tokio::select! {
+                                        msg = c_ws.next() => match msg {
+                                            Some(Ok(Message::Text(txt))) if is_ctrl => {
+                                                if let Ok(v) = serde_json::from_str::<Value>(&txt)
+                                                    && v["type"] == "request"
+                                                {
+                                                    let method = v["method"].as_str().unwrap_or("");
+                                                    let wid = v["payload"]["window_id"].as_str();
+                                                    let all_on = f_all.load(Ordering::Relaxed);
+                                                    let win_hit = f_win.lock().unwrap().as_deref().is_some_and(|w| wid == Some(w));
+                                                    let inject_err = (all_on && matches!(method, "session.close_window" | "session.view"))
+                                                        || (win_hit && method == "session.close_window");
+                                                    if inject_err {
+                                                        let err_resp = json!({
+                                                            "type": "response",
+                                                            "id": v["id"],
+                                                            "error": { "code": "busy", "message": "injected temporary RPC failure" }
+                                                        });
+                                                        let _ = c_ws.send(Message::Text(err_resp.to_string().into())).await;
+                                                        continue;
+                                                    }
+                                                }
+                                                if u_ws.send(Message::Text(txt)).await.is_err() { break; }
+                                            }
+                                            Some(Ok(m)) => if u_ws.send(m).await.is_err() { break; },
+                                            _ => break,
+                                        },
+                                        msg = u_ws.next() => match msg {
+                                            Some(Ok(m)) => if c_ws.send(m).await.is_err() { break; },
+                                            _ => break,
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                            if st_flag.load(Ordering::Relaxed) { break; }
+                        }
+                    }
+                }
+            });
+        });
+        ready_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        Self { sock: proxy_sock, fail_all, fail_window, stop, thread: Some(thread) }
+    }
+}
+
+impl Drop for FaultyRexProxy {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+        let _ = std::fs::remove_file(&self.sock);
+    }
+}
+
+/// Round 3 Items 9 & 10 (#8, #19):
+/// - Item 10 (#19): two non-`gone` RPC failures (`session.close_window` + `session.view`) MUST NOT count as a successful close or mark the live tab exited.
+/// - Item 9 (#8, #19): migrating off a legacy 1:1 minder revokes legacy authority atomically in the same commit even if closing the old tab fails, AND failed close of a legacy minder tab is reported (never silently discarded) on both `--off` and migration.
+#[test]
+fn round3_9_10_legacy_revocation_and_rpc_close_failures() {
+    let Some(mut rig) = Rig::start("r3-rpc-fail") else { return };
+    rig.stand_in("claude");
+    let real_sock = rig.sock.clone();
+    let proxy_sock = rig.dir.join("rex-proxy.sock");
+    let proxy = FaultyRexProxy::start(real_sock, proxy_sock.clone());
+    // Route all agents-service calls through the proxy!
+    rig.sock = proxy.sock.clone();
+
+    // Item 10 (#19): start `w10`, then fail both `session.close_window` and `session.view`.
+    let w10 = rig.start_child("claude", "w10", &[]);
+    let w10_id = w10["id"].as_str().unwrap().to_owned();
+    proxy.fail_all.store(true, Ordering::Relaxed);
+    let (code, out, _err) = rig.olo(&["stop", "w10", "--force", "--json"]);
+    proxy.fail_all.store(false, Ordering::Relaxed);
+    let v: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("stop json: {e}\n{out}"));
+    assert_ne!(code, 0, "stop with close + refresh RPC failures must fail: {v}");
+    assert_eq!(v["ok"], json!(false), "{v}");
+    assert!(v["stopped"].as_array().unwrap().is_empty(), "w10 must NOT be in stopped: {v}");
+    assert!(!v["failed"].as_array().unwrap().is_empty(), "w10 must be in failed: {v}");
+    assert_eq!(rig.status(&w10_id)["running"], json!(true), "live tab must NOT be marked exited after two RPC failures");
+
+    // Item 9: set up two legacy 1:1 minders (`legm1` -> `legw1` for `--off`, `legm2` -> `legw2` for migration).
+    let legw1 = rig.start_child("claude", "legw1", &[]);
+    let legw1_id = legw1["id"].as_str().unwrap().to_owned();
+    let legw1_blk = legw1["block_id"].as_str().unwrap().to_owned();
+    let legm1 = rig.start_child_from(Some(&legw1_blk), "claude", "legm1", &[]);
+    let legm1_id = legm1["id"].as_str().unwrap().to_owned();
+    let legm1_win = legm1["window_id"].as_str().unwrap().to_owned();
+
+    let legw2 = rig.start_child("claude", "legw2", &[]);
+    let legw2_id = legw2["id"].as_str().unwrap().to_owned();
+    let legw2_blk = legw2["block_id"].as_str().unwrap().to_owned();
+    let legm2 = rig.start_child_from(Some(&legw2_blk), "claude", "legm2", &[]);
+    let legm2_id = legm2["id"].as_str().unwrap().to_owned();
+    let legm2_win = legm2["window_id"].as_str().unwrap().to_owned();
+    let legm2_blk = legm2["block_id"].as_str().unwrap().to_owned();
+
+    let old_pid = rig.service_pid().expect("service pid");
+    let service_dir = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("registry.json").exists()).expect("service dir");
+    assert!(rig.helper().args(["agent", "retire"]).output().unwrap().status.success());
+    rig.wait("retired service exit", || !Path::new(&format!("/proc/{old_pid}")).exists());
+    let reg_path = service_dir.join("registry.json");
+    let mut reg: Value = serde_json::from_str(&std::fs::read_to_string(&reg_path).unwrap()).unwrap();
+    for e in reg["entries"].as_array_mut().unwrap() {
+        if e["id"] == legm1_id {
+            e["role"] = json!("minder");
+            e["minds"] = json!(legw1_id);
+        } else if e["id"] == legm2_id {
+            e["role"] = json!("minder");
+            e["minds"] = json!(legw2_id);
+        }
+        e.as_object_mut().unwrap().remove("minded_by");
+        e.as_object_mut().unwrap().remove("shared_minder");
+    }
+    std::fs::write(&reg_path, serde_json::to_string_pretty(&reg).unwrap()).unwrap();
+
+    // Item 9a: `mind legw1 --off` when closing `legm1` fails MUST NOT silently claim ok!
+    *proxy.fail_window.lock().unwrap() = Some(legm1_win.clone());
+    let (off_code, off_out, off_err) = rig.olo(&["mind", "legw1", "--off", "--json"]);
+    *proxy.fail_window.lock().unwrap() = None;
+    assert_ne!(off_code, 0, "legacy --off must report failure when old legacy minder tab fails to close: {off_out}{off_err}");
+
+    // Item 9b: migrating `legw2` off legacy `legm2` when closing `legm2` fails:
+    // (1) legacy `legm2`'s authority MUST end in the same commit (cannot reach `legw2` even while tab survives!),
+    // (2) failed close of `legm2` MUST be surfaced in the reply (not silently discarded!).
+    Minding::expect(&rig, "r3-mig-m");
+    let stage = format!("STAND_IN_DIR={}", rig.dir.join("stage").display());
+    let path = format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display());
+    *proxy.fail_window.lock().unwrap() = Some(legm2_win.clone());
+    let (mig_code, mig_out, mig_err) = rig.olo(&["mind", "legw2", "--rules-text", "New rules.", "--env", &stage, "--env", &path, "--env", "STAND_IN_NAME=r3-mig-m", "--json"]);
+    *proxy.fail_window.lock().unwrap() = None;
+    let mig_json: Value = serde_json::from_str(mig_out.trim()).unwrap_or(Value::Null);
+    assert!(
+        mig_code != 0 || mig_json["old_minder_close_failed"].is_array() || !mig_err.is_empty(),
+        "failed close of legacy minder tab during migration must be reported, not silently discarded: code={mig_code} out={mig_out} err={mig_err}"
+    );
+    // Even though `legm2`'s tab is still open, `legm2` MUST immediately lose authority over `legw2`!
+    let (st_code, st_out, st_err) = rig.olo_from(Some(&legm2_blk), &["status", &legw2_id, "--json"]);
+    assert_ne!(st_code, 0, "revoked legacy minder whose tab survived close failure must NOT still reach legw2: {st_out}{st_err}");
+
+    // Restore real socket before Rig::drop retires the service cleanly.
+    drop(proxy);
+}
+
+/// Round 3 Item 11 (#4):
+/// Our new helper's `send --wait` must stay wire-compatible against a held older
+/// service (`PROTO == 1`, pre-round-2 helper in `/var/tmp/olo-hs/takeover/olo-rex-link-before`)
+/// that does NOT recognize `--wait` in `req.args`!
+#[test]
+fn round3_11_send_wait_against_held_older_service() {
+    let old_helper = Path::new("/var/tmp/olo-hs/takeover/olo-rex-link-before");
+    if !old_helper.is_file() {
+        eprintln!("skipped: {} not present", old_helper.display());
+        return;
+    }
+    let Some(rig) = Rig::start("r3-held-wait") else { return };
+    rig.stand_in("claude");
+
+    // Place a hold file where the service looks for `host-upgrade.hold` (`dir/host-upgrade.hold` for `OLO_REX_AGENTS_DIR=dir/agents`).
+    std::fs::write(rig.dir.join("host-upgrade.hold"), "round3 compat test hold\n").unwrap();
+
+    // Start the OLDER service using `olo-rex-link-before`!
+    let mut old_cmd = Command::new(old_helper);
+    old_cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work")).env("REX_BLOCK", &rig.lead_block).args(["agent", "list", "--fast", "--json"]);
+    Rig::scratch_env(&rig.dir, &rig.sock, &mut old_cmd);
+    old_cmd.env("REX_BLOCK", &rig.lead_block);
+    let old_out = old_cmd.output().expect("old helper list");
+    assert!(old_out.status.success(), "older service failed to start: {}", String::from_utf8_lossy(&old_out.stderr));
+    let old_pid = rig.service_pid().expect("older service pid");
+
+    // Start a stand-in worker `alpha` with a known session ID.
+    let sid = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+    let _a = rig.start_child("claude", "alpha", &["--session-id", sid]);
+    rig.show("alpha", &idle("Ready."));
+    rig.wait_state("alpha", "idle");
+
+    // Have the stand-in react to the incoming message by showing working, writing transcript, then idle!
+    let keys_before = rig.keys("alpha").len();
+    let work_dir = rig.work();
+    let home_dir = rig.dir.join("home");
+    let stage = rig.dir.join("stage");
+    let react = std::thread::spawn(move || {
+        let keys_file = stage.join("alpha.keys");
+        let fifo = stage.join("alpha.fifo");
+        let until = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < until {
+            let typed = std::fs::read(&keys_file).unwrap_or_default();
+            if typed.len() > keys_before && typed[keys_before..].contains(&b'\r') {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        let s1 = stage.join("r3-w.screen");
+        std::fs::write(&s1, working()).unwrap();
+        let _ = std::fs::OpenOptions::new().write(true).open(&fifo).and_then(|mut f| f.write_all(format!("show {}\n", s1.display()).as_bytes()));
+        std::thread::sleep(Duration::from_millis(350));
+        let folder: String = work_dir.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let tdir = home_dir.join(".claude/projects").join(folder);
+        std::fs::create_dir_all(&tdir).unwrap();
+        let lines = [
+            json!({ "type": "user", "message": { "role": "user", "content": "ping older service" } }),
+            json!({ "type": "assistant", "message": { "id": "msg_old", "role": "assistant", "content": [{ "type": "text", "text": "OLDER_SERVICE_OK" }], "stop_reason": "end_turn" } }),
+        ];
+        std::fs::write(tdir.join(format!("{sid}.jsonl")), lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+        let s2 = stage.join("r3-i.screen");
+        std::fs::write(&s2, idle("OLDER_SERVICE_OK")).unwrap();
+        let _ = std::fs::OpenOptions::new().write(true).open(&fifo).and_then(|mut f| f.write_all(format!("show {}\n", s2.display()).as_bytes()));
+    });
+
+    // Run OUR NEW helper's `send --enter --wait` against the HELD OLDER service!
+    let (code, out, err) = rig.olo(&["send", "alpha", "ping older service", "--enter", "--wait", "--timeout", "10", "--json"]);
+    react.join().unwrap();
+    assert_eq!(rig.service_pid(), Some(old_pid), "held older service must not have handed over");
+    assert_eq!(code, 0, "new helper's `send --wait` broke against held older service: stdout={out} stderr={err}");
+    let v: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("send --wait json: {e}\n{out}"));
+    assert_eq!(v["last_message"], json!("OLDER_SERVICE_OK"), "{v}");
+
+    // Lift hold so Rig::drop can retire the older service cleanly.
+    let _ = std::fs::remove_file(rig.dir.join("host-upgrade.hold"));
 }

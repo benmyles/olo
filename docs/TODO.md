@@ -945,6 +945,60 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Minders, after their two code reviews** (Astra 6.2, 2026-11-27:
+  `/var/tmp/olo-reviews/astra-f26f167d2d/` and its confirming
+  `astra-1e7b7e0aeb/astra-review.md`; what touched a lead's agents was
+  fixed in three passes, each with a test; left, in the reviewer's
+  words):
+  - **In Rex, a minder's row says "Stop Subagent" and "Stop Subagent &
+    Children"**: its own words ("Stop Minder", "Stop Minder & Its
+    Agents") wait for a minder with agents in the demo
+    (`apps/rex/src/hub.rs`), pictures at every scale and both
+    reviewers' look. And of the filtered list: "Filtering only for the
+    first minder can instead leave all of its own workers running"
+    (fixed: by who minds each) but "even without a filter, an unminded
+    grandchild can become a direct child of the minder when its parent
+    exits".
+  - "A request can arrive before its caller is registered … a new
+    minder's first watch can take the ordinary watch path, which
+    filters out its roster additions and its worker's approvals."
+  - "If the lead detaches a worker after the text is pasted but before
+    the delayed Enter, its former minder still submits the text … the
+    text watch checks ownership and then awaits another screen read
+    before returning its tail."
+  - "The legacy script contains the absolute path of the helper that
+    wrote it … The old client strips its wait/output options before
+    sending an ordinary request and writes the reply locally."
+  - Assignment and shutdown: "Start can publish an addition after the
+    lead already detached the worker"; "A recursive stop leaves its
+    branch open to new starts"; "A refused move can still replace the
+    current rules"; "A queued move keeps the caller's former subtree
+    rights"; "Releasing the final reservation can still strand a failed
+    minder"; "An unhealthy minder becomes eligible immediately after
+    handover"; "Superseded empty timers still wake the service" (each
+    detach and reattach leaves a sleeper to its old deadline);
+    "Overlapping stops can clear each other's marks"; "A move can
+    introduce a duplicate in the lead's name scope".
+  - Questions and reports: "Startup and working-screen cases still hide
+    standing questions" (after a handover and 2,000 later events; and
+    "a raw working screen with a transcript waiting for input yields
+    `WaitingQuestion` in status, but the transition returns before
+    inspecting that transcript"); "The frozen exit record drops the
+    worker's final answer and can itself be evicted"; "Recovery replays
+    an obsolete roster"; "A delivered cursor can move backwards on
+    disk"; "A lagged follower replays old frames after the replacement
+    snapshot".
+  - Its tests: "The launch and watch tests do not establish their
+    advertised interleaving"; "Several assertions pass with the
+    original implementation defect"; "The idle measurement can report
+    zero despite service wakeups".
+  - **A folder's trust answered with one arrow too many, once, under
+    the whole suite's load** (the minders builder, of
+    `a_childs_own_folder_is_trusted_at_its_start`: "`\x1b[B\x1b[B\r`
+    vs `\x1b[B\r` when stand-in redraw lagged"; passes alone). An
+    answer given by where the mark stands must not press twice where a
+    screen is slow to redraw: to make happen and fix.
+
 - **The agents' own helpers, told from an agent's tasks** (Astra's
   second review, its 16, and its review of the fix,
   `/var/tmp/olo-reviews/astra-201b04c4f4/astra-review.md`, 8 to 12). The

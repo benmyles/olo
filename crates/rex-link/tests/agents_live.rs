@@ -30,6 +30,10 @@ use tokio::net::{TcpListener, TcpStream};
 const HELPER: &str = env!("CARGO_BIN_EXE_olo-rex-link");
 /// Olo's command on a host, as the app puts it there.
 const OLO: &str = include_str!("../../../apps/rex/src/bridge_olo.sh");
+/// Stand-in agent script (used in the live shared-minder test so real
+/// Claude Code minds two deterministic stand-in agents without them
+/// sharing the mock API queue).
+const STAND_IN: &str = include_str!("stand-in.sh");
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG for reproducible fuzzing (no extra crate needed)
@@ -92,15 +96,28 @@ struct RecordedReq {
     body: String,
 }
 
-#[derive(Default)]
+type ClaudeHandler = Arc<dyn Fn(&str) -> MockReply + Send + Sync>;
+
 struct MockState {
     /// Queued scripted replies per wire family (`"claude"`, `"codex"`, `"agy"`).
     queues: HashMap<&'static str, VecDeque<MockReply>>,
     /// Sticky reply returned for EVERY request of a family until cleared (used for deterministic retry-exhausting API errors).
     sticky: HashMap<&'static str, MockReply>,
+    /// Optional dynamic handler for Claude requests (used by the shared-minder live test to drive replies from actual tool outputs).
+    claude_handler: Option<ClaudeHandler>,
     /// All captured HTTP POST requests for assertions (e.g. verifying tool execution vs denial).
     requests: Vec<RecordedReq>,
     req_count: usize,
+    /// Race-free watch channel gating Claude mock replies (`true` = open, `false` = held).
+    gate_tx: tokio::sync::watch::Sender<bool>,
+    gate_rx: tokio::sync::watch::Receiver<bool>,
+}
+
+impl Default for MockState {
+    fn default() -> Self {
+        let (gate_tx, gate_rx) = tokio::sync::watch::channel(true);
+        Self { queues: HashMap::new(), sticky: HashMap::new(), claude_handler: None, requests: Vec::new(), req_count: 0, gate_tx, gate_rx }
+    }
 }
 
 struct MockApiServer {
@@ -149,15 +166,29 @@ impl MockApiServer {
         }
     }
 
+    fn set_claude_handler(&self, handler: Option<ClaudeHandler>) {
+        self.state.lock().unwrap().claude_handler = handler;
+    }
+
     fn clear_queues(&self) {
         let mut g = self.state.lock().unwrap();
         g.queues.clear();
         g.sticky.clear();
+        g.claude_handler = None;
         g.requests.clear();
+        let _ = g.gate_tx.send(true);
     }
 
     fn requests(&self) -> Vec<RecordedReq> {
         self.state.lock().unwrap().requests.clone()
+    }
+
+    fn hold_claude(&self) {
+        let _ = self.state.lock().unwrap().gate_tx.send(false);
+    }
+
+    fn release_claude(&self) {
+        let _ = self.state.lock().unwrap().gate_tx.send(true);
     }
 }
 
@@ -345,18 +376,24 @@ async fn handle_mock_http(mut stream: TcpStream, state: Arc<std::sync::Mutex<Moc
         return Ok(());
     }
 
-    let (req_id, reply) = {
+    if family == "claude" {
+        let mut rx = state.lock().unwrap().gate_rx.clone();
+        let _ = rx.wait_for(|open| *open).await;
+    }
+
+    let (req_id, handler_opt) = {
         let mut g = state.lock().unwrap();
         g.req_count += 1;
         let id = g.req_count;
         g.requests.push(RecordedReq { path: path.clone(), body: body.clone() });
-        let rep = g
-            .sticky
-            .get(family)
-            .cloned()
-            .or_else(|| g.queues.get_mut(family).and_then(VecDeque::pop_front))
-            .unwrap_or_else(|| MockReply::Text(format!("DEFAULT_{}_{id}", family.to_ascii_uppercase())));
-        (id, rep)
+        let h = if family == "claude" { g.claude_handler.clone() } else { None };
+        (id, h)
+    };
+    let reply = if let Some(handler) = handler_opt {
+        handler(&body)
+    } else {
+        let mut g = state.lock().unwrap();
+        g.sticky.get(family).cloned().or_else(|| g.queues.get_mut(family).and_then(VecDeque::pop_front)).unwrap_or_else(|| MockReply::Text(format!("DEFAULT_{}_{req_id}", family.to_ascii_uppercase())))
     };
 
     let reply = match reply {
@@ -1264,12 +1301,15 @@ fn live_mock_api_error_midstream_drop_and_recovery() {
     });
 }
 
-/// A minder as Claude Code itself runs it (`agents::minder`): started
-/// with what the service starts a minder with, its one command runs with
-/// no leave asked, anything else in its shell is refused with none asked
-/// either (it has no one to ask), and what it escalates is on the
-/// parent's own watch. The model's part is the made-up API's: what a
-/// minder decides is not what is tried here, what it can do is.
+/// A shared minder as Claude Code itself runs it (`agents::minder`):
+/// one real Claude Code minder minds two stand-in agents nested under
+/// it (`lead ▸ minder ▸ {alpha, beta}` = 3 child tabs), reads each
+/// agent's own rules file with `Read`, has its one `mind` command
+/// allowed with no leave asked while anything else in its shell or
+/// `Write` is refused with none asked either, and answers the same
+/// command differently for `alpha` (approved once) and `beta` (refused
+/// and escalated to the lead's watch). Stopping the minder leaves both
+/// agents running under the lead, unminded.
 #[test]
 fn live_mock_api_a_minder_has_its_one_command_and_nothing_else() {
     if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("claude") {
@@ -1279,75 +1319,378 @@ fn live_mock_api_a_minder_has_its_one_command_and_nothing_else() {
     rt.block_on(async {
         let rig = LiveRexHarness::start("minder").await;
         rig.mock.clear_queues();
-        // The agent minded: a command of the lead's, so that nothing asks the API but the minder.
-        let started = rig.run_olo_json(&["agent", "start", "--command", "--name", "worker", "--json", "--", "sleep", "600"]).await;
-        let worker = started["id"].as_str().unwrap().to_owned();
-        let service = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("service.log").exists()).expect("the service's folder");
-        let mind = service.join("minders").join(&worker).join("mind").display().to_string();
 
-        // What the "model" does with its turn: its command, something that isn't its to run, a file read (a
-        // script its agent would run: it may read anything), a file written (it may not), its command again,
-        // and done.
-        let said = "MINDER_SAYS worker asks what the rules do not cover";
-        let script = rig.dir.join("helpers-script.py");
-        std::fs::write(&script, "# what the agent asks leave to run\nprint('MINDER_' + 'READ_' + 'THIS')  # mark-7c41\n").unwrap();
-        let written = rig.dir.join("a-minder-wrote-this.txt");
-        rig.mock.push("claude", MockReply::RunCommand { command: format!("{mind} status --json"), reason: "How it stands".into() });
-        rig.mock.push("claude", MockReply::RunCommand { command: "sh -c \"printf '%s_%s\\n' RAN OTHER\"".into(), reason: "Not a minder's to run".into() });
-        rig.mock.push("claude", MockReply::Tool { name: "Read".into(), input: json!({ "file_path": script.display().to_string() }) });
-        rig.mock.push("claude", MockReply::Tool { name: "Write".into(), input: json!({ "file_path": written.display().to_string(), "content": "nothing a minder may leave" }) });
-        rig.mock.push("claude", MockReply::RunCommand { command: format!("{mind} escalate '{said}' --json"), reason: "Tell the parent".into() });
-        rig.mock.push("claude", MockReply::Text("MINDER_TURN_DONE".into()));
+        // Stand-in `agy` binary so `alpha` and `beta` are deterministic stand-ins while
+        // the shared minder runs the real `claude` binary against `rig.mock`.
+        let standin_bin = rig.dir.join("standin-bin");
+        let stage = rig.dir.join("stage");
+        std::fs::create_dir_all(&standin_bin).unwrap();
+        std::fs::create_dir_all(&stage).unwrap();
+        let agy_stub = standin_bin.join("agy");
+        std::fs::write(&agy_stub, STAND_IN).unwrap();
+        std::fs::set_permissions(&agy_stub, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let rules = "Approve `cargo test`.\nEscalate everything else, word for word.";
-        let mut args: Vec<String> = ["agent", "mind", "worker", "--with", "claude:claude-opus-5-5:max", "--rules-text", rules, "--json"].iter().map(|s| (*s).to_owned()).collect();
-        args.extend(rig.cli_env_args("claude"));
-        for (name, value) in [
-            ("REX_SERVER_SOCKET", rig.sock.display().to_string()),
-            ("OLO_REX_AGENTS_DIR", rig.dir.join("agents").display().to_string()),
-            ("XDG_RUNTIME_DIR", rig.dir.display().to_string()),
-            ("XDG_STATE_HOME", rig.dir.display().to_string()),
-        ] {
-            args.extend(["--env".to_owned(), format!("{name}={value}")]);
+        let staged = |name: &str, what: &str| stage.join(format!("{name}.{what}"));
+        let mk_standin = |name: &str| {
+            let fifo = staged(name, "fifo");
+            assert!(Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+        };
+        let write_fifo_deadline = |fifo: &Path, ready: &Path, line: &str, name: &str| -> Result<(), String> {
+            use std::io::Write as _;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            let until = Instant::now() + Duration::from_secs(15);
+            loop {
+                match std::fs::OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open(fifo) {
+                    Ok(mut f) => match f.write_all(line.as_bytes()) {
+                        Ok(()) => return Ok(()),
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < until => {
+                            std::thread::sleep(Duration::from_millis(20));
+                        }
+                        Err(e) => return Err(format!("write to {name} fifo failed (ready={}): {e}", ready.exists())),
+                    },
+                    Err(e) if e.raw_os_error() == Some(libc::ENXIO) && Instant::now() < until => {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(e) => return Err(format!("open {name} fifo failed (ready={}): {e}", ready.exists())),
+                }
+            }
+        };
+        let tell = |name: &str, line: &str| {
+            let (fifo, ready, line) = (staged(name, "fifo"), staged(name, "ready"), format!("{line}\n"));
+            write_fifo_deadline(&fifo, &ready, &line, name).expect("tell stand-in");
+        };
+        let show = |name: &str, tag: &str, screen: &str| {
+            let file = staged(name, tag);
+            std::fs::write(&file, screen).unwrap();
+            tell(name, &format!("show {}", file.display()));
+        };
+        let when_typed = |name: &'static str, keys: &'static [u8], tag: &str, then: String| -> std::thread::JoinHandle<bool> {
+            use std::io::Write as _;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            let file = staged(name, "keys");
+            let from = std::fs::read(&file).unwrap_or_default().len();
+            let fifo = staged(name, "fifo");
+            let out_screen = staged(name, tag);
+            std::thread::spawn(move || {
+                let until = Instant::now() + Duration::from_secs(30);
+                loop {
+                    let typed = std::fs::read(&file).unwrap_or_default();
+                    if typed.len() > from && typed[from..].windows(keys.len()).any(|w| w == keys) {
+                        break;
+                    }
+                    if Instant::now() >= until {
+                        return false;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                std::fs::write(&out_screen, then).unwrap();
+                let msg = format!("show {}\n", out_screen.display());
+                let w_until = Instant::now() + Duration::from_secs(10);
+                while Instant::now() < w_until {
+                    match std::fs::OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open(&fifo) {
+                        Ok(mut f) => return f.write_all(msg.as_bytes()).is_ok(),
+                        Err(e) if e.raw_os_error() == Some(libc::ENXIO) => std::thread::sleep(Duration::from_millis(20)),
+                        Err(_) => return false,
+                    }
+                }
+                false
+            })
+        };
+
+        let agy_rule = "─".repeat(60);
+        let agy_asking = |command: &str, marked: usize| -> String {
+            let mark = |i: usize| if i == marked { ">" } else { " " };
+            format!(
+                "● Bash({command})\nCommand\n{agy_rule}\nRequesting permission for:\n   {command}\nRun this command?\n{} 1. Yes, run command\n{} 2. Yes, and always allow in this conversation\n{} 3. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n",
+                mark(0),
+                mark(1),
+                mark(2)
+            )
+        };
+        let agy_working = format!("⣽  Generating...\n{agy_rule}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{agy_rule}\nesc to cancel\n");
+
+        // Hold Claude mock replies until both `alpha` and `beta` are started under the shared minder and asking leave.
+        rig.mock.hold_claude();
+        let orig_path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into());
+        let child_path = format!("{}:{orig_path}", standin_bin.display());
+        let start_minded = |name: &str, rules: &str, with_minder_env: bool| -> Vec<String> {
+            let mut args: Vec<String> = [
+                "agent",
+                "start",
+                "agy",
+                "--model",
+                "stand-in",
+                "--effort",
+                "none",
+                "--name",
+                name,
+                "--cwd",
+                &rig.work.display().to_string(),
+                "--minder",
+                "claude:claude-opus-5-5:max",
+                "--rules-text",
+                rules,
+                "--json",
+                "--env",
+                &format!("STAND_IN_DIR={}", stage.display()),
+                "--env",
+                &format!("STAND_IN_NAME={name}"),
+                "--env",
+                &format!("PATH={child_path}"),
+            ]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+            if with_minder_env {
+                for (k, v) in [
+                    ("HOME", rig.home.display().to_string()),
+                    ("ANTHROPIC_BASE_URL", format!("http://127.0.0.1:{}", rig.mock.port)),
+                    ("ANTHROPIC_API_KEY", rig.claude_key.clone()),
+                    ("REX_SERVER_SOCKET", rig.sock.display().to_string()),
+                    ("OLO_REX_AGENTS_DIR", rig.dir.join("agents").display().to_string()),
+                    ("XDG_RUNTIME_DIR", rig.dir.display().to_string()),
+                    ("XDG_STATE_HOME", rig.dir.display().to_string()),
+                ] {
+                    args.extend(["--minder-env".to_owned(), format!("{k}={v}")]);
+                }
+            }
+            args
+        };
+
+        mk_standin("alpha");
+        let rules_alpha = "ALPHA_RULE_7C41: Approve `cargo test` once.";
+        let a_args = start_minded("alpha", rules_alpha, true);
+        let alpha = rig.run_olo_json(&a_args.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        let alpha_id = alpha["id"].as_str().unwrap().to_owned();
+        let minder_id = alpha["minder"]["id"].as_str().unwrap().to_owned();
+        let minder_win = alpha["minder"]["window_id"].as_str().unwrap().to_owned();
+        assert_eq!(alpha["minder"]["reused"], json!(false), "{alpha}");
+
+        mk_standin("beta");
+        let rules_beta = "BETA_RULE_9D52: Refuse `cargo test` and escalate word for word.";
+        let b_args = start_minded("beta", rules_beta, false);
+        let beta = rig.run_olo_json(&b_args.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        let beta_id = beta["id"].as_str().unwrap().to_owned();
+        assert_eq!((&beta["minder"]["id"], &beta["minder"]["reused"]), (&json!(minder_id), &json!(true)), "beta must reuse the same real Claude minder: {beta}");
+
+        let wait_ready = |name: &str| {
+            let until = Instant::now() + Duration::from_secs(15);
+            while !staged(name, "ready").exists() {
+                assert!(Instant::now() < until, "{name} stand-in didn't listen");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        wait_ready("alpha");
+        wait_ready("beta");
+
+        // Verify tree: 3 child tabs total (1 minder + 2 agents = N + 1), both nested under minder.
+        let listed = rig.run_olo_json(&["agent", "list", "--json"]).await;
+        let subs = listed["subagents"].as_array().unwrap();
+        assert_eq!(subs.len(), 3, "2 agents + 1 shared minder = 3 child tabs: {listed}");
+        for n in ["alpha", "beta"] {
+            let row = subs.iter().find(|s| s["name"] == n).unwrap();
+            assert_eq!((&row["parent_window_id"], &row["minded_by"]), (&json!(minder_win), &json!(minder_id)), "{n}: {listed}");
         }
-        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let minded = rig.run_olo_json(&refs).await;
-        let minder = minded["minder"]["id"].as_str().unwrap().to_owned();
-        let from = minded["cursor"].to_string();
 
-        // What it escalated reaches the parent: so its command ran twice, and what lay between didn't stop it.
+        let service = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("service.log").exists()).expect("the service's folder");
+        let events_log = service.join("events.jsonl");
+
+        // Have `alpha` ask `cargo test`, wait until its specific `waiting_approval`
+        // event is recorded in `events.jsonl` (no fixed sleep!), then have `beta`
+        // ask the exact same command `cargo test` and wait for its recorded event.
+        let wait_recorded_approval = |id: &str, label: &str| {
+            let until = Instant::now() + Duration::from_secs(15);
+            loop {
+                let recorded = std::fs::read_to_string(&events_log)
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                    .any(|ev| ev["id"] == id && ev["state"] == "waiting_approval");
+                if recorded {
+                    break;
+                }
+                assert!(Instant::now() < until, "{label} ({id}) waiting_approval was not recorded in events.jsonl");
+                std::thread::sleep(Duration::from_millis(30));
+            }
+        };
+        show("alpha", "ask", &agy_asking("cargo test", 0));
+        wait_recorded_approval(&alpha_id, "alpha");
+        show("beta", "ask", &agy_asking("cargo test", 0));
+        wait_recorded_approval(&beta_id, "beta");
+
+        let alpha_gone = when_typed("alpha", b"\r", "work", agy_working.clone());
+        let beta_moved = when_typed("beta", b"\x1b[B\x1b[B", "ask2", agy_asking("cargo test", 2));
+        let beta_gone = when_typed("beta", b"\r", "work", agy_working.clone());
+
+        let mind = service.join("minders").join(&minder_id).join("mind").display().to_string();
+        let written = rig.dir.join("a-minder-wrote-this.txt");
+        let said = "MINDER_SAYS beta asked cargo test which its rules forbid";
+
+        // Dynamic Claude minder driver:
+        // - Reads the roster returned by `mind list --json` to discover each agent's rules path (never precomputed).
+        // - Reads each agent's rules file with `Read` and derives every approval/refusal/escalation from the actual Read result.
+        // - Proves per-agent authorization by attempting `mind approve <other> --once` AFTER only the first agent has been
+        //   delivered by `watch` for the identical `cargo test` box, verifying refusal and zero keys sent to `<other>`.
+        #[derive(Default)]
+        struct Driver {
+            step: usize,
+            roster: Vec<(String, String)>, // (name, rules_path)
+            rules_text: HashMap<String, String>,
+            first_agent: Option<String>,
+            second_agent: Option<String>,
+            cross_refused: bool,
+            cross_keys_zero: bool,
+        }
+        let driver = Arc::new(std::sync::Mutex::new(Driver::default()));
+        let last_tool_result = |body: &str| -> String {
+            let Ok(v) = serde_json::from_str::<Value>(body) else { return String::new() };
+            let Some(msgs) = v["messages"].as_array() else { return String::new() };
+            for m in msgs.iter().rev() {
+                if let Some(arr) = m["content"].as_array() {
+                    for block in arr.iter().rev() {
+                        if block["type"] == "tool_result" {
+                            if let Some(s) = block["content"].as_str() {
+                                return s.to_owned();
+                            }
+                            if let Some(parts) = block["content"].as_array() {
+                                return parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("\n");
+                            }
+                        }
+                    }
+                }
+            }
+            String::new()
+        };
+        let extract_json = |text: &str| -> Option<Value> {
+            for line in text.lines() {
+                let t = line.trim();
+                if t.starts_with('{') && let Ok(v) = serde_json::from_str::<Value>(t) {
+                    return Some(v);
+                }
+            }
+            serde_json::from_str::<Value>(text.trim()).ok()
+        };
+        let (driver_cb, mind_cb, written_cb, stage_cb, said_cb) = (driver.clone(), mind.clone(), written.clone(), stage.clone(), said.to_owned());
+        rig.mock.set_claude_handler(Some(Arc::new(move |body: &str| {
+            let tool_out = last_tool_result(body);
+            let mut d = driver_cb.lock().unwrap();
+            let step = d.step;
+            d.step += 1;
+            match step {
+                0 => MockReply::RunCommand { command: format!("{mind_cb} list --json"), reason: "List minded agents".into() },
+                1 => {
+                    let v = extract_json(&tool_out).expect("mind list --json output");
+                    for s in v["subagents"].as_array().expect("subagents array") {
+                        let name = s["name"].as_str().unwrap().to_owned();
+                        let rules_p = s["rules"].as_str().expect("rules path in mind list").to_owned();
+                        d.roster.push((name, rules_p));
+                    }
+                    assert_eq!(d.roster.len(), 2, "expected 2 agents in roster: {v}");
+                    let p0 = d.roster[0].1.clone();
+                    MockReply::Tool { name: "Read".into(), input: json!({ "file_path": p0 }) }
+                }
+                2 => {
+                    let n0 = d.roster[0].0.clone();
+                    d.rules_text.insert(n0, tool_out);
+                    let p1 = d.roster[1].1.clone();
+                    MockReply::Tool { name: "Read".into(), input: json!({ "file_path": p1 }) }
+                }
+                3 => {
+                    let n1 = d.roster[1].0.clone();
+                    d.rules_text.insert(n1, tool_out);
+                    MockReply::RunCommand { command: "sh -c \"printf '%s_%s\\n' RAN OTHER\"".into(), reason: "Not a minder's to run".into() }
+                }
+                4 => MockReply::Tool { name: "Write".into(), input: json!({ "file_path": written_cb.display().to_string(), "content": "nothing a minder may leave" }) },
+                5 => MockReply::RunCommand { command: format!("{mind_cb} watch --since 0 --on question,approval --timeout 15 --json"), reason: "Watch first asking agent".into() },
+                6 => {
+                    let ev = extract_json(&tool_out).expect("first watch event");
+                    let first = ev["name"].as_str().expect("watched agent name").to_owned();
+                    let other = d.roster.iter().find(|(n, _)| n != &first).expect("other agent").0.clone();
+                    d.first_agent = Some(first);
+                    // Per-agent authorization check: attempt to approve the OTHER agent (same `cargo test` box!) BEFORE watching it.
+                    MockReply::RunCommand { command: format!("{mind_cb} approve {other} --once --json"), reason: "Cross-agent approval must be refused".into() }
+                }
+                7 => {
+                    let first = d.first_agent.clone().unwrap();
+                    let other = d.roster.iter().find(|(n, _)| n != &first).unwrap().0.clone();
+                    d.cross_refused = tool_out.contains("\"ok\":false") || tool_out.contains("wasn't") || tool_out.contains("isn't what you were last told");
+                    d.cross_keys_zero = std::fs::read(stage_cb.join(format!("{other}.keys"))).unwrap_or_default().is_empty();
+                    let rule = d.rules_text.get(&first).cloned().unwrap_or_default();
+                    let cmd = if rule.contains("Approve") {
+                        format!("{mind_cb} approve {first} --once --json")
+                    } else {
+                        format!("{mind_cb} approve {first} --no --reason 'Refused by rules.' --json")
+                    };
+                    MockReply::RunCommand { command: cmd, reason: "Answer first agent from its Read rules".into() }
+                }
+                8 => MockReply::RunCommand { command: format!("{mind_cb} watch --since 0 --on question,approval --timeout 15 --json"), reason: "Watch second asking agent".into() },
+                9 => {
+                    let ev = extract_json(&tool_out).expect("second watch event");
+                    let second = ev["name"].as_str().expect("second watched agent name").to_owned();
+                    d.second_agent = Some(second.clone());
+                    let rule = d.rules_text.get(&second).cloned().unwrap_or_default();
+                    let cmd = if rule.contains("Approve") {
+                        format!("{mind_cb} approve {second} --once --json")
+                    } else {
+                        format!("{mind_cb} approve {second} --no --reason 'Refused by rules.' --json")
+                    };
+                    MockReply::RunCommand { command: cmd, reason: "Answer second agent from its Read rules".into() }
+                }
+                10 => {
+                    let second = d.second_agent.clone().unwrap();
+                    let rule = d.rules_text.get(&second).cloned().unwrap_or_default();
+                    assert!(rule.contains("escalate"), "expected escalate in {second}'s rules: {rule}");
+                    MockReply::RunCommand { command: format!("{mind_cb} escalate {second} '{said_cb}' --json"), reason: "Escalate refused agent to parent".into() }
+                }
+                _ => MockReply::Text("MINDER_TURN_DONE".into()),
+            }
+        })));
+        let from = alpha["cursor"].to_string();
+        rig.mock.release_claude();
+
+        // Lead receives beta's escalation on its watch.
         let heard = rig.run_olo_json(&["agent", "watch", "--all", "--since", &from, "--on", "escalation", "--timeout", "40", "--json"]).await;
-        assert_eq!((&heard["event"], &heard["name"], &heard["summary"]), (&json!("escalation"), &json!("worker"), &json!(said)), "{heard}");
-        // Its turn ends: it comes to rest having asked leave for nothing.
-        let rested = rig.run_olo_json(&["agent", "watch", &minder, "--since", &from, "--on", "idle,done,approval,question,error,exit", "--timeout", "40", "--json"]).await;
+        assert_eq!((&heard["event"], &heard["name"], &heard["summary"]), (&json!("escalation"), &json!("beta"), &json!(said)), "{heard}");
+
+        // Verify per-agent authorization check failed cleanly and sent zero bytes to `beta` before `beta` was watched.
+        {
+            let d = driver.lock().unwrap();
+            assert_eq!(d.first_agent.as_deref(), Some("alpha"), "expected alpha delivered first");
+            assert!(d.cross_refused, "approving beta before beta was watched must be refused");
+            assert!(d.cross_keys_zero, "beta must receive zero input from unauthorized pre-watch approve");
+        }
+
+        // Both stand-ins received their distinct answers (alpha: Return; beta: Down+Down+Return).
+        assert!(alpha_gone.join().unwrap(), "alpha was not approved once");
+        assert!(beta_moved.join().unwrap() && beta_gone.join().unwrap(), "beta was not refused");
+
+        // Minder comes to rest without ever asking leave of anyone.
+        let rested = rig.run_olo_json(&["agent", "watch", &minder_id, "--since", &from, "--on", "idle,done,approval,question,error,exit", "--timeout", "40", "--json"]).await;
         assert!(matches!(rested["state"].as_str(), Some("idle" | "done")), "the minder asked, failed or ended: {rested}");
-        let (code, out, _) = rig.run_olo(&["agent", "watch", &minder, "--since", &from, "--on", "approval,question", "--timeout", "2", "--json"]).await;
+        let (code, out, _) = rig.run_olo(&["agent", "watch", &minder_id, "--since", &from, "--on", "approval,question", "--timeout", "2", "--json"]).await;
         assert_eq!(code, 124, "a minder asked leave of someone: {out}");
 
         let bodies: Vec<String> = rig.mock.requests().into_iter().map(|r| r.body).collect();
         let any = |what: &str| bodies.iter().any(|b| b.contains(what));
-        // Its standing instructions and the parent's rules are its system's; it was told to begin.
-        assert!(
-            any("You are a minder. Your whole job is one other agent") && any("Escalate everything else, word for word.") && any("Begin minding"),
-            "what the minder was told isn't in what it sent the API"
-        );
-        // Its command ran with no leave: how the agent stands came back to the model.
-        assert!(any(&format!("\\\"id\\\":\\\"{worker}\\\"")) && any("\\\"state\\\":\\\"working\\\""), "`mind status` didn't run");
-        // The other command never ran (its words together are only ever a shell's doing), and the refusal went back to the model as a tool's result.
-        assert!(!any("RAN_OTHER"), "a minder ran a command that isn't its own");
-        assert!(bodies.iter().filter(|b| b.contains("tool_result")).count() >= 3, "three tools' results went back to the model: {}", bodies.len());
-        // It read the file, with no leave asked: its words came back to the model as the tool's result (the
-        // mark is in the file, in no request before the read).
-        assert!(any("mark-7c41"), "a minder couldn't read a file: what it is asked about is most often one");
-        // And wrote nothing: there is no tool for it.
-        assert!(!written.exists(), "a minder wrote a file");
+        assert!(any("You are a minder. Your job is to watch over the agents that run as child tabs under yours.") && any("Begin minding now."), "shared-minder brief missing");
+        assert!(any("ALPHA_RULE_7C41") && any("BETA_RULE_9D52"), "minder did not read both agents' rules files");
+        assert!(!any("RAN_OTHER"), "minder ran an unauthorized command");
+        assert!(!written.exists(), "minder wrote a file");
 
-        // What it did is kept for the parent, and both are stopped together.
-        let of = rig.run_olo_json(&["agent", "mind", "worker", "--json"]).await;
-        let did: Vec<&str> = of["answered"].as_array().unwrap().iter().filter_map(|a| a["did"].as_str()).collect();
-        assert_eq!(did, ["escalate"], "{of}");
-        let stopped = rig.run_olo_json(&["agent", "stop", "worker", "--tree", "--force", "--json"]).await;
-        assert_eq!(stopped["stopped"].as_array().unwrap().len(), 2, "{stopped}");
+        // Each agent's own `mind NAME` history recorded strictly its own answers by the shared minder.
+        let of_a = rig.run_olo_json(&["agent", "mind", "alpha", "--json"]).await;
+        let of_b = rig.run_olo_json(&["agent", "mind", "beta", "--json"]).await;
+        let did_of = |v: &Value| v["answered"].as_array().unwrap().iter().filter_map(|a| a["did"].as_str().map(str::to_owned)).collect::<Vec<_>>();
+        assert_eq!(did_of(&of_a), ["approve"], "{of_a}");
+        assert_eq!(did_of(&of_b), ["approve", "escalate"], "{of_b}");
+
+        // Stopping the minder leaves BOTH `alpha` and `beta` running under the lead, unminded.
+        let stopped_m = rig.run_olo_json(&["agent", "stop", &minder_id, "--force", "--json"]).await;
+        assert_eq!(stopped_m["stopped"], json!([minder_id]), "{stopped_m}");
+        assert_eq!(rig.run_olo_json(&["agent", "status", "alpha", "--json"]).await["running"], json!(true));
+        assert_eq!(rig.run_olo_json(&["agent", "status", "beta", "--json"]).await["running"], json!(true));
+        rig.run_olo_json(&["agent", "stop", "alpha", "--force", "--json"]).await;
+        rig.run_olo_json(&["agent", "stop", "beta", "--force", "--json"]).await;
     });
 }
 

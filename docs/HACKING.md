@@ -31875,8 +31875,9 @@ agents through the night, could not move to it.
   the desktop's own unset) is set in front of its program (`env K=V …`:
   a Rex tab takes no environment of its own), and a test reads it from
   the child's own `/proc/PID/environ`, as ShiftUp's launcher does.
-- *A minder for a child* (`agents/minder.rs`; `olo agent start …
-  --minder`, `olo agent mind`, `olo agent escalate`; Ben, 2026-11-26:
+- *Minders: one for many children, the children nested under it*
+  (`agents/minder.rs`; `olo agent start … --minder`, `olo agent mind`,
+  `olo agent escalate`). Ben, 2026-11-26:
   "often when subagents need an approval or have a question it takes a
   long time for parent agents to notice and respond because they are
   busy with something else … allow parent agents, when starting an olo
@@ -31886,92 +31887,115 @@ agents through the night, could not move to it.
   … and give it context and instructions on what to approve/deny and
   how to steer that specific agent it is minding … and also giving …
   the minder the ability to message the parent when something needs
-  escalation"). A minder is an agent of its own whose whole job is one
-  other agent: a child tab of the agent it minds (the person sees it
-  there, titled "Minder of …"; `stop --tree` on the agent stops both),
-  with the model and effort the parent chose (`--minder
-  claude:MODEL:EFFORT`) and the parent's own rules (`--rules FILE`,
-  read by the asking command; `--rules-text`). What the parent types:
-  `start … --minder … --rules …` (both begin together; the answer has
-  `minder`), `mind NAME --with … --rules …` for one that runs (or to
-  put another in its place), `mind NAME --rules …` (the same minder
-  begun anew with them), `mind NAME --off`, and `mind NAME` (who minds
-  it, the rules, and `answered`: every `approve`, `send` and `escalate`
-  of the minder's with its time, kept in
-  `<service>/minders/<agent>/answers.jsonl`).
-  - *What it is told.* Its standing instructions (`minder::brief`: the
-    one agent, its one command, the loop, what it never does) with the
-    parent's rules set in them, as Claude Code's `--append-system-prompt`
-    (a long watch that is summed up never loses the rules); its prompt
-    is only "begin" (`minder::begin`). Silent rules mean escalate, never
-    guess.
+  escalation"
+  And, 2026-11-27: "the way minders work right now is not very
+  efficient because they always are a 1:1 with what they're minding
+  and get nested under it. change it so that a minder can mind n
+  other agents and those agents get nested under the minder. that
+  would be way more efficient." (Each minded agent cost two of a
+  session's 64 tabs, and the leads on a host share one session: that
+  morning three helpers had been started with no minder for want of
+  tabs.)
+  A shared minder (`NativeSubagent::shared_minder = true`)
+  is a Claude Code agent of its own that watches over many children
+  (up to `DEFAULT_MINDS_MOST = 12` live children per minder, splitting
+  to a second minder of the same `CLI:MODEL:EFFORT` at capacity). Its
+  tab sits directly under the asking lead's tab, and every child it
+  minds is nested beneath the minder's tab (`parent_window_id =
+  minder.window_id`, `minded_by = Some(minder.id)`). Starting another
+  child with `--minder claude:MODEL:EFFORT` (or `--minder NAME`) reuses
+  an existing healthy shared minder under the same lead instead of
+  starting a new tab. What the parent types: `start … --minder …
+  --rules …` (reusing or starting the minder, then nesting the child
+  under it), `mind NAME --with claude:MODEL:EFFORT|MINDER_NAME --rules …`
+  for a child under the asking tab (attaching or moving it), `mind NAME
+  --rules …` (rewriting `<service>/minders/<agent>/rules.md` atomically
+  in place and delivering a `minding` `"rules"` event to the running
+  shared minder without restarting it; on an older legacy 1:1 minder
+  with `minds: Some(agent_id)`, migrating cleanly to a shared minder),
+  `mind NAME --off` (detaching the child back under the minder's parent
+  tab and republishing any standing question strictly after the reply's
+  `cursor`), and `mind NAME` (who minds it, its rules, and `answered`
+  from `<service>/minders/<agent>/answers.jsonl`).
+  - *What it is told.* A shared minder's standing instructions
+    (`minder::multi_brief`: its `mind` command, per-agent rules files,
+    the watch loop, what it never does, and its exit/grace lifecycle) go
+    in `--append-system-prompt`, with a short prompt to begin
+    (`minder::multi_begin`). Each child's rules live in its own
+    `minders/<agent_id>/rules.md`; roster additions, rule updates, and
+    removals arrive as `event: "minding"` updates (`action`: `"added"`,
+    `"rules"`, `"removed"`, carrying `rules`, `rules_gen`, `what`,
+    `cwd`). Silent or empty rules mean escalate, never guess.
   - *What it can do is the service's to hold*, not the minder's to
-    remember. An agent whose record has `minds` (`NativeSubagent`) may
-    ask `watch`, `status`, `read`, `approve`, `send` and `escalate`,
-    each of the one agent it minds (`Service::resolve`: its parent tab,
-    which no other child may name), and nothing else (`agent_op`:
-    status 69), whatever pane it says it is. Its yes is for this once
-    (`approve --session` is refused it). Its Claude Code is started so
-    that it never asks leave, having no one to ask: `--tools
-    Bash,Read,Grep,Glob` (the shell, for its one command, and the tools
-    that only read: a minder may read any file to judge a question, and
-    has nothing that writes, edits or fetches; Ben, 2026-11-27: "i would
-    think minders should have full read only access by default"),
-    `--permission-mode dontAsk` (what isn't allowed is refused, not
-    asked), `--allowed-tools Read Grep Glob "Bash(<mind> *)"`,
-    `--strict-mcp-config`, in one trusted folder shared by every minder
-    (`<service>/minders`). `<mind>` is a script the service writes
-    beside the rules (`minder::script`): `mind watch|status|read|
-    approve|send|escalate …`, each run of the helper with the agent's
-    id put in, so the minder never names the agent and one rule lets it
-    work.
-  - *Escalation is an event, not typing.* `olo agent escalate "TEXT"`
-    (a minder's is about its agent; any other child's about itself)
-    writes an event beside the child's states (`event: "escalation"`,
-    `SubagentEventLog::push_beside`: always new, the child's own last
-    state left standing) and the parent's `watch` returns it at once;
-    `escalation` is among a watch's default events. While a child has a
-    minder that runs, its `waiting_approval` and `waiting_question`
-    wake no watch but the minder's (`Service::minders_own`, at both
-    places a watch finds something: the log, and how the child stands
-    now); they stay in the log, so with the minder off or gone they are
-    told from where the parent's cursor was.
-  - *It is told what stands, once, and answers what it was told.* A
-    minder's watch is not answered by a cursor at all. A cursor says
-    what the asker has been told, and neither kind of minder that needs
-    telling can say that: one that has only just begun has been told
-    nothing (attached to an agent already asking, or put in another's
-    place while it asked, it was given the cursor of that moment and
-    waited on a question that stood before it for as long as it stood:
-    the ShiftUp lead's trial, 2026-11-27; Ben, watching it: "we
-    shouldn't have to wait for the first watch to timeout it should
-    see any outstanding questions when it connects"); and one that took
-    seconds to judge while its agent asked again was told each event in
-    turn, long stale (the first trial here: it reported "it is waiting"
-    of a question gone half a minute, after its agent had exited). So
-    the service keeps what each minder has been told (`State::seen`:
-    the last thing written of its agent, by its number in the log) and
-    a minder's watch answers with the last thing written of its agent
-    (`last_state_of`) where the agent *still stands so* (`still_stands`:
-    the same question by its key, still at rest, still failed; an end
-    stands for good) and this minder hasn't been told it: at its first
-    watch if something stands then, the moment it is written
-    otherwise, and never twice (a question it passed up and left
-    standing is not told to it again). And `approve` answers whatever is
-    on the screen, so a late yes would be a yes to a later question:
-    from a minder it is refused unless the dialog on the screen is the
-    one it was last told of by `watch` or `status` (`State::told`, by
-    the dialog's key): "what it asks now isn't what you were last told
-    of: nothing was answered. Look again". The parent's own watch is
-    unchanged: every event once, in order, by its cursor.
-  - *How it ends.* When its agent exits, the minder's watch says so; its
-    next `escalate` is its report and its last word (the service stops
-    it half a second after), and one that says nothing is stopped when
-    its time is up (`MINDER_REPORTS`, three minutes). A minder that ends
-    by itself while its agent runs is said to the parent (an escalation,
-    "Its minder ended (…)") and the agent's asking is the parent's
-    again; one stopped by the parent or the service (`--off`, another
-    put in its place, `stop`) is not said (`State::let_go`).
+    remember. Only records marked by the service itself (`shared_minder`
+    or legacy `minds`; `--role minder` and `adopt` can never confer
+    minder status) act as minders, and caller authentication +
+    `gate_caller` run before protocol/build handover, `follow`, `adopt`,
+    `retire`, `ping`, or any agent op (`policy` authenticates the
+    querying peer strictly by `peer_pid`, separately from the subject
+    pane in `req.block`). A shared minder may call only `list`, `watch`,
+    `status`, `read`, `approve` (`--once` / `--no` only, never
+    `--session`), `send` (never `--force`, `--wait`, `--file`, control
+    keys, bare character keys, approval boxes, folder-trust prompts, or
+    unrecognised `Blocked` dialogs; chooser keys only on recognized
+    screen questions), and `escalate` (`escalate ID "TEXT"` for a ward,
+    or 1-arg `escalate "TEXT"` for itself) — and strictly on the agents
+    it currently minds (`minder_owns`, checked against live registry
+    ownership for both shared and legacy minders). Its Claude Code runs
+    with `--tools Bash,Read,Grep,Glob`, `--permission-mode dontAsk`,
+    `--allowed-tools Read Grep Glob "Bash(<mind> *)"`, and
+    `--strict-mcp-config`.
+  - *Escalation is an event, not typing.* `olo agent escalate [ID]
+    "TEXT"` writes a beside event (`event: "escalation"`,
+    `SubagentEventLog::push_beside`) that wakes the parent's `watch` at
+    once. While a child has a live minder, its `waiting_approval` and
+    `waiting_question` wake no watch but its minder's
+    (`Service::minders_own`); on detach (`--off`) or minder loss,
+    standing questions come back to the parent immediately.
+  - *It is told what stands, once, and answers only the exact box and
+    rules revision it was told.* Per-`(minder, agent)` delivery state
+    (`seen`, `minding_seen`, `rules_gen`, `pending_rules_rev`,
+    `pending_exit_reports`) is kept by the service and persisted across
+    handovers in `minder-state.json`. Approval transitions and events
+    are keyed by exact numbered box instance (`box:bN-hhhhhhhh`), so
+    identical back-to-back boxes are never deduplicated away. Updating
+    rules bumps `rules_gen`, voids `told`, and records
+    `pending_rules_rev`; neither `status` nor an approval-only `watch`
+    can clear `pending_rules_rev` or renew `told` until the minder
+    receives the `minding` `"rules"` revision (synthesized if the
+    2,000-event ring evicted it). `approve` re-checks the grant before
+    every arrow and before Enter (sending zero Escape or further keys
+    after revocation), consumes `told` atomically before submitting,
+    omits automatic retry Enter across indistinguishable identical
+    boxes, and re-checks ownership and `rules_gen` before pasting or
+    submitting a refusal `--reason`.
+  - *How it ends.* When one minded child exits, the minder receives
+    `exited`, records a pending exit report, escalates a summary for
+    that child, and stays running for its remaining children. Once no
+    live children remain (and no launches/moves are reserved), an
+    empty-generation timer (`MINDER_REPORTS`, 3 minutes) is armed;
+    sending the last pending exit report stops the minder 500 ms later,
+    otherwise the reporting grace deadline stops it. Stopping a shared
+    minder directly (`stop MINDER`, with or without `--tree`) never
+    stops its children — they move back under its parent tab with an
+    escalation on each live child — while `stop --tree` on an ancestor
+    tab (requiring a positively mapped `REX_BLOCK` for top-level tabs)
+    stops the whole subtree quietly. On confirmed minder exit or API
+    error, live children are released back under the parent tab and
+    escalated; three-way `TabPresence` (`Present`, `Gone`, `Unknown`)
+    ensures transient RPC failures never mark a live tab closed.
+  - *Tried, for the shared kind.* `tests/agents.rs`, `round2_*` and
+    `round3_*`: three agents started with `--minder` share one minder
+    and are its children; each one's question is answered by its own
+    rules; a minder reaches its own agents and nobody else's; a role
+    of "minder" asked for, or a record adopted with one, gives no
+    authority; rules changed are delivered before any yes is good
+    again; no key after a revocation, and none into a second box that
+    looks the same; `send --wait` from this helper against the helper
+    before it; a second identical box is told. And live: a real Claude
+    Code minder with its one command and nothing else
+    (`agents_live.rs`). A minder and three agents at rest: no CPU, no
+    wakeups in ten seconds, four tabs.
   - *Tried.* `tests/agents.rs` (stand-ins, the minder's part played from
     inside its tab so the service knows it by its process): started with
     its agent, alone told what it asks, its yes and its no typed as the

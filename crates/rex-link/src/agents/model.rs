@@ -297,13 +297,37 @@ pub struct NativeSubagent {
     #[serde(default)]
     pub command: Vec<String>,
     /// The agent this one is the minder of, by its id (`agents::minder`):
-    /// it reaches that agent and no other, and what that agent asks is
-    /// its to answer.
+    /// older 1:1 kind, nested under that single agent. Kept so 1:1
+    /// minders already running across an upgrade keep working until they
+    /// end.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minds: Option<String>,
+    /// The shared minder that minds this agent, by its id
+    /// (`agents::minder`): this agent is a child tab of that minder, and
+    /// what it asks is that minder's to answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minded_by: Option<String>,
+    /// True when this child was started by the service itself as a
+    /// shared minder (`start_shared_minder`). Never set from a caller's
+    /// `--role` or structured start request: a record that merely carries
+    /// `role: "minder"` confers no minder authority.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared_minder: bool,
 }
 
 impl NativeSubagent {
+    /// True if this child is a minder of either kind: a service-started
+    /// shared minder (`shared_minder: true`, agents nested under it) or
+    /// an older 1:1 minder (`minds: Some(agent_id)`).
+    pub fn is_minder(&self) -> bool {
+        self.minds.is_some() || self.shared_minder
+    }
+
+    /// True if this child is a service-started shared minder (`shared_minder: true`
+    /// and `minds: None`, agents nested under it).
+    pub fn is_shared_minder(&self) -> bool {
+        self.shared_minder && self.minds.is_none()
+    }
     /// Human-readable label shown in the tab-tree popover and Activity sidebar.
     pub fn display_title(&self) -> String {
         if !self.title.trim().is_empty() {
@@ -495,7 +519,7 @@ impl SubagentRegistry {
     }
 
     pub fn mark_exited_with_code(&mut self, host_key: &str, session_id: &str, window_id: &str, exit_code: Option<i32>) -> bool {
-        let parent = self.entries.iter().find(|e| e.host_key == host_key && e.session_id == session_id && e.window_id == window_id).map(|e| e.parent_window_id.clone());
+        let ended_info = self.entries.iter().find(|e| e.host_key == host_key && e.session_id == session_id && e.window_id == window_id).map(|e| (e.id.clone(), e.parent_window_id.clone()));
         let mut changed = false;
         let now = now_unix_ms() as i64;
         for e in &mut self.entries {
@@ -508,11 +532,17 @@ impl SubagentRegistry {
                 changed = true;
             }
         }
-        if let Some(grandparent) = parent {
+        if let Some((ended_id, grandparent)) = ended_info {
             for e in &mut self.entries {
-                if e.host_key == host_key && e.session_id == session_id && e.exited_at.is_none() && e.parent_window_id == window_id {
-                    e.parent_window_id = grandparent.clone();
-                    changed = true;
+                if e.host_key == host_key && e.session_id == session_id && e.exited_at.is_none() {
+                    if e.parent_window_id == window_id {
+                        e.parent_window_id = grandparent.clone();
+                        changed = true;
+                    }
+                    if e.minded_by.as_deref() == Some(ended_id.as_str()) {
+                        e.minded_by = None;
+                        changed = true;
+                    }
                 }
             }
         }
@@ -559,10 +589,18 @@ impl SubagentRegistry {
                 changed = true;
             }
         }
-        // Reparent any remaining live child whose direct parent died to its nearest living ancestor.
+        // Reparent any remaining live child whose direct parent died to its nearest living ancestor,
+        // and clear `minded_by` if its referenced minder has exited.
+        let exited_ids: HashSet<String> = self.entries.iter().filter(|e| e.host_key == host_key && e.session_id == session_id && e.exited_at.is_some()).map(|e| e.id.clone()).collect();
         for e in &mut self.entries {
             if e.host_key != host_key || e.session_id != session_id || e.exited_at.is_some() {
                 continue;
+            }
+            if let Some(mid) = e.minded_by.as_deref()
+                && exited_ids.contains(mid)
+            {
+                e.minded_by = None;
+                changed = true;
             }
             if !live_windows.contains(&e.parent_window_id) {
                 let mut cur = e.parent_window_id.clone();
@@ -643,9 +681,26 @@ impl SubagentRegistry {
         changed
     }
 
-    /// The minder of the agent `id`, if it has one that runs.
+    /// The minder of the agent `id`, if it has one that runs: either
+    /// the shared minder named in the agent's `minded_by` (new kind) or
+    /// an older 1:1 minder whose `minds` names `id`.
     pub fn minder_of(&self, id: &str) -> Option<&NativeSubagent> {
+        if let Some(mid) = self.entries.iter().rev().find(|e| e.id == id).and_then(|e| e.minded_by.as_deref())
+            && let Some(m) = self.entries.iter().rev().find(|e| e.id == mid && e.exited_at.is_none())
+        {
+            return Some(m);
+        }
         self.entries.iter().rev().find(|e| e.exited_at.is_none() && e.minds.as_deref() == Some(id))
+    }
+
+    /// Live agents currently minded by the shared minder `minder_id`.
+    pub fn minded_by(&self, minder_id: &str) -> Vec<&NativeSubagent> {
+        self.entries.iter().filter(|e| e.exited_at.is_none() && e.minded_by.as_deref() == Some(minder_id)).collect()
+    }
+
+    /// All agents (live and exited) whose `minded_by` names `minder_id`.
+    pub fn all_minded_by(&self, minder_id: &str) -> Vec<&NativeSubagent> {
+        self.entries.iter().filter(|e| e.minded_by.as_deref() == Some(minder_id)).collect()
     }
 
     pub fn by_window(&self, host_key: &str, session_id: &str, window_id: &str) -> Option<&NativeSubagent> {

@@ -91,12 +91,14 @@ pub fn run(mut args: Vec<String>) -> i32 {
             let mut text = String::new();
             let _ = std::io::stdin().read_to_string(&mut text);
             let obj: Value = serde_json::from_str(text.trim()).unwrap_or(Value::Null);
-            let req = Request { proto: PROTO, op: "adopt".into(), obj: Some(obj), ..Default::default() };
+            let env = |name: &str| std::env::var(name).unwrap_or_default();
+            let req = Request { proto: PROTO, op: "adopt".into(), obj: Some(obj), block: env("REX_BLOCK"), session: env("REX_SESSION"), ..Default::default() };
             print_answer(ask(&server, &paths, &req, true))
         }
         "ping" | "retire" => {
             // (Never starts one: says whether one is there.)
-            let req = Request { proto: PROTO, op: sub.clone(), args: rest.clone(), ..Default::default() };
+            let env = |name: &str| std::env::var(name).unwrap_or_default();
+            let req = Request { proto: PROTO, op: sub.clone(), args: rest.clone(), block: env("REX_BLOCK"), session: env("REX_SESSION"), ..Default::default() };
             match UnixStream::connect(&paths.socket).map(|stream| exchange(stream, &req)) {
                 // (A service that is held says why it stays.)
                 Ok(Asked::Answer(answer)) if !answer.ok => print_answer(answer),
@@ -110,6 +112,19 @@ pub fn run(mut args: Vec<String>) -> i32 {
                 }
             }
         }
+        "mind-send" => {
+            // Restricted send entry point invoked by a minder's `mind` script:
+            // never expands `--file`, never runs `--wait` / `--out`, and allows
+            // only plain text, `--enter`, `--paste`, `--json`, and chooser nav keys.
+            if let Err((msg, code)) = validate_mind_send_args(&rest) {
+                eprintln!("olo agent send: {msg}");
+                return code;
+            }
+            let env = |name: &str| std::env::var(name).unwrap_or_default();
+            let cwd = Some(env("PWD")).filter(|p| p.starts_with('/')).or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string())).unwrap_or_default();
+            let req = Request { proto: PROTO, op: "send".into(), args: rest, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited(), wait: false };
+            print_answer(ask(&server, &paths, &req, false))
+        }
         _ => {
             let args = match with_files(&sub, rest) {
                 Ok(args) => args,
@@ -120,13 +135,15 @@ pub fn run(mut args: Vec<String>) -> i32 {
             };
             let env = |name: &str| std::env::var(name).unwrap_or_default();
             let cwd = Some(env("PWD")).filter(|p| p.starts_with('/')).or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string())).unwrap_or_default();
-            let req = Request { proto: PROTO, op: sub.clone(), args, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited() };
+            let req = Request { proto: PROTO, op: sub.clone(), args, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited(), wait: false };
             // Two commands are several askings, made here: one agent for
             // one prompt, start to finish; and a watch that goes on.
             let asked = |op: &str, args: Vec<String>| ask(&server, &paths, &Request { op: op.to_owned(), args, ..req.clone() }, retriable(op));
+            let asked_send_wait = |args: Vec<String>| ask(&server, &paths, &Request { op: "send".to_owned(), args, wait: true, ..req.clone() }, false);
+            let has_wait_flag = req.args.iter().take_while(|a| a.as_str() != "--").any(|a| a == "--wait");
             match sub.as_str() {
                 "run" => one_shot(req.args.clone(), &asked),
-                "send" if req.args.iter().any(|a| a == "--wait") => send_and_wait(req.args.clone(), &asked),
+                "send" if has_wait_flag => send_and_wait(req.args.clone(), &asked_send_wait, &asked),
                 "watch" | "wait" if req.args.iter().any(|a| a == "--follow") => follow_watch(req.args.clone(), &asked),
                 _ => print_answer(ask(&server, &paths, &req, retriable(&sub))),
             }
@@ -159,7 +176,7 @@ pub const RUN_USAGE: &str = "usage: olo agent run <claude|codex|agy> --model MOD
 /// `given`, and a rest that answers anything else is the child never
 /// having taken it up; otherwise (a message sent into a turn already
 /// going) it is that turn's, and the next rest is its end.
-fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> Result<(&'static str, Value, u64), Response> {
+fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> Result<(&'static str, Value, u64), Box<Response>> {
     let mut cursor = given;
     loop {
         let wait = match until {
@@ -179,7 +196,7 @@ fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: 
             if told.code == 124 {
                 continue;
             }
-            return Err(told);
+            return Err(Box::new(told));
         }
         let ev = told.data;
         match ev["state"].as_str().unwrap_or_default() {
@@ -204,16 +221,21 @@ fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: 
 /// of that child from the send's cursor until the rest that ends the
 /// message's turn; the child is left as it is. Its own options, beside
 /// `send`'s: `--wait`, `--timeout SECS`, `--out FILE`, `--json`.
-fn send_and_wait(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+fn send_and_wait(args: Vec<String>, send_wait: &dyn Fn(Vec<String>) -> Response, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
     let fail = |msg: &str, code: i32| {
         eprintln!("olo agent send: {msg}");
         code
     };
     let (mut out, mut as_json, mut timeout) = (None::<String>, false, None::<u64>);
     let mut send = Vec::with_capacity(args.len() + 1);
+    let mut after_sep = Vec::new();
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
+            "--" => {
+                after_sep.push(arg);
+                after_sep.extend(it.by_ref());
+            }
             "--wait" => {}
             "--json" => as_json = true,
             "--out" => match it.next() {
@@ -232,8 +254,12 @@ fn send_and_wait(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Respons
     if !send.iter().any(|a| a == "--enter") {
         return fail("--wait waits for the turn the message begins: send it with --enter", 2);
     }
+    // Signal `--wait` via optional `Request::wait` rather than `req.args` so
+    // earlier `PROTO == 1` services (which ignore unknown JSON fields) stay
+    // wire-compatible while current services still refuse `--wait` from minders.
     send.push("--json".to_owned());
-    let sent = asked("send", send);
+    send.extend(after_sep);
+    let sent = send_wait(send);
     if !sent.ok {
         return print_answer(sent);
     }
@@ -245,7 +271,7 @@ fn send_and_wait(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Respons
     let until = timeout.map(|secs| Instant::now() + Duration::from_secs(secs));
     let (how, event, cursor) = match turn_end(&id, given, its_own, until, asked) {
         Ok(ended) => ended,
-        Err(failed) => return print_answer(failed),
+        Err(failed) => return print_answer(*failed),
     };
     let status = asked("status", vec![id.clone(), "--json".into()]).data;
     let last = event["last_message"].as_str().or(status["last_message"].as_str()).map(str::to_owned);
@@ -334,7 +360,7 @@ fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) ->
     // Its prompt's own turn's end, or what came in its place.
     let (how, event, cursor) = match turn_end(&id, given, true, until, asked) {
         Ok(ended) => ended,
-        Err(failed) => return print_answer(failed),
+        Err(failed) => return print_answer(*failed),
     };
 
     // Its whole last message (a rest's own event has it; else as it stands now).
@@ -455,6 +481,7 @@ fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response
                 "waiting_question" => format!("{who}: asks: {}", ev["summary"].as_str().unwrap_or_default()),
                 "exited" => format!("{who}: {}", ev["summary"].as_str().unwrap_or("exited")),
                 "error" => format!("{who}: failed: {}", ev["error"].as_str().or(ev["summary"].as_str()).unwrap_or_default()),
+                "minding" => format!("{who}: {}", ev["summary"].as_str().unwrap_or("minding")),
                 other => format!("{who}: {other}"),
             };
             let body = match what {
@@ -497,6 +524,56 @@ impl std::fmt::Display for Refused {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// Validates arguments for the restricted `mind-send` entry point called by
+/// a minder's `mind` script: allows only `<TARGET>`, plain text (`--text` or
+/// positional), `--enter`/`--submit`, `--paste`, `--json`, `--`, and chooser
+/// navigation `--key` names. Explicitly refuses `--wait`, `--out`, `--timeout`,
+/// `--file`, `--force`, `--ctrl`, `--verify`, and unknown options.
+fn validate_mind_send_args(args: &[String]) -> Result<(), (String, i32)> {
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        match a {
+            "--" => break,
+            "--enter" | "--submit" | "--paste" | "--json" => {}
+            "--text" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(("--text requires text".into(), 2));
+                }
+            }
+            s if s.starts_with("--text=") => {}
+            "--key" => {
+                i += 1;
+                let Some(k) = args.get(i) else {
+                    return Err(("--key requires a chooser key name".into(), 2));
+                };
+                if !olo_rex_link::agents::is_minder_chooser_key(k) {
+                    return Err((format!("a minder may not send `--key {k}` (only chooser keys: Up, Down, Left, Right, Tab, Shift+Tab, Space, Backspace, Enter, Escape)"), 69));
+                }
+            }
+            s if s.starts_with("--key=") => {
+                let k = &s["--key=".len()..];
+                if !olo_rex_link::agents::is_minder_chooser_key(k) {
+                    return Err((format!("a minder may not send `--key {k}` (only chooser keys: Up, Down, Left, Right, Tab, Shift+Tab, Space, Backspace, Enter, Escape)"), 69));
+                }
+            }
+            "--wait" | "--out" | "--timeout" | "--file" | "--force" | "--ctrl" | "--verify" => {
+                return Err((format!("`{a}` is not allowed from a minder's `mind send`"), 69));
+            }
+            s if s.starts_with("--out=") || s.starts_with("--timeout=") || s.starts_with("--file=") || s.starts_with("--ctrl=") => {
+                return Err((format!("`{s}` is not allowed from a minder's `mind send`"), 69));
+            }
+            s if s.starts_with('-') => {
+                return Err((format!("unknown `mind send` option `{s}`"), 2));
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    Ok(())
 }
 
 /// The files a command names are this side's to read: `start
@@ -711,7 +788,10 @@ fn start_service(server: &Path, paths: &Paths) -> std::io::Result<std::process::
         "REX_SERVER_SOCKET",
         "OLO_REX_AGENTS_DIR",
         "OLO_REX_AGENTS_MINDER_REPORTS_MS",
+        "OLO_REX_AGENTS_MINDS_MOST",
         "OLO_REX_AGENTS_TAKEN_UP_MS",
+        "OLO_REX_AGENTS_TEST_START_HOLD_MS",
+        "OLO_REX_AGENTS_TEST_MIND_HOLD_MS",
     ] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);
@@ -782,7 +862,8 @@ fn ask(server: &Path, paths: &Paths, req: &Request, again: bool) -> Response {
 /// desktop closes it to end the following). Its status says why it
 /// ended: 0 asked to, 75 the service went away (follow again).
 fn follow(server: &Path, paths: &Paths) -> i32 {
-    let req = Request { proto: PROTO, op: "follow".into(), ..Default::default() };
+    let env = |name: &str| std::env::var(name).unwrap_or_default();
+    let req = Request { proto: PROTO, op: "follow".into(), block: env("REX_BLOCK"), session: env("REX_SESSION"), ..Default::default() };
     let Ok(mut line) = serde_json::to_string(&req) else { return 1 };
     line.push('\n');
     for _ in 0..4 {
@@ -808,7 +889,16 @@ fn follow(server: &Path, paths: &Paths) -> i32 {
                 }
                 continue;
             }
-            Some(Ok(first)) => first,
+            Some(Ok(first)) => {
+                // (A direct refusal before the stream begins — e.g. a minder calling `follow`.)
+                if let Ok(resp) = serde_json::from_str::<Response>(&first)
+                    && !resp.ok
+                    && resp.code != 0
+                {
+                    return print_answer(resp);
+                }
+                first
+            }
             _ => continue,
         };
         // The input closing ends it: the service is told by its side closing.

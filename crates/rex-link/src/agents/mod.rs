@@ -26,7 +26,7 @@ pub mod wire;
 
 pub use events::{SubagentEvent, SubagentEventLog};
 pub use model::{AgentCli, DesktopPolicy, NativeSubagent, SubagentRegistry, TreeRow, new_subagent_id, now_unix_ms, screen_target_name, to_unix_ms};
-pub use spec::{Answer, ApproveSpec, Pressed, SendPayload, StartSpec, WatchSpec, ctrl_byte, parse_send_payload, pressed_key, sanitize_paste_text, special_key, start_usage};
+pub use spec::{Answer, ApproveSpec, Pressed, SendPayload, StartSpec, WatchSpec, ctrl_byte, is_minder_chooser_key, parse_send_payload, pressed_key, sanitize_paste_text, special_key, start_usage};
 pub use state::{Activity, ScreenClassification, SubagentLiveState, approval_to_json, classify_screen_rich, effective_state, summary_json};
 
 #[cfg(test)]
@@ -555,6 +555,8 @@ mod tests {
             add_dirs: Vec::new(),
             command: Vec::new(),
             minds: None,
+            minded_by: None,
+            shared_minder: false,
         };
         let mut kept = SubagentRegistry::default();
         for (id, cli, sid, how) in [
@@ -635,6 +637,8 @@ mod tests {
             add_dirs: Vec::new(),
             command: Vec::new(),
             minds: None,
+            minded_by: None,
+            shared_minder: false,
         };
         reg.register(mk("sa-1", "builder-a", "w2", "w1", "11111111-2222-3333-4444-555555555555"));
         let live: HashSet<String> = ["w1", "w2"].into_iter().map(str::to_owned).collect();
@@ -690,6 +694,7 @@ mod tests {
             tail: Vec::new(),
             dedupe_key: dk.into(),
             answers: None,
+            minding: None,
         };
         let c1 = log.push(mk_ev("sa-1", SubagentLiveState::Done, "msg:1"));
         // Duplicate push for same (id, state, key) is dropped (`H7`), while new key advances (`H5`)!
@@ -725,5 +730,188 @@ mod tests {
         assert!(ApproveSpec::parse(Some(&json!({"args": ["builder-a", "--once", "--session"]}))).is_err());
         assert!(ApproveSpec::parse(Some(&json!({"args": ["builder-a"]}))).is_err());
         assert!(ApproveSpec::parse(Some(&json!({"args": ["builder-a", "--once", "--no"]}))).is_err());
+    }
+
+    /// Registry compatibility across the shared-minder upgrade:
+    /// - Old records (without `minded_by`) read cleanly and `minder_of` finds old 1:1 minders (`minds: Some(id)`).
+    /// - New records (with `minded_by`) find shared minders (`role: "minder"`, `minds: None`), reparent and clear `minded_by` when the minder exits, and ignore unknown fields so an older service does not choke on new fields.
+    /// - `last_state_of` skips both `escalation` and `minding` events.
+    #[test]
+    fn shared_and_legacy_minders_coexist_and_serialize_compatibly() {
+        // Record written by an older service (no `minded_by` field at all).
+        let old_json = json!({
+            "entries": [
+                {
+                    "id": "sa-a1", "name": "worker", "host_key": "local", "session_id": "s1",
+                    "window_id": "w-a1", "block_id": "b-a1", "parent_window_id": "w-lead",
+                    "cli": "claude", "model": "m", "effort": "e", "title": "worker",
+                    "started_at": 1000, "seen_live": true
+                },
+                {
+                    "id": "sa-m1", "name": "worker-minder", "host_key": "local", "session_id": "s1",
+                    "window_id": "w-m1", "block_id": "b-m1", "parent_window_id": "w-a1",
+                    "cli": "claude", "model": "m", "effort": "max", "title": "Minder of worker",
+                    "role": "minder", "started_at": 1001, "seen_live": true, "minds": "sa-a1"
+                }
+            ],
+            "event_seq": 5
+        });
+        let mut reg: SubagentRegistry = serde_json::from_value(old_json).unwrap();
+        assert_eq!(reg.minder_of("sa-a1").map(|m| m.id.as_str()), Some("sa-m1"));
+        assert!(reg.entries[1].is_minder() && !reg.entries[1].is_shared_minder());
+
+        // Add a new-kind shared minder (`role: "minder"`, `minds: None`) and two agents nested under it.
+        let mut shared = reg.entries[0].clone();
+        shared.id = "sa-sm".into();
+        shared.name = Some("minder".into());
+        shared.window_id = "w-sm".into();
+        shared.block_id = "b-sm".into();
+        shared.parent_window_id = "w-lead".into();
+        shared.role = Some("minder".into());
+        shared.minds = None;
+        shared.minded_by = None;
+        shared.shared_minder = true;
+        let mut child1 = reg.entries[0].clone();
+        child1.id = "sa-c1".into();
+        child1.name = Some("alpha".into());
+        child1.window_id = "w-c1".into();
+        child1.block_id = "b-c1".into();
+        child1.parent_window_id = "w-sm".into();
+        child1.minded_by = Some("sa-sm".into());
+        let mut child2 = child1.clone();
+        child2.id = "sa-c2".into();
+        child2.name = Some("beta".into());
+        child2.window_id = "w-c2".into();
+        child2.block_id = "b-c2".into();
+        reg.register(shared);
+        reg.register(child1);
+        reg.register(child2);
+
+        assert!(reg.entries.iter().find(|e| e.id == "sa-sm").unwrap().is_shared_minder());
+        assert_eq!(reg.minder_of("sa-c1").map(|m| m.id.as_str()), Some("sa-sm"));
+        assert_eq!(reg.minder_of("sa-c2").map(|m| m.id.as_str()), Some("sa-sm"));
+        assert_eq!(reg.minded_by("sa-sm").len(), 2);
+
+        // Unknown future fields don't break deserialization (matching how an older service reads new records).
+        let mut val = serde_json::to_value(&reg).unwrap();
+        val["entries"][0]["some_future_field"] = json!("ignored");
+        let parsed: SubagentRegistry = serde_json::from_value(val).unwrap();
+        assert_eq!(parsed.entries.len(), 5);
+
+        // When the shared minder exits, its agents move back under `w-lead` and `minded_by` is cleared.
+        assert!(reg.mark_exited_with_code("local", "s1", "w-sm", Some(1)));
+        assert!(reg.minder_of("sa-c1").is_none());
+        assert!(reg.minder_of("sa-c2").is_none());
+        for id in ["sa-c1", "sa-c2"] {
+            let e = reg.entries.iter().find(|e| e.id == id).unwrap();
+            assert_eq!((e.parent_window_id.as_str(), e.minded_by.as_deref()), ("w-lead", None));
+        }
+
+        // `last_state_of` skips both `escalation` and `minding`.
+        let mut log = SubagentEventLog::default();
+        let base = |event: &str, state: SubagentLiveState| SubagentEvent {
+            seq: 0,
+            timestamp_ms: 1,
+            host_key: "local".into(),
+            session_id: "s1".into(),
+            parent_window_id: "w-sm".into(),
+            ancestor_windows: vec!["w-sm".into(), "w-lead".into()],
+            id: "sa-c1".into(),
+            name: Some("alpha".into()),
+            window_id: "w-c1".into(),
+            block_id: "b-c1".into(),
+            resume_id: None,
+            cli_session_id: None,
+            event: event.into(),
+            state,
+            summary: None,
+            last_message: None,
+            approval: None,
+            error: None,
+            tail: Vec::new(),
+            dedupe_key: "ap:1".into(),
+            answers: None,
+            minding: None,
+        };
+        let s1 = log.push(base("waiting_approval", SubagentLiveState::WaitingApproval));
+        log.push_beside(base(minder::MINDING, SubagentLiveState::Working));
+        log.push_beside(base(minder::ESCALATION, SubagentLiveState::WaitingApproval));
+        assert_eq!(log.last_state_of("sa-c1").map(|e| e.seq), Some(s1));
+    }
+
+    /// Round 2 (#1): `--role minder` (CLI or structured JSON) is refused
+    /// from any caller, and a record that merely has `role: "minder"`
+    /// without the service's own marker is no minder.
+    #[test]
+    fn round2_1_role_minder_is_refused_and_does_not_grant_authority() {
+        let args = |a: &[&str]| a.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        for role in ["minder", "Minder", " MINDER "] {
+            let err = StartSpec::parse_cli_args(&args(&["claude", "--model", "m", "--effort", "e", "--role", role])).expect_err(&format!("CLI --role {role} must be refused"));
+            assert!(err.to_ascii_lowercase().contains("minder"), "{err}");
+            let jerr = StartSpec::parse_json_object(&json!({ "cli": "claude", "model": "m", "effort": "e", "role": role })).expect_err(&format!("JSON role={role} must be refused"));
+            assert!(jerr.to_ascii_lowercase().contains("minder"), "{jerr}");
+        }
+        // A legacy or hand-edited record with only `role: "minder"` and no `minds` or service marker is NOT a minder.
+        let spoofed_json = json!({
+            "id": "sa-spoof", "name": "fake-minder", "host_key": "local", "session_id": "s1",
+            "window_id": "w-sp", "block_id": "b-sp", "parent_window_id": "w-lead",
+            "cli": "claude", "model": "m", "effort": "max", "title": "Fake",
+            "role": "minder", "started_at": 1000, "seen_live": true
+        });
+        let spoofed: NativeSubagent = serde_json::from_value(spoofed_json).unwrap();
+        assert!(!spoofed.is_minder() && !spoofed.is_shared_minder(), "bare role=minder must confer no minder authority");
+        // Legacy 1:1 minder (`minds: Some(...)`) remains a minder.
+        let legacy_json = json!({
+            "id": "sa-leg", "name": "old-m", "host_key": "local", "session_id": "s1",
+            "window_id": "w-leg", "block_id": "b-leg", "parent_window_id": "w-w1",
+            "cli": "claude", "model": "m", "effort": "max", "title": "Old",
+            "role": "minder", "minds": "sa-w1", "started_at": 1000, "seen_live": true
+        });
+        let legacy: NativeSubagent = serde_json::from_value(legacy_json).unwrap();
+        assert!(legacy.is_minder() && !legacy.is_shared_minder());
+    }
+
+    /// Round 2 (#33): restoring the event log rebuilds `last_by_id` from
+    /// state records only — `minding` and `escalation` (`push_beside`)
+    /// records stay in the ring without turning a standing state into a
+    /// fresh transition after restart.
+    #[test]
+    fn round2_33_restored_log_ignores_beside_events_for_dedupe() {
+        let mk = |seq: u64, event: &str, state: SubagentLiveState, dedupe: &str| SubagentEvent {
+            seq,
+            timestamp_ms: seq,
+            host_key: String::new(),
+            session_id: "s1".into(),
+            parent_window_id: "w-m".into(),
+            ancestor_windows: vec!["w-m".into(), "w-lead".into()],
+            id: "sa-a1".into(),
+            name: Some("alpha".into()),
+            window_id: "w-a1".into(),
+            block_id: "b-a1".into(),
+            resume_id: None,
+            cli_session_id: None,
+            event: event.into(),
+            state,
+            summary: None,
+            last_message: None,
+            approval: None,
+            error: None,
+            tail: Vec::new(),
+            dedupe_key: dedupe.into(),
+            answers: None,
+            minding: None,
+        };
+        let mut restored = SubagentEventLog::restored(
+            vec![
+                mk(1, "waiting_approval", SubagentLiveState::WaitingApproval, "ap:42"),
+                mk(2, minder::MINDING, SubagentLiveState::WaitingApproval, ""),
+                mk(3, minder::ESCALATION, SubagentLiveState::WaitingApproval, ""),
+            ],
+            3,
+        );
+        // Pushing the exact same standing approval after restore must deduplicate back to seq 1!
+        let pushed = restored.push(mk(0, "waiting_approval", SubagentLiveState::WaitingApproval, "ap:42"));
+        assert_eq!(pushed, 1, "restored beside events must not clobber last_by_id dedupe state");
+        assert_eq!(restored.latest_seq(), 3);
     }
 }

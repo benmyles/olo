@@ -73,17 +73,27 @@ pub struct StartSpec {
     /// `--command`: not an agent, the command after `--` as it is
     /// (`AgentCli::Command`; no model, no effort).
     pub command: bool,
-    /// `--minder CLI:MODEL:EFFORT`: a minder of its own, started with it
-    /// (`agents::minder`), with the parent's rules for it (`--rules FILE`
-    /// or `--rules-text TEXT`) and what its own environment has besides
-    /// the child's (`--minder-env K=V`).
-    pub minder: Option<super::minder::MinderSpec>,
+    /// `--minder CLI:MODEL:EFFORT` or `--minder NAME`: a shared minder
+    /// (`agents::minder`), with the parent's rules for this agent
+    /// (`--rules FILE` or `--rules-text TEXT`) and what a newly started
+    /// minder's environment has besides the child's (`--minder-env K=V`).
+    pub minder: Option<super::minder::MinderChoice>,
     pub rules: Option<String>,
     pub rules_file: Option<String>,
     pub minder_env: Vec<(String, String)>,
+    /// Set by the service alone, never asked for: pre-allocated handle
+    /// (used when starting a shared minder whose `mind` script path
+    /// names its own id).
+    pub id: Option<String>,
     /// Set by the service alone, never asked for: the agent this one is
-    /// the minder of (its id).
+    /// the minder of (its id — older 1:1 kind).
     pub minds: Option<String>,
+    /// Set by the service alone, never asked for: the shared minder
+    /// that minds this agent (its id).
+    pub minded_by: Option<String>,
+    /// Set by the service alone (`start_shared_minder`), never asked for:
+    /// marks this child as a service-owned shared minder.
+    pub shared_minder: bool,
     /// `--approve-all-but FILE` (its text, read by the asking command):
     /// leave given by a list, by the service itself (`agentd/leave.rs`).
     pub approve_all_but: Option<String>,
@@ -158,6 +168,10 @@ impl StartSpec {
             _ => None,
         };
         let stream = bool_val("stream");
+        let role = str_opt("role");
+        if role.as_deref().is_some_and(|r| r.eq_ignore_ascii_case("minder")) {
+            return Err("`--role minder` is reserved for minders started by the service (`--minder claude:MODEL:EFFORT`)".into());
+        }
         Ok(Self {
             cli,
             model: str_opt("model"),
@@ -168,7 +182,7 @@ impl StartSpec {
             fork: bool_val("fork"),
             prompt: raw_str_opt("prompt"),
             title: str_opt("title"),
-            role: str_opt("role"),
+            role,
             cwd: str_opt("cwd"),
             parent_window: str_opt("parent").or_else(|| str_opt("parent_window")),
             env,
@@ -216,7 +230,7 @@ impl StartSpec {
             extra: str_vec("extra").into_iter().chain(str_vec("command")).collect(),
             command: cli == Some(AgentCli::Command) || matches!(v.get("command"), Some(Value::Array(_))),
             minder: match str_opt("minder") {
-                Some(m) => Some(super::minder::MinderSpec::parse(&m)?),
+                Some(m) => Some(super::minder::MinderChoice::parse(&m)?),
                 None => None,
             },
             rules: raw_str_opt("rules_text"),
@@ -226,7 +240,10 @@ impl StartSpec {
                 Some(obj) => obj.iter().map(|(k, val)| (k.clone(), val.as_str().map(str::to_owned).unwrap_or_else(|| val.to_string()))).collect(),
                 None => Vec::new(),
             },
+            id: None,
             minds: None,
+            minded_by: None,
+            shared_minder: false,
         })
     }
 
@@ -278,7 +295,13 @@ impl StartSpec {
                 "--input-format" => s.input_format = Some(next(&mut i, flag, inline)?),
                 "--output-format" => s.output_format = Some(next(&mut i, flag, inline)?),
                 "--title" => s.title = Some(next(&mut i, flag, inline)?),
-                "--role" => s.role = Some(next(&mut i, flag, inline)?),
+                "--role" => {
+                    let r = next(&mut i, flag, inline)?;
+                    if r.trim().eq_ignore_ascii_case("minder") {
+                        return Err("`--role minder` is reserved for minders started by the service (`--minder claude:MODEL:EFFORT`)".into());
+                    }
+                    s.role = Some(r);
+                }
                 "-C" | "--cwd" | "--cd" => s.cwd = Some(next(&mut i, flag, inline)?),
                 "--parent" => s.parent_window = Some(next(&mut i, flag, inline)?),
                 "--trust" => s.trust = true,
@@ -300,7 +323,7 @@ impl StartSpec {
                     validate_env_name("--env", k)?;
                     s.env.push((k.to_owned(), v.to_owned()));
                 }
-                "--minder" => s.minder = Some(super::minder::MinderSpec::parse(&next(&mut i, flag, inline)?)?),
+                "--minder" => s.minder = Some(super::minder::MinderChoice::parse(&next(&mut i, flag, inline)?)?),
                 "--rules" | "--rules-file" => s.rules_file = Some(next(&mut i, flag, inline)?),
                 "--rules-text" => s.rules = Some(next(&mut i, flag, inline)?),
                 "--approve-all-but-text" => s.approve_all_but = Some(next(&mut i, flag, inline)?),
@@ -839,6 +862,12 @@ pub struct SendPayload {
     /// For each of `post_keys`: the key as the terminal's own encoder is
     /// asked to press it, where its bytes can't say it ([`pressed_key`]).
     pub post_presses: Vec<Option<Pressed>>,
+    /// Raw `--key` names as given (for minder argument validation).
+    pub raw_keys: Vec<String>,
+    /// True if any `--ctrl` or control/Alt chord key was requested.
+    pub has_ctrl: bool,
+    /// True if `--wait` was requested (client waits for the turn; refused to minders).
+    pub wait: bool,
     /// One of the keys types a character ([`key_types`]): into a
     /// question it is an answer, refused without `force` as text is.
     pub types: bool,
@@ -847,18 +876,49 @@ pub struct SendPayload {
     pub verify_delivery: bool,
 }
 
+/// Whether `--key RAW` is one of the plain chooser navigation keys a
+/// minder may send (no Ctrl, no Alt, no printable characters, no F-keys).
+pub fn is_minder_chooser_key(raw: &str) -> bool {
+    let given = raw.trim();
+    if given.is_empty() || given.starts_with('^') {
+        return false;
+    }
+    let (alt, ctrl, shift, key) = key_parts(given);
+    if alt || ctrl {
+        return false;
+    }
+    match key.to_ascii_lowercase().as_str() {
+        "tab" => true,
+        "shift-tab" | "btab" | "backtab" => true,
+        "enter" | "return" | "cr" | "esc" | "escape" | "space" | "backspace" | "bs" | "up" | "down" | "left" | "right" => !shift,
+        _ => false,
+    }
+}
+
 /// Encodes text, `--paste`, `--file` (pre-read into `--text` + `--paste`), `--ctrl <KEY>`, `--key <NAME>`, `--force`, and `--enter`.
 pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<SendPayload, String> {
     let mut target: Option<String> = None;
     let mut paste = false;
     let mut add_enter = false;
     let mut force = false;
+    let mut wait = false;
     let mut as_json = false;
     let mut verify_delivery = false;
     let mut text_parts: Vec<String> = Vec::new();
     let mut post_keys: Vec<String> = Vec::new();
     let mut post_presses: Vec<Option<Pressed>> = Vec::new();
+    let mut raw_keys: Vec<String> = Vec::new();
+    let mut has_ctrl = false;
     let mut types = false;
+
+    let key_is_ctrl_or_alt = |k: &str| {
+        let g = k.trim();
+        if g.starts_with('^') {
+            return true;
+        }
+        let (alt, ctrl, _, _) = key_parts(g);
+        alt || ctrl
+    };
 
     if let Some(v) = raw_obj
         && v.get("args").is_none()
@@ -867,17 +927,21 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
         paste = v.get("paste").and_then(Value::as_bool).unwrap_or(false);
         add_enter = v.get("enter").and_then(Value::as_bool).unwrap_or(false);
         force = v.get("force").and_then(Value::as_bool).unwrap_or(false);
+        wait = v.get("wait").and_then(Value::as_bool).unwrap_or(false);
         as_json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
         verify_delivery = v.get("verify").and_then(Value::as_bool).unwrap_or(paste && add_enter);
         if let Some(t) = v.get("text").and_then(Value::as_str) {
             text_parts.push(t.to_owned());
         }
         if let Some(c) = v.get("ctrl").and_then(Value::as_str) {
+            has_ctrl = true;
             post_presses.push(None);
             post_keys.push(ctrl_byte(c)?);
         }
         if let Some(k) = v.get("key").and_then(Value::as_str) {
             types |= key_types(k);
+            has_ctrl |= key_is_ctrl_or_alt(k);
+            raw_keys.push(k.to_owned());
             post_presses.push(pressed_key(k));
             post_keys.push(special_key(k)?);
         }
@@ -885,6 +949,8 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
             for k in ks {
                 if let Some(ks_str) = k.as_str() {
                     types |= key_types(ks_str);
+                    has_ctrl |= key_is_ctrl_or_alt(ks_str);
+                    raw_keys.push(ks_str.to_owned());
                     post_presses.push(pressed_key(ks_str));
                     post_keys.push(special_key(ks_str)?);
                 }
@@ -899,10 +965,12 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                 "--paste" => paste = true,
                 "--verify" => verify_delivery = true,
                 "--force" => force = true,
+                "--wait" => wait = true,
                 "--json" => as_json = true,
                 "--ctrl" => {
                     i += 1;
                     let c = args.get(i).ok_or("--ctrl requires a key (e.g. c, d, z)")?;
+                    has_ctrl = true;
                     post_presses.push(None);
                     post_keys.push(ctrl_byte(c)?);
                 }
@@ -910,6 +978,8 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                     i += 1;
                     let k = args.get(i).ok_or("--key requires a key name (e.g. Enter, Escape, Tab, Up, Down)")?;
                     types |= key_types(k);
+                    has_ctrl |= key_is_ctrl_or_alt(k);
+                    raw_keys.push(k.clone());
                     post_presses.push(pressed_key(k));
                     post_keys.push(special_key(k)?);
                 }
@@ -923,13 +993,17 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                     break;
                 }
                 s if s.starts_with("--ctrl=") => {
+                    has_ctrl = true;
                     post_presses.push(None);
                     post_keys.push(ctrl_byte(&s["--ctrl=".len()..])?);
                 }
                 s if s.starts_with("--key=") => {
-                    types |= key_types(&s["--key=".len()..]);
-                    post_presses.push(pressed_key(&s["--key=".len()..]));
-                    post_keys.push(special_key(&s["--key=".len()..])?);
+                    let k = &s["--key=".len()..];
+                    types |= key_types(k);
+                    has_ctrl |= key_is_ctrl_or_alt(k);
+                    raw_keys.push(k.to_owned());
+                    post_presses.push(pressed_key(k));
+                    post_keys.push(special_key(k)?);
                 }
                 s if s.starts_with("--text=") => text_parts.push(s["--text=".len()..].to_owned()),
                 s if s.starts_with('-') => return Err(format!("unknown send option `{s}`")),
@@ -959,7 +1033,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
     if paste && add_enter {
         verify_delivery = true;
     }
-    Ok(SendPayload { target, body, paste, enter: add_enter, post_keys, post_presses, types, force, as_json, verify_delivery })
+    Ok(SendPayload { target, body, paste, enter: add_enter, post_keys, post_presses, raw_keys, has_ctrl, wait, types, force, as_json, verify_delivery })
 }
 
 /// How a permission question is answered: by what a choice means,
@@ -1360,13 +1434,13 @@ impl WatchSpec {
         for ev in &events {
             if !matches!(
                 ev.as_str(),
-                "any" | "question" | "waiting_question" | "approval" | "waiting_approval" | "waiting" | "idle" | "done" | "error" | "failed" | "exit" | "exited" | "closed" | "escalation"
+                "any" | "question" | "waiting_question" | "approval" | "waiting_approval" | "waiting" | "idle" | "done" | "error" | "failed" | "exit" | "exited" | "closed" | "escalation" | "minding"
             ) {
-                return Err(format!("unknown --on event `{ev}`; expected question|approval|waiting|idle|done|error|exit|escalation|any"));
+                return Err(format!("unknown --on event `{ev}`; expected question|approval|waiting|idle|done|error|exit|escalation|minding|any"));
             }
         }
         if events.is_empty() && match_text.is_none() && regex_pat.is_none() {
-            events = vec!["question".into(), "approval".into(), "idle".into(), "done".into(), "error".into(), "exit".into(), "escalation".into()];
+            events = vec!["question".into(), "approval".into(), "idle".into(), "done".into(), "error".into(), "exit".into(), "escalation".into(), "minding".into()];
         }
         if timeout_secs == 0 || timeout_secs > 3600 {
             return Err(format!("--timeout must be between 1 and 3600 seconds (got {timeout_secs})"));
@@ -1379,6 +1453,13 @@ impl WatchSpec {
     /// `any`, and with none named).
     pub fn wants_escalations(&self) -> bool {
         self.events.iter().any(|ev| matches!(ev.as_str(), "any" | "escalation"))
+    }
+
+    /// Whether minder roster/rules updates (`minding`) are among what
+    /// is waited for (meaningful only for a shared minder's watch;
+    /// ignored on every other watch).
+    pub fn wants_minding(&self) -> bool {
+        self.events.iter().any(|ev| matches!(ev.as_str(), "any" | "minding"))
     }
 
     pub fn matches_state(&self, state: SubagentLiveState) -> bool {
@@ -1415,5 +1496,5 @@ impl WatchSpec {
 }
 
 pub fn start_usage() -> String {
-    "usage: olo agent start <claude|codex|agy> --model <MODEL> --effort <EFFORT> [--name NAME] [--trust] [--no-auto] [--desktop none|screens=NAME,…|inherit] [--unset-env K]... [--session-id UUID] [--resume ID | --continue] [--fork] [--title TITLE] [--role ROLE] [--cwd DIR] [--prompt TEXT | --prompt-file PATH] [--permission-mode MODE | --approval POLICY | --sandbox MODE | --mode MODE | --full-auto] [--settings JSON_OR_FILE] [--strict-mcp-config] [--disallowed-tools TOOLS...] [--add-dir DIR]... [--env K=V]... [--parent WIN] [--focus] [--close-on-exit] [--minder claude:MODEL:EFFORT [--rules FILE | --rules-text TEXT]] [--json] [-- EXTRA_CLI_ARGS...]\n\nA minder (--minder): an agent of its own, a child tab of this one, that answers what this one asks at once by your rules and tells you what they don't cover (an `escalation` on your own `olo agent watch`). For one that runs already: olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE.\n\nNote: auto mode is on by default (`--no-auto` disables it). On Codex, `--approve-for-me` uses `workspace-write` and cannot be combined with `--sandbox`; pass `--sandbox workspace-write` or `--sandbox danger-full-access` with `--add-dir` when auto mode is off, or `--sandbox danger-full-access -c 'approvals_reviewer=\"auto_review\"'` to run unsandboxed with auto review. Default desktop policy for children is `--desktop none`.\n\nA command of your own in a child tab (no agent): olo agent start --command [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]... [--unset-env K]... [--desktop …] [--parent WIN] [--close-on-exit] [--focus] [--json] -- CMD [ARG…]".into()
+    "usage: olo agent start <claude|codex|agy> --model <MODEL> --effort <EFFORT> [--name NAME] [--trust] [--no-auto] [--desktop none|screens=NAME,…|inherit] [--unset-env K]... [--session-id UUID] [--resume ID | --continue] [--fork] [--title TITLE] [--role ROLE] [--cwd DIR] [--prompt TEXT | --prompt-file PATH] [--permission-mode MODE | --approval POLICY | --sandbox MODE | --mode MODE | --full-auto] [--settings JSON_OR_FILE] [--strict-mcp-config] [--disallowed-tools TOOLS...] [--add-dir DIR]... [--env K=V]... [--parent WIN] [--focus] [--close-on-exit] [--minder claude:MODEL:EFFORT|NAME [--rules FILE | --rules-text TEXT]] [--json] [-- EXTRA_CLI_ARGS...]\n\nA minder (--minder): an agent of its own under your tab that minds agents nested under it (one shared minder per CLI:MODEL:EFFORT up to 12 agents, or an existing minder by NAME), answering each agent by its own rules and escalating what they don't cover (`escalation` on your `olo agent watch`). For one that runs already: olo agent mind NAME --with claude:MODEL:EFFORT|NAME --rules FILE.\n\nNote: auto mode is on by default (`--no-auto` disables it). On Codex, `--approve-for-me` uses `workspace-write` and cannot be combined with `--sandbox`; pass `--sandbox workspace-write` or `--sandbox danger-full-access` with `--add-dir` when auto mode is off, or `--sandbox danger-full-access -c 'approvals_reviewer=\"auto_review\"'` to run unsandboxed with auto review. Default desktop policy for children is `--desktop none`.\n\nA command of your own in a child tab (no agent): olo agent start --command [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]... [--unset-env K]... [--desktop …] [--parent WIN] [--close-on-exit] [--focus] [--json] -- CMD [ARG…]".into()
 }

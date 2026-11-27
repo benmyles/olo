@@ -48,6 +48,11 @@ pub struct Request {
     /// folder on `PATH`): what the desktop gave its parent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inherit: Vec<(String, String)>,
+    /// True when the client is executing `send --wait`: lets the service refuse
+    /// `--wait` from a minder without appending `--wait` to `args` (which
+    /// earlier `PROTO == 1` services reject as an unknown `send` option).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wait: bool,
 }
 
 /// What the service writes the moment it has read a request and is

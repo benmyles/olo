@@ -2528,6 +2528,15 @@ fn wanted_back(conn: &HostConnState) -> bool {
     matches!(conn, HostConnState::Reconnecting { .. } | HostConnState::Error(_))
 }
 
+/// (See [`RexHub::minder_and_its_agents`].)
+pub(crate) fn minder_and_its_agents(entries: &[crate::subagents::NativeSubagent], host_key: &str, session_id: &str, minder_window_id: &str) -> Vec<String> {
+    let here = |e: &&crate::subagents::NativeSubagent| e.host_key == host_key && e.session_id == session_id && e.exited_at.is_none();
+    let Some(minder) = entries.iter().filter(here).find(|e| e.window_id == minder_window_id) else { return vec![minder_window_id.to_owned()] };
+    let mut order: Vec<String> = entries.iter().filter(here).filter(|e| e.minded_by.as_deref() == Some(minder.id.as_str())).map(|e| e.window_id.clone()).collect();
+    order.push(minder.window_id.clone());
+    order
+}
+
 impl RexHub {
     pub fn start(
         settings: Settings,
@@ -3039,6 +3048,8 @@ impl RexHub {
             add_dirs: Vec::new(),
             command: Vec::new(),
             minds: None,
+            minded_by: None,
+            shared_minder: false,
         });
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-diff1a".into(),
@@ -3071,6 +3082,8 @@ impl RexHub {
             add_dirs: Vec::new(),
             command: Vec::new(),
             minds: None,
+            minded_by: None,
+            shared_minder: false,
         });
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-tests2".into(),
@@ -3103,6 +3116,8 @@ impl RexHub {
             add_dirs: Vec::new(),
             command: Vec::new(),
             minds: None,
+            minded_by: None,
+            shared_minder: false,
         });
 
         if command_child {
@@ -3145,6 +3160,8 @@ impl RexHub {
                 add_dirs: Vec::new(),
                 command: vec!["tail".into(), "-f".into(), "/var/tmp/olo/build.log".into()],
                 minds: None,
+                minded_by: None,
+                shared_minder: false,
             });
         }
 
@@ -3934,6 +3951,37 @@ impl RexHub {
                 tracing::warn!("Stopping a child tab on {hk}: {}", answer.stderr.unwrap_or_default().trim());
             }
         });
+    }
+
+    /// Stops several child tabs one after the other, in the order given,
+    /// each with what is under it: a stop is answered before the next is
+    /// asked. Asked each by itself (as `stop_subagent` asks), they went
+    /// on side by side: a minder's stop overtook its agents', and the
+    /// service, which never stops a minder's agents with it, put each
+    /// back under the tab and told the tab's own agent "its minder
+    /// ended: what it asks comes to you again", of agents about to end
+    /// (a code review, 2026-11-27).
+    pub fn stop_subagents_in_order(&self, host_key: &str, session_id: &str, window_ids: Vec<String>) {
+        let (inner, hk, sid) = (self.inner.clone(), host_key.to_owned(), session_id.to_owned());
+        self.rt.spawn(async move {
+            for window_id in window_ids {
+                let answer = inner.ask_agents(&hk, "stop", Some(json!({ "args": [window_id, "--json", "--tree"] })), Some(sid.clone()), None, None).await;
+                if !answer.ok {
+                    tracing::warn!("Stopping a child tab on {hk}: {}", answer.stderr.unwrap_or_default().trim());
+                }
+            }
+        });
+    }
+
+    /// The tabs of the agents a minder minds now, then the minder's own:
+    /// the order to stop them in ([`Self::stop_subagents_in_order`]).
+    /// By who minds each (`minded_by`), read when asked: never by where
+    /// rows stand in a list, which a filter thins (another minder's
+    /// agent stood under this one's row with its own minder filtered
+    /// out, and was stopped for this one's: a code review, 2026-11-27).
+    pub fn minder_and_its_agents(&self, host_key: &str, session_id: &str, minder_window_id: &str) -> Vec<String> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        minder_and_its_agents(&st.subagents.entries, host_key, session_id, minder_window_id)
     }
 
     /// Moves a tab before another of its session's (none: to the end).
@@ -9064,7 +9112,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 ok: false,
                 stdout: None,
                 stderr: Some("olo agent: this host's agents service couldn't be asked (Olo's helper is put on a host over SSH, and runs it there)\n".into()),
-                data: Some(json!({ "code": 69 })),
+                // (`unreached`: nothing came back from the service. What it
+                // answers itself, a refusal too, never has this.)
+                data: Some(json!({ "code": 69, "unreached": true })),
                 carried: Vec::new(),
             };
         };
@@ -9105,6 +9155,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             Some(policy) => policy,
             None => {
                 let answer = self.ask_agents(host_key, "policy", Some(json!({ "pid": requester_pid })), session_id.map(str::to_owned), bid.map(str::to_owned), Some(Duration::from_secs(10))).await;
+                // The service answered, and would not say: a no. (It was
+                // taken for a service that couldn't be asked, and the
+                // action allowed wherever the pane could be placed: a
+                // minder's pane, known to the session's view a moment
+                // before the service's word of it arrived, was refused
+                // its policy by the service's own gate and then let
+                // through here, with nothing of the desktop its to ask.
+                // A code review, 2026-11-27.)
+                if !answer.ok && !answer.data.as_ref().is_some_and(|d| d["unreached"].as_bool() == Some(true)) {
+                    return Some(format!(
+                        "action `{action}` refused: this host's agents service would not say what this pane may ask of the desktop ({})",
+                        answer.stderr.as_deref().unwrap_or("no reason given").trim()
+                    ));
+                }
                 if !answer.ok {
                     // The service couldn't be asked (a host with no
                     // helper has no children either; a helper that

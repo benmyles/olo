@@ -112,6 +112,10 @@ pub struct ScreenClassification {
     pub folder_trust: Option<olo_agent_screen::FolderTrustPrompt>,
     pub api_error: Option<String>,
     pub usage: Option<olo_agent_screen::UsageInfo>,
+    /// True only when a non-approval screen question/chooser was positively
+    /// identified (`olo_agent_screen::parse_question`), distinct from
+    /// `folder_trust` and unrecognised `Activity::Blocked` fallback screens.
+    pub recognized_question: bool,
     /// The agent's own screen says a turn of the model's is on, or was
     /// cut short: it draws its working line, a tool call of its turn
     /// asks leave, or the API failed under it. Not Rex's word for the
@@ -245,7 +249,16 @@ pub fn rest_now(now_ms: u64, started_ms: u64, seen_working: bool, at_prompt: boo
 
 pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str, alive: bool) -> ScreenClassification {
     if !alive {
-        return ScreenClassification { state: SubagentLiveState::Exited, summary: Some("tab closed".into()), approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false };
+        return ScreenClassification {
+            state: SubagentLiveState::Exited,
+            summary: Some("tab closed".into()),
+            approval: None,
+            folder_trust: None,
+            api_error: None,
+            usage: None,
+            recognized_question: false,
+            in_turn: false,
+        };
     }
     let last_nonempty = || screen_text.lines().rev().map(str::trim).find(|l| !l.is_empty()).map(str::to_owned);
     // A plain command (`start --command`): running until it exits, and
@@ -258,6 +271,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             folder_trust: None,
             api_error: None,
             usage: None,
+            recognized_question: false,
             in_turn: false,
         };
     };
@@ -269,28 +283,73 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             Some(f) => format!("Trust folder {f}?"),
             None => "Trust this folder?".into(),
         };
-        return ScreenClassification { state: SubagentLiveState::WaitingQuestion, summary: Some(sum), approval: None, folder_trust: Some(trust), api_error: None, usage, in_turn: false };
+        return ScreenClassification {
+            state: SubagentLiveState::WaitingQuestion,
+            summary: Some(sum),
+            approval: None,
+            folder_trust: Some(trust),
+            api_error: None,
+            usage,
+            recognized_question: false,
+            in_turn: false,
+        };
     }
 
     // 2. Structured tool approval prompt (requires real choices + live cursor mark).
     if let Some(ap) = olo_agent_screen::parse_approval(agent, screen_text) {
         let sum = ap.command.clone().or_else(|| Some(ap.question.clone()));
-        return ScreenClassification { state: SubagentLiveState::WaitingApproval, summary: sum, approval: Some(ap), folder_trust: None, api_error: None, usage, in_turn: true };
+        return ScreenClassification {
+            state: SubagentLiveState::WaitingApproval,
+            summary: sum,
+            approval: Some(ap),
+            folder_trust: None,
+            api_error: None,
+            usage,
+            recognized_question: false,
+            in_turn: true,
+        };
     }
 
     // 3. Genuine non-approval interactive question / chooser.
     if let Some(q) = olo_agent_screen::parse_question(agent, screen_text) {
-        return ScreenClassification { state: SubagentLiveState::WaitingQuestion, summary: Some(q), approval: None, folder_trust: None, api_error: None, usage, in_turn: false };
+        return ScreenClassification {
+            state: SubagentLiveState::WaitingQuestion,
+            summary: Some(q),
+            approval: None,
+            folder_trust: None,
+            api_error: None,
+            usage,
+            recognized_question: true,
+            in_turn: false,
+        };
     }
 
     // 4. API error that cut a turn short without a normal Stop hook.
     if let Some(err) = olo_agent_screen::parse_api_error(agent, screen_text) {
-        return ScreenClassification { state: SubagentLiveState::Error, summary: Some(err.clone()), approval: None, folder_trust: None, api_error: Some(err), usage, in_turn: true };
+        return ScreenClassification {
+            state: SubagentLiveState::Error,
+            summary: Some(err.clone()),
+            approval: None,
+            folder_trust: None,
+            api_error: Some(err),
+            usage,
+            recognized_question: false,
+            in_turn: true,
+        };
     }
 
     // 5. Working on screen takes precedence over stale Idle/Done.
     if olo_agent_screen::classify(agent, screen_text) == olo_agent_screen::State::Working {
-        return ScreenClassification { state: SubagentLiveState::Working, summary: doing_line(screen_text), approval: None, folder_trust: None, api_error: None, usage, in_turn: true };
+        return ScreenClassification {
+            state: SubagentLiveState::Working,
+            summary: doing_line(screen_text),
+            approval: None,
+            folder_trust: None,
+            api_error: None,
+            usage,
+            recognized_question: false,
+            in_turn: true,
+        };
     }
 
     // 6. Fallback to Rex activity — an unrecognised Blocked dialog fails VISIBLE as WaitingQuestion
@@ -328,7 +387,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             }
         }
     };
-    ScreenClassification { state, summary, approval: None, folder_trust: None, api_error: None, usage, in_turn: false }
+    ScreenClassification { state, summary, approval: None, folder_trust: None, api_error: None, usage, recognized_question: false, in_turn: false }
 }
 
 /// Shared state reconciliation across `status`, `list`, `watch`, and `record_subagent_transition` (`H10`, `M2`, `M3`, `M22`).
@@ -498,7 +557,11 @@ pub fn summary_json(entry: &NativeSubagent, state: SubagentLiveState, summary: O
         "children": children,
         // (What a command child runs; an agent's own command line isn't shown.)
         "command": (!entry.command.is_empty()).then_some(&entry.command),
-        // (The agent this one is the minder of.)
+        // (The agent this one is the minder of — older 1:1 kind.)
         "minds": entry.minds,
+        // (The shared minder that minds this agent.)
+        "minded_by": entry.minded_by,
+        // (True only for a service-started shared minder.)
+        "shared_minder": entry.is_shared_minder(),
     })
 }

@@ -4704,7 +4704,7 @@ impl RexWindow {
                 let running_kids: Vec<RunningChild> = subs
                     .iter()
                     .filter(|c| c.command || matches!(c.act, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
-                    .map(|c| RunningChild { window_id: c.row.entry.window_id.clone(), name: c.row.entry.display_title(), command: c.command })
+                    .map(|c| RunningChild { window_id: c.row.entry.window_id.clone(), name: c.row.entry.display_title(), command: c.command, minder: c.row.entry.is_shared_minder() })
                     .collect();
                 let parent_el = sidebar_activity_row(
                     row,
@@ -4812,6 +4812,10 @@ impl RexWindow {
                         let child_bk_fold = child.bk.clone();
                         let child_bk_menu = child.bk.clone();
                         let child_wid_menu = child.row.entry.window_id.clone();
+                        // (A minder of several agents: stopped alone, its agents go on
+                        // under this tab with nobody answering for them; stopped with
+                        // them, they are stopped first, each with what is under it.)
+                        let child_minds = child.row.entry.is_shared_minder();
                         let child_title = child.row.entry.display_title();
                         let child_help = child.help.clone();
                         let viewing_child_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &child.bk);
@@ -4835,6 +4839,10 @@ impl RexWindow {
                                 let bk = child_bk_menu.clone();
                                 let wid = child_wid_menu.clone();
                                 let title = child_title.clone();
+                                let minds = child_minds;
+                                // (Whether a minder has agents to stop with it: by who minds them,
+                                // as they will be found when it is asked, not by the rows shown.)
+                                let child_has_agents = minds && the_hub().minder_and_its_agents(&bk.host_key, &bk.session_id, &wid).len() > 1;
                                 // (In the order its parent's row and a tab's menu have them.)
                                 let mut menu = Menu::new("")
                                     .item("Show Transcript", "sub.transcript")
@@ -4853,7 +4861,10 @@ impl RexWindow {
                                     menu = menu.item(if child_expanded { "Collapse Children" } else { "Expand Children" }, "sub.toggle_fold").separator();
                                 }
                                 menu = menu.item("Stop Subagent", "sub.stop");
-                                if child_has_kids {
+                                // (A minder's children are the agents it minds. Its own words for the
+                                // two, "Stop Minder" and "Stop Minder & Its Agents", wait for a minder
+                                // in the demo and the reviewers' look at it: TODO.)
+                                if (child_minds && child_has_agents) || (!child_minds && child_has_kids) {
                                     menu = menu.item("Stop Subagent & Children", "sub.stop_tree");
                                 }
                                 menu = menu.item("Force Close Tab", "sub.force_stop");
@@ -4890,6 +4901,14 @@ impl RexWindow {
                                                 tree: false,
                                             });
                                         }
+                                    }
+                                    // (The service never stops a minder's agents with it: here they
+                                    // are what was asked for. Which they are is the hub's to say, by
+                                    // who minds each, and they are stopped before it, one after the
+                                    // other: `RexHub::minder_and_its_agents`.)
+                                    "sub.stop_tree" if minds => {
+                                        let hub = the_hub();
+                                        hub.stop_subagents_in_order(&bk.host_key, &bk.session_id, hub.minder_and_its_agents(&bk.host_key, &bk.session_id, &wid));
                                     }
                                     "sub.stop_tree" => {
                                         if let Some(slot) = wins().map.get(&win_id) {
@@ -5785,7 +5804,7 @@ impl View for RexWindow {
                     return;
                 }
                 let names: Vec<&str> = children.iter().map(|c| c.name.as_str()).collect();
-                let running_wids: Vec<String> = children.iter().map(|c| c.window_id.clone()).collect();
+                let running_wids = stop_order(&children);
                 let commands = children.iter().filter(|c| c.command).count();
                 let agents = children.len() - commands;
                 let list = match names.as_slice() {
@@ -5820,9 +5839,8 @@ impl View for RexWindow {
                 };
                 olo_kit::widgets::open_alert(cx, named, "warning", &msg, &[btn, "Cancel"], move |choice, _| {
                     if *choice == Some(0) {
-                        for wid in &running_wids {
-                            hub.stop_subagent(&host_key, &session_id, wid, false, true);
-                        }
+                        // (One after the other, minders last: `stop_order`.)
+                        hub.stop_subagents_in_order(&host_key, &session_id, running_wids.clone());
                     }
                 });
             }
@@ -6534,7 +6552,7 @@ impl View for RexWindow {
                                             matches!(br.lock().unwrap_or_else(|e| e.into_inner()).agent_activity, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error)
                                         })
                                 })
-                                .map(|r| RunningChild { name: r.entry.display_title(), command: !r.entry.cli.is_agent(), window_id: r.entry.window_id })
+                                .map(|r| RunningChild { name: r.entry.display_title(), command: !r.entry.cli.is_agent(), minder: r.entry.is_shared_minder(), window_id: r.entry.window_id })
                                 .collect()
                         })
                         .unwrap_or_default();
@@ -6690,7 +6708,7 @@ impl View for RexWindow {
                         .tree(row.depth, row.is_last, row.guides.clone())
                         .checked(active_wid.as_deref() == Some(row.entry.window_id.as_str()));
                     if command || matches!(act, AgentActivity::Blocked | AgentActivity::Error | AgentActivity::Working) {
-                        running_kids.push(RunningChild { window_id: row.entry.window_id.clone(), name: row.entry.display_title(), command });
+                        running_kids.push(RunningChild { window_id: row.entry.window_id.clone(), name: row.entry.display_title(), command, minder: row.entry.is_shared_minder() });
                     }
                     // (A command of the asker's own says nothing of itself as
                     // an agent does: running, for as long as it is a child.)
@@ -8873,6 +8891,19 @@ pub struct RunningChild {
     window_id: String,
     name: String,
     command: bool,
+    /// A minder of several agents (its agents are its children): stopped
+    /// after them, since a minder that goes first has the service put
+    /// each of its agents back under the tab and tell the tab's agent so.
+    minder: bool,
+}
+
+/// The order a tab's children are stopped in (their tabs' ids): agents
+/// and commands first, their minders after them. A minder stopped
+/// first has the service put each of its agents back under the tab and
+/// tell the tab's own agent "its minder ended: what it asks comes to you
+/// again", of agents that are stopped a moment later.
+fn stop_order(children: &[RunningChild]) -> Vec<String> {
+    children.iter().filter(|c| !c.minder).chain(children.iter().filter(|c| c.minder)).map(|c| c.window_id.clone()).collect()
 }
 
 /// What stopping a tab's children is called, by what they are: agents
@@ -9442,7 +9473,7 @@ mod child_words_tests {
     use super::*;
 
     fn kid(name: &str, command: bool) -> RunningChild {
-        RunningChild { window_id: format!("win-{name}"), name: name.to_owned(), command }
+        RunningChild { window_id: format!("win-{name}"), name: name.to_owned(), command, minder: false }
     }
 
     /// Stopping a tab's children says what would be stopped: a command of
@@ -9457,6 +9488,17 @@ mod child_words_tests {
         assert_eq!(stop_children_label(&[kid("log", true), kid("srv", true)]), "Stop 2 Commands…");
         assert_eq!(stop_children_label(&[kid("a", false), kid("b", false), kid("log", true)]), "Stop 2 Subagents and 1 Command…");
         assert_eq!(stop_children_label(&[kid("a", false), kid("log", true), kid("srv", true)]), "Stop 1 Subagent and 2 Commands…");
+    }
+
+    /// A tab's children are stopped agents and commands first, their
+    /// minders after them, whatever order the list has them in (a minder
+    /// stands above its agents there).
+    #[test]
+    fn a_minder_is_stopped_after_what_it_minds() {
+        let minder = RunningChild { minder: true, ..kid("minder", false) };
+        let second = RunningChild { minder: true, ..kid("minder-2", false) };
+        assert_eq!(stop_order(&[minder, kid("a", false), kid("b", false), second, kid("c", false), kid("log", true)]), ["win-a", "win-b", "win-c", "win-log", "win-minder", "win-minder-2"]);
+        assert!(stop_order(&[]).is_empty());
     }
 
     /// A command's line keeps its end where it is cut: the folders of
@@ -9659,6 +9701,8 @@ mod activity_tests {
                     add_dirs: Vec::new(),
                     command: Vec::new(),
                     minds: None,
+                    minded_by: None,
+                    shared_minder: false,
                 },
             },
             bk: BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: format!("b-{id}") },

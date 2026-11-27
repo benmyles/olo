@@ -57,22 +57,31 @@ from the moment you start the first child until the last has ended:
 
 **Give a child a minder when you will be busy** (`--minder`). A child
 that asks leave or asks a question waits for as long as you are in the
-middle of something else. A minder is an agent of its own whose whole
-job is that one child: it waits on it, answers what it asks at once by
-rules you write, steers it, and tells you what your rules don't cover.
-It is a child tab of the child it minds (the person sees it there), and
-you choose its model and effort: a stronger one than the child's where
-its judgment matters.
+middle of something else. A minder is a shared agent of its own that
+watches over all the children you assign to it (up to 12 live children
+per minder, automatically splitting to a second minder of the same
+`claude:MODEL:EFFORT` if you exceed that): it waits on them, answers
+what each asks at once by that child's own rules file, steers them, and
+tells you what a child's rules don't cover. A shared minder sits as a
+child tab under your tab, with the children it minds nested beneath it
+(the person sees the whole group together), and you choose its model and
+effort: a stronger one than the children's where its judgment matters.
+When you start another child with `--minder claude:MODEL:EFFORT` (or
+`--minder NAME` naming a running minder of yours), the service reuses
+your existing healthy minder of that model/effort rather than spawning a
+second one.
 
     olo agent start agy --model gemini-4-neon --effort xhigh --name ui-check \
         --prompt-file brief.md \
         --minder claude:claude-fable-5-2:high --rules ui-check-rules.md --json
 
-- **Write the rules for what the minder sees.** It is shown the command
-  or the question its child asks, and it is told the child's working
-  folder: nothing else of the child's task. Say how a relative path is
-  to be read ("a path with no folder is inside its working folder"),
-  and name commands as they will appear.
+- **Write the rules for what the minder sees.** Each minded child gets
+  its own rules file (`minders/AGENT_ID/rules.md`). For each child, the
+  minder is told what the child is, its working folder (`cwd`), and its
+  rules path in a `minding` event; when the child asks leave, the minder
+  is shown the command or question and nothing else of the child's task.
+  Say how a relative path is to be read ("a path with no folder is
+  inside its working folder"), and name commands as they will appear.
 - **The rules are your words**, a file (`--rules FILE`) or a string
   (`--rules-text`): what to approve (name the commands or kinds: "cargo
   build and test, read-only git, reading files under the repository"),
@@ -81,52 +90,69 @@ its judgment matters.
   "when it has finished, ask for its summary in /var/tmp/x/answer.md"),
   and what you want to hear of. Give it the context it needs to judge:
   what the child was asked, what it may touch. Where the rules are
-  silent a minder does not guess: it escalates, the question word for
-  word, and leaves the child waiting for you.
+  silent (or empty) a minder does not guess: it escalates, the question
+  word for word, and leaves the child waiting for you.
 - **What changes for your watch.** A minded child's `approval` and
-  `question` no longer wake it: they are its minder's. `idle`, `done`,
-  `error` and `exit` still do, and so does a new event,
-  **`escalation`**: what the minder has for you (`"event":
-  "escalation"`, `name` the child it is about, `summary` the minder's
-  words). It is among the events a watch waits for by default; if you
-  name them yourself, add it:
+  `question` no longer wake your watch: they are its minder's. `idle`,
+  `done`, `error` and `exit` still do, and so does **`escalation`**:
+  what the minder has for you (`"event": "escalation"`, `name` and `id`
+  the child it is about — or the minder itself for a self-escalation —
+  and `summary` the minder's words). It is among the events a watch
+  waits for by default; if you name them yourself, add it:
   `olo agent watch --all --since CURSOR --on escalation,idle,done,error,exit --timeout 90 --json`.
-  You can still look at the child (`status`, `read`) and answer it
+  You can still look at any child (`status`, `read`) and answer it
   yourself (`approve`, `send`) whenever you like.
 - **For a child that runs already**, or to change what one has:
-  `olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE` attaches
-  a minder (or puts another in its place); `olo agent mind NAME --rules
-  FILE` gives the one it has new rules (the same minder, begun anew
-  with them); `olo agent mind NAME --off` ends it, and the child's
-  asking is yours again; `olo agent mind NAME [--json]` says who minds
-  it, by what rules, and everything the minder answered (`answered`:
-  each `approve`, `send` and `escalate`, with its time and `by`, the
-  minder that gave it), to check its work.
+  `olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE` (or
+  `--with MINDER_NAME`) attaches a child under your own tab to a shared
+  minder (reusing a matching minder or moving it between minders);
+  `olo agent mind NAME --rules FILE` updates that child's `rules.md` in
+  place and sends a `minding` (`rules`) event to the running shared
+  minder without restarting it (invalidating any pending approval grant
+  until the minder receives the revision; on an older legacy 1:1 minder,
+  giving new rules migrates the child cleanly to a shared minder);
+  `olo agent mind NAME --off` detaches the child, moves its tab back
+  under the minder's parent tab, re-publishes any standing question
+  strictly after the returned `cursor` so your watch catches it, and
+  starts the minder's empty-grace timer if no live children remain;
+  `olo agent mind NAME [--json]` says who minds it, by what rules, and
+  everything the minder answered (`answered`: each `approve`, `send` and
+  `escalate`, with its time and `by`, the minder that gave it).
 - **What a minder can do is held by the service, not by its good
-  sense.** It reaches the one child it minds and nothing else: it can
-  watch it, read it, say yes once or no (never a yes that is kept), type
-  to it, and escalate. It cannot start, stop or list anything, reach
-  another child, or run any other program: in the shell its one command
-  is the only thing allowed. And it may read any file (and search
-  files), with no leave asked, so it can look at the script or the code
-  a question is about before it answers; it has no tool that writes,
-  edits or fetches. So rules may say "read the script whole first". It
-  is told what
-  stands, once: a question its child was already asking when the
-  minder began (attached with `mind`, or put in another's place) is
-  told to it at its first look, not each thing that passed while it
-  thought, and nothing twice. Its yes or no is for the question it was
-  last told of: one that took a while never answers a question that
-  came since. (A minder at a high effort
-  answers a plain yes or no in some 3 to 7 seconds.)
-- **How it ends.** When the child exits, its minder tells you once what
-  it approved, refused and passed up (an `escalation`), and is stopped.
-  `stop --tree` on the child stops both. If the minder itself dies
-  while the child runs, you are told (an `escalation` saying so) and the
-  child's asking comes to your watch again.
-- A minder runs Claude Code (`claude:MODEL:EFFORT`) for now. It has the
-  child's `--env`; `--minder-env K=V` gives it more (`mind … --env K=V`
-  for one attached later).
+  sense.** A shared minder reaches only the children currently assigned
+  to it (live or exited) and nothing else: it can list them, watch them,
+  read them, say yes once or no (never a yes that is kept), answer
+  recognised non-approval questions or steer at rest (never approval
+  boxes, folder-trust prompts, or unrecognised dialogs), and escalate
+  (`mind escalate ID "TEXT"` for a child, or `mind escalate "TEXT"` for
+  itself). It cannot start or stop anything, adopt records, reach
+  siblings or unminded grandchildren, use `--wait`/`--out`/`--file`, or
+  run any other program: in the shell its one command (`mind`) is the
+  only thing allowed. It may read and search any file with no leave
+  asked so it can inspect scripts or code before answering; it has no
+  tool that writes, edits or fetches. It is told what stands, once,
+  after any pending `minding` rules revision is delivered, and its
+  answer is bound to the exact box instance (`approval.box`) and rules
+  generation: if rules change, assignment ends, or a new box arrives,
+  nothing further is typed. (A minder at high effort answers a plain yes
+  or no in some 3 to 7 seconds.)
+- **How it ends.** When one of its children exits, the minder hears the
+  `exited` event, escalates a short summary for that child, and keeps
+  minding the rest. Once its last live child has exited (or been
+  detached), the minder stays alive until it has sent exit reports for
+  every exited child (stopping half a second after the final report) or
+  until the 3-minute reporting grace deadline expires, whichever comes
+  first. Stopping a shared minder directly (`stop MINDER`, with or
+  without `--tree`) never stops the children nested under it: they move
+  back under the minder's parent tab, unminded, and you are notified by
+  an `escalation` on each live child (whereas `stop --tree` on an
+  ancestor tab stops the whole subtree quietly). If the minder itself
+  exits or hits a confirmed API error while children are still running,
+  its children are released back under your tab, you are told on each,
+  and their asking comes to your watch again.
+- A minder runs Claude Code (`claude:MODEL:EFFORT`) for now. It inherits
+  its initial `--env`; `--minder-env K=V` gives it more (`mind … --env
+  K=V` for one started via `mind`).
 - **A child can tell its parent something itself**:
   `olo agent escalate "TEXT"`, from inside any child's tab, is an
   `escalation` on the parent's watch at once. Say so in a child's brief

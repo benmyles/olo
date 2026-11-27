@@ -119,7 +119,7 @@ pub struct Live {
     /// The terminal's own process (the shell the server started).
     pub pid: Option<i32>,
     rows: u16,
-    last_state: Option<SubagentLiveState>,
+    pub last_state: Option<SubagentLiveState>,
     last_key: Option<String>,
     check_gen: u64,
     /// Seen at work since it started (or since it was last typed to):
@@ -147,6 +147,10 @@ pub struct Live {
     /// answered here. See [`Service::box_key`].
     box_now: Option<(u64, u64)>,
     boxes: u64,
+    /// Latest confirmed state event recorded for this live child, kept
+    /// independently of the 2,000-event log ring so a standing question
+    /// is never lost when other host events evict the ring.
+    pub latest_event: Option<SubagentEvent>,
 }
 
 impl Live {
@@ -174,12 +178,24 @@ impl Live {
             survey_stays: false,
             box_now: None,
             boxes: 0,
+            latest_event: None,
         }
     }
 
     fn activity(&self) -> (Activity, Option<String>) {
         self.statuses.iter().max_by_key(|(_, a, _)| a.rank()).map(|(_, a, msg)| (*a, msg.clone())).unwrap_or_default()
     }
+}
+
+/// What a minder was last told of an agent's standing question or
+/// approval: the exact box instance key (`bN-hhhhhhhh`) for approvals,
+/// or question key (`q:...` / `tx:waiting`) for non-approval questions,
+/// bound to the agent's `rules_gen` when it was delivered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToldGrant {
+    pub token: String,
+    pub is_approval: bool,
+    pub rules_gen: u64,
 }
 
 pub struct State {
@@ -196,19 +212,60 @@ pub struct State {
     /// Since when nothing has been asked and no child lives.
     idle_since: Option<Instant>,
     /// Minders stopped by the one who may stop them (its agent's parent,
-    /// or the service once its agent has ended): of their end the
-    /// parent isn't told, it knows.
-    pub let_go: HashSet<String>,
-    /// By minder: the question of its agent's it was last told of (a
-    /// watch's answer, a status), by its key ([`subkey`]). A minder
-    /// answers that question and no other: `approve` answers what is on
-    /// the screen, and a minder that took a while would else say yes to
-    /// a question that came after the one it judged.
-    pub told: HashMap<String, String>,
-    /// By minder: the last thing written of its agent that it has been
-    /// told (its number in the log). What stands and is later than
-    /// that, it is told; nothing twice.
-    pub seen: HashMap<String, u64>,
+    /// or the service once its agent has ended), scoped strictly to the
+    /// active `stop_target_list` call and removed when it finishes:
+    /// `None` suppresses notices for all workers (empty/detached teardown);
+    /// `Some(workers)` suppresses notices only for workers being stopped
+    /// alongside this minder, never for unexpected survivors.
+    pub let_go: HashMap<String, Option<HashSet<String>>>,
+    /// Shared minders atomically marked as closing (empty-timer expiry,
+    /// failed-start cleanup, or ancestor `--tree` stop): excluded from
+    /// minder selection and assignment commit.
+    pub closing_minders: HashSet<String>,
+    /// Shared minders that hit a confirmed `Error` state (screen or
+    /// transcript): excluded from reuse until confirmed recovery.
+    pub unhealthy_minders: HashSet<String>,
+    /// Empty-period generation per shared minder: bumped whenever a
+    /// minder gains an assignment/reservation or becomes empty, so an
+    /// earlier empty timer never shortens a later grace period.
+    pub empty_gen: HashMap<String, u64>,
+    /// Pre-allocated child IDs currently mid-start (before registration).
+    pub reserved_ids: HashSet<String>,
+    /// Reserved live names `(session_id, asker_win, lowercase_name)`
+    /// while a `start` is in flight so concurrent starts and auto-named
+    /// minders never collide.
+    pub pending_names: HashSet<(String, String, String)>,
+    /// By `(minder_id, agent_id)`: the exact box instance or question of
+    /// that agent this minder was last told of (a watch's answer, a
+    /// status), bound to `rules_gen`. A minder answers that question and
+    /// no other, and never under stale rules.
+    pub told: HashMap<(String, String), ToldGrant>,
+    /// By `agent_id`: monotonically bumped on every rules update or
+    /// ownership change so decisions made under earlier rules are
+    /// invalidated immediately (including in-flight approvals).
+    pub rules_gen: HashMap<String, u64>,
+    /// By `(minder_id, agent_id)`: required `(rules_gen, rules_path)` whose
+    /// `minding` (`rules`) revision has not yet been delivered to the minder.
+    /// Neither `status` nor an approval-only `watch` may clear this or mint a
+    /// `ToldGrant` until the minder actually receives the `minding` revision
+    /// (synthesised if the 2,000-event log ring evicted the original event).
+    pub pending_rules_rev: HashMap<(String, String), (u64, String)>,
+    /// By `(minder_id, agent_id)`: the last state event of `agent_id`
+    /// that this minder has been told (its number in the log). What
+    /// stands and is later than that, it is told; nothing twice.
+    pub seen: HashMap<(String, String), u64>,
+    /// By `(minder_id, agent_id)`: the last `minding` roster/rules event
+    /// about `agent_id` delivered to `minder_id`. Keyed per subject so a
+    /// targeted watch on B never swallows an unread rules event for A.
+    pub minding_seen: HashMap<(String, String), u64>,
+    /// By `minder_id`: exited agents whose exit has not yet been reported
+    /// via `escalate`. Early shutdown after a report waits until all
+    /// pending exits for this minder have been reported.
+    pub pending_exit_reports: HashMap<String, HashSet<String>>,
+    /// By shared `minder_id`: number of agents currently mid-launch
+    /// under this minder (so concurrent `start --minder` bursts honor
+    /// [`minds_most`] without races).
+    pub pending_minds: HashMap<String, usize>,
     /// By child: its list of what is not allowed without asking
     /// (`leave::LeaveList`), where its parent gave one: everything else
     /// it asks leave for, the service itself allows, once. None kept
@@ -230,8 +287,22 @@ pub fn taken_up() -> Duration {
 
 /// [`MINDER_REPORTS`], or what a test of it set in its place
 /// (`OLO_REX_AGENTS_MINDER_REPORTS_MS`).
-fn minder_reports() -> Duration {
+pub fn minder_reports() -> Duration {
     std::env::var("OLO_REX_AGENTS_MINDER_REPORTS_MS").ok().and_then(|v| v.parse().ok()).map_or(MINDER_REPORTS, Duration::from_millis)
+}
+
+/// Most live agents one shared minder minds before a second minder of
+/// the same `CLI:MODEL:EFFORT` is started under the asking tab
+/// (default 12; `OLO_REX_AGENTS_MINDS_MOST` for tests).
+pub fn minds_most() -> usize {
+    std::env::var("OLO_REX_AGENTS_MINDS_MOST").ok().and_then(|v| v.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(olo_rex_link::agents::minder::DEFAULT_MINDS_MOST)
+}
+
+/// Three-way tab presence returned by [`Service::tab_presence`].
+pub(super) enum TabPresence {
+    Present,
+    Gone,
+    Unknown(String),
 }
 
 /// A child as it stands, read now or as last read.
@@ -270,14 +341,31 @@ pub struct Service {
     /// Said in the log once: a later build asked while the service was
     /// held.
     said_held: std::sync::atomic::AtomicBool,
+    /// Serializes find-or-start of a shared minder so concurrent
+    /// `start --minder` requests reuse one minder and honor
+    /// [`minds_most`].
+    pub minder_gate: tokio::sync::Mutex<()>,
+    /// Per-worker async locks serializing `mind` mutations (`--off`,
+    /// `--rules`, `--with`) so concurrent moves on one worker never
+    /// interleave with stale ownership.
+    worker_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 fn exited(summary: String) -> ScreenClassification {
-    ScreenClassification { state: SubagentLiveState::Exited, summary: Some(summary), approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false }
+    ScreenClassification { state: SubagentLiveState::Exited, summary: Some(summary), approval: None, folder_trust: None, api_error: None, usage: None, recognized_question: false, in_turn: false }
 }
 
 fn starting() -> ScreenClassification {
-    ScreenClassification { state: SubagentLiveState::Working, summary: Some("starting".into()), approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false }
+    ScreenClassification {
+        state: SubagentLiveState::Working,
+        summary: Some("starting".into()),
+        approval: None,
+        folder_trust: None,
+        api_error: None,
+        usage: None,
+        recognized_question: false,
+        in_turn: false,
+    }
 }
 
 /// What tells two readings of one state apart: the question asked, the
@@ -336,6 +424,17 @@ fn asker_is_a_later_build(pid: i32) -> bool {
 impl Service {
     pub fn lock(&self) -> MutexGuard<'_, State> {
         self.st.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn worker_lock(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut map = self.worker_locks.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
+    }
+
+    pub fn bump_empty_gen_locked(st: &mut State, minder_id: &str) -> u64 {
+        let g = st.empty_gen.entry(minder_id.to_owned()).or_insert(0);
+        *g = g.wrapping_add(1);
+        *g
     }
 
     /// The account's hold on this host's own pieces:
@@ -503,6 +602,9 @@ impl Service {
                 live.last_state = None;
                 live.last_key = None;
                 live.check_gen = live.check_gen.wrapping_add(1);
+            }
+            if live_read && cls.approval.is_none() {
+                live.box_now = None;
             }
             live.survey_stays = survey;
             (out, chg, pid) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid));
@@ -738,7 +840,8 @@ impl Service {
                 .map(|e| crate::agent::InspectItemRequest {
                     id: e.id.clone(),
                     cli: e.cli.binary().to_owned(),
-                    shell_pid: st.live.get(&e.id).and_then(|l| l.pid).or(e.last_pid).unwrap_or(0),
+                    // Never feed an exited record's recycled `last_pid` into live process discovery.
+                    shell_pid: if e.exited_at.is_some() { 0 } else { st.live.get(&e.id).and_then(|l| l.pid).or(e.last_pid).unwrap_or(0) },
                     cwd: e.cwd.clone().unwrap_or_default(),
                     known_session_id: e.effective_session_id().map(str::to_owned),
                     known_transcript: e.transcript_path.clone(),
@@ -812,6 +915,9 @@ impl Service {
                 let mut event = event;
                 event.seq = seq;
                 st.reg.event_seq = seq;
+                if let Some(live) = st.live.get_mut(&event.id) {
+                    live.latest_event = Some(event.clone());
+                }
                 // (Under the lock: the file's lines are in the log's order.)
                 if let Ok(mut line) = serde_json::to_string(&event) {
                     use std::io::Write as _;
@@ -853,23 +959,25 @@ impl Service {
             dedupe_key,
             // (The turn it is of, where its child was seen to take one up.)
             answers: self.lock().live.get(&entry.id).and_then(|l| l.answers),
+            minding: None,
         }
     }
 
     /// Tells followers how a child stands, where that differs from what
-    /// they were last told.
-    fn tell(&self, entry: &NativeSubagent, state: SubagentLiveState, summary: Option<String>) {
+    /// they were last told. Reads the current registry entry and sends
+    /// the frame under the state lock so a late screen read never puts a
+    /// moved worker back under its old parent in Rex.
+    fn tell(&self, id: &str, state: SubagentLiveState, summary: Option<String>) {
         // (What a working child last printed changes with every line: not said.)
         let summary = if state == SubagentLiveState::Working { None } else { summary };
-        {
-            let mut st = self.lock();
-            let Some(live) = st.live.get_mut(&entry.id) else { return };
-            if live.told.as_ref().is_some_and(|(s, m)| *s == state && *m == summary) {
-                return;
-            }
-            live.told = Some((state, summary.clone()));
+        let mut st = self.lock();
+        let Some(entry) = st.reg.entries.iter().rev().find(|e| e.id == id && e.exited_at.is_none()).cloned() else { return };
+        let Some(live) = st.live.get_mut(id) else { return };
+        if live.told.as_ref().is_some_and(|(s, m)| *s == state && *m == summary) {
+            return;
         }
-        let _ = self.frames.send(Frame::Agent { agent: Box::new(AgentView { entry: entry.clone(), state, summary }) });
+        live.told = Some((state, summary.clone()));
+        let _ = self.frames.send(Frame::Agent { agent: Box::new(AgentView { entry, state, summary }) });
     }
 
     /// The registry has something to write.
@@ -883,24 +991,23 @@ impl Service {
     }
 
     /// Tells followers a child's record as it is now (it started, was
-    /// found out more of, exited).
+    /// found out more of, exited), serialized with state updates under
+    /// the state lock so move frames and state frames cannot reorder.
     pub fn tell_entry(&self, id: &str) {
-        let view = {
-            let st = self.lock();
-            let Some(entry) = st.reg.entries.iter().rev().find(|e| e.id == id).cloned() else { return };
-            let (state, summary) = match (entry.exited_at, st.live.get(id).and_then(|l| l.told.clone())) {
-                (Some(_), _) => (SubagentLiveState::Exited, None),
-                (None, Some((state, summary))) => (state, summary),
-                (None, None) => (SubagentLiveState::Working, None),
-            };
-            AgentView { entry, state, summary }
+        let st = self.lock();
+        let Some(entry) = st.reg.entries.iter().rev().find(|e| e.id == id).cloned() else { return };
+        let (state, summary) = match (entry.exited_at, st.live.get(id).and_then(|l| l.told.clone())) {
+            (Some(_), _) => (SubagentLiveState::Exited, None),
+            (None, Some((state, summary))) => (state, summary),
+            (None, None) => (SubagentLiveState::Working, None),
         };
-        let _ = self.frames.send(Frame::Agent { agent: Box::new(view) });
+        let _ = self.frames.send(Frame::Agent { agent: Box::new(AgentView { entry, state, summary }) });
     }
 
     /// A child's program ended (`code`), or its tab closed (none).
     pub fn exit(self: &Arc<Self>, id: &str, code: Option<i32>) {
         let moved: Vec<String>;
+        let orphaned_minded: Vec<String>;
         let entry = {
             let mut st = self.lock();
             if let (Some(live), Some(code)) = (st.live.get_mut(id), code) {
@@ -912,9 +1019,12 @@ impl Service {
                 .reg
                 .entries
                 .iter()
-                .filter(|e| e.session_id == entry.session_id && e.exited_at.is_none() && e.parent_window_id == entry.window_id && e.id != entry.id)
+                .filter(|e| {
+                    e.session_id == entry.session_id && e.exited_at.is_none() && (e.parent_window_id == entry.window_id || e.minded_by.as_deref() == Some(entry.id.as_str())) && e.id != entry.id
+                })
                 .map(|e| e.id.clone())
                 .collect();
+            orphaned_minded = st.reg.minded_by(&entry.id).into_iter().map(|e| e.id.clone()).collect();
             if !st.reg.mark_exited_with_code(HOST, &entry.session_id, &entry.window_id, code) {
                 // (Said already; its tab closing after its program ended ends its watcher.)
                 if code.is_none()
@@ -924,6 +1034,16 @@ impl Service {
                     task.abort();
                 }
                 return;
+            }
+            if entry.is_minder() {
+                st.seen.retain(|(m, _), _| m != &entry.id);
+                st.minding_seen.retain(|(m, _), _| m != &entry.id);
+                st.told.retain(|(m, _), _| m != &entry.id);
+                st.pending_rules_rev.retain(|(m, _), _| m != &entry.id);
+                st.pending_exit_reports.remove(&entry.id);
+                st.unhealthy_minders.remove(&entry.id);
+                st.closing_minders.remove(&entry.id);
+                st.empty_gen.remove(&entry.id);
             }
             if code.is_none()
                 && let Some(live) = st.live.remove(id)
@@ -941,51 +1061,183 @@ impl Service {
         event.error = error;
         self.record(event);
         self.tell_entry(id);
-        self.minding_ends(&entry, code);
         for child in &moved {
             self.tell_entry(child);
         }
+        self.minding_ends(&entry, code, &orphaned_minded);
         self.idle.notify_one();
     }
 
-    /// What a child's end means for minding. A minder whose agent still
-    /// runs: the parent is told (an escalation on that agent), and what
-    /// the agent asks reaches the parent's watch again by itself (no
-    /// minder is there for it). An agent that had a minder: the minder
-    /// hears the exit on its own watch and reports; if it is still there
-    /// three minutes on, it is stopped, so none is left minding nothing.
-    fn minding_ends(self: &Arc<Self>, ended: &NativeSubagent, code: Option<i32>) {
+    /// Releases every live agent still minded by a shared minder that
+    /// hit a confirmed error (screen or transcript, without stopping its
+    /// agents): marks the minder unhealthy so it is not reused, moves each
+    /// live agent back under the minder's parent tab, clears `minded_by`,
+    /// notifies followers, escalates to the lead, and arms the empty-minder
+    /// shutdown timer so the errored minder does not occupy a tab forever.
+    fn release_minded_on_error(self: &Arc<Self>, minder: &NativeSubagent, how: &str) {
+        let released: Vec<String> = {
+            let mut st = self.lock();
+            st.unhealthy_minders.insert(minder.id.clone());
+            let ids: Vec<String> = st.reg.minded_by(&minder.id).into_iter().map(|e| e.id.clone()).collect();
+            for e in &mut st.reg.entries {
+                if e.exited_at.is_none() && e.minded_by.as_deref() == Some(minder.id.as_str()) {
+                    e.minded_by = None;
+                    if e.parent_window_id == minder.window_id {
+                        e.parent_window_id = minder.parent_window_id.clone();
+                    }
+                }
+            }
+            for id in &ids {
+                *st.rules_gen.entry(id.clone()).or_insert(0) += 1;
+            }
+            st.seen.retain(|(m, _), _| m != &minder.id);
+            st.minding_seen.retain(|(m, _), _| m != &minder.id);
+            st.told.retain(|(m, _), _| m != &minder.id);
+            st.pending_rules_rev.retain(|(m, _), _| m != &minder.id);
+            st.pending_exit_reports.remove(&minder.id);
+            ids
+        };
+        if !released.is_empty() {
+            self.saved();
+            for id in &released {
+                self.tell_entry(id);
+            }
+            self.escalate_minder_ended(&released, how);
+        }
+        self.arm_empty_minder_if_idle(&minder.id, minder_reports());
+    }
+
+    /// Records an escalation on each still-live agent whose minder
+    /// ended so the lead's watch is woken immediately and the agents'
+    /// standing questions become the lead's again.
+    pub(super) fn escalate_minder_ended(&self, agent_ids: &[String], how: &str) {
+        for agent_id in agent_ids {
+            let found = {
+                let st = self.lock();
+                st.reg.entries.iter().rev().find(|e| e.id == *agent_id && e.exited_at.is_none()).cloned().map(|it| {
+                    let state = st.live.get(&it.id).and_then(|l| l.last_state).unwrap_or(SubagentLiveState::Working);
+                    (it, state)
+                })
+            };
+            if let Some((it, state)) = found {
+                let msg = format!("Its minder ended ({how}): what it asks comes to you again.");
+                let mut event = self.event_of(&it, state, Some(msg.clone()), String::new());
+                event.event = olo_rex_link::agents::minder::ESCALATION.to_owned();
+                event.last_message = Some(msg);
+                self.record_beside(event);
+            }
+        }
+    }
+
+    /// What a child's end means for minding.
+    /// - An older 1:1 minder whose agent still runs: the parent is told
+    ///   (an escalation on that agent), and what the agent asks reaches
+    ///   the parent's watch again.
+    /// - A shared minder whose agents still run: each live agent has
+    ///   already been moved back under the minder's parent tab and
+    ///   unminded in [`exit`]; unless this minder was torn down with an
+    ///   ancestor's `stop --tree` (`let_go`), the lead is told on each
+    ///   live agent.
+    /// - A minded agent that exited: if its minder is an older 1:1
+    ///   minder, or a shared minder with no live agents left, schedule
+    ///   the minder to end after [`minder_reports`] (unless it reports
+    ///   sooner or another agent is given to it meanwhile).
+    fn minding_ends(self: &Arc<Self>, ended: &NativeSubagent, code: Option<i32>, orphaned_minded: &[String]) {
+        let how = || match code {
+            Some(code) => format!("exited (code {code})"),
+            None => "its tab was closed".to_owned(),
+        };
         if let Some(minded) = ended.minds.as_deref() {
-            if self.lock().let_go.remove(&ended.id) {
+            if self.lock().let_go.contains_key(&ended.id) {
                 return;
             }
-            let it = self.lock().reg.entries.iter().rev().find(|e| e.id == minded && e.exited_at.is_none()).cloned();
-            if let Some(it) = it {
-                let how = match code {
-                    Some(code) => format!("exited (code {code})"),
-                    None => "its tab was closed".to_owned(),
-                };
-                let state = self.lock().live.get(&it.id).and_then(|l| l.last_state).unwrap_or(SubagentLiveState::Working);
-                let mut event = self.event_of(&it, state, Some(format!("Its minder ended ({how}): what it asks comes to you again.")), String::new());
-                event.event = olo_rex_link::agents::minder::ESCALATION.to_owned();
-                self.record_beside(event);
+            self.escalate_minder_ended(&[minded.to_owned()], &how());
+            return;
+        }
+        if ended.is_shared_minder() {
+            let to_escalate: Vec<String> = {
+                let st = self.lock();
+                match st.let_go.get(&ended.id) {
+                    Some(None) => return,
+                    Some(Some(stopping)) => orphaned_minded.iter().filter(|id| !stopping.contains(*id)).cloned().collect(),
+                    None => orphaned_minded.to_vec(),
+                }
+            };
+            if !to_escalate.is_empty() {
+                self.escalate_minder_ended(&to_escalate, &how());
             }
             return;
         }
         let Some(minder) = self.lock().reg.minder_of(&ended.id).cloned() else { return };
+        if minder.is_shared_minder() {
+            {
+                let mut st = self.lock();
+                st.pending_exit_reports.entry(minder.id.clone()).or_default().insert(ended.id.clone());
+            }
+            self.saved();
+            self.arm_empty_minder_if_idle(&minder.id, minder_reports());
+            return;
+        }
         self.end_minder_in(minder, minder_reports());
     }
 
-    /// Stops a minder whose agent has ended, `after` that long (if it
-    /// is still there then): its report made, or its time to make one
-    /// over.
+    /// Arms a generation-checked empty-minder shutdown timer for shared
+    /// minder `minder_id` if it currently has zero live assignments and
+    /// zero pending reservations. Any earlier timer's generation is
+    /// superseded so a subsequent empty period always gets its full grace
+    /// time; on expiry, the minder is atomically marked in
+    /// `closing_minders` before releasing the lock so no concurrent start
+    /// or move can select it while Rex closes its tab.
+    pub fn arm_empty_minder_if_idle(self: &Arc<Self>, minder_id: &str, after: Duration) {
+        let armed = {
+            let mut st = self.lock();
+            let Some(m) = st.reg.entries.iter().rev().find(|e| e.id == minder_id && e.exited_at.is_none() && e.is_shared_minder()).cloned() else {
+                return;
+            };
+            let idle = st.reg.minded_by(&m.id).is_empty() && st.pending_minds.get(&m.id).copied().unwrap_or(0) == 0 && !st.closing_minders.contains(&m.id);
+            if !idle {
+                return;
+            }
+            let epoch = Self::bump_empty_gen_locked(&mut st, &m.id);
+            (m, epoch)
+        };
+        let (minder, epoch) = armed;
+        let service = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(after).await;
+            let should_stop = {
+                let mut st = service.lock();
+                let still = st.reg.entries.iter().any(|e| e.id == minder.id && e.exited_at.is_none());
+                let same_gen = st.empty_gen.get(&minder.id) == Some(&epoch);
+                let idle = st.reg.minded_by(&minder.id).is_empty() && st.pending_minds.get(&minder.id).copied().unwrap_or(0) == 0;
+                if still && same_gen && idle && !st.closing_minders.contains(&minder.id) {
+                    st.closing_minders.insert(minder.id.clone());
+                    true
+                } else {
+                    false
+                }
+            };
+            if should_stop {
+                let _ = service.stop_tabs_inner(&minder, true, false, false, true).await;
+                service.lock().closing_minders.remove(&minder.id);
+            }
+        });
+    }
+
+    /// Stops a minder whose agents have ended, `after` that long:
+    /// shared minders go through generation-checked [`arm_empty_minder_if_idle`];
+    /// older 1:1 minders stop directly once their time is up.
     pub fn end_minder_in(self: &Arc<Self>, minder: NativeSubagent, after: Duration) {
+        if minder.is_shared_minder() {
+            self.arm_empty_minder_if_idle(&minder.id, after);
+            return;
+        }
         let service = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(after).await;
             let still = service.lock().reg.entries.iter().any(|e| e.id == minder.id && e.exited_at.is_none());
             if still {
-                service.stop_tabs(&minder, true, true, false).await;
+                let _ = service.stop_tabs_inner(&minder, true, false, false, true).await;
             }
         });
     }
@@ -1003,7 +1255,7 @@ impl Service {
         // comes first: this, or the server's own event that the tab
         // closed. Never as a state that held.
         if cls.state == SubagentLiveState::Exited {
-            if !self.still_there(&entry).await {
+            if matches!(self.tab_presence(&entry).await, TabPresence::Gone) {
                 self.exit(id, None);
             }
             return;
@@ -1011,10 +1263,11 @@ impl Service {
         if self.text_watchers.load(std::sync::atomic::Ordering::Relaxed) > 0 {
             self.changed.notify_waiters();
         }
-        let key = subkey(&cls);
         // (Which box stands, or that none does: a box come after one
-        // that went is another, though it asks the very same.)
-        self.box_key(id, cls.approval.as_ref());
+        // that went is another, though it asks the very same. Key the
+        // transition by `box:<key>` so a second identical box never matches
+        // `live.last_key` from box 1.)
+        let key = if let Some(bk) = self.box_key(id, cls.approval.as_ref()) { format!("box:{bk}") } else { subkey(&cls) };
         let started_ms = to_unix_ms(entry.started_at).max(0) as u64;
         let at_prompt = cls.summary.as_deref() == Some(state::AT_PROMPT);
         let mut look_again = None;
@@ -1101,7 +1354,7 @@ impl Service {
         // the next look at the same screen), and a follower that shows
         // the state it is told (the desktop's rows) would have said At
         // rest of a child that was done.
-        self.tell(&entry, cls.state, cls.summary.clone());
+        self.tell(id, cls.state, cls.summary.clone());
         // (A question come or gone: who waits on that looks at once.)
         if cls.folder_trust.is_some() || cls.approval.is_some() || cls.state == SubagentLiveState::Exited || cls.state == SubagentLiveState::Working {
             self.changed.notify_waiters();
@@ -1121,7 +1374,8 @@ impl Service {
                 service.poke(&id);
                 return;
             }
-            if again.cls.state != cls.state || subkey(&again.cls) != key {
+            let again_key = if let Some(bk) = service.box_key(&id, again.cls.approval.as_ref()) { format!("box:{bk}") } else { subkey(&again.cls) };
+            if again.cls.state != cls.state || again_key != key {
                 // (It didn't hold: what it shows now is read in its turn.)
                 service.poke(&id);
                 return;
@@ -1196,7 +1450,7 @@ impl Service {
                 && list.excepts(&asked).is_none()
                 && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1
             {
-                let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, block: None, child: None };
+                let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, window_from_block: false, block: None, child: None };
                 // (For the box it judged: another that stands by the time
                 // the answer is given is not answered by this.)
                 let mut args = vec![json!(id.clone()), json!("--once")];
@@ -1211,7 +1465,11 @@ impl Service {
                 }
                 logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
             }
-            let dedupe = if !key.is_empty() {
+            let dedupe = if state == SubagentLiveState::WaitingApproval
+                && let Some(box_key) = approval.as_ref().and_then(|a| a["box"].as_str())
+            {
+                format!("box:{box_key}")
+            } else if !key.is_empty() {
                 key
             } else if let Some(message) = &last_message {
                 use std::hash::{Hash as _, Hasher as _};
@@ -1224,13 +1482,27 @@ impl Service {
                 // after another turn.)
                 format!("scr:{:x}", olo_agent_screen::fingerprint(&again.screen))
             };
+            let err_for_minder = error.clone();
+            let sum_for_minder = again.cls.summary.clone();
             let mut event = service.event_of(&entry, state, again.cls.summary.clone(), dedupe);
             event.last_message = last_message;
             event.approval = approval;
             event.error = error;
             event.tail = tail_of(&again.screen, 10);
-            service.tell(&entry, state, again.cls.summary);
+            service.tell(&id, state, again.cls.summary);
             service.record(event);
+            // A shared minder that hits an API/transcript error (stuck at
+            // prompt, no longer running its watch loop) must not strand its
+            // agents: mark unhealthy, release them back under the lead, and
+            // arm its empty timer. Confirmed recovery clears `unhealthy_minders`.
+            if entry.is_shared_minder() {
+                if state == SubagentLiveState::Error {
+                    let how = err_for_minder.as_deref().or(sum_for_minder.as_deref()).unwrap_or("API error");
+                    service.release_minded_on_error(&entry, how);
+                } else {
+                    service.lock().unhealthy_minders.remove(&entry.id);
+                }
+            }
         });
     }
 
@@ -1256,7 +1528,7 @@ impl Service {
                 let mut stream = match service.rex.stream(&entry.session_id, &entry.block_id).await {
                     Ok(stream) => stream,
                     Err(e) => {
-                        if e.gone() || !service.still_there(&entry).await {
+                        if e.gone() || matches!(service.tab_presence(&entry).await, TabPresence::Gone) {
                             service.exit(&entry.id, None);
                             return;
                         }
@@ -1305,7 +1577,7 @@ impl Service {
                     }
                 }
                 // The stream ended: with the tab, or by itself.
-                if !service.still_there(&entry).await {
+                if matches!(service.tab_presence(&entry).await, TabPresence::Gone) {
                     service.exit(&entry.id, None);
                     return;
                 }
@@ -1317,13 +1589,19 @@ impl Service {
         }
     }
 
-    /// Whether a child's tab is still the server's.
-    async fn still_there(&self, entry: &NativeSubagent) -> bool {
-        if self.refresh(&entry.session_id).await.is_err() {
-            // (No such session any more; or the server is gone, and the service with it.)
-            return false;
+    /// Three-way check for whether a child's tab still exists on the Rex server:
+    /// distinguishes a confirmed `Gone` (absent from `session.view` or `e.gone()`)
+    /// from an `Unknown` transient RPC error/timeout so two RPC failures never
+    /// count as a closed tab.
+    pub(super) async fn tab_presence(&self, entry: &NativeSubagent) -> TabPresence {
+        match self.refresh(&entry.session_id).await {
+            Ok(()) => {
+                let there = self.lock().sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.contains_key(&entry.block_id));
+                if there { TabPresence::Present } else { TabPresence::Gone }
+            }
+            Err(e) if e.gone() => TabPresence::Gone,
+            Err(e) => TabPresence::Unknown(e.to_string()),
         }
-        self.lock().sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.contains_key(&entry.block_id))
     }
 
     /// What a child's terminal is: its process, its size, what its
@@ -1485,6 +1763,15 @@ impl Service {
                 self.exit(&entry.id, None);
             }
         }
+        // Re-arm the empty-minder timer for any live shared minder left
+        // empty across a handover/restart so it never sits indefinitely.
+        let empty_minders: Vec<String> = {
+            let st = self.lock();
+            st.reg.entries.iter().filter(|e| e.exited_at.is_none() && e.is_shared_minder() && st.reg.minded_by(&e.id).is_empty()).map(|e| e.id.clone()).collect()
+        };
+        for mid in empty_minders {
+            self.arm_empty_minder_if_idle(&mid, minder_reports());
+        }
     }
 
     /// A child's tab is never the service's to size. The Rex server
@@ -1513,10 +1800,49 @@ impl Service {
 
     /// A child begins: written down, watched, said to followers.
     pub async fn begin(self: &Arc<Self>, entry: NativeSubagent) -> Result<(), RexErr> {
+        self.begin_attached(entry, None, None).await.map(|_| ())
+    }
+
+    /// Registers a newly started child, atomically validating any chosen
+    /// shared minder and converting its pending reservation to a live
+    /// assignment in the SAME lock hold (never double-counting load and
+    /// never committing an assignment to a minder that exited, errored,
+    /// or started closing while the tab was being created). If the minder
+    /// became unavailable, the child is registered under `fallback_parent`
+    /// unminded and the reason is returned in the second tuple element.
+    pub async fn begin_attached(self: &Arc<Self>, mut entry: NativeSubagent, fallback_parent: Option<&str>, reserved_minder: Option<&str>) -> Result<(NativeSubagent, Option<String>), RexErr> {
         self.attach(&entry.session_id).await?;
         self.never_its_size(&entry).await;
+        let mut minder_lost: Option<String> = None;
         {
             let mut st = self.lock();
+            if let Some(mid) = reserved_minder
+                && let Some(n) = st.pending_minds.get_mut(mid)
+            {
+                *n = n.saturating_sub(1);
+                if *n == 0 {
+                    st.pending_minds.remove(mid);
+                }
+            }
+            if let Some(mid) = entry.minded_by.clone() {
+                let minder_ok = st.reg.entries.iter().rev().find(|e| e.id == mid && e.exited_at.is_none() && e.is_shared_minder()).filter(|m| {
+                    !st.closing_minders.contains(&m.id)
+                        && !st.unhealthy_minders.contains(&m.id)
+                        && st.live.get(&m.id).and_then(|l| l.last_state) != Some(SubagentLiveState::Error)
+                        && st.sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&m.window_id))
+                });
+                if let Some(m) = minder_ok {
+                    entry.parent_window_id = m.window_id.clone();
+                    Self::bump_empty_gen_locked(&mut st, &mid);
+                } else {
+                    entry.minded_by = None;
+                    if let Some(lead) = fallback_parent {
+                        entry.parent_window_id = lead.to_owned();
+                    }
+                    minder_lost = Some(format!("selected minder `{mid}` ended or became unavailable while the agent was starting"));
+                }
+            }
+            st.reserved_ids.remove(&entry.id);
             st.reg.register(entry.clone());
             st.live.insert(entry.id.clone(), Live::new());
             st.idle_since = None;
@@ -1526,7 +1852,7 @@ impl Service {
         self.write_now().await;
         self.tell_entry(&entry.id);
         self.watch_child(&entry);
-        Ok(())
+        Ok((entry, minder_lost))
     }
 
     // ---- What is written down ----
@@ -1542,10 +1868,15 @@ impl Service {
     }
 
     async fn write_now(&self) {
-        let reg = self.lock().reg.clone();
+        let (reg, minder_state) = {
+            let st = self.lock();
+            let ms = MinderStateDisk::from_state(&st);
+            (st.reg.clone(), ms)
+        };
         let paths = self.paths.clone();
         let _ = tokio::task::spawn_blocking(move || {
             reg.save_to(&paths.registry);
+            minder_state.save_to(&paths.dir.join("minder-state.json"));
             // (The log's file kept to the last of it: read whole by the next service.)
             if std::fs::metadata(&paths.events).is_ok_and(|m| m.len() > 16 << 20)
                 && let Ok(all) = std::fs::read_to_string(&paths.events)
@@ -1563,9 +1894,13 @@ impl Service {
 
     // ---- Those that ask ----
 
-    fn views(&self) -> Vec<AgentView> {
+    /// Builds a consistent `Frame::Snapshot` under a single lock acquisition
+    /// (avoiding the self-deadlock when a temporary guard lived across `views()`).
+    fn snapshot(&self) -> Frame {
         let st = self.lock();
-        st.reg
+        let cursor = st.log.latest_seq();
+        let agents = st
+            .reg
             .entries
             .iter()
             .map(|entry| {
@@ -1576,7 +1911,8 @@ impl Service {
                 };
                 AgentView { entry: entry.clone(), state, summary }
             })
-            .collect()
+            .collect();
+        Frame::Snapshot { proto: PROTO, cursor, agents }
     }
 
     /// Children an earlier Olo's desktop kept (it was their keeper then):
@@ -1586,6 +1922,14 @@ impl Service {
         let mut taken = 0;
         for mut entry in given {
             entry.host_key = HOST.to_owned();
+            // Imported records never carry minder privileges or assignments:
+            // strip them unconditionally so `adopt` cannot forge a minder.
+            entry.shared_minder = false;
+            entry.minded_by = None;
+            entry.minds = None;
+            if entry.role.as_deref().is_some_and(|r| r.trim().eq_ignore_ascii_case("minder")) {
+                entry.role = None;
+            }
             if self.lock().reg.entries.iter().any(|e| e.id == entry.id || (e.session_id == entry.session_id && e.window_id == entry.window_id)) {
                 continue;
             }
@@ -1635,6 +1979,19 @@ impl Service {
             let _ = write.write_all(format!("\n{}", said(&Response::err("", "a request that isn't one", 2))).as_bytes()).await;
             return;
         };
+        // Authenticate and gate the caller BEFORE protocol/later-build handover,
+        // `follow`, `adopt`, `retire`, `ping`, or `policy` so a restricted caller
+        // (minder, exited child, or child calling `adopt`) can never trigger a
+        // service handover or reach service-wide operations. For `policy`,
+        // authenticate strictly by the querying peer's PID (never `req.block`,
+        // which names the subject pane Rex is asking about).
+        let caller = if req.op == "policy" { self.caller_by_peer(peer_pid) } else { self.caller(&req, peer_pid).await };
+        if let Some(refused) = self.gate_caller(&req, &caller) {
+            let wire = if req.op == "follow" { said(&refused) } else { format!("\n{}", said(&refused)) };
+            let _ = write.write_all(wire.as_bytes()).await;
+            let _ = write.shutdown().await;
+            return;
+        }
         // An asker of a later build: its own service takes over. This
         // one finishes what it is doing, writes down what it knows and
         // ends; the children are the server's and go on. Later by what
@@ -1677,8 +2034,7 @@ impl Service {
         if req.op == "follow" {
             // (Asked for before the picture is taken: nothing between the two is missed.)
             let mut frames = self.frames.subscribe();
-            let cursor = self.lock().log.latest_seq();
-            let first = Frame::Snapshot { proto: PROTO, cursor, agents: self.views() };
+            let first = self.snapshot();
             if write.write_all((serde_json::to_string(&first).unwrap_or_default() + "\n").as_bytes()).await.is_err() {
                 return;
             }
@@ -1688,8 +2044,8 @@ impl Service {
                     frame = frames.recv() => {
                         let frame = match frame {
                             Ok(frame) => frame,
-                            // (Fallen behind: everything again.)
-                            Err(broadcast::error::RecvError::Lagged(_)) => Frame::Snapshot { proto: PROTO, cursor: self.lock().log.latest_seq(), agents: self.views() },
+                            // (Fallen behind: everything again, under one lock.)
+                            Err(broadcast::error::RecvError::Lagged(_)) => self.snapshot(),
                             Err(broadcast::error::RecvError::Closed) => return,
                         };
                         if write.write_all((serde_json::to_string(&frame).unwrap_or_default() + "\n").as_bytes()).await.is_err() {
@@ -1715,11 +2071,11 @@ impl Service {
         let mut gone = String::new();
         let answer = if waits {
             tokio::select! {
-                answer = self.answer(&req, peer_pid) => Some(answer),
+                answer = self.answer(&req, &caller) => Some(answer),
                 _ = async { while lines.read_line(&mut gone).await.unwrap_or(0) > 0 { gone.clear(); } } => None,
             }
         } else {
-            let answer = self.answer(&req, peer_pid).await;
+            let answer = self.answer(&req, &caller).await;
             self.lock().doing -= 1;
             self.idle.notify_one();
             Some(answer)
@@ -1730,7 +2086,7 @@ impl Service {
         }
     }
 
-    async fn answer(self: &Arc<Self>, req: &Request, peer_pid: Option<i32>) -> Response {
+    async fn answer(self: &Arc<Self>, req: &Request, caller: &super::ops::Caller) -> Response {
         match req.op.as_str() {
             // (`hands_over`: it starts its successor itself, `retire --to`.)
             "ping" => Response::ok(String::new(), json!({ "ok": true, "proto": PROTO, "pid": std::process::id(), "cursor": self.lock().log.latest_seq(), "hands_over": true })),
@@ -1758,7 +2114,7 @@ impl Service {
             }
             "adopt" => self.adopt(req.obj.as_ref()).await,
             "policy" => self.policy(req).await,
-            _ => self.agent_op(req, peer_pid).await,
+            _ => self.agent_op(req, caller).await,
         }
     }
 
@@ -1790,6 +2146,57 @@ fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
         return Err(std::io::Error::other(format!("{} isn't a folder of this account's", dir.display())));
     }
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
+/// Service-private minder delivery state persisted across handovers so a
+/// running minder keeps its per-subject cursors, rules generations, and
+/// pending exit reports without replaying already-delivered events.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+struct MinderStateDisk {
+    #[serde(default)]
+    seen: Vec<(String, String, u64)>,
+    #[serde(default)]
+    minding_seen: Vec<(String, String, u64)>,
+    #[serde(default)]
+    rules_gen: HashMap<String, u64>,
+    #[serde(default)]
+    pending_rules_rev: Vec<(String, String, u64, String)>,
+    #[serde(default)]
+    pending_exit_reports: HashMap<String, Vec<String>>,
+}
+
+impl MinderStateDisk {
+    fn from_state(st: &State) -> Self {
+        Self {
+            seen: st.seen.iter().map(|((m, a), s)| (m.clone(), a.clone(), *s)).collect(),
+            minding_seen: st.minding_seen.iter().map(|((m, a), s)| (m.clone(), a.clone(), *s)).collect(),
+            rules_gen: st.rules_gen.clone(),
+            pending_rules_rev: st.pending_rules_rev.iter().map(|((m, a), (g, p))| (m.clone(), a.clone(), *g, p.clone())).collect(),
+            pending_exit_reports: st.pending_exit_reports.iter().map(|(m, s)| (m.clone(), s.iter().cloned().collect())).collect(),
+        }
+    }
+
+    fn load_from(path: &std::path::Path) -> Self {
+        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    }
+
+    fn save_to(&self, path: &std::path::Path) {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(1);
+        let Ok(json) = serde_json::to_string(self) else { return };
+        let tmp = path.with_extension(format!("json.tmp.{}.{}", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
+        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)
+            && f.write_all(json.as_bytes()).is_ok()
+            && f.sync_all().is_ok()
+        {
+            drop(f);
+            let _ = std::fs::rename(&tmp, path);
+        } else {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
 }
 
 fn load_events(paths: &Paths, start_seq: u64) -> SubagentEventLog {
@@ -1981,6 +2388,7 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
         }
     };
     let log = load_events(&paths, reg.event_seq);
+    let minder_disk = MinderStateDisk::load_from(&paths.dir.join("minder-state.json"));
     let _ = std::fs::remove_file(&paths.socket);
     let listener = match UnixListener::bind(&paths.socket) {
         Ok(listener) => listener,
@@ -2007,9 +2415,19 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
             clients: 0,
             doing: 0,
             idle_since: None,
-            let_go: HashSet::new(),
+            let_go: HashMap::new(),
+            closing_minders: HashSet::new(),
+            unhealthy_minders: HashSet::new(),
+            empty_gen: HashMap::new(),
+            reserved_ids: HashSet::new(),
+            pending_names: HashSet::new(),
             told: HashMap::new(),
-            seen: HashMap::new(),
+            rules_gen: minder_disk.rules_gen,
+            pending_rules_rev: minder_disk.pending_rules_rev.into_iter().map(|(m, a, g, p)| ((m, a), (g, p))).collect(),
+            seen: minder_disk.seen.into_iter().map(|(m, a, s)| ((m, a), s)).collect(),
+            minding_seen: minder_disk.minding_seen.into_iter().map(|(m, a, s)| ((m, a), s)).collect(),
+            pending_exit_reports: minder_disk.pending_exit_reports.into_iter().map(|(m, v)| (m, v.into_iter().collect())).collect(),
+            pending_minds: HashMap::new(),
             leave: HashMap::new(),
         }),
         changed: Notify::new(),
@@ -2020,6 +2438,8 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
         retire: Notify::new(),
         successor: std::sync::Mutex::new(None),
         said_held: std::sync::atomic::AtomicBool::new(false),
+        minder_gate: tokio::sync::Mutex::new(()),
+        worker_locks: Mutex::new(HashMap::new()),
     });
     tokio::spawn(service.clone().writer());
     service.reconcile().await;

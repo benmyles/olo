@@ -1,4 +1,7 @@
-//! A minder: an agent of its own whose whole job is one other agent.
+//! A minder: an agent of its own that watches over agents of a parent
+//! tab, answers what they ask at once by per-agent rules, and escalates
+//! what those rules don't cover.
+//!
 //! Ben, 2026-11-26: "often when subagents need an approval or have a
 //! question it takes a long time for parent agents to notice and respond
 //! because they are busy with something else … allow parent agents, when
@@ -10,23 +13,34 @@
 //! … the minder the ability to message the parent when something needs
 //! escalation."
 //!
-//! A minder is a child tab of the agent it minds (so the person sees it
-//! under that agent, and stopping the agent's tree stops it too). It
-//! waits on that agent, answers what it asks at once by the parent's
-//! written rules, and tells the parent what the rules don't cover: an
-//! `escalation`, which is an event on the parent's own watch, never
-//! something typed into the parent's pane.
+//! Ben, 2026-11-27: "the way minders work right now is not very
+//! efficient because they always are a 1:1 with what they're minding and
+//! get nested under it. change it so that a minder can mind n other
+//! agents and those agents get nested under the minder. that would be
+//! way more efficient."
+//!
+//! A shared minder is a child tab of the tab that asked for it (the
+//! lead's), and the agents it minds are child tabs of the minder:
+//! `lead ▸ minder ▸ agents`. The lead keeps one minder per
+//! `CLI:MODEL:EFFORT` up to [`DEFAULT_MINDS_MOST`] agents (overridden
+//! via `OLO_REX_AGENTS_MINDS_MOST` for tests), so N minded agents cost
+//! N + 1 tabs instead of 2N. Each minded agent keeps its own rules file
+//! (`minders/AGENT_ID/rules.md`) and answers log. Older 1:1 minders
+//! (`minds: Some(id)`, nested under their single agent) already running
+//! when a new service takes over continue to work until they end.
 //!
 //! What a minder can do is the service's to enforce, not the minder's to
-//! remember: it reaches the one agent it minds and nothing else, by one
-//! small command of its own (`mind`, written for it: [`script`]) that
-//! names that agent for it. Its rules are the parent's words, set inside
-//! standing instructions that are the same for every minder ([`brief`]).
+//! remember: it reaches only the agents it minds and nothing else, by
+//! one small command of its own (`mind`, written for it:
+//! [`multi_script`], or [`script`] for the older 1:1 kind). Its standing
+//! instructions are the same for every minder ([`multi_brief`]); each
+//! agent's rules are the parent's words, read from that agent's rules
+//! file before answering it and re-read when told they changed.
 
 use super::model::AgentCli;
 
 /// The command a minder has, in its own folder: every one of the few
-/// things it may do, each for the one agent it minds.
+/// things it may do, for the agents it minds alone.
 pub const COMMAND: &str = "mind";
 
 /// The events of a minded agent that are its minder's to answer: a
@@ -35,6 +49,16 @@ pub const MINDERS_OWN: [&str; 2] = ["waiting_approval", "waiting_question"];
 
 /// What a parent's watch is told when a minder has something for it.
 pub const ESCALATION: &str = "escalation";
+
+/// What a shared minder's watch is told when its roster or an agent's
+/// rules change (`added`, `removed`, `rules`): names the agent and its
+/// rules file, and wakes no other watch.
+pub const MINDING: &str = "minding";
+
+/// How many live agents one shared minder minds before a second minder
+/// of the same `CLI:MODEL:EFFORT` is started under the asking tab
+/// (overridden by `OLO_REX_AGENTS_MINDS_MOST` for tests).
+pub const DEFAULT_MINDS_MOST: usize = 12;
 
 /// The agent a minder runs as: its program, model and effort, as the
 /// parent chose them (`--minder claude:claude-fable-5-2:high`).
@@ -69,12 +93,39 @@ impl MinderSpec {
     }
 }
 
+/// What `--minder` (on `start`) or `--with` (on `mind`) names: either a
+/// `CLI:MODEL:EFFORT` (reusing a running shared minder of that kind
+/// under the asker's tab with room, or starting one) or `NAME` (no
+/// colons: an existing running shared minder by name or id).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MinderChoice {
+    Spec(MinderSpec),
+    Named(String),
+}
+
+impl MinderChoice {
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err("`--minder` takes `claude:MODEL:EFFORT` or a running minder's NAME".into());
+        }
+        if trimmed.contains(':') { MinderSpec::parse(trimmed).map(Self::Spec) } else { Ok(Self::Named(trimmed.to_owned())) }
+    }
+
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Spec(spec) => spec.describe(),
+            Self::Named(name) => name.clone(),
+        }
+    }
+}
+
 /// `olo agent mind NAME …`: a minder attached to a running agent,
-/// replaced, given new rules, ended, or asked about.
+/// changed, given new rules, taken off, or asked about.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MindSpec {
     pub target: String,
-    pub with: Option<MinderSpec>,
+    pub with: Option<MinderChoice>,
     pub rules: Option<String>,
     pub rules_file: Option<String>,
     /// What the minder's own environment has besides the service's
@@ -89,12 +140,12 @@ pub struct MindSpec {
 }
 
 pub fn mind_usage() -> String {
-    "usage: olo agent mind <ID|NAME> [--with claude:MODEL:EFFORT] [--rules FILE | --rules-text TEXT] [--env K=V]... [--off] [--approve-all-but FILE | --approve-none] [--json]\n  \
+    "usage: olo agent mind <ID|NAME> [--with claude:MODEL:EFFORT|NAME] [--rules FILE | --rules-text TEXT] [--env K=V]... [--off] [--approve-all-but FILE | --approve-none] [--json]\n  \
      --approve-all-but FILE   the service itself says yes, once, to what it asks leave for, except what a pattern of FILE names (a regular expression a line), which is asked as before\n  \
      --approve-none      no longer: everything it asks leave for is asked\n  \
-     --with …            attach a minder to it, or replace the one it has\n  \
-     --rules FILE        what the minder may approve, must refuse, how to steer, when to tell you (your own words)\n  \
-     --off               end its minder\n  \
+     --with …            put it under your tab's shared minder for claude:MODEL:EFFORT (starting one if none has room) or under a running minder NAME\n  \
+     --rules FILE        what the minder may approve, must refuse, how to steer, when to tell you (updates the running minder without restarting it)\n  \
+     --off               take it off its minder (moves it back under the minder's parent tab; its asking comes to you again)\n  \
      (nothing more)      how it is minded, and what its minder has answered\n"
         .to_owned()
 }
@@ -109,7 +160,7 @@ impl MindSpec {
         };
         while i < args.len() {
             match args[i].as_str() {
-                "--with" | "--minder" => spec.with = Some(MinderSpec::parse(&value(&mut i, "--with")?)?),
+                "--with" | "--minder" => spec.with = Some(MinderChoice::parse(&value(&mut i, "--with")?)?),
                 "--rules" | "--rules-file" => spec.rules_file = Some(value(&mut i, "--rules")?),
                 "--rules-text" => spec.rules = Some(value(&mut i, "--rules-text")?),
                 "-e" | "--env" => {
@@ -131,7 +182,7 @@ impl MindSpec {
             return Err(mind_usage());
         }
         if spec.off && (spec.with.is_some() || spec.rules.is_some() || spec.rules_file.is_some() || !spec.env.is_empty()) {
-            return Err("`--off` ends its minder: it takes no minder and no rules".into());
+            return Err("`--off` takes it off its minder: it takes no minder and no rules".into());
         }
         if spec.rules.is_some() && spec.rules_file.is_some() {
             return Err("`--rules FILE` or `--rules-text TEXT`, not both".into());
@@ -143,12 +194,44 @@ impl MindSpec {
     }
 }
 
-/// What the minder's own command is, as a shell script: each thing it
-/// may do, for the agent `minded` (its id) alone, asked of the service
-/// through `helper` (Olo's helper on this host, by its whole path: the
-/// minder's tab need have nothing on its PATH). The service still knows
-/// who asks and refuses anything else; this is so that the minder never
-/// has to name the agent, and so that one tool rule lets it work.
+/// What a shared minder's own command is, as a shell script: each thing
+/// it may do for the agents it minds, asked of the service through
+/// `helper` (Olo's helper on this host, by its whole path). The service
+/// still knows who asks and holds it to its own minded agents alone;
+/// one tool rule lets it work without leave.
+pub fn multi_script(helper: &str) -> String {
+    let helper = shell_word(helper);
+    format!(
+        r#"#!/bin/sh
+# A shared minder's command: the few things it may do, for the agents it minds.
+# Written by Olo's agents service; the service knows who asks, too.
+helper={helper}
+what=$1
+[ $# -gt 0 ] && shift
+case "$what" in
+watch)
+    case "$1" in
+    "" | -*) exec "$helper" agent watch --all "$@" ;;
+    *) exec "$helper" agent watch "$@" ;;
+    esac
+    ;;
+list) exec "$helper" agent list "$@" ;;
+status | read) exec "$helper" agent "$what" "$@" ;;
+approve) exec "$helper" agent approve "$@" ;;
+send) exec "$helper" agent mind-send "$@" ;;
+escalate) exec "$helper" agent escalate "$@" ;;
+*)
+    echo "usage: {COMMAND} watch|list|status|read|approve|send|escalate …" >&2
+    exit 2
+    ;;
+esac
+"#
+    )
+}
+
+/// What an older 1:1 minder's own command is, as a shell script: each
+/// thing it may do, for the one agent `minded` (its id) alone. Kept for
+/// compatibility with 1:1 minders already running across an upgrade.
 pub fn script(helper: &str, minded: &str) -> String {
     let (helper, minded) = (shell_word(helper), shell_word(minded));
     format!(
@@ -163,7 +246,7 @@ case "$what" in
 watch) exec "$helper" agent watch "$it" "$@" ;;
 status | read) exec "$helper" agent "$what" "$it" "$@" ;;
 approve) exec "$helper" agent approve "$it" "$@" ;;
-send) exec "$helper" agent send "$it" "$@" ;;
+send) exec "$helper" agent mind-send "$it" "$@" ;;
 escalate) exec "$helper" agent escalate "$@" ;;
 *)
     echo "usage: {COMMAND} watch|status|read|approve|send|escalate …" >&2
@@ -213,9 +296,57 @@ pub const CLAUDE_MODE: &str = "dontAsk";
 /// that writes, edits, fetches or starts anything.
 pub const CLAUDE_TOOLS: [&str; 2] = ["--tools", "Bash,Read,Grep,Glob"];
 
-/// What a minder is first told: to begin. (Its standing instructions,
-/// [`brief`], are its system's, so that a long watch that is summed up
-/// never loses the rules.)
+/// What a shared minder is first told: to begin watching all of its
+/// agents and roster/rules updates. (Its standing instructions,
+/// [`multi_brief`], are its system's, so a long watch that is summed up
+/// never loses how it works.)
+pub fn multi_begin(path: &str, cursor: u64) -> String {
+    format!("Begin minding now. Run: {path} watch --since {cursor} --on minding,question,approval,idle,error,exit --timeout 90 --json")
+}
+
+/// A shared minder's standing instructions: how it watches over the
+/// agents nested under it, reads each agent's own rules file before
+/// answering it and again when told its rules changed, answers each
+/// agent strictly by that agent's rules, escalates what they don't
+/// cover, and reports each agent's exit while continuing to mind the
+/// rest.
+pub fn multi_brief(path: &str, cursor: u64) -> String {
+    format!(
+        r#"You are a minder. Your job is to watch over the agents that run as child tabs under yours. The agent that started you (the parent) is busy with other work and leaves per-agent rules for each agent you mind. You answer what each agent asks at once, strictly by THAT agent's rules, so none sits waiting; what an agent's rules don't cover, you escalate to the parent. You do none of their work, none of the parent's, and nothing else at all.
+
+Each agent you mind has its own rules file (`minders/AGENT_ID/rules.md`), named in its `minding` event and in `{path} list --json`. Always read an agent's rules file with the Read tool before answering it the first time, and re-read it whenever a `minding` event tells you its rules changed. Never apply one agent's rules to another agent. If an agent's rules file is empty, approve nothing and answer nothing for it: escalate every approval and question for it, word for word.
+
+You have one command to act with, and you may read: any file, with the Read, Grep and Glob tools (each agent's rules file, the script a command would run, the brief an agent was given, the code it asks about). Read what a question is about before you answer it. Every other tool is closed to you, and in the shell everything but your command (nobody is there to give you leave, so never try anything else):
+
+  {path} watch --since CURSOR --on minding,question,approval,idle,error,exit --timeout 90 --json
+      Waits for a roster or rules update (`"event": "minding"`) or for any agent you mind to ask leave, ask a question, come to rest, fail or exit. It returns the moment one happens (exit code 0) with a "cursor", and `name` and `id` saying WHICH agent it is about; with nothing to say it returns code 124 after 90 seconds: run it again with the same cursor. Begin with CURSOR = {cursor}. Always pass the cursor of the last answer. For each agent you are told what stands, once: when an agent is added while already asking, you hear its `minding` event and then its standing question at once; if several things happened for an agent while you were busy, you hear the last, not each; what you have been told and left standing (a question you passed up) is not told to you again unless its rules change.
+  {path} list --json
+      Lists every agent you currently mind: its `id`, `name`, what it is, where it works (`cwd`), how it stands (`state`), and its `rules` file path.
+  {path} status ID --json         how that agent stands now (what it asks, with the choices); NAME also works when unambiguous
+  {path} read ID --lines 80       that agent's screen, when you need to see what led to a question
+  {path} approve ID --once        yes, this once.   {path} approve ID --no --reason "WHY"    no, and why.
+      (Never a yes that is kept: no "don't ask again", no "always allow". `approve` can't pick those, and you never try another way.)
+      `approve` answers the one question you were last told of for ID (by `watch` or `status`) under its current rules. If it says the question or rules changed, nothing was answered: re-read its rules if they changed, run `status ID --json`, judge what stands asked now, then answer that.
+  {path} send ID "TEXT" --enter   says TEXT to ID: an answer to its non-approval question, or a steer at rest (chooser nav keys `--key Up|Down|Tab|Space|Enter|Escape` also work on non-approval choosers). Never used for approval boxes.
+  {path} escalate ID "TEXT"       tells the parent about ID (always pass the event's immutable `id`, e.g. `sa-…`, so a reused name can never be misattributed). It reaches the parent's own watch at once as that agent's `escalation`. Say which question, word for word, what you did or didn't do, and what you need.
+  {path} escalate "TEXT"          tells the parent about yourself (if you hit a problem or need attention).
+
+The loop you keep, for as long as you run:
+1. `watch` (as above). On code 124, watch again. Do not think between watches when nothing happened.
+2. A roster or rules update (`"event": "minding"`): inspect `minding.action` (`"added"`, `"rules"`, `"removed"`), `id`, `name`, and `minding.rules`. On `"added"` or `"rules"`, read `minding.rules` with Read (and note `minding.what` and `minding.cwd`). On `"removed"`, that agent is no longer yours to mind. Then watch again.
+3. An approval (`"waiting_approval"`): make sure you have read THAT agent's current rules file (`{path} list --json` has its path if you forgot). Read what it asks leave for (`status ID --json` has it whole; `read ID` if you need what came before). If that agent's rules plainly allow it, `approve ID --once`. If they plainly refuse it, `approve ID --no --reason "…"` with the rule, and what to do instead if the rules say. If its rules don't say, or you are not sure, do NOT guess: `escalate ID "…"` word for word, and leave it waiting.
+4. A question (`"waiting_question"`): answer with `send ID …` if that agent's rules give the answer; else `escalate ID "…"`.
+5. At rest (`"idle"` or `"done"`): if that agent's rules say how to go on (a next step, a check to ask for), `send ID …`. If it has finished what it was asked, `escalate ID "…"` one line saying so, with where its result is if it said.
+6. A failure (`"error"`): `escalate ID "…"` with what it says.
+7. An agent exits (`"exited"`): `escalate ID "…"` (using the exited event's immutable `id`) with one short summary for that agent (what you approved, what you refused, what you passed up), then continue watching for your remaining agents. When no live agents remain, the service stops you once all pending exit reports are sent (or when the reporting grace deadline expires).
+
+Never: start an agent or any other program; stop any agent; edit or write files; apply one agent's rules to another; approve what an agent's rules don't plainly allow; answer a question about the work itself from your own judgment where the rules are silent; type a secret, a password or a token into any agent."#
+    )
+}
+
+/// What an older 1:1 minder is first told: to begin. (Its standing
+/// instructions, [`brief`], are its system's, so that a long watch that
+/// is summed up never loses the rules.)
 pub fn begin(name: &str, path: &str, cursor: u64) -> String {
     format!("Begin minding \"{name}\" now. Run: {path} watch --since {cursor} --on question,approval,idle,error,exit --timeout 90 --json")
 }
@@ -283,9 +414,11 @@ mod tests {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let attach = MindSpec::parse(&args(&["api-audit", "--with", "claude:claude-fable-5-2:high", "--rules", "rules.md", "--json"])).unwrap();
         assert_eq!(
-            (attach.target.as_str(), attach.with.as_ref().map(MinderSpec::describe).as_deref(), attach.rules_file.as_deref(), attach.off, attach.json),
+            (attach.target.as_str(), attach.with.as_ref().map(MinderChoice::describe).as_deref(), attach.rules_file.as_deref(), attach.off, attach.json),
             ("api-audit", Some("claude:claude-fable-5-2:high"), Some("rules.md"), false, true)
         );
+        let named = MindSpec::parse(&args(&["api-audit", "--with", "minder-2"])).unwrap();
+        assert_eq!(named.with, Some(MinderChoice::Named("minder-2".into())));
         let rules = MindSpec::parse(&args(&["api-audit", "--rules-text", "Approve cargo test."])).unwrap();
         assert_eq!((rules.with, rules.rules.as_deref()), (None, Some("Approve cargo test.")));
         assert!(MindSpec::parse(&args(&["api-audit", "--off"])).unwrap().off);
@@ -295,12 +428,88 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_minder_choice_is_either_a_spec_or_a_running_minders_name() {
+        assert_eq!(MinderChoice::parse("claude:claude-opus-5-5:max").unwrap(), MinderChoice::Spec(MinderSpec { cli: AgentCli::Claude, model: "claude-opus-5-5".into(), effort: "max".into() }));
+        assert_eq!(MinderChoice::parse("minder").unwrap(), MinderChoice::Named("minder".into()));
+        assert_eq!(MinderChoice::parse(" minder-2 ").unwrap(), MinderChoice::Named("minder-2".into()));
+        for bad in ["", "   ", "claude:opus", "claude::high", "codex:m:e", "claude:m:e:x"] {
+            assert!(MinderChoice::parse(bad).is_err(), "{bad}");
+        }
+    }
+
+    /// A shared minder's command (`multi_script`) names the agent where
+    /// one is meant, watches all its agents by default, lists them, and
+    /// escalates about one or about itself.
+    #[test]
+    fn the_shared_minders_command_routes_each_action() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-shared-minder-script-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let helper = dir.join("it's a helper");
+        std::fs::write(&helper, "#!/bin/sh\nfor a in \"$@\"; do printf '[%s]' \"$a\"; done\n").unwrap();
+        let mind = dir.join(COMMAND);
+        std::fs::write(&mind, multi_script(&helper.to_string_lossy())).unwrap();
+        for f in [&helper, &mind] {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let run = |args: &[&str]| {
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            let out = loop {
+                match std::process::Command::new(&mind).args(args).output() {
+                    Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && std::time::Instant::now() < until => {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    res => break res.unwrap(),
+                }
+            };
+            (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned())
+        };
+        assert_eq!(run(&["watch", "--since", "7", "--json"]), (Some(0), "[agent][watch][--all][--since][7][--json]".into()));
+        assert_eq!(run(&["watch"]), (Some(0), "[agent][watch][--all]".into()));
+        assert_eq!(run(&["watch", "alpha", "--since", "7", "--json"]), (Some(0), "[agent][watch][alpha][--since][7][--json]".into()));
+        assert_eq!(run(&["list", "--json"]).1, "[agent][list][--json]");
+        assert_eq!(run(&["status", "alpha", "--json"]).1, "[agent][status][alpha][--json]");
+        assert_eq!(run(&["read", "alpha", "--lines", "80"]).1, "[agent][read][alpha][--lines][80]");
+        assert_eq!(run(&["approve", "alpha", "--no", "--reason", "not in rules"]).1, "[agent][approve][alpha][--no][--reason][not in rules]");
+        assert_eq!(run(&["send", "alpha", "Run the tests first.", "--enter"]).1, "[agent][mind-send][alpha][Run the tests first.][--enter]");
+        assert_eq!(run(&["escalate", "alpha", "It asks to push."]).1, "[agent][escalate][alpha][It asks to push.]");
+        assert_eq!(run(&["escalate", "I need attention."]).1, "[agent][escalate][I need attention.]");
+        for refused in [&["stop", "alpha"][..], &["start", "claude"], &["prune"], &[]] {
+            assert_eq!(run(refused), (Some(2), String::new()), "{refused:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_shared_minders_instructions_cover_multiple_agents_and_per_agent_rules() {
+        let b = multi_brief("/state/minders/sa-m1/mind", 412);
+        for must in [
+            "/state/minders/sa-m1/mind watch --since CURSOR --on minding,question,approval,idle,error,exit --timeout 90 --json",
+            "Begin with CURSOR = 412",
+            "/state/minders/sa-m1/mind list --json",
+            "/state/minders/sa-m1/mind status ID --json",
+            "/state/minders/sa-m1/mind approve ID --once",
+            "/state/minders/sa-m1/mind escalate ID \"TEXT\"",
+            "/state/minders/sa-m1/mind escalate \"TEXT\"",
+            "Never apply one agent's rules to another agent",
+            "\"event\": \"minding\"",
+            "do NOT guess",
+        ] {
+            assert!(b.contains(must), "missing: {must}");
+        }
+        assert_eq!(
+            multi_begin("/state/minders/sa-m1/mind", 412),
+            "Begin minding now. Run: /state/minders/sa-m1/mind watch --since 412 --on minding,question,approval,idle,error,exit --timeout 90 --json"
+        );
+    }
+
     /// The minder's command reaches the one agent, whatever is asked of
     /// it: run for real, with a stand-in helper that says what it was
     /// given.
     #[test]
     fn the_minders_command_names_its_agent_for_it() {
-        let dir = std::env::temp_dir().join(format!("olo-minder-script-{}", std::process::id()));
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-minder-script-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let helper = dir.join("it's a helper");
         std::fs::write(&helper, "#!/bin/sh\nfor a in \"$@\"; do printf '[%s]' \"$a\"; done\n").unwrap();
@@ -311,14 +520,22 @@ mod tests {
             std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let run = |args: &[&str]| {
-            let out = std::process::Command::new(&mind).args(args).output().unwrap();
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            let out = loop {
+                match std::process::Command::new(&mind).args(args).output() {
+                    Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && std::time::Instant::now() < until => {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    res => break res.unwrap(),
+                }
+            };
             (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned())
         };
         assert_eq!(run(&["watch", "--since", "7", "--json"]), (Some(0), "[agent][watch][sa-1f2e3d][--since][7][--json]".into()));
         assert_eq!(run(&["status", "--json"]).1, "[agent][status][sa-1f2e3d][--json]");
         assert_eq!(run(&["read", "--lines", "80"]).1, "[agent][read][sa-1f2e3d][--lines][80]");
         assert_eq!(run(&["approve", "--no", "--reason", "not in the rules; it's a push"]).1, "[agent][approve][sa-1f2e3d][--no][--reason][not in the rules; it's a push]");
-        assert_eq!(run(&["send", "Run the tests first.", "--enter"]).1, "[agent][send][sa-1f2e3d][Run the tests first.][--enter]");
+        assert_eq!(run(&["send", "Run the tests first.", "--enter"]).1, "[agent][mind-send][sa-1f2e3d][Run the tests first.][--enter]");
         assert_eq!(run(&["escalate", "It asks to push."]).1, "[agent][escalate][It asks to push.]");
         // (Nothing else: not another command of the service's, not another agent.)
         for refused in [&["stop"][..], &["start", "claude"], &["list"], &[]] {
