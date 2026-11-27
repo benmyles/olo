@@ -164,6 +164,11 @@ kbd {
   padding: 0.1em 0.35em;
 }
 
+/* A chord (⌃ ⌘ D): its keys on one line. */
+.keys {
+  white-space: nowrap;
+}
+
 kbd {
   display: inline-block;
   min-width: 1.6em;
@@ -814,6 +819,16 @@ figcaption {
 
 .band a {
   color: #8dbaff;
+}
+
+/* Code and keys in the band: chips of its own darkness. The page's are
+   for a light ground (or the dark theme's), and the band is dark in
+   both: pale words on a pale chip. */
+.band :not(pre) > code,
+.band kbd {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #e8ecf4;
 }
 
 pre {
