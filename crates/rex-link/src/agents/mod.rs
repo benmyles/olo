@@ -421,6 +421,35 @@ mod tests {
         assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: true, at_ms: now, said: true })), Rest::Told { answered: Some(7) });
     }
 
+    /// A child is started in its agent's own automatic mode unless its parent says otherwise: by `--no-auto`, or
+    /// by any word of its own about how leave is given, which is then all that is passed.
+    #[test]
+    fn a_child_is_started_in_auto_mode_unless_its_parent_says_otherwise() {
+        let argv = |args: &[&str]| -> Vec<String> {
+            let raw = json!({ "args": args });
+            StartSpec::parse(Some(&raw)).unwrap_or_else(|e| panic!("{args:?}: {e}")).build_command().unwrap_or_else(|e| panic!("{args:?}: {e}")).3
+        };
+        let after = |argv: &[String], flag: &str| argv.iter().position(|a| a == flag).and_then(|i| argv.get(i + 1)).cloned();
+        // By default, each in its own word for it.
+        assert_eq!(after(&argv(&["claude", "--model", "m", "--effort", "max"]), "--permission-mode").as_deref(), Some("auto"));
+        assert_eq!(after(&argv(&["agy", "--model", "m", "--effort", "xhigh"]), "--mode").as_deref(), Some("auto"));
+        assert!(argv(&["codex", "--model", "m", "--effort", "high"]).iter().any(|a| a == "--approve-for-me"));
+        // Turned off by name: nothing about leave is passed, and the agent asks as it does by itself.
+        let off = argv(&["claude", "--model", "m", "--effort", "max", "--no-auto"]);
+        assert!(!off.iter().any(|a| a == "--permission-mode" || a == "--no-auto"), "{off:?}");
+        assert!(!argv(&["agy", "--model", "m", "--effort", "xhigh", "--no-auto"]).iter().any(|a| a == "--mode"));
+        assert!(!argv(&["codex", "--model", "m", "--effort", "high", "--no-auto"]).iter().any(|a| a == "--approve-for-me"));
+        // The parent's own choice is all that is passed.
+        assert_eq!(after(&argv(&["claude", "--model", "m", "--effort", "max", "--permission-mode", "acceptEdits"]), "--permission-mode").as_deref(), Some("acceptEdits"));
+        assert_eq!(after(&argv(&["agy", "--model", "m", "--effort", "xhigh", "--mode", "accept-edits"]), "--mode").as_deref(), Some("accept-edits"));
+        let codex = argv(&["codex", "--model", "m", "--effort", "high", "--approval", "untrusted"]);
+        assert!(after(&codex, "-a").as_deref() == Some("untrusted") && !codex.iter().any(|a| a == "--approve-for-me"), "{codex:?}");
+        let boxed = argv(&["codex", "--model", "m", "--effort", "high", "--sandbox", "read-only"]);
+        assert!(!boxed.iter().any(|a| a == "--approve-for-me"), "{boxed:?}");
+        // (Asked for by name beside another word of the parent's: both.)
+        assert!(argv(&["codex", "--model", "m", "--effort", "high", "--sandbox", "workspace-write", "--auto"]).iter().any(|a| a == "--approve-for-me"));
+    }
+
     /// Antigravity's own running tasks, by its footer (`state::agy_tasks`).
     #[test]
     fn antigravitys_footer_says_how_many_of_its_tasks_run() {

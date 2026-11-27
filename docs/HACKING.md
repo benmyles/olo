@@ -31862,6 +31862,20 @@ agents through the night, could not move to it.
     seconds): started with a prompt, and a conversation taken up again
     with one, the first rest told is the prompt's own turn's end and
     answers the start; after a send, the send.
+- *Auto mode is a child's default* (`spec.rs`, `StartSpec::auto_for`;
+  Ben, 2026-11-27: "enable auto mode by default for the olo rex agents
+  but provide a way for the parent/launching agent to disable it if
+  they prefer"). Started with no word about how leave is given, a
+  child gets its agent's own automatic mode: Claude Code's
+  `--permission-mode auto`, Antigravity's `--mode auto`, Codex's
+  `--approve-for-me`. The parent turns it off with `--no-auto` (the
+  agent then asks as it does by itself) or by choosing a mode of its
+  own (`--permission-mode`, `--mode`, `--approval`, `--sandbox`,
+  `--full-auto`, skipping permissions), which is then all that is
+  passed; `--auto` asks for it beside another choice. A minder is
+  started with its own mode (`dontAsk`) and is not one of these. What
+  an auto child still asks goes where it went: its minder, its list,
+  its parent.
 - *A child's own folders are trusted at its start* (`start --trust`;
   `ops.rs`; the ShiftUp lead's items 1 and 42). For Claude Code the
   folders (`--cwd`, each `--add-dir`) are written as trusted into its

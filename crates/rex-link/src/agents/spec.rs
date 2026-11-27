@@ -38,6 +38,10 @@ pub struct StartSpec {
     pub allow_dangerously_skip_permissions: bool,
     pub full_auto: bool,
     pub approve_for_me: bool,
+    /// The agent's own automatic mode, where the parent says (`--auto`,
+    /// `--no-auto`); unsaid, it is on unless the parent chose how leave
+    /// is given another way ([`StartSpec::auto_for`]).
+    pub auto: Option<bool>,
     pub allowed_tools: Vec<String>,
     pub disallowed_tools: Vec<String>,
     pub add_dirs: Vec<String>,
@@ -182,6 +186,7 @@ impl StartSpec {
             allow_dangerously_skip_permissions: bool_val("allow_dangerously_skip_permissions"),
             full_auto: bool_val("full_auto"),
             approve_for_me: bool_val("approve_for_me"),
+            auto: v.get("auto").and_then(Value::as_bool),
             allowed_tools: str_vec("allowed_tools"),
             disallowed_tools: str_vec("disallowed_tools"),
             add_dirs: str_vec("add_dir").into_iter().chain(str_vec("add_dirs")).collect(),
@@ -334,6 +339,8 @@ impl StartSpec {
                 "--allow-dangerously-skip-permissions" => s.allow_dangerously_skip_permissions = true,
                 "--full-auto" => s.full_auto = true,
                 "--approve-for-me" => s.approve_for_me = true,
+                "--auto" => s.auto = Some(true),
+                "--no-auto" => s.auto = Some(false),
                 "--allowed-tools" | "--allowedTools" => {
                     let first = next(&mut i, flag, inline)?;
                     s.allowed_tools.push(first);
@@ -439,6 +446,31 @@ impl StartSpec {
 
     /// Validates mandatory fields (`cli`, `model`, `effort`) and per-CLI flag compatibility (`M7`/`M8`),
     /// then builds the exact CLI argv.
+    /// Whether a child is started in its agent's own automatic mode
+    /// (Ben, 2026-11-27: "enable auto mode by default for the olo rex
+    /// agents but provide a way for the parent/launching agent to
+    /// disable it if they prefer"): Claude Code's `--permission-mode
+    /// auto`, Antigravity's `--mode auto`, Codex's `--approve-for-me`
+    /// (its approvals reviewed automatically, in its workspace
+    /// sandbox). On unless the parent says otherwise: `--no-auto`, or
+    /// any word of its own about how leave is given (a permission
+    /// mode, a mode, an approval policy, a sandbox, skipping
+    /// permissions), which is then all that is passed. `--auto` asks
+    /// for it by name.
+    pub fn auto_for(&self, cli: AgentCli) -> bool {
+        if !cli.is_agent() {
+            return false;
+        }
+        if let Some(said) = self.auto {
+            return said;
+        }
+        let chosen = self.permission_mode.is_some() || self.mode.is_some() || self.dangerously_skip_permissions || self.allow_dangerously_skip_permissions;
+        match cli {
+            AgentCli::Codex => !(chosen || self.approval.is_some() || self.sandbox.is_some() || self.full_auto || self.approve_for_me),
+            _ => !chosen,
+        }
+    }
+
     pub fn build_command(&self) -> Result<(AgentCli, String, String, Vec<String>), String> {
         let cli = self.cli.ok_or_else(|| {
             "missing agent CLI: specify `claude`, `codex`, or `agy` (e.g. `olo agent start claude --model ... --effort ...`), or `--command -- CMD…` for a command of your own".to_owned()
@@ -517,6 +549,8 @@ impl StartSpec {
                 }
                 if let Some(pm) = self.permission_mode.as_ref().or(self.mode.as_ref()) {
                     argv.extend(["--permission-mode".into(), pm.clone()]);
+                } else if self.auto_for(cli) {
+                    argv.extend(["--permission-mode".into(), "auto".into()]);
                 }
                 if self.dangerously_skip_permissions {
                     argv.push("--dangerously-skip-permissions".into());
@@ -592,7 +626,7 @@ impl StartSpec {
                 } else if self.full_auto {
                     argv.extend(["-s".into(), "workspace-write".into()]);
                 }
-                if self.approve_for_me {
+                if self.approve_for_me || self.auto_for(cli) {
                     argv.push("--approve-for-me".into());
                 }
                 if self.dangerously_skip_permissions {
@@ -669,6 +703,8 @@ impl StartSpec {
                 }
                 if let Some(m) = self.mode.as_ref().or(self.permission_mode.as_ref()) {
                     argv.extend(["--mode".into(), m.clone()]);
+                } else if self.auto_for(cli) {
+                    argv.extend(["--mode".into(), "auto".into()]);
                 }
                 if self.sandbox.as_deref().is_some_and(|v| !matches!(v.to_ascii_lowercase().as_str(), "false" | "0" | "off" | "none")) {
                     argv.push("--sandbox".into());
@@ -1379,5 +1415,5 @@ impl WatchSpec {
 }
 
 pub fn start_usage() -> String {
-    "usage: olo agent start <claude|codex|agy> --model <MODEL> --effort <EFFORT> [--name NAME] [--trust] [--desktop none|screens=NAME,…|inherit] [--unset-env K]... [--session-id UUID] [--resume ID | --continue] [--fork] [--title TITLE] [--role ROLE] [--cwd DIR] [--prompt TEXT | --prompt-file PATH] [--permission-mode MODE | --approval POLICY | --sandbox MODE | --mode MODE | --full-auto] [--settings JSON_OR_FILE] [--strict-mcp-config] [--disallowed-tools TOOLS...] [--add-dir DIR]... [--env K=V]... [--parent WIN] [--focus] [--close-on-exit] [--minder claude:MODEL:EFFORT [--rules FILE | --rules-text TEXT]] [--json] [-- EXTRA_CLI_ARGS...]\n\nA minder (--minder): an agent of its own, a child tab of this one, that answers what this one asks at once by your rules and tells you what they don't cover (an `escalation` on your own `olo agent watch`). For one that runs already: olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE.\n\nNote: --approve-for-me is Codex-only (off by default, never enabled automatically). Default desktop policy for children is `--desktop none`.\n\nA command of your own in a child tab (no agent): olo agent start --command [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]... [--unset-env K]... [--desktop …] [--parent WIN] [--close-on-exit] [--focus] [--json] -- CMD [ARG…]".into()
+    "usage: olo agent start <claude|codex|agy> --model <MODEL> --effort <EFFORT> [--name NAME] [--trust] [--no-auto] [--desktop none|screens=NAME,…|inherit] [--unset-env K]... [--session-id UUID] [--resume ID | --continue] [--fork] [--title TITLE] [--role ROLE] [--cwd DIR] [--prompt TEXT | --prompt-file PATH] [--permission-mode MODE | --approval POLICY | --sandbox MODE | --mode MODE | --full-auto] [--settings JSON_OR_FILE] [--strict-mcp-config] [--disallowed-tools TOOLS...] [--add-dir DIR]... [--env K=V]... [--parent WIN] [--focus] [--close-on-exit] [--minder claude:MODEL:EFFORT [--rules FILE | --rules-text TEXT]] [--json] [-- EXTRA_CLI_ARGS...]\n\nA minder (--minder): an agent of its own, a child tab of this one, that answers what this one asks at once by your rules and tells you what they don't cover (an `escalation` on your own `olo agent watch`). For one that runs already: olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE.\n\nNote: --approve-for-me is Codex-only (off by default, never enabled automatically). Default desktop policy for children is `--desktop none`.\n\nA command of your own in a child tab (no agent): olo agent start --command [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]... [--unset-env K]... [--desktop …] [--parent WIN] [--close-on-exit] [--focus] [--json] -- CMD [ARG…]".into()
 }
