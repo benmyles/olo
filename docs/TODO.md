@@ -1087,6 +1087,56 @@ something nobody here has is in "Blocked", with what it waits for.
     barriers that are elapsed time (the review of the whole said so):
     to make them wait on what they wait for.
 
+- **Left by the confirming code review of `Request::OwnInput`** (Astra
+  6.2, 2026-11-27, `/var/tmp/olo-reviews/astra-4d683ca1d9/
+  astra-review.md`, 16 findings, "hold for fixes"; fixed after it, with
+  no further review: its 1, 2 and 8 (after its end a connection's
+  input alone is taken), 3, 9, 10, 12's name, 13's words, 14, 16; its
+  words for the rest):
+  - 4: "The cloned reader and writer share the nonblocking file
+    status. If an owner holding Shift falls behind reading replies,
+    `write_all` can write part of a JSON line and return `WouldBlock`.
+    The inherited writer sets `dead`. The new exit calls `ipc_closed`
+    and synthesizes Shift-up while the peer is still connected … Keep a
+    bounded output queue with an offset for partial writes and request
+    writable readiness while bytes remain … retry an interrupted read
+    … instead of treating it as EOF." (A connection whose answer
+    couldn't be written whole was dropped before this change too, with
+    nothing let go.)
+  - 5: "Broadcasts, key-grab notifications, and screenshot completions
+    write outside the read callback … The next event write fails, but
+    setting `dead` does not wake the read-only source … Schedule the
+    same once-only finalizer from a terminal send failure."
+  - 6: "An owner puts Shift down, then the person holds the same
+    Shift. The hardware path enters the keymap directly, which ignores
+    the second down. The owner's record survives, so disconnect removes
+    the person's Shift … Reconcile source identity at raw input
+    dispatch, before duplicate suppression."
+  - 7: "With Caps Lock configured as Ctrl, a person holding Caps has
+    raw 58 in the keymap and left Ctrl in Smithay. An owner's duplicate
+    Caps down passes the new lookup and is recorded. Its disconnect
+    releases the person's Ctrl … Consult the keymap's raw held entry."
+  - 11: "A client pipelines many short requests and exits before the
+    server reads them … The new path processes the entire burst in one
+    calloop callback … Draining the front of the vector for each line
+    shifts the remaining bytes each time, giving quadratic copying. The
+    same cost already existed for open clients. Parse with a cursor and
+    compact the buffer once. Limit buffered input and work per
+    dispatch."
+  - 12, the rest: "A killed checker leaves its compositor and bus
+    running because it passes `--owner none` … pass the checker PID as
+    owner, and clean up only that instance."
+  - 13, the rest: "A single valid owned touch that moves far enough to
+    press the emulated mouse button now gets no up or cancel when its
+    IPC owner dies … On a host stream the helper itself builds a
+    touch-up on viewer EOF. If the pointer moved after a stationary
+    touch, that up can still click the new target."
+  - 15: "Between case 5's `sendall` and `shutdown`, the server can read
+    the up, reach `WouldBlock`, and dispatch it normally … Add a
+    controlled reader test with two complete lines, an unfinished tail,
+    and EOF already pending before dispatch. Separately make the reply
+    writer fail after an owned press and assert one cleanup and a
+    released key."
 - **Left by the code review of `Request::OwnInput`** (Astra 6.2,
   2026-11-27, `/var/tmp/olo-reviews/astra-6e79d82c80/astra-review.md`,
   16 findings, "hold for fixes"; fixed: its 1, 2, 3 for another's

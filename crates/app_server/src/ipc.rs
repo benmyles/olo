@@ -134,23 +134,40 @@ impl HeldInput {
     }
 }
 
-/// What one synthetic event makes of what a connection that owns its
-/// input holds (`held`). Its own (`own`): a press is kept once, unless
-/// it was down already by another hand (`down_already`: the person's own
-/// key held on the keyboard, another sender's), which it then does not
-/// own; a letting go takes its press away. Another connection's: its
-/// press or its letting go of the same thing takes it away too (whoever
-/// pressed last has it; the first's end is not to let go of it).
-pub fn held_after(held: &mut Vec<HeldInput>, event: &olo_protocol::SyntheticEvent, own: bool, down_already: bool) {
-    let Some((what, down)) = HeldInput::of(event) else { return };
-    match (own, down) {
-        (true, true) => {
-            if !held.contains(&what) && !down_already && held.len() < OWNED_MOST {
-                held.push(what);
-            }
-        }
-        _ => held.retain(|h| *h != what),
+/// What one synthetic event makes of what the connections that own
+/// their input hold (`owners`), sent by one of them (`sender`, its
+/// place there) or by a connection that owns nothing. A letting go
+/// takes the thing from whoever had it. A press: the sender's own
+/// where it is this press that puts it down, or where another owner had
+/// it (whoever pressed last has it: two owners that both pressed Shift
+/// left it down for good, the second having found it down and the
+/// first having lost it to the second. The confirming review); not
+/// where it was down already by a hand that owns nothing (`seat_down`,
+/// asked only then: the person's own key held on a keyboard, a plain
+/// sender's). And another's press takes it from an owner that had it.
+///
+/// False where the event must not be applied: an owner's press of one
+/// thing more than it may hold ([`OWNED_MOST`]); pressed all the same,
+/// it was down with nobody to let it go.
+pub fn owners_after<T>(owners: &mut [(T, Vec<HeldInput>)], sender: Option<usize>, event: &olo_protocol::SyntheticEvent, seat_down: impl FnOnce() -> bool) -> bool {
+    let Some((what, down)) = HeldInput::of(event) else { return true };
+    if !down {
+        owners.iter_mut().for_each(|(_, held)| held.retain(|h| *h != what));
+        return true;
     }
+    if let Some(at) = sender
+        && !owners[at].1.contains(&what)
+    {
+        let anothers = owners.iter().enumerate().any(|(i, (_, held))| i != at && held.contains(&what));
+        if anothers || !seat_down() {
+            if owners[at].1.len() >= OWNED_MOST {
+                return false;
+            }
+            owners[at].1.push(what);
+        }
+    }
+    owners.iter_mut().enumerate().filter(|(i, _)| Some(*i) != sender).for_each(|(_, (_, held))| held.retain(|h| *h != what));
+    true
 }
 
 #[derive(Default)]
@@ -386,6 +403,14 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
                 continue;
             }
             match serde_json::from_str::<Request>(line) {
+                // (Of what it wrote before its end, only its input: an
+                // answer has nobody to go to, and what is asked for
+                // and then kept or made for it, a subscription, a
+                // screen kept awake, a screenshot saved, would be the
+                // compositor's to carry for nobody. The confirming
+                // review: "The shared IPC reader can accept a
+                // screenshot, save it, and discard its reply.")
+                Ok(req) if ended && !matches!(req, Request::Synthetic { .. }) => {}
                 Ok(req) => {
                     let start = std::time::Instant::now();
                     if let Some(reply) = state.handle_ipc(req, &conn) {
@@ -395,6 +420,7 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
                         .timings
                         .handled(|| format!("request {}", serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v["type"].as_str().map(str::to_owned)).unwrap_or_default()), start);
                 }
+                Err(_) if ended => {}
                 Err(e) => conn.send(&Reply::Error { message: format!("bad request: {e}") }),
             }
         }
@@ -1038,24 +1064,27 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Synthetic { events } => {
                 // (What a connection that owns its input has down after
                 // this: `Request::OwnInput`. Nothing is looked up or
-                // kept while nobody does. And what one such connection
-                // had down that another's events let go is no longer
-                // its to let go.)
+                // kept while nobody does, and the seat is asked only
+                // for an owner's own press of something new to it.)
+                let mut refused = false;
                 for e in events {
                     if !self.ipc.owned_input.is_empty() {
-                        // (As things stand before this event: a key down
-                        // already is the keyboard's own or another's.)
-                        let down_already = match &e {
-                            olo_protocol::SyntheticEvent::Key { key, pressed: true } => self.seat.get_keyboard().is_some_and(|k| k.pressed_keys().iter().any(|c| c.raw() == key + 8)),
+                        let sender = self.ipc.owned_input.iter().position(|(who, _)| Rc::ptr_eq(who, conn));
+                        let seat = &self.seat;
+                        let seat_down = || match &e {
+                            olo_protocol::SyntheticEvent::Key { key, pressed: true } => {
+                                key.checked_add(8).is_some_and(|code| seat.get_keyboard().is_some_and(|k| k.pressed_keys().iter().any(|c| c.raw() == code)))
+                            }
                             _ => false,
                         };
-                        for (who, held) in &mut self.ipc.owned_input {
-                            held_after(held, &e, Rc::ptr_eq(who, conn), down_already);
+                        if !owners_after(&mut self.ipc.owned_input, sender, &e, seat_down) {
+                            refused = true;
+                            continue;
                         }
                     }
                     self.synthetic_input(e);
                 }
-                Reply::Ok
+                if refused { Reply::Error { message: format!("a connection that owns its input holds no more than {OWNED_MOST} keys and buttons at once: not pressed") } } else { Reply::Ok }
             }
             Request::OwnInput => {
                 if !self.ipc.owned_input.iter().any(|(who, _)| Rc::ptr_eq(who, conn)) {
@@ -1211,44 +1240,58 @@ mod tests {
 
 #[cfg(test)]
 mod owned_input_tests {
-    use super::{HeldInput, OWNED_MOST, held_after};
+    use super::{HeldInput, OWNED_MOST, owners_after};
     use olo_protocol::{SyntheticEvent as S, TouchPhase};
 
-    /// What a connection that owns its input has down after each event,
-    /// and what lets each go (`Request::OwnInput`).
+    /// What the connections that own their input have down after each
+    /// event, and what lets each go (`Request::OwnInput`).
     #[test]
     fn what_an_owner_holds() {
-        let mut held = Vec::new();
-        let own = |held: &mut Vec<HeldInput>, events: &[S]| events.iter().for_each(|e| held_after(held, e, true, false));
-        own(&mut held, &[S::Key { key: 42, pressed: true }, S::Key { key: 30, pressed: true }, S::Key { key: 30, pressed: false }, S::Move { x: 1.0, y: 2.0 }]);
-        assert_eq!(held, [HeldInput::Key(42)]);
+        // Two owners, `0` and `1`; `None` is a connection that owns nothing. The seat says no key is down
+        // unless the case says so.
+        let mut owners = vec![((), Vec::new()), ((), Vec::new())];
+        let send = |owners: &mut Vec<((), Vec<HeldInput>)>, who: Option<usize>, events: &[S]| events.iter().all(|e| owners_after(owners, who, e, || false));
+        send(&mut owners, Some(0), &[S::Key { key: 42, pressed: true }, S::Key { key: 30, pressed: true }, S::Key { key: 30, pressed: false }, S::Move { x: 1.0, y: 2.0 }]);
+        assert_eq!(owners[0].1, [HeldInput::Key(42)]);
         // Let go and pressed again: down. Pressed twice: held once.
-        own(&mut held, &[S::Key { key: 42, pressed: false }, S::Key { key: 42, pressed: true }, S::Key { key: 42, pressed: true }]);
-        assert_eq!(held, [HeldInput::Key(42)]);
-        own(&mut held, &[S::Button { button: 0x110, pressed: true }, S::Keysym { keysym: 0xffe1, pressed: true }, S::Wheel { dx: 0, dy: 1 }]);
-        assert_eq!(held, [HeldInput::Key(42), HeldInput::Button(0x110), HeldInput::Keysym(0xffe1)]);
+        send(&mut owners, Some(0), &[S::Key { key: 42, pressed: false }, S::Key { key: 42, pressed: true }, S::Key { key: 42, pressed: true }]);
+        assert_eq!(owners[0].1, [HeldInput::Key(42)]);
+        send(&mut owners, Some(0), &[S::Button { button: 0x110, pressed: true }, S::Keysym { keysym: 0xffe1, pressed: true }, S::Wheel { dx: 0, dy: 1 }]);
+        assert_eq!(owners[0].1, [HeldInput::Key(42), HeldInput::Button(0x110), HeldInput::Keysym(0xffe1)]);
         // A finger on a touch screen is not kept (lifting it for a connection that has gone can click).
-        own(&mut held, &[S::Touch { slot: 2, phase: TouchPhase::Down, x: 5.0, y: 5.0, window: None }]);
-        assert_eq!(held.len(), 3);
-        // A key that was down already when it pressed it (the person's own Shift, held on the keyboard) is
-        // not its own, and its end doesn't let go of it. One it holds already stays its own.
-        held_after(&mut held, &S::Key { key: 29, pressed: true }, true, true);
-        assert!(!held.contains(&HeldInput::Key(29)));
-        held_after(&mut held, &S::Key { key: 42, pressed: true }, true, true);
-        assert!(held.contains(&HeldInput::Key(42)));
-        // Another connection's letting go, or its own press of the same, takes it away: whoever pressed
-        // last has it.
-        held_after(&mut held, &S::Key { key: 42, pressed: false }, false, false);
-        held_after(&mut held, &S::Button { button: 0x110, pressed: true }, false, true);
-        assert_eq!(held, [HeldInput::Keysym(0xffe1)]);
+        send(&mut owners, Some(0), &[S::Touch { slot: 2, phase: TouchPhase::Down, x: 5.0, y: 5.0, window: None }]);
+        assert_eq!(owners[0].1.len(), 3);
+        // A key that was down already by a hand that owns nothing when it pressed it (the person's own
+        // Shift, held on the keyboard) is not its own. One it holds already stays its own, the seat not asked.
+        assert!(owners_after(&mut owners, Some(0), &S::Key { key: 29, pressed: true }, || true));
+        assert!(!owners[0].1.contains(&HeldInput::Key(29)));
+        assert!(owners_after(&mut owners, Some(0), &S::Key { key: 42, pressed: true }, || panic!("asked of a key it holds")));
+        assert!(owners[0].1.contains(&HeldInput::Key(42)));
+        // Another owner's press of what the first holds: the second has it now (and the seat, which would
+        // say it is down, is not what decides), so that it is let go when the second ends, whichever ends
+        // first. Both lost it, and it stayed down for good (the confirming review).
+        assert!(owners_after(&mut owners, Some(1), &S::Key { key: 42, pressed: true }, || panic!("asked of a key an owner holds")));
+        assert!(!owners[0].1.contains(&HeldInput::Key(42)) && owners[1].1 == [HeldInput::Key(42)]);
+        // A connection that owns nothing: its letting go, or its press, takes the thing from whoever had it,
+        // and nothing of it is kept or asked.
+        assert!(owners_after(&mut owners, None, &S::Key { key: 42, pressed: false }, || panic!("asked for a plain sender")));
+        assert!(owners_after(&mut owners, None, &S::Button { button: 0x110, pressed: true }, || panic!("asked for a plain sender")));
+        assert_eq!((&owners[0].1[..], owners[1].1.len()), (&[HeldInput::Keysym(0xffe1)][..], 0));
         // Each is let go by its own event.
-        let let_go: Vec<S> = held.iter().rev().map(|h| h.release()).collect();
-        own(&mut held, &let_go);
-        assert!(held.is_empty(), "{held:?}");
-        // No more than a keyboard's worth is kept.
-        for key in 0..1000 {
-            held_after(&mut held, &S::Key { key, pressed: true }, true, false);
-        }
-        assert_eq!(held.len(), OWNED_MOST);
+        let let_go: Vec<S> = owners[0].1.iter().rev().map(|h| h.release()).collect();
+        send(&mut owners, Some(0), &let_go);
+        assert!(owners[0].1.is_empty(), "{owners:?}");
+        // No more than a keyboard's worth is kept, and one more is not pressed: pressed and not kept, it
+        // was down with nobody to let it go.
+        assert!((0..OWNED_MOST as u32).all(|key| owners_after(&mut owners, Some(0), &S::Key { key, pressed: true }, || false)));
+        assert!(!owners_after(&mut owners, Some(0), &S::Key { key: 5000, pressed: true }, || false));
+        assert_eq!(owners[0].1.len(), OWNED_MOST);
+        // (Not one another owner holds, taken over, either; nor is the other's claim lost by the refusal.)
+        send(&mut owners, Some(1), &[S::Key { key: 6000, pressed: true }]);
+        assert!(!owners_after(&mut owners, Some(0), &S::Key { key: 6000, pressed: true }, || true));
+        assert_eq!(owners[1].1, [HeldInput::Key(6000)]);
+        // (One it holds already, and one down by another hand, are still taken: nothing more to keep.)
+        assert!(owners_after(&mut owners, Some(0), &S::Key { key: 7, pressed: true }, || false));
+        assert!(owners_after(&mut owners, Some(0), &S::Key { key: 7000, pressed: true }, || true));
     }
 }

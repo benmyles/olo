@@ -23286,40 +23286,61 @@ Rex).
   (`Request::OwnInput`, crates/protocol; app_server's
   `IpcState::owned_input`, `AnvilState::input_closed`). A connection
   that says `own_input` has what it presses from then on (a key, a
-  keysym, a button, a finger) kept as its own, and whatever of it is
-  still down when the connection ends, however it ends, is let go, the
-  last pressed first. The pane's local control and the host's helper
-  say it on each new input connection: killed outright with a key down
-  (the helper lets go itself at an orderly end, and can't then), they
-  left the key down in the screen for good (a code review, 2026-11-27).
-  Not the rule for every connection: a tool that presses in one
-  connection and lets go in the next (`tsession down … up`, a drag in
-  steps) keeps what it holds. What an owner holds is what *its* press
-  put down: a key down already by another hand when it pressed it (the
-  person's own Shift, held on a real keyboard; another sender's) is
-  not its own, and another connection's press or letting go of the
-  same thing takes its claim away (whoever pressed last has it). No
-  more than 256 are kept for one connection, and a finger on a touch
-  screen is not kept at all (lifting one for a connection that has
-  gone can click whatever is under the pointer by then: TODO). Nothing
-  is looked up or kept while nobody owns input (real input never
-  passes there), and registering wakes no display. A connection's end
-  has one way out in app_server now (`accept`'s closure): what it
-  wrote whole before its end is taken first, in its order (a last
-  line written and the socket closed at once was dropped unread), and
-  an end found by an answer that couldn't be written lets go of what
-  the connection kept as an end read does (it didn't: its keys taken,
-  what it kept awake, stayed for good). An app_server from before
-  answers "unknown request", and the pane keeps its connection and
-  goes on as before. Tried against a real headless app_server by
-  `tools/dev/own-input-check` (five cases, each connection's end
-  waited for, no sleeps; the fourth fails on the build before the
-  review's fixes), and measured with it on release builds (`--cost
-  3000`): a batch of a key pressed and let go, asked and answered,
-  33.5 and 35.9 µs before; 28.9 and 39.4 µs through a connection that
-  owns its input, 29.9 and 33.9 µs through one that doesn't (two runs
-  each, a host under a load of sixty: no difference that can be told
-  from the runs').
+  keysym, a button; not a finger on a touch screen) kept as its own,
+  and whatever of it is still down when the connection ends, however
+  it ends, is let go, the last pressed first. The pane's local control
+  and the host's helper say it on each new input connection: killed
+  outright with a key down (the helper lets go itself at an orderly
+  end, and can't then), they left the key down in the screen for good
+  (a code review, 2026-11-27). Not the rule for every connection: a
+  tool that presses in one connection and lets go in the next
+  (`tsession down … up`, a drag in steps) keeps what it holds.
+  **Whose a thing is** (`owners_after`, one place for every owner at
+  each event): a press is the sender's own where it is this press
+  that puts the thing down, or where another owner had it (whoever
+  pressed last has it, so that two owners' Shift is let go when the
+  second ends, whichever ends first: each had lost it to the other,
+  and it stayed down for good); not where it was down already by a
+  hand that owns nothing (the person's own Shift held on a real
+  keyboard, a plain sender's: the seat is asked only then, for an
+  owner's own press of something new to it, never for a plain
+  sender's events). A letting go, and another's press, take it from
+  whoever had it. No more than 256 at once for one connection: one
+  more is **refused, not pressed** (pressed and not kept, it was down
+  with nobody to let it go), and the batch is answered with an error.
+  A finger on a touch screen is not kept at all (lifting one for a
+  connection that has gone can click whatever is under the pointer by
+  then: TODO). Nothing is looked up or kept while nobody owns input
+  (real input never passes there), and registering wakes no display.
+  **A connection's end has one way out** in app_server (`accept`'s
+  closure): of what it wrote whole before its end, **its input alone**
+  is taken first, in its order (a tool's last letting go of a key,
+  written and the socket closed at once, was dropped unread; anything
+  else asked for at an end has nobody to answer and would leave the
+  compositor carrying it for nobody: a subscription, a screen kept
+  awake, a screenshot saved), and an end found by an answer that
+  couldn't be written lets go of what the connection kept as an end
+  read does (it didn't: its keys taken, what it kept awake, stayed
+  for good). An app_server from before answers "unknown request",
+  and the pane keeps its connection and sends its input as before
+  (`review2_f4…`, whose stand-in answers so and counts the clicks).
+  Tried against a real headless app_server by
+  `tools/dev/own-input-check`: six cases, each connection's end waited
+  for (a wait that runs out is a failure), no sleeps, and no word
+  sent to anything but the compositor the run itself started (the
+  listener of each connection asked of the kernel, `SO_PEERCRED`: the
+  process whose HOME is the run's own folder, the same one every
+  time). The fourth fails on the build before the first review's
+  fixes, the sixth on the one before the second's. Measured with it
+  on release builds (`--cost 3000`): a batch of a key pressed and let
+  go, asked and answered, 33.5 and 35.9 µs before the request
+  existed. With it, on one build after another under a load of a
+  hundred (two runs each, the least of five in a run): 31.1 and 47.3 µs
+  through a connection that owns its input and 25.9 and 44.9 through
+  one that doesn't, before the second review's fixes; 46.5 and 42.0,
+  and 42.8 and 34.0, after. One build's two runs differ by more than
+  the builds do: the round trip is what is timed, and what owning
+  adds to it can't be told from it.
 - **`screen history-stream NAME`** and **`screen export NAME`**: the
   recorded history (its actions and its frames' index, then a frame at
   a time on request, as tile deltas) and an MP4 made on the host and

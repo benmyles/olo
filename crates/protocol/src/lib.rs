@@ -653,8 +653,11 @@ pub enum Request {
         events: Vec<SyntheticEvent>,
     },
     /// What this connection presses from here on ([`Request::Synthetic`]:
-    /// a key, a keysym, a button, a finger) is its own: when the
-    /// connection ends, whatever of it is still down is let go. For
+    /// a key, a keysym, a button; not a finger on a touch screen) is
+    /// its own: when the connection ends, whatever of it is still down
+    /// is let go. No more than 256 at once: one more is refused, not
+    /// pressed. What was down already by a hand that owns nothing is
+    /// not its own; what another owner had and it pressed is. For
     /// whoever holds input for as long as it lives (a viewer that has
     /// taken control of a screen, the helper that carries a person's keys
     /// to a host's screen): killed with a key down, it left the key down

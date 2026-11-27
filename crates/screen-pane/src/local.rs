@@ -1095,21 +1095,37 @@ mod tests {
         let seen = Arc::new(AtomicU64::new(0));
         let seen_w = seen.clone();
         let server = std::thread::spawn(move || {
-            // Connection 1: return explicit Reply::Error.
+            // (Counted: the clicks alone. Each connection's first word is
+            // `own_input`; counted with them, two handshakes passed for two
+            // clicks, and a compositor from before the request could be
+            // sent no input at all without this noticing. The confirming
+            // review.)
+            let line_of = |reader: &mut BufReader<UnixStream>| {
+                let mut line = String::new();
+                (reader.read_line(&mut line).unwrap_or(0) > 0).then_some(line)
+            };
+            // Connection 1, a compositor from before `own_input`: it answers
+            // "unknown request", is sent the click all the same, and refuses it.
             let (stream, _) = listener.accept().unwrap();
             let mut writer = stream.try_clone().unwrap();
             let mut reader = BufReader::new(stream);
-            let mut line = String::new();
-            if reader.read_line(&mut line).unwrap_or(0) > 0 {
+            assert!(line_of(&mut reader).is_some_and(|l| l.contains("\"own_input\"")));
+            writeln!(writer, "{{\"type\":\"error\",\"message\":\"unknown request\"}}").unwrap();
+            writer.flush().unwrap();
+            if line_of(&mut reader).is_some_and(|l| l.contains("\"synthetic\"")) {
                 seen_w.fetch_add(1, Ordering::Relaxed);
                 writeln!(writer, "{{\"type\":\"error\",\"message\":\"refused\"}}").unwrap();
                 writer.flush().unwrap();
             }
-            // Connection 2: read click press then drop without replying.
+            // Connection 2: `own_input` granted, the click read and the
+            // connection dropped with no answer.
             let (stream2, _) = listener.accept().unwrap();
+            let mut writer2 = stream2.try_clone().unwrap();
             let mut reader2 = BufReader::new(stream2);
-            line.clear();
-            if reader2.read_line(&mut line).unwrap_or(0) > 0 {
+            assert!(line_of(&mut reader2).is_some_and(|l| l.contains("\"own_input\"")));
+            writeln!(writer2, "{{\"type\":\"ok\"}}").unwrap();
+            writer2.flush().unwrap();
+            if line_of(&mut reader2).is_some_and(|l| l.contains("\"synthetic\"")) {
                 seen_w.fetch_add(1, Ordering::Relaxed);
             }
             drop(reader2);
@@ -1122,7 +1138,7 @@ mod tests {
         client = None;
         assert!(!send_input_batch_to(&mut client, &pinned, "qa", vec![SyntheticEvent::Button { button: screens::LEFT, pressed: true }], Duration::from_millis(200)));
         server.join().unwrap();
-        assert_eq!(seen.load(Ordering::Relaxed), 2, "neither explicit refusal nor click press with lost reply may retry");
+        assert_eq!(seen.load(Ordering::Relaxed), 2, "each click reaches its compositor once (one from before `own_input` too), and neither a refusal nor a lost reply is tried again");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
