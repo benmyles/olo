@@ -512,6 +512,22 @@ something nobody here has is in "Blocked", with what it waits for.
   `OLO_REX_DEMO_HOSTS=states`, `host.manage:staging`). The window is
   to keep one height: the header's extra lines given room that is
   always there, or the panel less tall by as much.
+- **The agents service under a busy host, after "a question is
+  answered once"** (2026-11-27; HACKING has what was fixed). Left:
+  - `round2_12_13_14_15_16_17_launch_move_timer_and_rules_races`
+    failed once in a whole run under a load of ninety-three with
+    "olo agent status: subagent `sa-…` not found" for a child it had
+    just used (the run ended in 35 s); six runs alone and five more
+    whole ones didn't bring it back. Not explained.
+  - A child started with nothing to do whose program takes more than
+    fifteen seconds to draw (`UNDRAWN_MS`) is told at rest with its
+    tab's shell on its screen. The suite's case of the rule
+    (`a_rest_is_the_end_of_the_turn_it_says`) now asks only while the
+    rule still holds; the rule itself is a time, and a busy host
+    outlasts it.
+  - The locks a child's answers are given under (`answer_locks`, as
+    `worker_locks`) are kept for as long as the service runs, one a
+    child there ever was.
 - **A helper's test that failed once under load** (2026-11-27, the
   whole suite beside thirty test desktops and two container trials):
   `leave_is_given_by_a_list_and_what_it_names_is_asked`, "the service

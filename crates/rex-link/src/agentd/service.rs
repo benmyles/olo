@@ -166,19 +166,48 @@ pub struct Live {
     /// A feedback survey on its screen wouldn't go when set aside: left
     /// alone until it has gone by itself.
     survey_stays: bool,
+    /// When this showing of a survey had its dismissal pressed; none
+    /// once a reading shows no survey. One press a showing, whoever
+    /// reads: pressed again where a redraw lagged, its `0` was typed
+    /// into the agent's field ([`Service::screen_under_survey`]).
+    survey_pressed: Option<Instant>,
     /// Claude Code's offer to send a feedback report it drafted stands
     /// on its screen, and whoever looks after the child has been told
     /// of this showing of it (`olo_agent_screen::feedback_draft`).
     draft_told: bool,
-    /// The approval box that stands (`state::box_hash`) and its number
-    /// among this child's boxes; none while none stands or once it was
-    /// answered here. See [`Service::box_key`].
-    box_now: Option<(u64, u64)>,
+    /// The approval box that stands (`state::box_hash`), its number among
+    /// this child's boxes, and whether an answer has already been written
+    /// for this showing (`BoxNow::answered`); none while none stands or
+    /// once it was finished here. See [`Service::box_state`].
+    box_now: Option<BoxNow>,
     boxes: u64,
+    /// True while `approve` is actively navigating choices (`delta != 0`):
+    /// prevents a concurrent `look` that catches a transient mid-repaint
+    /// frame from wiping `box_now`.
+    navigating: bool,
+    /// If an approval box failed to dismiss within 2 s after Enter was
+    /// sent, remember its hash until the box leaves or changes so
+    /// `--approve-all-but` never automatically sends a second Enter for
+    /// that showing (escalating it to the parent/minder instead).
+    list_skip_hash: Option<u64>,
     /// Latest confirmed state event recorded for this live child, kept
     /// independently of the 2,000-event log ring so a standing question
     /// is never lost when other host events evict the ring.
     pub latest_event: Option<SubagentEvent>,
+}
+
+/// The approval box currently standing on a child's screen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BoxNow {
+    hash: u64,
+    number: u64,
+    answered: bool,
+}
+
+impl BoxNow {
+    fn key(self) -> String {
+        format!("b{}-{:08x}", self.number, self.hash as u32)
+    }
 }
 
 impl Live {
@@ -208,9 +237,12 @@ impl Live {
             task: None,
             told: None,
             survey_stays: false,
+            survey_pressed: None,
             draft_told: false,
             box_now: None,
             boxes: 0,
+            navigating: false,
+            list_skip_hash: None,
             latest_event: None,
         }
     }
@@ -452,6 +484,10 @@ pub struct Service {
     /// `--rules`, `--with`) so concurrent moves on one worker never
     /// interleave with stale ownership.
     worker_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Per-child async locks serializing terminal answers (`approve`,
+    /// startup `--trust`) so two callers or tasks never navigate or
+    /// confirm the same child's prompt concurrently.
+    answer_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 fn exited(summary: String) -> ScreenClassification {
@@ -531,6 +567,11 @@ impl Service {
 
     pub fn worker_lock(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
         let mut map = self.worker_locks.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
+    }
+
+    pub fn answer_lock(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut map = self.answer_locks.lock().unwrap_or_else(|e| e.into_inner());
         map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
     }
 
@@ -735,8 +776,9 @@ impl Service {
                 live.last_key = None;
                 live.check_gen = live.check_gen.wrapping_add(1);
             }
-            if live_read && cls.approval.is_none() {
+            if live_read && cls.approval.is_none() && !live.navigating {
                 live.box_now = None;
+                live.list_skip_hash = None;
             }
             live.survey_stays = survey && survey_tried;
             (out, chg, pid, reports, expects) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported, live.expects);
@@ -748,8 +790,17 @@ impl Service {
     /// A child's screen as the server has it, with a feedback survey
     /// drawn over it set aside first (its own "0: Dismiss", "[0] Skip":
     /// never a question for whoever looks after the agent, and a
-    /// permission prompt may lie under it). Three times at most; one
-    /// that stays is said (`survey`) and left alone until it has gone.
+    /// permission prompt may lie under it). **Its key is pressed once
+    /// for a showing, by whichever reading takes it** (`Live::
+    /// survey_pressed`, taken under the state's lock, the screen read
+    /// again before the key is written: the reading that found the
+    /// survey may be from before another's press took it away), and the
+    /// survey is then waited for, `SURVEY_GOES` at most; one that stays
+    /// is said (`survey`) and left alone until it has gone. (It was
+    /// pressed again after 300 ms, three times in all: on a busy host an
+    /// agent is slower than that to draw, and the second `0` was typed
+    /// into its field. Found with the questions answered twice,
+    /// 2026-11-27.)
     ///
     /// `tried`: its dismissal was pressed (now, or before: it is known
     /// to stay). One only kept back, behind a drafted feedback report,
@@ -757,15 +808,24 @@ impl Service {
     /// the draft had gone, and the next digit meant for the agent rated
     /// it (the confirming review).
     async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, survey: &mut bool, tried: &mut bool) -> Result<String, RexErr> {
+        /// How long a survey whose key was pressed is waited for.
+        const SURVEY_GOES: Duration = Duration::from_millis(900);
         let mut screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
         let Some(agent) = entry.cli.screen_agent() else { return Ok(screen) };
-        let stays = self.lock().live.get(&entry.id).is_some_and(|l| l.survey_stays);
-        for _ in 0..3 {
-            let Some(found) = olo_agent_screen::parse_survey(agent, &screen) else {
+        let begun = Instant::now();
+        let unmark = |service: &Self| {
+            if let Some(live) = service.lock().live.get_mut(&entry.id) {
+                live.survey_pressed = None;
+            }
+        };
+        loop {
+            if olo_agent_screen::parse_survey(agent, &screen).is_none() {
                 *survey = false;
+                unmark(self);
                 return Ok(screen);
-            };
+            }
             *survey = true;
+            let (stays, pressed) = self.lock().live.get(&entry.id).map_or((false, None), |l| (l.survey_stays, l.survey_pressed));
             if stays {
                 *tried = true;
                 break;
@@ -778,12 +838,48 @@ impl Service {
             if olo_agent_screen::feedback_draft(agent, &screen).is_some() {
                 break;
             }
-            self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await?;
+            let pressed = match pressed {
+                Some(at) => at,
+                None => {
+                    // (Taken, or another reading's: one of them presses.)
+                    let mine = match self.lock().live.get_mut(&entry.id) {
+                        Some(live) if live.survey_pressed.is_none() => {
+                            live.survey_pressed = Some(Instant::now());
+                            true
+                        }
+                        _ => false,
+                    };
+                    if mine {
+                        // (As it stands now, before the key.)
+                        let now = match self.rex.screen(&entry.session_id, &entry.block_id, rows).await {
+                            Ok(now) => now,
+                            Err(e) => {
+                                unmark(self);
+                                return Err(e);
+                            }
+                        };
+                        let found = olo_agent_screen::parse_survey(agent, &now).filter(|_| olo_agent_screen::feedback_draft(agent, &now).is_none());
+                        screen = now;
+                        let Some(found) = found else {
+                            unmark(self);
+                            continue;
+                        };
+                        if let Err(e) = self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await {
+                            unmark(self);
+                            return Err(e);
+                        }
+                    }
+                    self.lock().live.get(&entry.id).and_then(|l| l.survey_pressed).unwrap_or(begun)
+                }
+            };
             *tried = true;
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            let now = Instant::now();
+            if now >= pressed + SURVEY_GOES || now >= begun + SURVEY_GOES {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
             screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
         }
-        *survey = olo_agent_screen::parse_survey(agent, &screen).is_some();
         Ok(screen)
     }
 
@@ -903,26 +999,94 @@ impl Service {
     /// is read with none on it). Numbers begin again with the service:
     /// a key from before then answers nothing, which is the safe way to
     /// be wrong.
-    pub fn box_key(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<String> {
+    /// The key of the approval box that stands (`bN-hhhhhhhh`) and whether
+    /// an answer has already been written for this showing of it.
+    pub fn box_state(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<(String, bool)> {
         let mut st = self.lock();
         let live = st.live.get_mut(id)?;
         let Some(ap) = ap else {
-            live.box_now = None;
+            if !live.navigating {
+                live.box_now = None;
+                live.list_skip_hash = None;
+            }
             return None;
         };
         let what = state::box_hash(ap);
-        let number = match live.box_now {
-            Some((was, number)) if was == what => number,
+        if live.list_skip_hash.is_some_and(|h| h != what) {
+            live.list_skip_hash = None;
+        }
+        let cur = match live.box_now {
+            Some(cur) if cur.hash == what => cur,
             _ => {
                 live.boxes += 1;
-                live.box_now = Some((what, live.boxes));
-                live.boxes
+                let cur = BoxNow { hash: what, number: live.boxes, answered: false };
+                live.box_now = Some(cur);
+                cur
             }
         };
-        Some(format!("b{number}-{:08x}", what as u32))
+        Some((cur.key(), cur.answered))
     }
 
-    /// The box that stood was answered: whatever stands next is another.
+    pub fn box_key(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<String> {
+        self.box_state(id, ap).map(|(k, _)| k)
+    }
+
+    /// Atomically marks the standing approval box `standing` as answered
+    /// under an already-held state lock, returning its sequence number.
+    /// Fails if the box was already marked answered or was replaced.
+    pub(super) fn box_mark_answered_locked(st: &mut State, id: &str, standing: &str) -> Result<u64, ()> {
+        let live = st.live.get_mut(id).ok_or(())?;
+        let cur = live.box_now.as_mut().ok_or(())?;
+        if cur.key() != standing || cur.answered {
+            return Err(());
+        }
+        cur.answered = true;
+        Ok(cur.number)
+    }
+
+    /// Reverts the answered mark if writing Enter to the terminal failed
+    /// before anything was sent.
+    pub(super) fn box_unmark_answered(&self, id: &str, number: u64) {
+        if let Some(live) = self.lock().live.get_mut(id)
+            && let Some(cur) = live.box_now.as_mut()
+            && cur.number == number
+        {
+            cur.answered = false;
+        }
+    }
+
+    /// True iff `box_now` is still the exact instance `box_key` and has not
+    /// been answered (read-only: never mints a new box from a stale reading).
+    pub(super) fn box_still_unanswered(&self, id: &str, box_key: &str) -> bool {
+        self.lock().live.get(id).and_then(|l| l.box_now).is_some_and(|b| !b.answered && b.key() == box_key)
+    }
+
+    /// Sets or clears the mid-navigation flag so a concurrent `look`
+    /// catching a transient repaint frame never wipes `box_now`.
+    pub(super) fn set_navigating(&self, id: &str, navigating: bool) {
+        if let Some(live) = self.lock().live.get_mut(id) {
+            live.navigating = navigating;
+        }
+    }
+
+    /// Finishes an answered box once `approve`'s dismiss wait completes:
+    /// clears `box_now` only if it is still that box (`number`, never
+    /// clobbering a newer box that already replaced it), and if it failed
+    /// to dismiss within 2 s, records its hash in `list_skip_hash` so
+    /// `--approve-all-but` escalates instead of pressing Enter again.
+    pub fn box_finish(&self, id: &str, number: u64, dismissed: bool) {
+        if let Some(live) = self.lock().live.get_mut(id)
+            && let Some(cur) = live.box_now
+            && cur.number == number
+        {
+            if !dismissed {
+                live.list_skip_hash = Some(cur.hash);
+            }
+            live.box_now = None;
+        }
+    }
+
+    /// The box that stood is gone: whatever stands next is another.
     pub fn box_gone(&self, id: &str) {
         if let Some(live) = self.lock().live.get_mut(id) {
             live.box_now = None;
@@ -1461,8 +1625,15 @@ impl Service {
         // (Which box stands, or that none does: a box come after one
         // that went is another, though it asks the very same. Key the
         // transition by `box:<key>` so a second identical box never matches
-        // `live.last_key` from box 1.)
-        let key = if let Some(bk) = self.box_key(id, cls.approval.as_ref()) { format!("box:{bk}") } else { subkey(&cls) };
+        // `live.last_key` from box 1. If this showing was already answered
+        // and the child has not yet redrawn, do not re-trigger confirmation.)
+        let (key, box_answered) = match self.box_state(id, cls.approval.as_ref()) {
+            Some((bk, answered)) => (format!("box:{bk}"), answered),
+            None => (subkey(&cls), false),
+        };
+        if box_answered {
+            return;
+        }
         let started_ms = to_unix_ms(entry.started_at).max(0) as u64;
         let at_prompt = cls.summary.as_deref() == Some(state::AT_PROMPT);
         let mut look_again = None;
@@ -1577,7 +1748,13 @@ impl Service {
                 service.poke(&id);
                 return;
             }
-            let again_key = if let Some(bk) = service.box_key(&id, again.cls.approval.as_ref()) { format!("box:{bk}") } else { subkey(&again.cls) };
+            let (again_box, again_key, again_answered) = match service.box_state(&id, again.cls.approval.as_ref()) {
+                Some((bk, answered)) => (Some(bk.clone()), format!("box:{bk}"), answered),
+                None => (None, subkey(&again.cls), false),
+            };
+            if again_answered {
+                return;
+            }
             if again.cls.state != cls.state || again_key != key {
                 // (It didn't hold: what it shows now is read in its turn.)
                 service.poke(&id);
@@ -1586,6 +1763,13 @@ impl Service {
             let inspected = service.inspect(std::slice::from_ref(&entry)).await;
             // (What took a while to read may have been overtaken.)
             if !current(&service) {
+                return;
+            }
+            // If this box was answered, dismissed, or replaced while `inspect`
+            // ran, stop before mutating `box_now`, answering, or recording it.
+            if let Some(ref bk) = again_box
+                && !service.box_still_unanswered(&id, bk)
+            {
                 return;
             }
             let info = inspected.get(&id);
@@ -1704,9 +1888,15 @@ impl Service {
                 }
                 super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)
             });
+            let list_skipped = again.cls.approval.as_ref().is_some_and(|ap| {
+                let h = state::box_hash(ap);
+                service.lock().live.get(&id).is_some_and(|l| l.list_skip_hash == Some(h))
+            });
             if state == SubagentLiveState::WaitingApproval
+                && !list_skipped
                 && let Some(list) = service.leave_of(&id)
                 && let Some(ap) = &again.cls.approval
+                && let Some(box_key_for_list) = again_box.as_deref().filter(|bk| service.box_still_unanswered(&id, bk))
                 && let Some(asked) = whole_asked
                 && list.excepts(&asked).is_none()
                 && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1
@@ -1714,14 +1904,19 @@ impl Service {
                 let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, window_from_block: false, block: None, child: None };
                 // (For the box it judged: another that stands by the time
                 // the answer is given is not answered by this.)
-                let mut args = vec![json!(id.clone()), json!("--once")];
-                if let Some(key) = service.box_key(&id, Some(ap)) {
-                    args.extend([json!("--box"), json!(key)]);
-                }
-                args.push(json!("--json"));
+                let args = vec![json!(id.clone()), json!("--once"), json!("--box"), json!(box_key_for_list), json!("--json")];
                 let answered = service.approve(&json!({ "args": args }), &from).await;
                 if answered.ok {
                     service.leave_given(&id, &asked);
+                    return;
+                }
+                if answered.data["dismissed"] == false {
+                    logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
+                    // `approve` recorded `list_skip_hash`, cleared `box_now`, and poked
+                    // `watch_child` so the standing prompt is reported once with its fresh key.
+                    return;
+                }
+                if !service.box_still_unanswered(&id, box_key_for_list) {
                     return;
                 }
                 logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
@@ -2721,6 +2916,7 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
         said_held: std::sync::atomic::AtomicBool::new(false),
         minder_gate: tokio::sync::Mutex::new(()),
         worker_locks: Mutex::new(HashMap::new()),
+        answer_locks: Mutex::new(HashMap::new()),
     });
     tokio::spawn(service.clone().writer());
     service.reconcile().await;

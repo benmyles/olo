@@ -275,8 +275,6 @@ pub fn classify(agent: Agent, screen: &str) -> State {
         non_empty[start..].join("\n").to_ascii_lowercase()
     };
     if agent == Agent::Antigravity {
-        // Check only the bottom 8 non-empty chrome lines (banner art / scrollback prose ignored).
-        let bottom8 = tail_joined(8);
         // (A question of its own has its foot, a folder's trust among
         // them, or its box. Its words alone in a draft, "> Yes, I trust
         // this folder", are no question: read as one here, Auto Approve

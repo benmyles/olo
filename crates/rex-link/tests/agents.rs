@@ -339,8 +339,13 @@ impl Rig {
     /// The test plays the agent: once the stand-in has been typed
     /// `keys` (after what it had been typed before), it draws `then`.
     fn when_typed(&self, name: &str, keys: &'static [u8], then: String) -> std::thread::JoinHandle<bool> {
+        self.when_typed_after(name, keys, Duration::ZERO, then)
+    }
+
+    fn when_typed_after(&self, name: &str, keys: &'static [u8], delay: Duration, then: String) -> std::thread::JoinHandle<bool> {
+        static N: AtomicUsize = AtomicUsize::new(0);
         let (file, from) = (self.staged(name, "keys"), self.keys(name).len());
-        let (fifo, stage) = (self.staged(name, "fifo"), self.staged(name, &format!("then{from}")));
+        let (fifo, stage) = (self.staged(name, "fifo"), self.staged(name, &format!("then{}-{}", from, N.fetch_add(1, Ordering::Relaxed))));
         std::thread::spawn(move || {
             let until = Instant::now() + Duration::from_secs(15);
             loop {
@@ -352,6 +357,9 @@ impl Rig {
                     return false;
                 }
                 std::thread::sleep(Duration::from_millis(5));
+            }
+            if !delay.is_zero() {
+                std::thread::sleep(delay);
             }
             std::fs::write(&stage, then).unwrap();
             std::fs::OpenOptions::new().write(true).open(&fifo).and_then(|mut f| f.write_all(format!("show {}\n", stage.display()).as_bytes())).is_ok()
@@ -737,6 +745,29 @@ fn a_feedback_survey_is_set_aside() {
     assert!(matches!(rested["event"].as_str(), Some("idle" | "done")), "{rested}");
     rig.typed_since("surveyed", before, b"0", "once, and nothing else");
     assert_eq!(rig.status("surveyed")["survey"], false);
+    // An agent slow to take it away (a busy host: half a second and more to draw): its key once all the
+    // same. Pressed again after 300 ms, the second `0` was typed into the agent's field.
+    rig.show("surveyed", &working());
+    rig.wait_state("surveyed", "working");
+    let before = rig.keys("surveyed").len();
+    let agent = rig.when_typed_after("surveyed", b"0", Duration::from_millis(650), idle("Done again."));
+    rig.show("surveyed", &survey);
+    assert!(agent.join().unwrap(), "the service set the slow one's survey aside");
+    rig.wait("the survey to be gone", || rig.status("surveyed")["survey"] == false);
+    // (Asked of from several sides meanwhile, as a list, a watch and a status are: still once.)
+    for _ in 0..4 {
+        let _ = rig.status("surveyed");
+    }
+    rig.typed_since("surveyed", before, b"0", "once for a showing, however slow the agent is to draw");
+    // One that stays (its key does nothing): pressed once, said, and left alone.
+    rig.show("surveyed", &working());
+    rig.wait_state("surveyed", "working");
+    let before = rig.keys("surveyed").len();
+    rig.show("surveyed", &survey);
+    rig.wait("the survey that stays to be said", || rig.status("surveyed")["survey"] == true && rig.keys("surveyed").len() > before);
+    std::thread::sleep(Duration::from_millis(1300));
+    let _ = rig.status("surveyed");
+    rig.typed_since("surveyed", before, b"0", "once, though it stays");
     rig.json(&["stop", "surveyed", "--force", "--json"]);
 }
 
@@ -812,11 +843,10 @@ fn a_drafted_feedback_report_is_told_and_never_answered() {
         rig.keys("drafted").len() > before
     });
     assert!(agent.join().unwrap(), "the survey's 0 was pressed");
-    // (Its own key and no other: pressed again while it still shows, three times at most, as for any
-    // survey; the stand-in is slow to draw on a busy computer.)
+    // (Its own key, once, however slow the stand-in is to draw on a busy computer. This had been
+    // loosened to "one to three" when it failed under load: that was the bug, not the load.)
     std::thread::sleep(Duration::from_millis(700));
-    let pressed = rig.keys("drafted")[before..].to_vec();
-    assert!((1..=3).contains(&pressed.len()) && pressed.iter().all(|k| *k == b'0'), "the survey's own 0 and nothing else: {pressed:?}");
+    rig.typed_since("drafted", before, b"0", "the survey's own 0, once");
     // A question still on the screen above the box: no yes is written through the box, by a list or by hand.
     let before = rig.keys("drafted").len();
     rig.show("drafted", &format!("{}{boxed}", asking("ls", 0)));
@@ -2425,8 +2455,18 @@ fn a_rest_is_the_end_of_the_turn_it_says() {
     // What stands in its tab before its own screen is drawn (the tab's shell, here as it stood on the day)
     // is not the agent at rest, whatever was read of the tab first.
     rig.show("alpha", "[systemd]\nFailed Units: 1\n  systemd-zram-setup@zram0.service\n");
-    let (code, out, _) = watch(from, "2");
-    assert_eq!(code, 124, "the tab's shell was told as the agent at rest: {out}");
+    // (The rule holds for fifteen seconds from the child's start, `UNDRAWN_MS`. On a computer so busy
+    // that the start and this showing took most of them, what is told after is the rule's own end, not
+    // its breach: it failed so twice under a load of a hundred and more, 2026-11-27. Asked only while
+    // the rule still has the two seconds the watch waits, and a second to spare.)
+    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+    let since_start = rig.status("alpha")["started_at"].as_u64().map(|at| Duration::from_millis(now_ms.saturating_sub(at)));
+    if since_start.is_none_or(|d| d < Duration::from_secs(12)) {
+        let (code, out, _) = watch(from, "2");
+        assert_eq!(code, 124, "the tab's shell was told as the agent at rest: {out}");
+    } else {
+        eprintln!("a_rest_is_the_end_of_the_turn_it_says: {since_start:?} since the child's start: too busy a computer to ask of its first fifteen seconds");
+    }
     // At its own prompt, with nothing to do: at rest, told at once, answering nothing.
     let at = Instant::now();
     rig.show("alpha", &idle("Ready."));
@@ -5667,4 +5707,120 @@ fn round3_11_send_wait_against_held_older_service() {
 
     // Lift hold so Rig::drop can retire the older service cleanly.
     let _ = std::fs::remove_file(rig.dir.join("host-upgrade.hold"));
+}
+
+/// Regression test for Case 1: `--approve-all-but` must answer a single approval box
+/// exactly once even when the child takes > `CONFIRM` (250 ms) to redraw after Enter,
+/// and must still answer a genuine second identical box that appears afterwards.
+#[test]
+fn repro_case1_list_answers_twice_on_slow_redraw() {
+    let Some(rig) = Rig::start("repro-case1") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
+    let started = rig.start_child("claude", "worker", &["--approve-all-but", "not-these.txt"]);
+    let from = started["cursor"].as_u64().unwrap();
+
+    // Box 1: stand-in takes 450 ms (> CONFIRM 250 ms, < approve 2 s dismiss wait) to redraw after Enter.
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed_after("worker", b"\r", Duration::from_millis(450), working());
+    rig.show("worker", &asking("cd /w && cargo test -p olo-kit > test.log", 0));
+    assert!(gone.join().unwrap(), "the service didn't answer box 1\n{}", rig.said());
+    rig.wait_state("worker", "working");
+    std::thread::sleep(Duration::from_millis(200));
+    let keys = rig.keys("worker");
+    let typed = String::from_utf8_lossy(&keys[before..]).into_owned();
+    let of = rig.json(&["mind", "worker", "--json"]);
+    let allowed: Vec<(&str, &str, &str)> = of["answered"].as_array().unwrap().iter().map(|a| (a["did"].as_str().unwrap(), a["by"].as_str().unwrap(), a["said"].as_str().unwrap())).collect();
+    assert_eq!(typed, "\r", "expected 1 Enter for box 1, got {typed:?}\n{of}");
+    assert_eq!(allowed, [("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log")], "{of}");
+
+    // Box 2: the exact same command asked a second time after `working()` must STILL be answered once!
+    let before2 = rig.keys("worker").len();
+    let gone2 = rig.when_typed_after("worker", b"\r", Duration::from_millis(450), working());
+    rig.show("worker", &asking("cd /w && cargo test -p olo-kit > test.log", 0));
+    assert!(gone2.join().unwrap(), "the service didn't answer identical box 2\n{}", rig.said());
+    rig.wait_state("worker", "working");
+    std::thread::sleep(Duration::from_millis(200));
+    let keys2 = rig.keys("worker");
+    let typed2 = String::from_utf8_lossy(&keys2[before2..]).into_owned();
+    let of2 = rig.json(&["mind", "worker", "--json"]);
+    let allowed2: Vec<(&str, &str, &str)> = of2["answered"].as_array().unwrap().iter().map(|a| (a["did"].as_str().unwrap(), a["by"].as_str().unwrap(), a["said"].as_str().unwrap())).collect();
+    assert_eq!(typed2, "\r", "expected 1 Enter for identical box 2, got {typed2:?}\n{of2}");
+    assert_eq!(allowed2, [("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log"), ("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log"),], "{of2}");
+    // Neither list-answered box woke a parent watch.
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval,question", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "parent was woken for list-answered boxes: {out}");
+
+    // Also verify manual `approve` on a slow-redrawing box does not emit a duplicate `waiting_approval` event
+    // AND concurrent `approve` calls only send ONE Enter.
+    let m = rig.start_child("claude", "manual", &[]);
+    let m_cur = m["cursor"].as_u64().unwrap();
+    rig.show("manual", &asking("git push origin main", 0));
+    let ev1 = rig.json(&["watch", "manual", "--since", &m_cur.to_string(), "--on", "approval", "--timeout", "10", "--json"]);
+    let after_ev1 = ev1["cursor"].as_u64().unwrap();
+    let m_before = rig.keys("manual").len();
+    let m_gone = rig.when_typed_after("manual", b"\r", Duration::from_millis(450), working());
+    let (r1, r2) = std::thread::scope(|s| {
+        let t1 = s.spawn(|| rig.olo(&["approve", "manual", "--once", "--json"]));
+        let t2 = s.spawn(|| rig.olo(&["approve", "manual", "--once", "--json"]));
+        (t1.join().unwrap(), t2.join().unwrap())
+    });
+    assert!(m_gone.join().unwrap(), "manual approve did not send Enter");
+    assert_eq!(usize::from(r1.0 == 0) + usize::from(r2.0 == 0), 1, "exactly one concurrent approve must succeed: r1={r1:?} r2={r2:?}");
+    rig.wait_state("manual", "working");
+    std::thread::sleep(Duration::from_millis(200));
+    let m_keys = rig.keys("manual");
+    assert_eq!(String::from_utf8_lossy(&m_keys[m_before..]), "\r", "concurrent approves must write exactly one Enter");
+    let (code, out, _) = rig.olo(&["watch", "manual", "--since", &after_ev1.to_string(), "--on", "approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "slow redraw after manual approve must not re-emit waiting_approval: {out}");
+}
+
+/// Regression test for Case 2: startup `--trust` must press Down once and Return once
+/// even when the child takes > 100 ms to redraw cursor movement and > 250 ms to dismiss.
+#[test]
+fn repro_case2_trust_presses_down_twice_on_slow_redraw() {
+    let Some(rig) = Rig::start("repro-case2") else { return };
+    rig.stand_in("claude");
+    rig.stand_in("agy");
+    let work = rig.work();
+    let agys = |folder: &str| {
+        format!(
+            "Accessing workspace:\n{folder}\nDo you trust the contents of this project?\nAntigravity CLI requires permission to read, edit, and execute files here.\n> Yes, I trust this folder\n  No, exit\n  ↑/↓ Navigate · enter Confirm\n"
+        )
+    };
+    let claudes = |marked: usize| {
+        let mark = |i: usize| if i == marked { "❯" } else { " " };
+        format!(
+            "{0}\n Accessing workspace:\n\n {work}\n\n Quick safety check: Is this a project you created or one you trust?\n\n {1} No, exit\n {2} Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n",
+            rule(),
+            mark(0),
+            mark(1)
+        )
+    };
+
+    // Claude: 180 ms redraw lag after Down (> 100 ms) and 400 ms after Return (> 250 ms).
+    rig.start_child("claude", "builder", &["--trust", "--cwd", &work]);
+    let before = rig.keys("builder").len();
+    let moved = rig.when_typed_after("builder", b"\x1b[B", Duration::from_millis(180), claudes(1));
+    let gone = rig.when_typed_after("builder", b"\r", Duration::from_millis(400), idle("Ready."));
+    rig.show("builder", &claudes(0));
+    assert!(moved.join().unwrap() && gone.join().unwrap(), "trust wasn't answered\n{}", rig.said());
+    rig.wait_state("builder", "idle");
+    std::thread::sleep(Duration::from_millis(200));
+    let keys_c = rig.keys("builder");
+    let typed_c = String::from_utf8_lossy(&keys_c[before..]).into_owned();
+
+    // Agy: 400 ms redraw lag after Return (> 250 ms).
+    rig.start_child("agy", "reader", &["--trust", "--cwd", &work]);
+    let before_a = rig.keys("reader").len();
+    let gone_a = rig.when_typed_after("reader", b"\r", Duration::from_millis(400), idle("Ready."));
+    rig.show("reader", &agys(&work));
+    assert!(gone_a.join().unwrap(), "agy trust wasn't answered\n{}", rig.said());
+    rig.wait_state("reader", "idle");
+    std::thread::sleep(Duration::from_millis(200));
+    let keys_a = rig.keys("reader");
+    let typed_a = String::from_utf8_lossy(&keys_a[before_a..]).into_owned();
+
+    assert_eq!(typed_c, "\x1b[B\r", "claude trust typed: {typed_c:?}");
+    assert_eq!(typed_a, "\r", "agy trust typed: {typed_a:?}");
 }
