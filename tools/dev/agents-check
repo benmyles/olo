@@ -1,0 +1,38 @@
+#!/usr/bin/python3
+"""What tools/dev/agents reads off a helper's screen, tried on screens that
+have fooled it. Nothing is started and nothing is asked of any agent: the
+tool's own readers, given text.
+
+  agents-check
+
+A helper's field (`field_of`): agy with its running tasks drawn under its
+field (a rule under them: "the last two rules" were not the field, `say`
+found it never empty, pressed Enter four times and said the words were
+still there, 2026-11-27); its mode's hint; Claude Code's; a screen with no
+field.
+"""
+import importlib.machinery, importlib.util, os, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+loader = importlib.machinery.SourceFileLoader("agents_tool", os.path.join(HERE, "agents"))
+agents = importlib.util.module_from_spec(importlib.util.spec_from_loader("agents_tool", loader))
+loader.exec_module(agents)
+
+R = "─" * 60
+TRAY = f"● Read(x)\n{R}\n>\n{R}\n  ● [18:29:34] ls -la /var/tmp/x && ... running\n{R}\nesc to cancel            accept-edits · Gemini 4 Neon · xhigh · 1 task(s) · /tasks\n"
+CASES = [
+    ("agy at work, its tasks under an empty field", TRAY, ""),
+    ("the same with words in its field", TRAY.replace(">\n", "> Read the brief and go on\n", 1), "Read the brief and go on"),
+    ("agy at rest, its mode's hint in its field", f"{R}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{R}\n? for shortcuts\n", ""),
+    ("agy, a draft of two lines", f"{R}\n> first line\n  second line\n{R}\n? for shortcuts\n", "first line second line"),
+    ("Claude Code", f"● Done\n{R}\n❯ hello there\n{R}\n  ? for shortcuts\n", "hello there"),
+    ("Claude Code, empty", f"● Done\n{R}\n❯ \n{R}\n  ? for shortcuts\n", ""),
+    ("a rule in what it wrote, over its field", f"● A table:\n{R}\n  a | b\n{R}\n>\n{R}\n? for shortcuts\n", ""),
+    ("no field at all", "just\ntext\n", ""),
+]
+wrong = [(what, agents.field_of(screen), want) for what, screen, want in CASES if agents.field_of(screen) != want]
+for what, got, want in wrong:
+    print(f"FAILED: {what}: its field read as {got!r}, not {want!r}")
+if wrong:
+    sys.exit(1)
+print(f"ok: a helper's field is read rightly on {len(CASES)} screens")

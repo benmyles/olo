@@ -500,6 +500,23 @@ Each note: what to do, then why (what happened), then how to apply it.
   `y` above or below it (the scroll view's band). Filter by the
   window's height before saying what's on screen.
 
+### "Still on the screen" is not "not done": press once, then wait
+
+Three places in the agents service and one in `tools/dev/agents` pressed
+a key again because, a fraction of a second later, the screen still
+showed what the key was for (an approval box, a trust question, a
+survey; `say`'s Enter, up to four times). On this computer under a load
+of a hundred an agent takes longer than that to draw, and the second
+press went into whatever stood next (2026-11-27: a list's yes twice, a
+trust's Down twice, a survey's `0` in the agent's field). Whatever
+types for someone: mark the thing answered before the key, press once,
+wait for it to go, and tell a person if it doesn't. A check that fails
+only under load with a key too many ("000" for "0") is this, not the
+load: I loosened such a test to "one to three" before I saw it.
+`tools/dev/agents-check` tries the tool's own reading of a helper's
+field on the screens that fooled it (agy's running tasks, drawn under
+its field with a rule of their own, were "the field").
+
 ### A program a test desktop can't find is started without a word
 
 `tsession run NAME PROGRAM` answers "started PROGRAM pid N" whether or

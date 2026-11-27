@@ -1817,16 +1817,27 @@ def log(name):
     seen(name)
 
 
-def field(name):
-    """What its field holds: the lines between the last two rules."""
-    lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+def field_of(text):
+    """What a screen's field holds: the lines between the two rules that
+    have the field between them, the nearest pair from the foot whose
+    first line is a field's own (`>`, `\u276f`; agy's `!` and `:`).
+    (Not "the last two rules": agy draws its running tasks under its
+    field with a rule under them, and those were taken for the field,
+    which then never looked empty: `say` pressed Enter four times and
+    said the words were still there, 2026-11-27.)"""
+    lines = [l for l in (text or "").splitlines() if l.strip()]
     rules = [i for i, l in enumerate(lines) if is_rule(l)]
-    if len(rules) < 2:
-        return ""
-    held = " ".join(l.strip() for l in lines[rules[-2] + 1:rules[-1]])
-    held = held[1:].strip() if held[:1] in (">", "\u276f") else held
-    # (Empty, it shows its mode's hint there.)
-    return "" if "shift+tab to cycle" in held else held
+    for upper, lower in reversed(list(zip(rules, rules[1:]))):
+        inside = [l.strip() for l in lines[upper + 1:lower]]
+        if inside and inside[0][:1] in (">", "\u276f", "!", ":"):
+            held = " ".join(inside)[1:].strip()
+            # (Empty, it shows its mode's hint there.)
+            return "" if "shift+tab to cycle" in held else held
+    return ""
+
+
+def field(name):
+    return field_of(screen(name))
 
 
 def say(name, text, now=False):
@@ -1850,13 +1861,27 @@ def say(name, text, now=False):
     # then Enter by itself, a moment later.)
     paste(name, text)
     time.sleep(0.5 + len(text) / 1500)
-    for _ in range(4):
+    # (Enter once, and its field waited for: pressed again only where the
+    # field is seen to hold these very words still, and then once. It was
+    # pressed up to four times, a second and a half apart, for as long as
+    # anything at all stood where the field was looked for: on a busy
+    # computer the later ones went into whatever the program showed next.)
+    words = " ".join(text.split())[:24]
+
+    def sent(within):
+        until = time.time() + within
+        while time.time() < until:
+            held = field(name)
+            if not held or words not in " ".join(held.split()):
+                return True
+            time.sleep(0.4)
+        return False
+
+    press(name, "C-m")
+    if not sent(6):
         press(name, "C-m")
-        time.sleep(1.5)
-        if not field(name):
-            break
-    else:
-        sys.exit(f"agents: said to {name}, but its field still holds the words: look (agents peek {name})")
+        if not sent(6):
+            sys.exit(f"agents: said to {name}, but its field still holds the words: look (agents peek {name})")
     queued = "to send immediately" in "\n".join((screen(name) or "").splitlines()[-12:])
     if queued and now:
         press(name, "M-m")
