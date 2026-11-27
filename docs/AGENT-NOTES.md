@@ -1738,10 +1738,28 @@ entry to go. No child was lost; the host was served by three builds in
 turn for two minutes. Told to their lead as it was.
 
 - **A handover is one step now** (HACKING, "A handover is one step"):
-  the retiring service starts its successor with its own lock in hand.
-  The first handover *to* a build that has it is still the old kind:
-  say so in the note to the other lead, and say which builds served
-  meanwhile, from the service's log, not only what stands after.
+  the retiring service starts its successor with its own lock in hand,
+  and for a service from before, the upgrade tool takes it over in its
+  place (a child asleep on the lock becomes the new service). In the
+  note to the other lead, say which builds served meanwhile, from the
+  service's log, not only what stands after.
+- **To try a change against the release that runs on a host, name its
+  real helper**: a host keeps every helper it was given
+  (`~/.local/share/olo/rex-link/olo-rex-link-ID-ARCH`); a copy of one
+  under `/var/tmp`, named in `OLO_TEST_OLD_HELPER`, is the old build
+  in the suite's rig (its own Rex server and folders). That is how
+  "one step against update 6's service" was tried before it was done
+  to the live one.
+- **A scratch checkout for tests while builders are in the tree**: a
+  builder's half-written crate (a `Cargo.toml` with no `src/lib.rs`)
+  makes the whole workspace unreadable to cargo, for everyone. `git
+  worktree add --detach /var/tmp/NAME/tree HEAD` with
+  `GIT_LFS_SKIP_SMUDGE=1`, then `git lfs pull --include
+  "vendor/ghostty-vt/**"` there if Rex or Terminal is built (their
+  build script refuses the pointer file); Jato restores the builds, so
+  it costs seconds. And a builder's brief says: the workspace loads at
+  every moment (a new crate gets its manifest and its `lib.rs` in one
+  step).
 - **Read the service's log for the minutes of a handover before
   writing what it did.** The tool's one line ("pid A retired, pid B is
   the new helper's, asked 6 times") was true and left out five

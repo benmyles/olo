@@ -981,6 +981,113 @@ fn a_handover_is_one_step_whoever_else_asks() {
     ask(&build(3), &["stop", "steady", "--force", "--json"]);
 }
 
+/// A service from before services started their successors (update 6
+/// and earlier) is taken over in one step by the upgrade tool, however
+/// many askers of its build ask meanwhile: a child of the tool sleeps
+/// on the service's lock and becomes the new helper's service
+/// (`tools/dev/host-upgrade`, `take_over`). Tried with such a helper
+/// where one is named (`OLO_TEST_OLD_HELPER`: a file of a release from
+/// before 2026-11-27, 06:30 UTC; a host keeps them in
+/// `~/.local/share/olo/rex-link`); passed over where none is, as this
+/// tree's helper is not one.
+#[test]
+fn a_service_from_before_is_taken_over_in_one_step() {
+    let Some(old) = std::env::var_os("OLO_TEST_OLD_HELPER").map(PathBuf::from) else {
+        eprintln!("passed over: no helper from before named in OLO_TEST_OLD_HELPER");
+        return;
+    };
+    the_tool_hands_it_over("takeover", &old, true);
+}
+
+/// The upgrade tool hands a service that starts its own successor to
+/// the new helper's in one step too (`retire --to`, asked by the tool),
+/// with the same askers of the build before.
+#[test]
+fn the_upgrade_tool_hands_a_service_over_in_one_step() {
+    the_tool_hands_it_over("toolstep", Path::new(HELPER), false);
+}
+
+/// `tools/dev/host-upgrade --service-only NEW --even-if-held` against a
+/// held service of the helper `old`, twenty watches and six askers of
+/// that build going on: one service after it, the new helper's.
+fn the_tool_hands_it_over(name: &str, old: &Path, from_before: bool) {
+    let Some(rig) = Rig::start(name) else { return };
+    let kept = rig.dir.join("rex-link");
+    std::fs::create_dir_all(&kept).unwrap();
+    let build = |n: u32| kept.join(format!("olo-rex-link-000{n}-x86_64"));
+    std::fs::copy(old, build(1)).unwrap();
+    let asking = |helper: &Path, args: &[&str]| {
+        let mut cmd = Command::new(helper);
+        cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work"));
+        Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
+        cmd.env("REX_BLOCK", &rig.lead_block);
+        cmd.arg("agent").args(args);
+        cmd
+    };
+    let ask = |helper: &Path, args: &[&str]| -> Value {
+        let out = run_just_written(&mut asking(helper, args));
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}: {}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    };
+    let pid = |helper: &Path| ask(helper, &["ping"])["pid"].as_i64().unwrap() as i32;
+    let runs = |pid: i32| std::fs::read_link(format!("/proc/{pid}/exe")).unwrap();
+    let started = ask(&build(1), &["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
+    let first = pid(&build(1));
+    assert_eq!(runs(first), build(1));
+    assert_eq!(ask(&build(1), &["ping"])["hands_over"].is_null(), from_before, "whether the first helper is one from before");
+
+    // The host as it was: a hold, twenty watches that go on and six askers without pause, all of the old build.
+    std::fs::write(rig.dir.join("host-upgrade.hold"), "Held by this test.\n").unwrap();
+    let mut watches: Vec<Child> = (0..20).map(|_| asking(&build(1), &["watch", "--all", "--follow"]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap()).collect();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let askers: Vec<_> = (0..6)
+        .map(|_| {
+            let (stop, mut cmd) = (stop.clone(), asking(&build(1), &["list", "--fast", "--json"]));
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = cmd.output();
+                }
+            })
+        })
+        .collect();
+    std::thread::sleep(Duration::from_millis(500));
+
+    // The new helper, put beside it; the tool, asked for the service alone.
+    std::fs::copy(HELPER, build(2)).unwrap();
+    let mut tool = Command::new("/usr/bin/python3");
+    tool.arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/dev/host-upgrade")).arg("--service-only").arg(build(2)).arg("--even-if-held");
+    Rig::scratch_env(&rig.dir, &rig.sock, &mut tool);
+    let began = Instant::now();
+    let out = tool.output().unwrap();
+    let took = began.elapsed();
+    let said = String::from_utf8_lossy(&out.stdout).into_owned();
+    std::thread::sleep(Duration::from_millis(700));
+    let served: Vec<String> = rig.said().lines().filter(|l| l.contains("olo agents: serving (pid")).map(str::to_owned).collect();
+    eprintln!("the tool, {took:.1?}: {}\nserved:\n{}", said.trim(), served.join("\n"));
+    assert!(out.status.success() && said.contains("host-upgrade: done: the agents service") && said.contains("in one step"), "{said}\n{}\n{}", String::from_utf8_lossy(&out.stderr), rig.said());
+    let second = pid(&build(2));
+    assert_eq!(runs(second), build(2), "the new helper's service");
+    assert_eq!(pid(&build(1)), second, "and it stays, the old build's askers answered by it");
+    // Between the first and the new one: only what the tool says got in (none, but for a few times in a hundred).
+    let between = served.iter().skip(1).filter(|l| l.contains("olo-rex-link-0001")).count();
+    let told = if said.contains("but for") { said.split("but for ").nth(1).and_then(|t| t.split(' ').next()).and_then(|n| n.parse::<usize>().ok()).unwrap_or(0) } else { 0 };
+    assert_eq!(between, told, "every service in between is one the tool says it retired: {served:#?}\n{said}");
+    assert!(served.last().unwrap().contains(&format!("pid {second}, olo-rex-link-0002")), "{served:#?}");
+
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    for a in askers {
+        let _ = a.join();
+    }
+    for w in &mut watches {
+        assert!(w.try_wait().unwrap().is_none(), "a watch of the old build went on through it");
+        let _ = w.kill();
+        let _ = w.wait();
+    }
+    std::fs::remove_file(rig.dir.join("host-upgrade.hold")).unwrap();
+    let listed = ask(&build(2), &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"], "the child, through it: {listed}");
+    ask(&build(2), &["stop", "steady", "--force", "--json"]);
+}
+
 /// A signal that ends the service is in its log with its sender: which
 /// signal, the sender's pid and what it is. (The log said "told to end"
 /// and no more; one night the service was ended so and its sender could
