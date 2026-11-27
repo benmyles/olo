@@ -31827,7 +31827,20 @@ agents through the night, could not move to it.
   box that takes one key and must be given no text couldn't be answered
   in a tab: Claude Code's "1 to review · 2 to send · 0 to dismiss" over
   a drafted feedback report, whose only key anyone may press is its 0;
-  the ShiftUp lead's item 25, 2026-11-26. Into a question a character
+  the ShiftUp lead's item 25, 2026-11-26. That box is known to the
+  service since (`olo_agent_screen::feedback_draft`: its three keys a
+  line of their own at the screen's foot; `Service::
+  feedback_draft_seen`; their item 48, 2026-11-27, with Ben's rule
+  there: "no feedback report is ever sent, and nothing answers that
+  box by itself"): whoever looks after the child is told, once for
+  each showing, as an `escalation` whose summary begins "Feedback
+  draft:" (a minder's agent's too: a minder may press no such key);
+  `status` has `feedback_draft`, its line; and while it shows `send`
+  types nothing into the child but the box's own `--key 0`, asked for
+  by name (a message beginning "2" would send the report). The service
+  itself presses nothing there, where it sets a survey aside. Read
+  from the words the lead quoted, not yet from a capture of the box.
+  Into a question a character
   is an answer by its number, so it is refused there as text is, without
   `--force`: `spec::key_types`); a feedback survey drawn over a screen (Claude Code's "How is
   Claude doing this session?", Antigravity's "How's the CLI experience

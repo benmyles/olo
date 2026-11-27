@@ -2240,6 +2240,8 @@ impl Service {
         payload["running"] = json!(state != SubagentLiveState::Exited);
         // (A feedback survey that wouldn't be set aside: what is read may be under it.)
         payload["survey"] = json!(looked.survey);
+        // (Claude Code's offer to send a feedback report it drafted, where it shows: its line, as drawn.)
+        payload["feedback_draft"] = json!(entry.cli.screen_agent().and_then(|agent| olo_agent_screen::feedback_draft(agent, &screen)));
         payload["exit_code"] = json!(entry.exit_code);
         payload["aborted"] = json!(aborted);
         payload["last_message"] = json!(last_message);
@@ -3048,6 +3050,31 @@ impl Service {
             if (!spec.body.is_empty() || spec.types) && !spec.force && entry.cli.is_agent() && dialog_up(&before.cls) {
                 let what = if spec.body.is_empty() { "press a character key in" } else { "type text into" };
                 return err(format!("refusing to {what} `{}` while a {} dialog is active (use `olo agent approve` to answer approvals, or pass `--force`)", entry.id, before.cls.state.as_str()), 1);
+            }
+        }
+        // Nor into Claude Code's offer to send a feedback report it has
+        // drafted ("1 to review · 2 to send · 0 to dismiss"): a message
+        // that begins "2" would send the report. Its own `0` is the one
+        // key pressed there, by whoever looks after the child and never
+        // by the service; anything else waits until it has gone. (The
+        // ShiftUp lead's item 48, 2026-11-27. Ben's rule there: "no
+        // feedback report is ever sent".) A minder, who may press no
+        // character key, is refused the same: the lead is told of the
+        // box on its own watch (`Service::feedback_draft_seen`).
+        if !spec.force
+            && let Some(agent) = entry.cli.screen_agent()
+            && let Some(shows) = olo_agent_screen::feedback_draft(agent, &before.screen)
+        {
+            let only_its_zero = spec.body.is_empty() && !spec.enter && spec.raw_keys.len() == 1 && spec.raw_keys[0].trim() == "0";
+            if !only_its_zero {
+                return err(
+                    format!(
+                        "refusing to send to `{}` while Claude Code's feedback draft shows ({shows}): what is typed there would answer it. `olo agent send {} --key 0` sets it aside; then send again",
+                        entry.id,
+                        entry.name.as_deref().unwrap_or(&entry.id)
+                    ),
+                    1,
+                );
             }
         }
         let minder_still_ok = || -> bool {

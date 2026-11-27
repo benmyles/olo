@@ -740,6 +740,55 @@ fn a_feedback_survey_is_set_aside() {
     rig.json(&["stop", "surveyed", "--force", "--json"]);
 }
 
+/// Claude Code's offer to send a feedback report it has drafted ("1 to
+/// review · 2 to send · 0 to dismiss") is nobody's to answer but the
+/// person's or the lead's: the service tells whoever looks after the
+/// child, once for each showing, presses nothing itself, and types
+/// nothing into the child while it shows but the box's own `0`, asked
+/// for by name. (The ShiftUp lead's item 48, 2026-11-27; Ben's rule
+/// there: "no feedback report is ever sent, and nothing answers that
+/// box by itself".)
+#[test]
+fn a_drafted_feedback_report_is_told_and_never_answered() {
+    let Some(rig) = Rig::start("draft") else { return };
+    rig.stand_in("claude");
+    let started = rig.start_child("claude", "drafted", &[]);
+    rig.show("drafted", &idle("Done."));
+    rig.wait_state("drafted", "idle");
+    assert_eq!(rig.status("drafted")["feedback_draft"], Value::Null);
+    let boxed = format!("● Done.\n\n  1 to review · 2 to send · 0 to dismiss\n{0}\n❯ \n{0}\n  ⏸ manual mode on · ? for shortcuts\n", rule());
+    let before = rig.keys("drafted").len();
+    rig.show("drafted", &boxed);
+    // Told, once, as an escalation on the watch of whoever looks after it; and said in its status.
+    let told = rig.json(&["watch", "drafted", "--since", &started["cursor"].to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!(told["event"], "escalation", "{told}");
+    assert!(told["summary"].as_str().is_some_and(|s| s.starts_with("Feedback draft:") && s.contains("--key 0")), "{told}");
+    assert_eq!(rig.status("drafted")["feedback_draft"], "1 to review · 2 to send · 0 to dismiss");
+    let (code, out, _) = rig.olo(&["watch", "drafted", "--since", &told["cursor"].to_string(), "--on", "escalation", "--timeout", "2", "--json"]);
+    assert_eq!(code, 124, "told twice of one showing: {out}");
+    // Nothing is typed into it: not a message (one that begins "2" would send the report), not another key.
+    for refused in [&["send", "drafted", "2 more things to do", "--enter", "--json"][..], &["send", "drafted", "--key", "2", "--json"], &["send", "drafted", "--key", "Enter", "--json"]] {
+        let (code, out, err) = rig.olo(refused);
+        assert!(code != 0 && err.contains("feedback draft"), "{refused:?} went through: {out}{err}");
+    }
+    assert_eq!(rig.keys("drafted").len(), before, "something was typed into the box: {:?}", &rig.keys("drafted")[before..]);
+    // Its own 0, asked for by name: pressed, and nothing else.
+    let agent = rig.when_typed("drafted", b"0", idle("Done."));
+    rig.json(&["send", "drafted", "--key", "0", "--json"]);
+    assert!(agent.join().unwrap(), "its 0 was pressed");
+    rig.typed_since("drafted", before, b"0", "its 0, once, and nothing else");
+    rig.wait("the box to be gone", || rig.status("drafted")["feedback_draft"].is_null());
+    // Gone: what is sent is typed as before. And another showing is told again.
+    let before = rig.keys("drafted").len();
+    rig.json(&["send", "drafted", "hello", "--enter", "--json"]);
+    assert!(rig.keys("drafted").len() > before);
+    let since = rig.status("drafted")["cursor"].to_string();
+    rig.show("drafted", &boxed);
+    let again = rig.json(&["watch", "drafted", "--since", &since, "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!(again["event"], "escalation", "{again}");
+    rig.json(&["stop", "drafted", "--force", "--json"]);
+}
+
 /// Forty children under one tab: started side by side, all there, and
 /// listed in well under a second.
 #[test]
@@ -4554,12 +4603,16 @@ fn round2_12_13_14_15_16_17_launch_move_timer_and_rules_races() {
     std::fs::create_dir_all(&txm_proj).unwrap();
     // Write a Claude transcript with `isApiErrorMessage: true` and show working -> idle on screen
     // so `effective_state` detects transcript-only `Error` even while the screen stays at idle prompt.
+    // (Its turn's own time is after the minder was started, as a real one's is: what a file says of a turn
+    // from *before* a child was given its work is not that work's, `state::of_the_turn_given`. Written
+    // with a time of that morning, this passed or failed by whether a reading of the "working" screen had
+    // taken the minder's prompt up first: found when it failed five times of five, 2026-11-27.)
     let tx_file = txm_proj.join(format!("{tx_sid}.jsonl"));
     std::fs::write(
         &tx_file,
         format!(
             "{}\n{}\n",
-            json!({ "type": "user", "message": { "role": "user", "content": "Begin" }, "timestamp": "2026-11-27T00:00:00Z" }),
+            json!({ "type": "user", "message": { "role": "user", "content": "Begin" }, "timestamp": "2099-01-01T00:00:00Z" }),
             json!({ "type": "assistant", "isApiErrorMessage": true, "message": { "role": "assistant", "content": [{ "type": "text", "text": "API Error: 529 Overloaded" }] }, "timestamp": "2026-11-27T00:00:01Z" }),
         ),
     )

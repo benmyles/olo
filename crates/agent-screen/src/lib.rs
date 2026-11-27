@@ -514,6 +514,31 @@ pub fn parse_survey(agent: Agent, screen: &str) -> Option<Survey> {
     })
 }
 
+/// Claude Code's offer to send a feedback report it has drafted: one
+/// line of three keys, "1 to review · 2 to send · 0 to dismiss", the
+/// last thing above its field. Not a survey and never set aside for
+/// anyone: the ShiftUp lead's item 48 (2026-11-27), with Ben's rule
+/// there: "no feedback report is ever sent, and nothing answers that box
+/// by itself". While it shows, a message beginning "2 …" would send the
+/// report, so nothing is typed into that screen and whoever looks after
+/// the agent is told. Its line as drawn, if it shows: the three keys in
+/// their order and nothing else on the line, at the screen's foot. (Read
+/// from the words the lead quoted, not yet from a capture of the box:
+/// where it is drawn otherwise it isn't seen, which is today's state.)
+pub fn feedback_draft(agent: Agent, screen: &str) -> Option<String> {
+    if agent != Agent::Claude {
+        return None;
+    }
+    screen.lines().rev().filter(|l| !l.trim().is_empty()).take(12).find_map(|line| {
+        let words = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        let keys = words.trim_start_matches(['●', '•', '*', '│', ' ']).trim_end_matches(['│', ' ']);
+        let rest = keys.strip_prefix("1 to review")?.strip_suffix("0 to dismiss")?;
+        // (Between them: the middle key and what divides the three, nothing more.)
+        let middle = rest.trim_matches(|c: char| !c.is_alphanumeric());
+        (middle == "2 to send").then(|| keys.to_owned())
+    })
+}
+
 /// Semantic kind of a choice in a tool approval dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChoiceKind {
@@ -2205,6 +2230,31 @@ mod tests {
         assert!(parse_survey(Agent::Claude, "● Ratings:\n  1: Bad    2: Fine   3: Good   0: Dismiss\n❯ ").is_none());
         let far = format!("{claude}\n{}", (0..14).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n"));
         assert!(parse_survey(Agent::Claude, &far).is_none());
+    }
+
+    /// Claude Code's drafted feedback report (the ShiftUp lead's item 48):
+    /// seen where its three keys are a line of their own at the foot, and
+    /// nowhere else.
+    #[test]
+    fn a_drafted_feedback_report_is_seen_and_only_that() {
+        let rule = "─".repeat(40);
+        let boxed = format!("● Done.\n\n  1 to review · 2 to send · 0 to dismiss\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        assert_eq!(feedback_draft(Agent::Claude, &boxed).as_deref(), Some("1 to review · 2 to send · 0 to dismiss"));
+        // Drawn with another divider, or in a frame: the same three keys.
+        assert!(feedback_draft(Agent::Claude, &boxed.replace(" · ", "  |  ")).is_some());
+        assert!(feedback_draft(Agent::Claude, &boxed.replace("  1 to review · 2 to send · 0 to dismiss", "│ 1 to review · 2 to send · 0 to dismiss │")).is_some());
+        // Words that quote it, a line with more on it, a line with a key missing: not the box.
+        assert!(feedback_draft(Agent::Claude, &boxed.replace("  1 to review", "● The box says \"1 to review")).is_none());
+        assert!(feedback_draft(Agent::Claude, &boxed.replace("0 to dismiss", "0 to dismiss, it says")).is_none());
+        assert!(feedback_draft(Agent::Claude, &boxed.replace(" · 2 to send", "")).is_none());
+        assert!(feedback_draft(Agent::Claude, &boxed.replace("2 to send", "2 to send it all, 3 to keep")).is_none());
+        // Far above the foot (scrolled-by output): not the box. Another agent's screen: never.
+        let above = format!("  1 to review · 2 to send · 0 to dismiss\n{}\n❯ \n", (0..14).map(|i| format!("● line {i}")).collect::<Vec<_>>().join("\n"));
+        assert!(feedback_draft(Agent::Claude, &above).is_none());
+        assert!(feedback_draft(Agent::Codex, &boxed).is_none());
+        assert!(feedback_draft(Agent::Antigravity, &boxed).is_none());
+        // And it is no survey: nothing sets it aside.
+        assert!(parse_survey(Agent::Claude, &boxed).is_none());
     }
 
     #[test]

@@ -123,9 +123,9 @@ something nobody here has is in "Blocked", with what it waits for.
   - 28: "In `approval`: when the box opened, and when its CLI will
     refuse it by itself (Claude Code 2.1.332's 'will automatically
     block this request in M:SS')."
-  - 30: "Claude Code's feedback-draft box ('1 to review · 2 to send · 0
-    to dismiss') in `status` like `survey`, or set aside by the service
-    with its 0, never its 2."
+  - 30 and 48 are done (HACKING, "That box is known to the service
+    since"): told, said in `status`, nothing typed into it. To check
+    against a capture of the real box when one is met.
   - 31: "`list` keeps every live child through a handover (it did at
     20:25), said in the guide."
   - 32 is done (`doing_line`: Claude Code's "◈ max · /effort" is not
@@ -1143,6 +1143,13 @@ something nobody here has is in "Blocked", with what it waits for.
     advertised interleaving"; "Several assertions pass with the
     original implementation defect"; "The idle measurement can report
     zero despite service wakeups".
+  - **`round2_24_25_26_standing_questions_per_agent_cursors_and_detach_
+    handoff` failed once in a whole-suite run** ("handover replayed
+    already-delivered minding events"; passes alone): the review's "a
+    delivered cursor can move backwards on disk", above, met for real.
+    A minder told twice of an agent it already minds reads its rules
+    again and no more; to fix with one writer for the registry and the
+    minders' delivery state.
   - **A folder's trust answered with one arrow too many, once, under
     the whole suite's load** (the minders builder, of
     `a_childs_own_folder_is_trusted_at_its_start`: "`\x1b[B\x1b[B\r`

@@ -166,6 +166,10 @@ pub struct Live {
     /// A feedback survey on its screen wouldn't go when set aside: left
     /// alone until it has gone by itself.
     survey_stays: bool,
+    /// Claude Code's offer to send a feedback report it drafted stands
+    /// on its screen, and whoever looks after the child has been told
+    /// of this showing of it (`olo_agent_screen::feedback_draft`).
+    draft_told: bool,
     /// The approval box that stands (`state::box_hash`) and its number
     /// among this child's boxes; none while none stands or once it was
     /// answered here. See [`Service::box_key`].
@@ -204,6 +208,7 @@ impl Live {
             task: None,
             told: None,
             survey_stays: false,
+            draft_told: false,
             box_now: None,
             boxes: 0,
             latest_event: None,
@@ -1244,6 +1249,43 @@ impl Service {
         }
     }
 
+    /// Claude Code's offer to send a feedback report it has drafted ("1
+    /// to review · 2 to send · 0 to dismiss") stands on a child's
+    /// screen: whoever looks after the child is told, once for each
+    /// showing of it, as an `escalation` on their watch (a minder's
+    /// agent too: a minder may press no such key). The service answers
+    /// it never, and nothing is typed into that screen while it shows
+    /// (`Service::send`). The ShiftUp lead's item 48, 2026-11-27, with
+    /// Ben's rule there: "no feedback report is ever sent, and nothing
+    /// answers that box by itself".
+    fn feedback_draft_seen(&self, entry: &NativeSubagent, screen: &str) {
+        let Some(agent) = entry.cli.screen_agent() else { return };
+        let shows = olo_agent_screen::feedback_draft(agent, screen);
+        let state = {
+            let mut st = self.lock();
+            let Some(live) = st.live.get_mut(&entry.id) else { return };
+            match (&shows, live.draft_told) {
+                (None, _) => {
+                    live.draft_told = false;
+                    return;
+                }
+                (Some(_), true) => return,
+                (Some(_), false) => live.draft_told = true,
+            }
+            live.last_state.unwrap_or(SubagentLiveState::Idle)
+        };
+        let who = entry.name.as_deref().unwrap_or(&entry.id);
+        let msg = format!(
+            "Feedback draft: Claude Code offers to send a feedback report it drafted ({}). Nothing answers it for you and nothing is typed into this child while it shows: `olo agent send {who} --key 0` sets it aside.",
+            shows.unwrap_or_default()
+        );
+        let mut event = self.event_of(entry, state, Some(msg.clone()), String::new());
+        event.event = olo_rex_link::agents::minder::ESCALATION.to_owned();
+        event.last_message = Some(msg);
+        event.tail = tail_of(screen, 10);
+        self.record_beside(event);
+    }
+
     /// What a child's end means for minding.
     /// - An older 1:1 minder whose agent still runs: the parent is told
     ///   (an escalation on that agent), and what the agent asks reaches
@@ -1365,6 +1407,7 @@ impl Service {
         let Some(entry) = self.lock().reg.entries.iter().rev().find(|e| e.id == id && e.exited_at.is_none()).cloned() else { return };
         let looked = self.look(&entry, false).await;
         let read_expecting = looked.expected;
+        self.feedback_draft_seen(&entry, &looked.screen);
         let cls = looked.cls;
         // Its tab is gone (the server said so of its screen): its end is
         // said once, as an end is said (`exit`), whichever word of it

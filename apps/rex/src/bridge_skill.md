@@ -395,6 +395,16 @@ model or reasoning effort is used.
   itself the moment it sees one (it once hid a permission prompt for 25
   minutes), and what lies under it is what `status` and `watch` say.
   One that wouldn't go is said (`status`: `"survey": true`).
+- **A drafted feedback report is yours to set aside, and nobody else
+  answers it.** Claude Code can offer to send a feedback report it has
+  drafted: one line over its field, "1 to review · 2 to send · 0 to
+  dismiss". The service presses nothing there. You are told, once for
+  each time it shows, as an `escalation` on your watch whose `summary`
+  begins "Feedback draft:" (`status`: `"feedback_draft"` has the line
+  while it shows), and while it shows nothing is typed into that child:
+  `send` is refused (a message beginning "2" would send the report)
+  but for the box's own key, `olo agent send NAME --key 0`, which sets
+  it aside. Then send what you meant to.
 
 ## Desktop integration commands
 
