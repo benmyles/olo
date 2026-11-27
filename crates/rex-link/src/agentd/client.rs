@@ -458,24 +458,71 @@ enum Asked {
     NotTaken,
     /// It ended after: what was done isn't known.
     Lost,
+    /// The service took it and had not answered when its time was up
+    /// (that many seconds): what was done isn't known.
+    Late(u64),
 }
 
 /// One request sent, and what came of it: the service's mark that it
 /// took it (an empty line), then its answer.
-fn exchange(mut stream: UnixStream, req: &Request) -> Asked {
+fn exchange(stream: UnixStream, req: &Request) -> Asked {
+    exchange_within(stream, req, answer_within(req))
+}
+
+/// How long the service has to answer a request: a `watch` its own
+/// time and half a minute (ten minutes where it names none, as the
+/// service has it); anything else two minutes, which is many times what
+/// the slowest of them takes (a start with its folders' trust, a stop
+/// that waits for programs to end). No request waits for ever: a `run`
+/// in a test here sat 3 h 45 min on a service that had taken its
+/// request and never answered it, its own `--timeout 40` notwithstanding
+/// (found still waiting, 2026-11-27).
+fn answer_within(req: &Request) -> Duration {
+    if req.op != "watch" {
+        return Duration::from_secs(120);
+    }
+    let seconds = |v: &str| v.trim_end_matches('s').parse::<u64>().ok();
+    let mut named = None;
+    let mut args = req.args.iter();
+    while let Some(arg) = args.next() {
+        if arg == "--timeout" {
+            named = args.next().and_then(|v| seconds(v)).or(named);
+        } else if let Some(v) = arg.strip_prefix("--timeout=") {
+            named = seconds(v).or(named);
+        }
+    }
+    // (Or its structured form: `rex do olo.agent.watch --args '{"timeout": N}'`.)
+    let named = named.or_else(|| req.obj.as_ref().and_then(|o| o["timeout"].as_u64()));
+    Duration::from_secs(named.unwrap_or(600).min(3600) + 30)
+}
+
+fn exchange_within(mut stream: UnixStream, req: &Request, within: Duration) -> Asked {
     let Ok(mut line) = serde_json::to_string(req) else { return Asked::NotTaken };
     line.push('\n');
     if stream.write_all(line.as_bytes()).is_err() {
         return Asked::NotTaken;
     }
+    let _ = stream.set_read_timeout(Some(within));
+    let late = |e: &std::io::Error| matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut);
     let mut lines = BufReader::new(stream);
     let mut taken = String::new();
-    if lines.read_line(&mut taken).unwrap_or(0) == 0 {
-        return Asked::NotTaken;
+    match lines.read_line(&mut taken) {
+        Ok(0) => return Asked::NotTaken,
+        Ok(_) => {}
+        Err(e) if late(&e) => return Asked::Late(within.as_secs()),
+        Err(_) => return Asked::NotTaken,
     }
     let mut answer = String::new();
     // (A service from before the mark answers at once.)
-    let said = if taken.trim().is_empty() { lines.read_line(&mut answer).map(|_| answer.as_str()).unwrap_or_default() } else { taken.as_str() };
+    let said = if taken.trim().is_empty() {
+        match lines.read_line(&mut answer) {
+            Ok(_) => answer.as_str(),
+            Err(e) if late(&e) => return Asked::Late(within.as_secs()),
+            Err(_) => "",
+        }
+    } else {
+        taken.as_str()
+    };
     match serde_json::from_str(said.trim()) {
         Ok(answer) => Asked::Answer(answer),
         Err(_) => Asked::Lost,
@@ -594,6 +641,18 @@ fn ask(server: &Path, paths: &Paths, req: &Request, again: bool) -> Response {
             Asked::NotTaken => std::thread::sleep(Duration::from_millis(30)),
             Asked::Lost if again => std::thread::sleep(Duration::from_millis(30)),
             Asked::Lost => return lost(),
+            Asked::Late(secs) => {
+                return Response {
+                    ok: false,
+                    stdout: String::new(),
+                    stderr: format!(
+                        "olo agent {}: the agents service took this and had not answered after {secs} s: it may be stuck (`olo agent ping` says whether it answers at all). What was done isn't known: look (`olo agent list`) before asking again\n",
+                        req.op
+                    ),
+                    code: AGAIN,
+                    data: Value::Null,
+                };
+            }
         }
     }
     lost()
@@ -660,4 +719,43 @@ fn follow(server: &Path, paths: &Paths) -> i32 {
         return if asked.load(std::sync::atomic::Ordering::SeqCst) { 0 } else { AGAIN };
     }
     AGAIN
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// No request waits for ever on a service that took it: its time
+    /// is its own (a watch's) or two minutes, and when it passes the
+    /// command says so. (Tried with a service that takes a request,
+    /// says so, and never answers.)
+    #[test]
+    fn a_request_the_service_never_answers_ends() {
+        let watch = |args: &[&str]| Request { proto: PROTO, op: "watch".into(), args: args.iter().map(|a| (*a).to_owned()).collect(), ..Default::default() };
+        assert_eq!(answer_within(&watch(&["worker", "--timeout", "40", "--json"])), Duration::from_secs(70));
+        assert_eq!(answer_within(&watch(&["worker", "--timeout=90s"])), Duration::from_secs(120));
+        assert_eq!(answer_within(&watch(&["--all"])), Duration::from_secs(630), "a watch that names no time has the service's ten minutes");
+        assert_eq!(answer_within(&Request { proto: PROTO, op: "watch".into(), obj: Some(serde_json::json!({ "timeout": 15 })), ..Default::default() }), Duration::from_secs(45));
+        assert_eq!(answer_within(&Request { proto: PROTO, op: "start".into(), ..Default::default() }), Duration::from_secs(120));
+
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-agent-client-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("sock");
+        let _ = std::fs::remove_file(&sock);
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        // It takes the request (its mark: an empty line) and says no more, the connection kept open.
+        let service = std::thread::spawn(move || {
+            let (mut asked, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(asked.try_clone().unwrap()).read_line(&mut line).unwrap();
+            asked.write_all(b"\n").unwrap();
+            std::thread::sleep(Duration::from_millis(1500));
+            line
+        });
+        let began = Instant::now();
+        let got = exchange_within(UnixStream::connect(&sock).unwrap(), &watch(&["worker", "--timeout", "40"]), Duration::from_millis(300));
+        assert!(matches!(got, Asked::Late(_)) && began.elapsed() < Duration::from_millis(1200), "after {:?}", began.elapsed());
+        assert!(service.join().unwrap().contains("\"watch\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

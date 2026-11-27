@@ -1646,6 +1646,32 @@ build before fails eleven). The rig's `look=` option had never done anything:
 it asked `tsession look`, which doesn't exist (`theme` is the word), so
 "dark" pictures from the rig came out light without a word.
 
+### A hung test found 3 h 45 min later: three waits with no end, one behind the other (2026-11-27)
+
+A copy of the agents service's stand-in suite, started in the
+background to catch a flaky test, was still running hours later: its
+test thread waited on a thread that ran `olo agent run … --timeout 40`,
+which waited (in a `read`) on the scratch service, which had taken its
+request and never answered; the stand-in the test had told to exit
+never heard it (the stand-in's pipe, opened anew for each line: found
+and fixed that day, `exec 4<>`). The first cause was the stand-in's;
+what made it hours instead of a failure was that nothing above it had
+an end: the test joins a thread with no time; and **the `olo agent`
+command's wait for the service's answer had none** (`exchange`: one
+`read_line`), so its own `--timeout` meant nothing once a request was
+taken and not answered. Now every request has the service's answer by
+a time (`answer_within`: a watch its own time and half a minute, ten
+minutes where it names none; anything else two minutes), and says so
+when it passes ("took this and had not answered after N s", status
+75). Read off the processes themselves, which were all still there:
+each one's `wchan` (`/proc/PID/wchan`: `wait_for_partner` is a pipe
+being opened with nobody at its other end; `unix_stream_read_generic`
+a read on a socket), its open files, its children, and the rig's own
+folder (the stand-in script it ran was the old one). Also from it: a
+rig that fails leaves its folder (`/var/tmp/olo-agents-test-PID-…`):
+forty were there; they are removed when no process uses them (not by
+`grep` over `ps`: the shell that asks matches itself).
+
 ### A helper is given what its task needs; only the dangerous is refused (2026-11-27)
 
 A builder whose task was the three agent programs' own instruction
