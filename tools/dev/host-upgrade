@@ -311,7 +311,8 @@ def service(helper):
 
 def hand_over(helper, args, keep_service):
     """The service handed to `helper`'s. (What was done, or None; what
-    was left as it is, or None.)"""
+    was left as it is, or None; the pid of the service that runs, or
+    None where none could be asked.)"""
     did, kept = None, None
     # One step where it can be: a service that starts its successor is
     # told which (`retire --to`); one from before is taken over by this
@@ -369,7 +370,7 @@ def hand_over(helper, args, keep_service):
             break
     else:
         fail(f"the agents service is still pid {pid} running {exe} after 12 askings: an asker of the old build starts it again each time; `{helper} agent retire` and look")
-    return did, kept
+    return did, kept, pid
 
 
 def main():
@@ -385,7 +386,7 @@ def main():
             why = " ".join(open(HOLD).read().split())[:200]
             print(f"host-upgrade: nothing to do: held by {HOLD} ({why or 'no word of why'}): remove it, or --even-if-held")
             return
-        handed, _ = hand_over(helper, args, False)
+        handed, _, _ = hand_over(helper, args, False)
         print(f"host-upgrade: done: {handed}" if handed else f"host-upgrade: nothing to do: the agents service runs {os.path.basename(helper)} already, or none runs")
         return
     dry = "--dry-run" in args
@@ -478,7 +479,11 @@ def main():
         pid, exe = service(max(glob.glob(os.path.join(LINKS, f"olo-rex-link-*-{machine}")), key=os.path.getmtime))
         print(f"host-upgrade: dry run for release {commit} (helper {build}): would put " + ("; ".join(did) or "nothing") + f"; the service is pid {pid} running {os.path.basename(exe or '?')}")
         return
-    handed, kept = hand_over(helper, args, keep_service)
+    # (The service's pid is the summary's last word: it was this
+    # function's own until the step became `hand_over`, and the summary
+    # failed for want of it after a handover that had gone well,
+    # 2026-11-27 07:40 UTC. The suite runs the whole tool now.)
+    handed, kept, pid = hand_over(helper, args, keep_service)
     if handed:
         did.append(handed)
     # 4. Olo for this host's own screens, where it is here.

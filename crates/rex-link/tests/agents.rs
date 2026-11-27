@@ -999,20 +999,28 @@ fn a_service_from_before_is_taken_over_in_one_step() {
     the_tool_hands_it_over("takeover", &old, true);
 }
 
-/// The upgrade tool hands a service that starts its own successor to
-/// the new helper's in one step too (`retire --to`, asked by the tool),
-/// with the same askers of the build before.
+/// The upgrade tool, the whole of it as a release runs it (a release's
+/// work folder, a host's own folders: the helper put, the skill, what
+/// agents are told, the service, its last line), hands a service that
+/// starts its own successor to the new helper's in one step (`retire
+/// --to`, asked by the tool), with the same askers of the build before.
+/// (The whole tool: its summary's last line failed on a variable after a
+/// handover that had gone well, 2026-11-27, and only its service step
+/// was tried here.)
 #[test]
 fn the_upgrade_tool_hands_a_service_over_in_one_step() {
     the_tool_hands_it_over("toolstep", Path::new(HELPER), false);
 }
 
-/// `tools/dev/host-upgrade --service-only NEW --even-if-held` against a
-/// held service of the helper `old`, twenty watches and six askers of
-/// that build going on: one service after it, the new helper's.
+/// `tools/dev/host-upgrade` against a held service of the helper `old`,
+/// twenty watches and six askers of that build going on: one service
+/// after it, the new helper's. From before: the service's step alone
+/// (`--service-only NEW`). Else the whole tool, a release's work folder
+/// made for it (this tree's sources, this build's helper).
 fn the_tool_hands_it_over(name: &str, old: &Path, from_before: bool) {
     let Some(rig) = Rig::start(name) else { return };
-    let kept = rig.dir.join("rex-link");
+    // (A host's helpers where a host keeps them: the tool puts the new one beside.)
+    let kept = rig.dir.join("home/.local/share/olo/rex-link");
     std::fs::create_dir_all(&kept).unwrap();
     let build = |n: u32| kept.join(format!("olo-rex-link-000{n}-x86_64"));
     std::fs::copy(old, build(1)).unwrap();
@@ -1051,10 +1059,28 @@ fn the_tool_hands_it_over(name: &str, old: &Path, from_before: bool) {
         .collect();
     std::thread::sleep(Duration::from_millis(500));
 
-    // The new helper, put beside it; the tool, asked for the service alone.
-    std::fs::copy(HELPER, build(2)).unwrap();
+    let tree = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut tool = Command::new("/usr/bin/python3");
-    tool.arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/dev/host-upgrade")).arg("--service-only").arg(build(2)).arg("--even-if-held");
+    tool.arg(tree.join("tools/dev/host-upgrade"));
+    if from_before {
+        // The new helper, put beside it; the tool, asked for the service alone.
+        std::fs::copy(HELPER, build(2)).unwrap();
+        tool.arg("--service-only").arg(build(2));
+    } else {
+        // A release's work folder: its source (this tree) and what its Rex carries (this build's helper).
+        let work = rig.dir.join("release");
+        let out = work.join("target/release/build/olo-rex/0000/out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::os::unix::fs::symlink(tree.canonicalize().unwrap(), work.join("src")).unwrap();
+        std::fs::copy(HELPER, out.join("olo-rex-link-x86_64")).unwrap();
+        std::fs::copy(HELPER, out.join("olo-rex-link-aarch64")).unwrap();
+        // (A host that has the skill: the tool keeps it current.)
+        let skill = rig.dir.join("home/.claude/skills/olo-rex-bridge");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "an older skill\n").unwrap();
+        tool.arg("--work").arg(&work);
+    }
+    tool.arg("--even-if-held").env_remove("OLO_RELEASE_WORK").env_remove("OLO_NO_HOST_UPGRADE");
     Rig::scratch_env(&rig.dir, &rig.sock, &mut tool);
     let began = Instant::now();
     let out = tool.output().unwrap();
@@ -1063,15 +1089,33 @@ fn the_tool_hands_it_over(name: &str, old: &Path, from_before: bool) {
     std::thread::sleep(Duration::from_millis(700));
     let served: Vec<String> = rig.said().lines().filter(|l| l.contains("olo agents: serving (pid")).map(str::to_owned).collect();
     eprintln!("the tool, {took:.1?}: {}\nserved:\n{}", said.trim(), served.join("\n"));
-    assert!(out.status.success() && said.contains("host-upgrade: done: the agents service") && said.contains("in one step"), "{said}\n{}\n{}", String::from_utf8_lossy(&out.stderr), rig.said());
-    let second = pid(&build(2));
-    assert_eq!(runs(second), build(2), "the new helper's service");
-    assert_eq!(pid(&build(1)), second, "and it stays, the old build's askers answered by it");
+    assert!(out.status.success() && said.contains("the agents service (pid") && said.contains("in one step"), "{said}\n{}\n{}", String::from_utf8_lossy(&out.stderr), rig.said());
+    let last = said.trim().lines().last().unwrap_or_default();
+    let second = pid(&build(1));
+    let new = runs(second);
+    if from_before {
+        assert!(last.starts_with("host-upgrade: done: the agents service (pid"), "{said}");
+        assert_eq!(new, build(2), "the new helper's service");
+    } else {
+        // Its whole run: each thing put, said; its last line the summary, with the service that runs.
+        for put in ["put the helper olo-rex-link-", "put the skill's SKILL.md", "put what agents here are told (", "put the agents service (pid"] {
+            assert!(said.contains(put), "`{put}`: {said}");
+        }
+        assert!(
+            last.starts_with("host-upgrade: done: this host has release") && last.ends_with(&format!("the agents service is pid {second}")),
+            "its last line: {last}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(new.parent() == Some(kept.as_path()) && new != build(1), "the service is the helper the tool put: {}", new.display());
+        assert_ne!(std::fs::read_to_string(rig.dir.join("home/.claude/skills/olo-rex-bridge/SKILL.md")).unwrap(), "an older skill\n");
+        assert!(std::fs::read_to_string(rig.dir.join("home/.claude/CLAUDE.md")).unwrap().contains("olo:rex-host:begin"), "what agents are told, in the scratch home");
+    }
+    assert_eq!(pid(&new), second, "and it stays, the old build's askers answered by it");
     // Between the first and the new one: only what the tool says got in (none, but for a few times in a hundred).
     let between = served.iter().skip(1).filter(|l| l.contains("olo-rex-link-0001")).count();
     let told = if said.contains("but for") { said.split("but for ").nth(1).and_then(|t| t.split(' ').next()).and_then(|n| n.parse::<usize>().ok()).unwrap_or(0) } else { 0 };
     assert_eq!(between, told, "every service in between is one the tool says it retired: {served:#?}\n{said}");
-    assert!(served.last().unwrap().contains(&format!("pid {second}, olo-rex-link-0002")), "{served:#?}");
+    assert!(served.last().unwrap().contains(&format!("pid {second}, {}", new.file_name().unwrap().to_str().unwrap())), "{served:#?}");
 
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     for a in askers {
@@ -1083,9 +1127,9 @@ fn the_tool_hands_it_over(name: &str, old: &Path, from_before: bool) {
         let _ = w.wait();
     }
     std::fs::remove_file(rig.dir.join("host-upgrade.hold")).unwrap();
-    let listed = ask(&build(2), &["list", "--json"]);
+    let listed = ask(&new, &["list", "--json"]);
     assert_eq!(listed["subagents"][0]["id"], started["id"], "the child, through it: {listed}");
-    ask(&build(2), &["stop", "steady", "--force", "--json"]);
+    ask(&new, &["stop", "steady", "--force", "--json"]);
 }
 
 /// A signal that ends the service is in its log with its sender: which
