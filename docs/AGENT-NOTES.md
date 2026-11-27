@@ -4112,6 +4112,17 @@ their host's"):
   collect the `ESC [ ? N h` it writes. When a person reports what a
   check says works, the first question is what the real program does
   that the stand-in doesn't.
+- **The agents service forgets an ended child in time, and its
+  conversation with it unless its id was kept.** `olo agent resume`
+  goes by the service's record of an exited child, and the record is
+  trimmed as children come and go (two builders stopped at nine had
+  none by half past eleven, 2026-11-27, with some 240 children on the
+  tab since). The conversation is the CLI's own and outlives that:
+  `tools/dev/agents stop` now keeps its id in the helper's own record
+  (`cli_session`), and `agents resume NAME` falls back to starting the
+  worker anew on it (`--session ID` where the record hasn't it: the
+  service's `events.jsonl` in `~/.local/state/olo/rex-agents/…` has
+  every child's `cli_session_id`).
 - **A release is published from a checkout at origin/main's head, and
   that can be a worktree of its own** (`git worktree add --detach
   /var/tmp/NAME origin/main`, then `tools/publish-release.sh NOTES.md`

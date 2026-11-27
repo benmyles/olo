@@ -84,13 +84,16 @@ too: "always do it through tmux never a script that just goes silent".
                                      folder, /var/tmp/olo-agents/NAME, with its
                                      report, stays until `forget`; its builds a day
                                      more: below)
-  agents resume NAME [--result FILE] TEXT…
+  agents resume NAME [--result FILE] [--session ID] TEXT…
                                      bring a stopped worker back with its
                                      conversation (a child tab: `olo agent resume`),
                                      told TEXT, with a minder as at its start; FILE
                                      is what it is to write this time (DONE is then
                                      that file's, not its last report's). For a
-                                     second pass on its own work, after its review
+                                     second pass on its own work, after its review.
+                                     Where the service has trimmed its record, it
+                                     is started anew on its own conversation (by
+                                     the id kept at its stop, or ID)
   agents tidy                        end what nobody needs any more (list, watch and
                                      start do this too): an agent whose program has
                                      exited, one done and untouched for half an hour,
@@ -1042,7 +1045,7 @@ def launch_astra_review(name, cwd):
             native=["codex", "--model", ASTRA, "--effort", "max", "--sandbox", "workspace-write", "--approval", "never", "--prompt", first, "--", *plain])
 
 
-def launch(name, d, cwd, others, target=None, commands=True):
+def launch(name, d, cwd, others, target=None, commands=True, again=None):
     """An agy of its own in a tmux session, working in `cwd` (and
     reading `d`, its folder here, and `others`): started on its brief,
     with what it may run, and nothing of the person's screen in reach."""
@@ -1057,9 +1060,14 @@ def launch(name, d, cwd, others, target=None, commands=True):
     # lists nor written.)
     add = [a for x in folders[1:] for a in ("--add-dir", x)]
     first = f"Read {d}/brief.md (the rules, then your task) and do what it says."
-    agy = ["agy", "--model", MODEL, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
+    # (`again`: its own conversation taken up where it was left, by the
+    # id its CLI knows it by, and told these words: `resume`.)
+    taken_up = []
+    if again:
+        taken_up, first = ["--resume", again[0]], again[1]
+    agy = ["agy", "--model", MODEL, *taken_up, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
     session(name, cwd, env, agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--mode", "accept-edits",
-                                         "--settings", os.path.join(d, "settings.json"), *add, "--prompt", first])
+                                         "--settings", os.path.join(d, "settings.json"), *add, *taken_up, "--prompt", first])
 
 
 # Looks, code reviews and second investigators at once, apart from the
@@ -2015,6 +2023,18 @@ def end(name, sessions=True):
     if via(name) == "rex":
         # (The service keeps all it said as it stops it; its tab closes.)
         kept = ["--save", os.path.join(d, "transcript.txt")] if os.path.isdir(d) else []
+        # (What its CLI knows its conversation by, kept while the service
+        # still says: its record there is trimmed in time, and `resume`
+        # then has only this to take the conversation up by.)
+        seen_by = olo("status", child(name), "--json")
+        try:
+            its = json.loads(seen_by.stdout).get("cli_session_id") if seen_by.returncode == 0 else None
+        except ValueError:
+            its = None
+        m0 = meta(name)
+        if its and m0 is not None and m0.get("cli_session") != its:
+            m0["cli_session"] = its
+            save_meta(name, m0)
         if state(name) != "gone":
             r = olo("stop", child(name), "--force", "--json", *kept)
             # (Its own word that it ended: it answers without an error and
@@ -2164,7 +2184,7 @@ def keep_result(name):
     return kept
 
 
-def resume(name, text, result=None):
+def resume(name, text, result=None, session=None):
     """A helper that was stopped, brought back with its conversation and
     told `text` (`olo agent resume`: started again with what it was
     started with, in its own session of its CLI), with a minder as at
@@ -2188,7 +2208,24 @@ def resume(name, text, result=None):
     except ValueError:
         said = {}
     if not said.get("id"):
-        sys.exit(f"agents: {name} couldn't be brought back ({(r.stderr or r.stdout).strip()[:300]})")
+        # The service keeps an ended child's record only so long (its
+        # list is trimmed as children come and go: two builders stopped
+        # in the morning had none by noon, 2026-11-27). The conversation
+        # itself is the CLI's, by its own id: a worker is started anew on
+        # it, as at its start (its folder, its settings, its builds).
+        session = session or m.get("cli_session")
+        if not (session and m.get("crate")):
+            sys.exit(f"agents: {name} couldn't be brought back ({(r.stderr or r.stdout).strip()[:300]})" + ("" if session else f"; and its conversation's id isn't known here: `agents resume {name} --session ID …` with it (the service's events.jsonl has it as cli_session_id), or start it anew with a brief that says what it did"))
+        d = folder(name)
+        launch(name, d, ROOT, [], os.path.join(d, "target"), again=(session, text))
+        m = meta(name)
+        m.update({"seen": "", "seen_state": "", "said_at": time.time(), "cli_session": session})
+        m.pop("ended", None)
+        if result:
+            m["done"] = os.path.abspath(result)
+        save_meta(name, m)
+        print(f"agents: {name} is back, by its conversation's own id (the service had its record no more), and told; now wait on `tools/dev/agents watch`")
+        return
     minded = os.environ.get("OLO_AGENTS_MINDER") != "off" and os.path.exists(MINDER_RULES)
     if minded:
         asked = olo("mind", said["id"], "--with", MINDER, "--rules", MINDER_RULES, "--json")
@@ -2275,9 +2312,15 @@ def main():
     elif cmd == "stop" and rest:
         stop(rest[0])
     elif cmd == "resume" and len(rest) >= 2:
-        # resume NAME [--result FILE] TEXT…
-        result, words = (rest[2], rest[3:]) if rest[1] == "--result" and len(rest) >= 4 else (None, rest[1:])
-        resume(rest[0], " ".join(words), result)
+        # resume NAME [--result FILE] [--session ID] TEXT…
+        words, result, session = rest[1:], None, None
+        while len(words) >= 3 and words[0] in ("--result", "--session"):
+            if words[0] == "--result":
+                result = words[1]
+            else:
+                session = words[1]
+            words = words[2:]
+        resume(rest[0], " ".join(words), result, session)
     elif cmd == "forget" and rest:
         forget(rest[0])
     elif cmd == "attach" and rest:
