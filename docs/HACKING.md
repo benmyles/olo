@@ -22778,19 +22778,11 @@ question's numbered choices; Claude Code: "esc to interrupt" in its
 last line, "Esc to cancel" under a question); a new version of either
 that words these differently is fixed there, in `ASKING` and `WORKING`.
 
-So that no helper waits on a lead who is in the middle of something,
-the lead starts **a minder** with them: one subagent of the Agent tool
-(general-purpose, Opus 5.5 at max), whose standing instructions are
-`.claude/skills/olo-agents/minder.md` (it waits on `agents watch --for
-2` in the foreground, again and again; Ben, 2026-11-22: "launch a …
-subagent whose only job is to launch and manage the tmux sessions for
-these tmux subagents so that they get their responses quickly"; a
-question had waited 66 seconds; 2026-11-25: "NOTHING should still be
-using fable -- everything should be either opus 5.5 max or neon 4
-xhigh"). It starts the agents it is
-given, waits on `agents watch`, says yes or no at once to what its
-written lists cover, and hands back what they don't, with each result's
-path. It does none of the work; it is the one use of the Agent tool.
+*(Historical note, superseded 2026-11-27 by the native Rex `agy` Neon 4
+`high` minder above: previously the lead started a minder as an
+Agent-tool Opus 5.5 `max` subagent looping on `agents watch --for 2`.
+Do not use the Agent tool or Opus minders — use `tools/dev/agents minder
+start` as documented above.)*
 
 What an agy agent may do without asking is given to its run alone
 (`agy --settings FILE`, session-only: the person's own agy settings
@@ -22960,9 +22952,10 @@ trial of the tool itself, `OLO_AGENTS_DIR` and `OLO_REVIEWS_DIR` name
 other folders (outside the repository tried: inside it, they are part
 of "what isn't committed", a new change at every asking). `--tree DIR` reviews
 another checkout (a scratch one, while builders are in the shared
-tree). The tool lets six looks, reviews and investigators run at once
-(three before: a change has three reviewers now, and every session on
-the computer counts in one folder).
+tree). The tool lets ten looks, reviews and investigators run at once
+per subtree (`HELPERS_MOST = 10`; enough for concurrent builders × two
+code reviewers or three visual reviewers without blocking sibling
+checkouts).
 
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`

@@ -16,13 +16,11 @@
 # tools/dev/agy-review (for code): changes with visual design work use all
 # three reviewers.
 #
-# The look is an agy in a tmux session, as every agent here is
-# (`tools/dev/agents look`: this is that), so it can be read while it
-# looks (`tools/dev/agents peek agy-FOLDER`), answered if it asks
-# anything, and told more (`agents say`). Run this in the background: it
-# prints a line a minute of what the look is doing, and returns when the
-# review is written (0), or as soon as the look needs you (3: answer it,
-# then run this again with the same pictures to go on waiting). It works
-# from the pictures' folder, not the repository, and no command of its
-# goes ahead unasked.
+# The look is an agy in a native Rex child tab (`olo agent`, or tmux
+# fallback when outside Rex) via `tools/dev/agents look`, so it can be
+# read while it looks (`tools/dev/agents peek agy-FOLDER`), answered if
+# it asks anything, and told more (`agents say`). Use `--no-wait` under
+# a minder (and `tools/dev/agents collect NAME` once finished). It works
+# from its own scratch folder, not the repository, with read-only
+# commands (`READING_RO`) and `write_file` restricted to its own folder.
 exec /usr/bin/python3 "$(dirname "$0")/agents" look "$@"

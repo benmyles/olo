@@ -1,6 +1,6 @@
 ---
 name: olo-agents
-description: Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead -> Minder (agy Gemini 4 Neon high) -> Builders (agy Gemini 4 Neon xhigh), Second Investigator (agy Neon 4 xhigh), Code Reviewers (Codex Astra 6.2 xhigh + agy Gemini 4 Neon xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 xhigh alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations.
+description: "Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead -> Minder (agy Gemini 4 Neon high) -> Builders (agy Gemini 4 Neon xhigh), Second Investigator (agy Neon 4 xhigh), Code Reviewers (Codex Astra 6.2 xhigh + agy Gemini 4 Neon xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 xhigh alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations."
 ---
 
 # Subagents: Lead ▸ Minder (`agy` Neon 4 `high`) ▸ Builders & Reviewers

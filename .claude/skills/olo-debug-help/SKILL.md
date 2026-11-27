@@ -69,37 +69,15 @@ looking at, with a reproduction and a patch that checked out.
    computer). And say in it that a test's processes are only the PIDs
    its launcher gave it: the person's own apps have the same names.
 
-2. **Start it in the background** and go on with other work:
+2. **Start it through your minder** (preferred in Rex, so the investigator nests under `Lead ▸ minder ▸ help-…` and shares the minder's watch): have the minder run:
 
    ```sh
-   tools/dev/agy-help /var/tmp/YOURS/brief.md
+   tools/dev/agy-help /var/tmp/YOURS/brief.md --no-wait
    ```
 
-   Run it with `run_in_background`. It starts the helper, an `agy` in a
-   tmux session named `help-YOURS` (Gemini 4 Neon at xhigh, in the
-   repository), with rules in front of your brief: no changes to the
-   working tree, no commits, the person's session left alone, headless
-   tests under an `agy-` name, scratch in the brief's folder, no
-   process looked up by its name. Then it waits, printing a line a
-   minute of what the helper is doing, and returns:
-   - with 0 when the helper has written `answer.md` (its findings) in
-     the brief's folder and its turn is over; `notes.md` beside it
-     holds each finding as it was made, and is all there is if the run
-     ended early;
-   - with 3 as soon as the helper needs you: it asks leave for a
-     command that isn't routine (`tools/dev/agents approve help-YOURS
-     y|p|no`), has a question, or has shown nothing new for 15 minutes.
-     Deal with it, then run the same `agy-help` command again: it finds
-     the helper it started and goes on waiting.
+   (Outside Rex or when running standalone without a minder, omit `--no-wait` and run it in the background.) It starts the helper (`help-YOURS`, `agy` Gemini 4 Neon at `xhigh`, in a Rex child tab or tmux fallback), with rules in front of your brief: no changes to the working tree, no commits, the person's session left alone, headless tests under an `agy-` name, scratch in the brief's folder, no process looked up by its name. When finished it writes `answer.md` (its findings) in the brief's folder; `notes.md` beside it holds each finding as it was made.
 
-   It can take an hour. Meanwhile read its screen whenever you like
-   (`tools/dev/agents peek help-YOURS`), and tell it what you learn on
-   your own line (`tools/dev/agents say help-YOURS "…"`): a theory
-   ruled out, a new log line. Reading, searching, building and testing
-   it does without asking; what its rules forbid is refused outright
-   (the `olo-agents` skill, "Running them", has the whole of it). When
-   you've read the answer, ask what's unclear (`say`: it is still
-   there), then `tools/dev/agents stop help-YOURS` and `forget`.
+   It can take an hour. Meanwhile read its screen whenever you like (`tools/dev/agents peek help-YOURS`), and steer it through your minder (`tools/dev/agents say help-YOURS "…"`): a theory ruled out, a new log line. Reading, searching, building and testing it does without asking; what its rules forbid is refused outright (see the `olo-agents` skill and `tools/dev/agents allowed`). When you've read the answer, ask what's unclear (`say`: it is still there), then have the minder `stop` and `forget` it.
 
    Its service may stop a run whose work reads like an attack on a
    system. Say what such work is in plain words (a reliability review

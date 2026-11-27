@@ -8,11 +8,11 @@ Ben, 2026-11-27: "let them do whatever they need to reasonably do to do their jo
 
 Read each subagent's brief first (`/var/tmp/olo-agents/NAME/brief.md`). For every approval prompt:
 - Ask: is this safe and reasonable for this agent's assigned task?
-- If **yes**: approve immediately (`olo agent approve ID --once --box BOX_KEY`).
+- If **yes**: approve immediately. Prefer **`--session`** ("always allow for this session/conversation") whenever the approval box offers an `allow_session` choice whose prefix is safe and scoped (read-only inspection, `git` reads, `jato`/`cargo`, `tsession`, scripts under the agent's own scratch folder) to avoid approval noise — the goal is not to micromanage or babysit, only to surface important things. Use **`--once`** when no `allow_session` choice exists or when the prefix would be overly broad/destructive (e.g. bare `rm`, `bash -c`, `python3 -c`, `env`, `timeout`). **Never** pick `dont_ask_again` ("Persist to settings.json") or `switch_mode` ("auto mode").
 - If **no** (dangerous, out of scope, or safer another way): refuse (`olo agent approve ID --no --box BOX_KEY --reason "…"`), explaining the safer way.
 - If **unsure**: do NOT guess — escalate word for word (`olo agent escalate "…"`) and leave the agent waiting.
 
-## Yes, Immediately (`--once`)
+## Yes, Immediately (`--session` where prefix is safe/scoped, else `--once`)
 
 - Anything read-only: files in the repository or `/var/tmp`, git read-only history/status/diff, processes the agent itself started, system facts, logs of programs its brief names (`olo-logs --print --program NAME`). Never read credentials, keys, tokens, mail, or shell history.
 - Building, checking, testing, clippy, and crate-scoped formatting with `jato` / `cargo fmt -p PKG`, and Olo's test tools under `tools/dev/` (never `tools/dev/agents*`, `agy-help`, `agy-look`, `agy-review`, `astra-review`, `opus-look` by a builder).
@@ -22,11 +22,12 @@ Read each subagent's brief first (`/var/tmp/olo-agents/NAME/brief.md`). For ever
 - Killing a process by exact PID that the agent itself started.
 - Running `claude`, `codex`, or `agy` ONLY when the agent's task explicitly tests those CLIs (with an isolated config/home under `/var/tmp`). Never delegating its work to another agent.
 - Isolated test Rex server / agents dir / XDG runtime dir strictly under `/var/tmp`.
-- First-time folder trust prompts for the agent's own workspace/scratch folder.
+- Narrow investigator scratch-worktree exception: `git worktree add` (and `git worktree remove` of that exact scratch worktree) strictly inside a second investigator's own `/var/tmp` scratch folder (`--once`), when its brief authorizes building a candidate fix without touching the shared working tree.
+- First-time folder trust dialogs for the agent's own workspace/scratch folder (these arrive as `waiting_question`, not `waiting_approval`: inspect where the cursor mark stands first, then confirm with `olo agent send ID --force --key …`, never `olo agent approve`).
 
 ## No, Immediately (`--no --reason "…"`)
 
-- Any git command that mutates state (`add`, `commit`, `stash`, `checkout`, `switch`, `reset`, `restore`, `rebase`, `merge`, `clean`, `push`).
+- Any git command that mutates repository/branch state (`add`, `commit`, `stash`, `checkout`, `switch`, `reset`, `restore`, `rebase`, `merge`, `clean`, `push`; only the narrow investigator scratch-worktree exception above is allowed).
 - `sudo` or `su`.
 - Anything that opens a window on, reloads, upgrades, or installs into the person's desktop session (`tools/install-session.sh`, `cargo install`, running GUI binaries outside `tsession`, `olo open`).
 - Modifying, moving, or deleting files outside the agent's assigned crate(s) and scratch folder, or writing anywhere in `$HOME` outside the repository.

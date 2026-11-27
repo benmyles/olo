@@ -358,11 +358,16 @@ are universal and non-negotiable:
     never has to approve the minder. When a watch times out (`124`) or
     the minder sits `idle`/`done` while children are still active, check
     its status and scrollback (`olo agent status` / `olo agent read`) to
-    verify its own background `olo agent watch` is running and unstick,
-    re-prompt, or restart it immediately if it stalled or wedged. The
-    minder in turn keeps an active watch on all subagents under it at
-    all times. Never run children (or a minder) without an active watch,
-    and never double-watch the same child.
+    verify its own background `olo agent watch` is running and prefer
+    steering/re-prompting the existing minder tab if it stalled. If a
+    minder truly wedges and must be restarted, note that Rex promotes
+    its surviving children to the lead's tab on exit (so a fresh minder
+    tab cannot watch those siblings): the lead must watch and mind any
+    promoted surviving children directly (or resume stopped ones under
+    the new minder) until ownership is restored. The minder in turn
+    keeps an active watch on all subagents under it at all times. Never
+    run children (or a minder) without an active watch, and never
+    double-watch the same child.
 - **Builders, investigators, and reviewers: exact models and efforts.**
   Every helper uses one of these exact models and efforts — nothing
   else (no Fable, no Claude Opus minders, no `max` effort for
@@ -412,10 +417,14 @@ are universal and non-negotiable:
   ahead unasked (`tools/dev/agents allowed`, session-only `--settings`,
   never touching the person's own settings); what is dangerous is
   refused outright; for the rest, **give a helper whatever its task
-  reasonably needs** — deny only what is dangerous, out of line with
-  the task, or done safer another way (and say which way). Never
-  approve a push, a commit, anything on the person's session, deletion
-  outside scope, `olo agent prune`, or `sudo`.
+  reasonably needs** — prefer `--session` ("always allow for this
+  session") whenever the prompt offers a safe, scoped prefix so routine
+  commands stop generating approval noise (never persist to
+  `settings.json` or session-allow broad/destructive prefixes), and deny
+  only what is dangerous, out of line with the task, or done safer
+  another way (and say which way). Never approve a push, a commit,
+  anything on the person's session, deletion outside scope, `olo agent
+  prune`, or `sudo`.
 - **Stop each helper when done.** Once an agent's result is read and
   nothing more is needed of it, stop it (`tools/dev/agents stop NAME`,
   which keeps its transcript and stops any `agy-NAME…` test session it

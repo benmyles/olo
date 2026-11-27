@@ -28,10 +28,12 @@ something nobody here has is in "Blocked", with what it waits for.
     change", twenty-one findings and five on its tests) has been read
     by nobody against the code: each is a claim until made to happen;
     what is real is fixed with a test that fails first, and then no
-    further review; (2) **one code review of `f1b5e9267` and
-    `40e7b92e5`**, which have had none; (3) the other lead's note at
-    least twenty minutes before this host's agents service is handed
-    to it (CLAUDE.md, "Leave the host's agents alone too").
+    further review; (2) **code reviews (both Codex Astra 6.2 `xhigh` and
+    Agy Gemini 4 Neon `xhigh`) of `f1b5e9267` and `40e7b92e5`** (plus
+    any subsequent commits before release), which have had none; (3)
+    the other lead's note at least twenty minutes before this host's
+    agents service is handed to it (CLAUDE.md, "Leave the host's agents
+    alone too").
   - **Agent Screens for Rex hosts**: the entry of that name below.
   - What the reviews of the answering code keep finding is one thing
     in many places: several tasks read a child's screen and type into
@@ -1027,6 +1029,16 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Rex: suppress notifications for minded subagents by default, configurable in Rex Settings**
+  (Ben, 2026-11-27: "make it so that by default rex doesn't notify me if
+  a subagent that has a minder is waiting on an approval etc. (by
+  default only notify me if lead agents need an approval). however, make
+  this configurable in rex settings"). Applies to any subagent watched
+  by a minder (whether via `--minder` / `minded_by` or nested under a
+  minder tab in the `Lead ▸ minder ▸ subagents` hierarchy), so by
+  default only top-level/lead agents (and escalations to the lead) raise
+  desktop notifications, with a Rex Settings toggle/option to notify for
+  all agents if desired.
 - **Rex's Host window and its confirmations, as two reviewers saw them
   beside the limits tweak** (2026-11-27; there before it; their words).
   Opus: "All three confirmations: the 30 pt alert stripe is empty. The
