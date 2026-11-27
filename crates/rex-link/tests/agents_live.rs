@@ -2401,13 +2401,16 @@ fn live_codex_queued_message_stays_working_and_bg_or_resumed_rests() {
 
         // Case A: tool running (`· 1 background terminal running`) + multi-line draft & Tab-queued follow-up.
         rig.mock.clear_queues();
-        rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::ExecCommand { command: "sh -c \"sleep 8; echo TOOL_OK\"".into(), escalated: false, reason: "Run 8s tool".into() }] });
+        rig.mock
+            .push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::ExecCommand { command: "sh -c \"sleep 14; echo TOOL_OK\"".into(), escalated: false, reason: "Run 14s tool".into() }] });
         rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["TURN1_DONE".into()], delay_ms: 0 }] });
         rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["TURN2_QUEUED_DONE".into()], delay_ms: 0 }] });
         let a = codex_start("queued-tool", &["--prompt", "Run the slow tool."]);
         let _ = rig.run_olo_json(&a.iter().map(String::as_str).collect::<Vec<_>>()).await;
         // Wait until the running command's status line shows `background terminal` on screen.
-        let dl = Instant::now() + Duration::from_secs(10);
+        // (Twenty seconds for Codex to come up and begin, of a command that runs fourteen: with ten and
+        // eight, under a load of 120 here, Codex was not up in time, 2026-11-27.)
+        let dl = Instant::now() + Duration::from_secs(20);
         let mut saw_bg_line = false;
         while Instant::now() < dl {
             let (_, scr, _) = rig.run_olo(&["agent", "read", "queued-tool", "--lines", "40"]).await;

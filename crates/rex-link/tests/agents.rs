@@ -1948,9 +1948,12 @@ fn a_codex_in_a_turn_by_its_file_is_not_at_rest() {
     };
     let said =
         |text: &str, phase: &str| json!({ "type": "response_item", "payload": { "type": "message", "role": "assistant", "phase": phase, "content": [{ "type": "output_text", "text": text }] } });
-    let begun = |asked: &str| {
+    // (`at`: the time its file gives the turn's beginning. One long past is of the conversation's life before
+    // this child; one to come stands for "since this child was made".)
+    let (long_ago, in_this_life) = ("2020-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
+    let begun = |asked: &str, at: &str| {
         [
-            json!({ "type": "event_msg", "payload": { "type": "task_started" } }),
+            json!({ "timestamp": at, "type": "event_msg", "payload": { "type": "task_started" } }),
             json!({ "type": "response_item", "payload": { "type": "message", "role": "user", "content": [{ "type": "input_text", "text": asked }] } }),
         ]
     };
@@ -1993,7 +1996,7 @@ fn a_codex_in_a_turn_by_its_file_is_not_at_rest() {
         rig.wait("the stand-in to listen", || rig.staged("reads", "ready").exists());
         rig.show("reads", &codex_idle("Ready."));
         // It takes its prompt up: the file says a task is started, the screen says it works.
-        add(&file, &begun("Review it."));
+        add(&file, &begun("Review it.", in_this_life));
         rig.show("reads", &codex_working());
         rig.wait("the service to have seen it at work", || rig.status("reads")["answers"].is_u64());
         let since = rig.status("reads")["cursor"].as_u64().unwrap();
@@ -2017,12 +2020,13 @@ fn a_codex_in_a_turn_by_its_file_is_not_at_rest() {
         assert_eq!((&answer["ended_as"], &answer["last_message"]), (&json!("done"), &json!("It says forty-two.")), "{answer}");
     });
 
-    // 2. A file left saying a task is started, by a turn that never ended, and a Codex that stands still at its
-    //    prompt: at work for as long as the file is believed (three seconds here), then at rest, and told so.
+    // 2. A file that says a task is started, and a Codex that stands still at its prompt and says nothing of
+    //    itself. Where the turn is of this child's life (one that never ended): at work for as long as the file
+    //    is believed (three seconds here), then at rest, and told so.
     const LEFT: &str = "5f0c1f0e-3333-4a33-8a33-2f8f0e0a0003";
     let left = rollout(LEFT);
     add(&left, &[json!({ "type": "session_meta", "payload": { "id": LEFT, "cwd": rig.work() } })]);
-    add(&left, &begun("Something, long ago."));
+    add(&left, &begun("Something that never ended.", in_this_life));
     let started = rig.start_child("codex", "still", &["--resume", LEFT, "--cwd", &work]);
     let at = Instant::now();
     rig.show("still", &codex_idle("Ready."));
@@ -2032,6 +2036,41 @@ fn a_codex_in_a_turn_by_its_file_is_not_at_rest() {
     assert_eq!(told["state"], "idle", "{told}");
     assert!(at.elapsed() >= Duration::from_millis(2500), "told at rest while its file was still believed: {:?}", at.elapsed());
     assert!(at.elapsed() < Duration::from_secs(12), "{:?}", at.elapsed());
+    //    Where the turn is of the conversation's life before this child (killed then; the conversation taken
+    //    up again with nothing to do): at rest at once, lively as it is while it starts. (It was "at work" two
+    //    and a half seconds after its start: the live suite under load, 2026-11-27.)
+    const BEFORE: &str = "5f0c1f0e-6666-4a66-8a66-2f8f0e0a0006";
+    let before = rollout(BEFORE);
+    add(&before, &[json!({ "type": "session_meta", "payload": { "id": BEFORE, "cwd": rig.work() } })]);
+    add(&before, &begun("Something, long ago.", long_ago));
+    let started = rig.start_child("codex", "again", &["--resume", BEFORE, "--cwd", &work]);
+    let at = Instant::now();
+    for words in 1..=3 {
+        rig.show("again", &codex_idle(&format!("Ready.{}", " Still drawing.".repeat(words))));
+        std::thread::sleep(Duration::from_millis(250));
+        assert_ne!(rig.status("again")["state"], "working", "at work by a turn of its life before: {}", rig.status("again"));
+    }
+    let (code, out, err) = rig.olo(&["watch", "again", "--since", &started["cursor"].as_u64().unwrap().to_string(), "--on", "idle,done", "--timeout", "20", "--json"]);
+    assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
+    assert!(at.elapsed() < Duration::from_millis(2500), "kept back by a turn of its life before: {:?}", at.elapsed());
+
+    // 3. The same file, and a Codex that says what it is doing itself (OSC 7501, as 0.172 does): its own word
+    //    is what is believed, and "idle" is its word too, though it says it by taking its record away. At rest
+    //    at once, not when the file's word has run out. (It was "at work" for those seconds: the live suite,
+    //    2026-11-27, "resumed-after-kill Codex at rest must NEVER be stuck working".)
+    const SPOKE: &str = "5f0c1f0e-5555-4a55-8a55-2f8f0e0a0005";
+    let spoke = rollout(SPOKE);
+    add(&spoke, &[json!({ "type": "session_meta", "payload": { "id": SPOKE, "cwd": rig.work() } })]);
+    add(&spoke, &begun("Something that never ended.", in_this_life));
+    let started = rig.start_child("codex", "spoke", &["--resume", SPOKE, "--cwd", &work]);
+    // (As Codex starts: "working" for an instant, then "idle".)
+    rig.show("spoke", &format!("\x1b]7501;state=working\x07{}", codex_idle("Ready.")));
+    rig.wait("the service to have its own word", || rig.status("spoke")["state"] == "working");
+    let at = Instant::now();
+    rig.show("spoke", &format!("\x1b]7501;state=idle\x07{}", codex_idle("Ready.")));
+    let (code, out, err) = rig.olo(&["watch", "spoke", "--since", &started["cursor"].as_u64().unwrap().to_string(), "--on", "idle,done", "--timeout", "20", "--json"]);
+    assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
+    assert!(at.elapsed() < Duration::from_millis(2000), "a Codex that says it is idle was kept at work by its file: {:?}", at.elapsed());
 }
 
 /// A conversation taken up again with a prompt is not done by its old

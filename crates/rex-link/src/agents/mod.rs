@@ -58,22 +58,26 @@ mod tests {
         assert!(!takes_up(true, None, None));
 
         let now = 1_000_000;
-        // Codex's file says a task is started and not complete, and it
-        // wrote to its screen a second ago: in a turn, whatever the screen reads.
-        assert!(turn_on(AgentCli::Codex, Some("working"), 0, now - 1_000, now, TURN_ON_MS));
+        let (made, this_life, life_before) = (900_000, Some(905_000), Some(100_000));
+        // Codex's file says a task is started and not complete, begun in this child's life, and it wrote to
+        // its screen a second ago: in a turn, whatever the screen reads.
+        assert!(turn_on(AgentCli::Codex, Some("working"), this_life, made, 0, now - 1_000, now, TURN_ON_MS));
         // Or wrote its file a second ago.
-        assert!(turn_on(AgentCli::Codex, Some("working"), now - 1_000, now - 60_000, now, TURN_ON_MS));
+        assert!(turn_on(AgentCli::Codex, Some("working"), this_life, made, now - 1_000, now - 60_000, now, TURN_ON_MS));
         // Its file says the turn is over, was aborted, or says nothing: by its screen.
         for said in [Some("done"), Some("aborted"), Some("waiting"), Some("error"), Some("unknown"), None] {
-            assert!(!turn_on(AgentCli::Codex, said, now, now, now, TURN_ON_MS), "{said:?}");
+            assert!(!turn_on(AgentCli::Codex, said, this_life, made, now, now, now, TURN_ON_MS), "{said:?}");
         }
-        // A file left saying "working" by a turn that was killed, the
-        // agent still for longer than the file is believed: at rest.
-        assert!(!turn_on(AgentCli::Codex, Some("working"), now - TURN_ON_MS, now - TURN_ON_MS - 1, now, TURN_ON_MS));
-        assert!(!turn_on(AgentCli::Codex, Some("working"), 0, 0, now, TURN_ON_MS));
+        // A turn of the conversation's life before this child (killed then, the file left saying so), or a
+        // file that doesn't say when its turn began: not this child's turn, however lively it is as it starts.
+        assert!(!turn_on(AgentCli::Codex, Some("working"), life_before, made, now, now, now, TURN_ON_MS));
+        assert!(!turn_on(AgentCli::Codex, Some("working"), None, made, now, now, now, TURN_ON_MS));
+        // A turn of its own that never ended, the agent still for longer than the file is believed: at rest.
+        assert!(!turn_on(AgentCli::Codex, Some("working"), this_life, made, now - TURN_ON_MS, now - TURN_ON_MS - 1, now, TURN_ON_MS));
+        assert!(!turn_on(AgentCli::Codex, Some("working"), this_life, made, 0, 0, now, TURN_ON_MS));
         // The others say on their screens that a turn is on, all through it.
-        assert!(!turn_on(AgentCli::Claude, Some("working"), now, now, now, TURN_ON_MS));
-        assert!(!turn_on(AgentCli::Agy, Some("working"), now, now, now, TURN_ON_MS));
+        assert!(!turn_on(AgentCli::Claude, Some("working"), this_life, made, now, now, now, TURN_ON_MS));
+        assert!(!turn_on(AgentCli::Agy, Some("working"), this_life, made, now, now, now, TURN_ON_MS));
     }
 
     #[test]

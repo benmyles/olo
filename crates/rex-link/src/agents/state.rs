@@ -244,8 +244,21 @@ pub const TURN_ON_LOOK_MS: u64 = 500;
 /// saying "working" by a turn that was killed says nothing of an agent
 /// that has been still that long: that one is at rest, and told so.
 /// (`believed_ms`: [`TURN_ON_MS`], or a test's own.)
-pub fn turn_on(cli: AgentCli, transcript_state: Option<&str>, written_ms: u64, output_ms: u64, now_ms: u64, believed_ms: u64) -> bool {
-    cli == AgentCli::Codex && transcript_state == Some("working") && now_ms < written_ms.max(output_ms).saturating_add(believed_ms)
+///
+/// And only of a turn that began in this child's own life (`turn_ms`,
+/// the time on the file's last `task_started`, against `started_ms`,
+/// when the child was made, two seconds' leave): a conversation taken
+/// up again brings its file with it, and a turn that was killed in its
+/// life before says "working" there still. Started again with nothing
+/// to do, and slow to say so itself on a loaded host, such a Codex was
+/// "at work" two and a half seconds after its start (the live suite,
+/// 2026-11-27: "resumed-after-kill Codex at rest must NEVER be stuck
+/// working").
+pub fn turn_on(cli: AgentCli, transcript_state: Option<&str>, turn_ms: Option<u64>, started_ms: u64, written_ms: u64, output_ms: u64, now_ms: u64, believed_ms: u64) -> bool {
+    cli == AgentCli::Codex
+        && transcript_state == Some("working")
+        && turn_ms.is_some_and(|began| began.saturating_add(2000) >= started_ms)
+        && now_ms < written_ms.max(output_ms).saturating_add(believed_ms)
 }
 
 /// A child's conversation's file as it stands at a rest: how long it

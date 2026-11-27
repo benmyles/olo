@@ -119,6 +119,17 @@ pub struct Live {
     read: Option<Reading>,
     /// What its program says of itself (OSC 7501), by the record's name.
     statuses: Vec<(String, Activity, Option<String>)>,
+    /// It has said what it is doing itself at some time (an OSC 7501
+    /// record come, or gone): a program that speaks so says "idle" by
+    /// taking its record away, and then has none. Whether it *ever*
+    /// spoke is what tells a Codex whose own word is to be believed
+    /// from one that gives none (`state::turn_on`): by the records it
+    /// has now, a Codex at rest after it was killed and started again
+    /// "gave none", and its rollout, left saying a task was started,
+    /// made it "at work" for ten seconds more (the live suite under
+    /// load, 2026-11-27: "resumed-after-kill Codex at rest must NEVER
+    /// be stuck working").
+    reported: bool,
     pub exit_code: Option<i32>,
     /// The terminal's own process (the shell the server started).
     pub pid: Option<i32>,
@@ -166,6 +177,7 @@ impl Live {
             last_state_change_at: now,
             read: None,
             statuses: Vec::new(),
+            reported: false,
             exit_code: None,
             pid: None,
             rows: 0,
@@ -321,7 +333,20 @@ fn transcript_written_ms(entry: &NativeSubagent, info: Option<&Value>) -> u64 {
 pub(super) fn standing(entry: &NativeSubagent, cls: &ScreenClassification, info: Option<&Value>, alive: bool, output_ms: u64, reports: bool) -> (SubagentLiveState, Option<String>, bool) {
     let tx = info.and_then(|v| v["transcript_state"].as_str());
     let (state, error, aborted) = olo_rex_link::agents::effective_state(cls, tx, info.and_then(|v| v["transcript_error"].as_str()), alive);
-    if state == SubagentLiveState::Idle && !aborted && !reports && state::turn_on(entry.cli, tx, transcript_written_ms(entry, info), output_ms, now_unix_ms(), turn_on_ms()) {
+    if state == SubagentLiveState::Idle
+        && !aborted
+        && !reports
+        && state::turn_on(
+            entry.cli,
+            tx,
+            info.and_then(|v| v["turn_started_ms"].as_u64()),
+            to_unix_ms(entry.started_at).max(0) as u64,
+            transcript_written_ms(entry, info),
+            output_ms,
+            now_unix_ms(),
+            turn_on_ms(),
+        )
+    {
         return (SubagentLiveState::Working, None, false);
     }
     (state, error, aborted)
@@ -611,7 +636,7 @@ impl Service {
                     pid: live.pid.or(entry.last_pid),
                     survey: live.survey_stays,
                     expected: read.expected,
-                    reports: !live.statuses.is_empty(),
+                    reports: live.reported,
                 };
             }
             (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.cursor))
@@ -662,7 +687,7 @@ impl Service {
                 live.box_now = None;
             }
             live.survey_stays = survey;
-            (out, chg, pid, reports) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), !live.statuses.is_empty());
+            (out, chg, pid, reports) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported);
         }
         Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected, reports }
     }
@@ -1468,7 +1493,16 @@ impl Service {
             // believed.
             if state == SubagentLiveState::Idle
                 && !again.reports
-                && state::turn_on(entry.cli, info.and_then(|v| v["transcript_state"].as_str()), transcript_written_ms(&entry, info), again.last_output_at, now_unix_ms(), turn_on_ms())
+                && state::turn_on(
+                    entry.cli,
+                    info.and_then(|v| v["transcript_state"].as_str()),
+                    info.and_then(|v| v["turn_started_ms"].as_u64()),
+                    to_unix_ms(entry.started_at).max(0) as u64,
+                    transcript_written_ms(&entry, info),
+                    again.last_output_at,
+                    now_unix_ms(),
+                    turn_on_ms(),
+                )
             {
                 {
                     let mut st = service.lock();
@@ -1727,6 +1761,7 @@ impl Service {
                         (r["id"].as_str().unwrap_or_default().to_owned(), Activity::of(r["state"].as_str().unwrap_or_default()), r["msg"].as_str().or_else(|| r["title"].as_str()).map(str::to_owned))
                     })
                     .collect();
+                live.reported |= !live.statuses.is_empty();
             }
         }
         if let Some(code) = exit_code {
@@ -1781,6 +1816,7 @@ impl Service {
                                     let mut st = self.lock();
                                     let Some(live) = st.live.get_mut(&id) else { return };
                                     let before = live.activity().0;
+                                    live.reported = true;
                                     match live.statuses.iter_mut().find(|(name, _, _)| *name == said.0) {
                                         Some(old) => *old = said,
                                         None => live.statuses.push(said),
@@ -1796,6 +1832,7 @@ impl Service {
                                 let gone: Vec<&str> = inner["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
                                 if let Some(live) = self.lock().live.get_mut(&id) {
                                     live.statuses.retain(|(name, _, _)| !gone.contains(&name.as_str()));
+                                    live.reported = true;
                                 }
                                 self.poke(&id);
                             }

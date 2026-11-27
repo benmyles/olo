@@ -32114,7 +32114,14 @@ agents through the night, could not move to it.
     seconds). While that holds no rest is told and both are read again
     every half second (`TURN_ON_LOOK_MS`). Never by the file alone:
     one left at "working" by a turn that was killed says so for ever
-    of a Codex that is at rest.
+    of a Codex that is at rest. And only of a turn begun in this
+    child's own life (the time on the rollout's last `task_started`,
+    against when the child was made): a conversation taken up again
+    brings its file with it, and a Codex started again with nothing to
+    do, slow on a loaded host to say "idle" itself, was "at work" by
+    the turn that was killed in its life before. Whether a Codex gives
+    a word of its own is whether it *ever* did (`Live::reported`): it
+    says "idle" by taking its record away, and then has none.
   - A turn that failed ends in the rollout with `task_complete` and its
     error (a refused request, a stream cut short past its retries):
     read as an error, where it was "done".
