@@ -192,6 +192,22 @@ enum Msg {
     Glances,
     /// An app's widget provider ended (`glances`).
     GlanceEnded(&'static str),
+    /// An inbox's local state changed (hits, height and widget layer all redraw).
+    InboxWidgets,
+    /// The serialized inbox bus worker finished `ClearMany`.
+    InboxCleared {
+        widget: u32,
+        generation: u64,
+        result: Result<(Vec<u32>, String, String), ()>,
+    },
+    /// The serialized inbox bus worker finished `UndoClear`.
+    InboxUndone {
+        widget: u32,
+        generation: u64,
+        result: Result<Vec<u32>, ()>,
+    },
+    /// Deskbar's single cancellable inbox timer fired.
+    InboxTimer,
 
     // A bar's (or the model's own), to the app.
     /// The model changed under a bar's hand: every bar draws again.
@@ -227,6 +243,10 @@ impl Msg {
             Msg::Sources(_) => "sources",
             Msg::Glances => "glances",
             Msg::GlanceEnded(_) => "glance ended",
+            Msg::InboxWidgets => "inbox widgets",
+            Msg::InboxCleared { .. } => "inbox cleared",
+            Msg::InboxUndone { .. } => "inbox undone",
+            Msg::InboxTimer => "inbox timer",
             Msg::Changed => "changed",
             Msg::Tick => "tick",
             Msg::Displays => "displays",
@@ -1422,12 +1442,49 @@ impl Deskbar {
             Some((action @ ("inbox-dismiss" | "inbox-snooze"), rest)) => {
                 let mut parts = rest.split(':').map(|p| p.parse::<u32>().ok());
                 if let (Some(Some(widget)), Some(Some(item))) = (parts.next(), parts.next()) {
-                    self.glances.dealt_with(widget, item);
-                    tell(Msg::Meters(Vec::new()));
+                    let attention = self
+                        .glances
+                        .inbox(widget)
+                        .and_then(|(cards, at, ..)| cards.get(at).filter(|c| c.id == item).or_else(|| cards.iter().find(|c| c.id == item)).map(|c| c.attention))
+                        .unwrap_or(false);
+                    self.glances.dealt_with(widget, attention, item);
+                    tell(Msg::InboxWidgets);
                     match parts.next().flatten() {
                         Some(minutes) if action == "inbox-snooze" => self.run_command(&format!("run:olo-notifications --snooze {item} {minutes}")),
                         _ => self.run_command(&format!("run:olo-notifications --dismiss {item}")),
                     }
+                }
+            }
+            // Every captured unpinned notification of an inbox cleared
+            // ("WIDGET:ID1@INST1,ID2@INST2,…"): receipt shown at once for 8 s,
+            // and one `ClearMany` call queued on the serialized bus worker.
+            Some(("inbox-clear", rest)) => {
+                if let Some((widget, captured)) = parse_inbox_clear(rest)
+                    && let Some((generation, targets)) = self.glances.begin_clear_all(widget, &captured)
+                {
+                    tell(Msg::InboxWidgets);
+                    enqueue_inbox_op(InboxOp::ClearMany { widget, generation, targets });
+                }
+            }
+            // Undo on an inbox's 8-second post-clear receipt ("WIDGET:GEN").
+            Some(("inbox-undo", rest)) => {
+                let mut parts = rest.split(':');
+                if let (Some(Ok(widget)), Some(Ok(generation))) = (parts.next().map(str::parse::<u32>), parts.next().map(str::parse::<u64>))
+                    && let Some(maybe_req) = self.glances.begin_undo(widget, generation)
+                {
+                    tell(Msg::InboxWidgets);
+                    if let Some(req) = maybe_req {
+                        enqueue_inbox_op(InboxOp::UndoClear(req));
+                    }
+                }
+            }
+            // Dismiss a failure/no-op notice receipt ("WIDGET:GEN").
+            Some(("inbox-dismiss-notice", rest)) => {
+                let mut parts = rest.split(':');
+                if let (Some(Ok(widget)), Some(Ok(generation))) = (parts.next().map(str::parse::<u32>), parts.next().map(str::parse::<u64>))
+                    && self.glances.dismiss_notice_receipt(widget, generation)
+                {
+                    tell(Msg::InboxWidgets);
                 }
             }
             // One of Olo's apps (with ⌘ held, a copy of its own beside one
@@ -1978,6 +2035,20 @@ impl Deskbar {
             Msg::GlanceEnded(app) => {
                 self.glances.ended(app, &proxy);
                 return Taken::Nothing;
+            }
+            Msg::InboxWidgets => return Taken::Widgets,
+            Msg::InboxCleared { widget, generation, result } => {
+                let out = self.glances.finish_clear_all(widget, generation, result);
+                if let Some(req) = out.undo_now {
+                    enqueue_inbox_op(InboxOp::UndoClear(req));
+                }
+                return if out.redraw { Taken::Widgets } else { Taken::Nothing };
+            }
+            Msg::InboxUndone { widget, generation, result } => {
+                return if self.glances.finish_undo(widget, generation, result) { Taken::Widgets } else { Taken::Nothing };
+            }
+            Msg::InboxTimer => {
+                return if self.glances.tick_timers(Instant::now()) { Taken::Widgets } else { Taken::Nothing };
             }
             Msg::Tray(tray) => {
                 // Pictures no item has any more go.
@@ -2718,7 +2789,7 @@ fn open_bar(model: Model, output: Option<String>) -> WindowHandle<BarView> {
     olo_kit::open_window(options, move |cx| {
         let shelf = widgets::Shelf::default();
         let layer = cx.new_view(|_| widgets::Layer::new(shelf.clone(), model.clone()));
-        BarView { model, output, hot: None, open: None, press: None, height, width: WIDTH, scroll: 0.0, fading: false, shelf, layer, confirm: None, upgrade_ask: None }
+        BarView { model, output, hot: None, open: None, press: None, inbox_press: None, height, width: WIDTH, scroll: 0.0, fading: false, shelf, layer, confirm: None, upgrade_ask: None }
     })
 }
 
@@ -2729,6 +2800,16 @@ struct Press {
     team: String,
     icon: String,
     name: String,
+}
+
+/// An inbox button press captured at mouse-down so a redraw while the button
+/// is held never substitutes a newer click listener's targets on release
+/// (Astra 1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InboxPress {
+    widget: u32,
+    part: olo_kit::glance::InboxPart,
+    command: String,
 }
 
 /// A Deskbar on a display: what the pointer is doing over it.
@@ -2742,6 +2823,8 @@ struct BarView {
     /// What a menu is open from.
     open: Option<SharedString>,
     press: Option<Press>,
+    /// Inbox footer/receipt button captured at mouse-down.
+    inbox_press: Option<InboxPress>,
     /// Its height, as last asked of the compositor.
     height: f32,
     /// Its width: Deskbar's, or its button's when folded away.
@@ -2775,6 +2858,9 @@ enum BarMsg {
     Effect(Effect),
     /// A dot has had time to drain.
     Faded,
+    /// Check whether a post-clear receipt whose 8 s elapsed should now close
+    /// after the pointer left the widget.
+    InboxCheckDue,
 }
 
 impl BarView {
@@ -2793,8 +2879,17 @@ impl BarView {
             let (was, now) = (self.hot.as_ref().and_then(|k| widget_of(k)), hot.as_ref().and_then(|k| widget_of(k)));
             // (An inbox's card and its buttons light under the pointer.)
             let inbox = hot.as_ref().and_then(|k| inbox_of(k)).or_else(|| now.map(|id| (id, None)));
-            if self.model.read().glances.inbox_hot(inbox) {
+            let (inbox_changed, due) = {
+                let mut m = self.model.read();
+                (m.glances.inbox_hot(inbox), m.glances.has_due_receipt())
+            };
+            if inbox_changed {
                 self.layer.update(cx, |_, cx| cx.invalidate());
+                if due {
+                    // Let an inner button's hover-out settle with the card's
+                    // hover-in before collapsing a receipt whose 8 s elapsed.
+                    cx.after(Duration::from_millis(20), BarMsg::InboxCheckDue);
+                }
             }
             if was != now {
                 let card_up = now.is_none() && was.is_some() && tip::shown(cx).is_some_and(|k| widget_of(&k) == was);
@@ -2807,6 +2902,30 @@ impl BarView {
             self.hot = hot;
             cx.invalidate();
         }
+    }
+
+    fn begin_inbox_press(&mut self, press: InboxPress, cx: &mut Cx<Self>) {
+        let visual = Some((press.widget, press.part));
+        self.inbox_press = Some(press);
+        if self.model.read().glances.inbox_pressed(visual) {
+            self.layer.update(cx, |_, cx| cx.invalidate());
+        }
+    }
+
+    fn release_inbox_visual(&mut self, cx: &mut Cx<Self>) {
+        if self.model.read().glances.inbox_pressed(None) {
+            self.layer.update(cx, |_, cx| cx.invalidate());
+        }
+    }
+
+    fn cancel_inbox_press(&mut self, cx: &mut Cx<Self>) {
+        self.inbox_press = None;
+        self.release_inbox_visual(cx);
+    }
+
+    fn take_inbox_press(&mut self, widget: u32, part: olo_kit::glance::InboxPart) -> Option<String> {
+        let matched = self.inbox_press.as_ref().is_some_and(|p| p.widget == widget && p.part == part);
+        if matched { self.inbox_press.take().map(|p| p.command) } else { None }
     }
 
     /// The tip of the widget the pointer is on, if it's this one, shows
@@ -2954,6 +3073,8 @@ struct Drawing {
     fading: bool,
     /// The live widgets, drawn over the bar (`widgets::Layer`).
     placed: Vec<widgets::Placed>,
+    /// Live tooltips whose text changed while hovered (refreshed via `tip::retext`).
+    retext: Vec<(SharedString, SharedString)>,
 }
 
 impl Drawing {
@@ -3052,6 +3173,14 @@ thread_local! {
     static CHOSEN_WITH_COMMAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// Whether menu command `cmd` inspects `CHOSEN_WITH_COMMAND`: only launching
+/// an app (`run:` / `desktop:`) opens a second instance with ⌘ held. Skipping
+/// the synchronous `HeldModifiers` compositor IPC for inbox commands keeps
+/// Deskbar's UI thread non-blocking (Astra 14).
+fn menu_command_needs_modifier(cmd: &str) -> bool {
+    cmd.starts_with("run:") || cmd.starts_with("desktop:")
+}
+
 /// Opens `menu` under `r`, from the bar's element `key` (shown open
 /// until it goes); commands go to `then`.
 fn open_menu(cx: &mut WindowCx, view: &ViewRef<BarView>, key: &str, r: Bounds<Pixels>, menu: Menu, then: impl Fn(&str, &mut WindowCx) + 'static) {
@@ -3063,7 +3192,7 @@ fn open_menu(cx: &mut WindowCx, view: &ViewRef<BarView>, key: &str, r: Bounds<Pi
         r,
         Corner::BottomLeft,
         move |cmd, cx| {
-            CHOSEN_WITH_COMMAND.with(|c| c.set(command_held()));
+            CHOSEN_WITH_COMMAND.with(|c| c.set(menu_command_needs_modifier(cmd) && command_held()));
             then(cmd, cx);
             CHOSEN_WITH_COMMAND.with(|c| c.set(false));
         },
@@ -3117,6 +3246,11 @@ impl View for BarView {
                 // (An inbox's card's dot drains on the layer over the bar.)
                 self.layer.update(cx, |_, cx| cx.invalidate());
             }
+            BarMsg::InboxCheckDue => {
+                if self.model.read().glances.dismiss_due_receipts() {
+                    tell(Msg::InboxWidgets);
+                }
+            }
         }
     }
 
@@ -3131,6 +3265,9 @@ impl View for BarView {
         let pointer = Pointer { hot: self.hot.clone(), open: self.open.clone() };
         let (output, model) = (self.output.clone(), self.model.clone());
         let (mut drawing, height) = model.read().draw_bar(output.as_deref(), &pointer, &view, &model, cx);
+        for (key, text) in std::mem::take(&mut drawing.retext) {
+            tip::retext(cx, key, text);
+        }
         self.shelf.set(std::mem::take(&mut drawing.placed));
         // Its size follows what it shows (the compositor sizes a layer
         // surface): its height by its rows, its width by whether it's
@@ -3175,7 +3312,7 @@ impl Deskbar {
         let p = theme::palette();
         let display = self.shown_on(output);
         self.drawing_for = display.clone();
-        let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false, placed: Vec::new() };
+        let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false, placed: Vec::new(), retext: Vec::new() };
 
         // ---- folded away: only the button that unfolds it
         if self.folded {
@@ -3390,10 +3527,12 @@ impl Deskbar {
         for w in tray_widgets {
             let key = format!("widget:{}", w.id);
             let tip_text = self.widget_tip(&w);
+            let is_inbox = glances::is_inbox_widget(&w);
+            let inbox_info = is_inbox.then(|| self.inbox_menu_info(w.id)).flatten();
             // (Drawn on the layer over the bar.)
             let (r, h) = tray_item(&mut d, &key, tip_text, Box::new(|_g, _| {}));
             d.placed.push(widgets::Placed { widget: w, spot: widgets::Spot::Tray(r) });
-            d.hits.push(self.widget_hit(h, &format!("tray:{key}"), r, view, &model));
+            d.hits.push(self.widget_hit(h, &format!("tray:{key}"), r, false, None, inbox_info, view, &model));
         }
         for (it, picture) in apps.iter().zip(pictures) {
             let tip_text = match (it.title.as_str(), it.tooltip.as_str()) {
@@ -3864,7 +4003,7 @@ impl Deskbar {
         // others left to right), by workspace, in order, each under its
         // heading (each display's workspaces with windows, and the one it
         // shows)
-        let mut y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Top, TILE_H + tray_height(rows), view, &model);
+        let mut y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Top, TILE_H + tray_height(rows), pointer, view, &model);
         for on in self.displays_from(display.as_deref()) {
             let on = on.as_deref();
             let current = self.showing(on);
@@ -3900,7 +4039,7 @@ impl Deskbar {
         }
 
         // The widgets at its foot, under the applications.
-        y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Foot, y, view, &model);
+        y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Foot, y, pointer, view, &model);
 
         // Outer frame: a dark line on the left and bottom, where the
         // Deskbar meets the desktop.
@@ -4341,7 +4480,7 @@ impl Deskbar {
     /// tray, the panel's at the foot, an etched line above them): where
     /// the next thing starts. Drawn on the layer over the bar; the
     /// ground, tips and clicks here.
-    fn widget_rows(&self, d: &mut Drawing, place: olo_protocol::deskbar::Place, y: f32, view: &ViewRef<BarView>, model: &Model) -> f32 {
+    fn widget_rows(&self, d: &mut Drawing, place: olo_protocol::deskbar::Place, y: f32, pointer: &Pointer, view: &ViewRef<BarView>, model: &Model) -> f32 {
         let placed: Vec<olo_protocol::deskbar::Widget> = self.live.widgets.iter().filter(|w| w.place == place).cloned().collect();
         let rows = widgets::rows(&placed);
         if rows.is_empty() {
@@ -4349,7 +4488,12 @@ impl Deskbar {
         }
         let top = y;
         let app_height = |w: &olo_protocol::deskbar::Widget| self.glances.height(w);
-        let height: f32 = rows.iter().map(|row| widgets::row_height(row, &app_height)).sum();
+        // Measure each row once (zero-copy for Inbox, Astra 24).
+        let row_heights: Vec<f32> = rows.iter().map(|row| widgets::row_height(row, &app_height)).collect();
+        let height: f32 = row_heights.iter().sum();
+        if self.glances.fading() {
+            d.fading = true;
+        }
         let under_tray = place == olo_protocol::deskbar::Place::Top;
         let section = rect(0.0, top, WIDTH, height + TRAY_FOOT);
         d.paint(move |g| {
@@ -4361,8 +4505,7 @@ impl Deskbar {
             style::hline(g, px(0.0), px(WIDTH), section.top() + style::hairline(g), c(p.shine));
         });
         let mut y = top + TRAY_FOOT / 2.0;
-        for row in rows {
-            let h = widgets::row_height(&row, &app_height);
+        for (row, h) in rows.into_iter().zip(row_heights) {
             let r = rect(0.0, y, WIDTH, h);
             y += h;
             let spots: Vec<widgets::Spot> = if row.len() == 1 { vec![widgets::Spot::Row(r)] } else { widgets::cells(r, row.len(), TRAY_TEXT).into_iter().map(widgets::Spot::Cell).collect() };
@@ -4375,34 +4518,87 @@ impl Deskbar {
                     // not above or below, where the rows beside it are.)
                     widgets::Spot::Cell(c) => Bounds { origin: point(c.left() - px(olo_kit::metrics::TIGHT / 2.0), c.top()), size: size(c.size.width + px(olo_kit::metrics::TIGHT), c.size.height) },
                 };
+                let is_row = matches!(spot, widgets::Spot::Row(_));
+                let is_inbox = glances::is_inbox_widget(&w);
+                // Build the Inbox snapshot ONCE per widget and share its clear
+                // plan between footer buttons and context menu (Astra 24).
+                let inbox_info = is_inbox.then(|| self.inbox_menu_info(w.id)).flatten();
+                let receipt = is_inbox.then(|| self.glances.inbox_receipt(w.id)).flatten();
+                let vacant_dismiss = if is_row && receipt.is_none() {
+                    inbox_info.as_ref().and_then(|info| olo_kit::glance::inbox_vacant_dismiss(at, info.count, info.preview, w.size, TRAY_TEXT, info.top_waits))
+                } else {
+                    None
+                };
                 let h = hit(view, &key, at, Some(tip_text));
-                d.hits.push(self.widget_hit(h, &key, at, view, model));
-                if self.glances.fading() {
-                    d.fading = true;
-                }
-                // An inbox's buttons, over its card (which opens the item).
-                if matches!(spot, widgets::Spot::Row(_))
-                    && let Some((cards, index, minutes, preview)) = self.glances.inbox(w.id)
-                    && let Some(card) = cards.get(index)
-                    && let Some((_, buttons)) = olo_kit::glance::inbox_laid(at, cards.len(), preview, w.size, TRAY_TEXT, card.attention)
-                {
-                    for (part, bounds) in buttons {
-                        let cmd = inbox_command(part.name(), w.id, card.id, minutes);
-                        let m = model.clone();
-                        let tip = match part {
-                            // (What waits in an app: put off, not for a time.)
-                            olo_kit::glance::InboxPart::Snooze if card.attention => olo_kit::words::tr("Later: until more is waiting").to_owned(),
-                            olo_kit::glance::InboxPart::Snooze => olo_kit::tr!("Snooze for {}", snooze_words(minutes)),
-                            olo_kit::glance::InboxPart::Dismiss => "Clear".to_owned(),
-                            part => part.name().to_owned(),
-                        };
-                        // (Its own: the card under it isn't clicked too.)
-                        let action = hit(view, &format!("inbox:{}:{}", w.id, part.name()), bounds, Some(tip)).occlude();
-                        d.hits.push(action.on_click(move |e: &ClickEvent, cx| {
-                            if e.standard_click() {
-                                run(&m, &cmd, cx);
+                d.hits.push(self.widget_hit(h, &key, at, is_row, vacant_dismiss, inbox_info.clone(), view, model));
+                // An inbox's buttons, over its card (or Undo on its receipt).
+                if is_row && let Some(info) = inbox_info {
+                    let attach_press = |el: Element, view: &ViewRef<BarView>, widget: u32, part: olo_kit::glance::InboxPart, cmd: String| {
+                        let (v_down, v_up, v_out) = (view.clone(), view.clone(), view.clone());
+                        el.on_mouse_down(MouseButton::Left, move |_, cx| {
+                            let cmd = cmd.clone();
+                            v_down.update(cx, move |v, cx| v.begin_inbox_press(InboxPress { widget, part, command: cmd }, cx));
+                        })
+                        .on_mouse_up(MouseButton::Left, move |_, cx| {
+                            v_up.update(cx, |v, cx| v.release_inbox_visual(cx));
+                        })
+                        .on_mouse_up_out(MouseButton::Left, move |_, cx| {
+                            v_out.update(cx, |v, cx| v.cancel_inbox_press(cx));
+                        })
+                    };
+                    if let Some(rcpt) = receipt {
+                        if rcpt.can_undo {
+                            let (_, undo_bounds) = olo_kit::glance::inbox_receipt_laid(at, info.preview, w.size, TRAY_TEXT);
+                            let cmd = format!("inbox-undo:{}:{}", w.id, rcpt.generation);
+                            let (m, v_click) = (model.clone(), view.clone());
+                            let btn_key = format!("inbox:{}:{}", w.id, olo_kit::glance::InboxPart::Undo.name());
+                            let action = attach_press(hit(view, &btn_key, undo_bounds, None).occlude(), view, w.id, olo_kit::glance::InboxPart::Undo, cmd.clone());
+                            d.hits.push(action.on_click(move |e: &ClickEvent, cx| {
+                                if e.standard_click() {
+                                    let (m, fallback) = (m.clone(), cmd.clone());
+                                    v_click.update(cx, move |v, cx| {
+                                        let chosen = v.take_inbox_press(w.id, olo_kit::glance::InboxPart::Undo).unwrap_or(fallback);
+                                        run(&m, &chosen, cx);
+                                    });
+                                }
+                            }));
+                        }
+                    } else if let Some(top_id) = info.top_id {
+                        if let Some((_, buttons)) = olo_kit::glance::inbox_laid(at, info.count, info.preview, w.size, TRAY_TEXT, info.top_waits, info.clear_plan.is_some()) {
+                            for (part, bounds) in buttons {
+                                let cmd = if part == olo_kit::glance::InboxPart::ClearAll {
+                                    inbox_clear_command(w.id, &info.clear_plan.as_ref().unwrap().0)
+                                } else {
+                                    inbox_command(part.name(), w.id, top_id, info.snooze_minutes)
+                                };
+                                let (m, v_click) = (model.clone(), view.clone());
+                                let tip = match part {
+                                    // (What waits in an app: put off, not for a time.)
+                                    olo_kit::glance::InboxPart::Snooze if info.top_waits => olo_kit::words::tr("Later: until more is waiting").to_owned(),
+                                    olo_kit::glance::InboxPart::Snooze => olo_kit::tr!("Snooze for {}", snooze_words(info.snooze_minutes)),
+                                    olo_kit::glance::InboxPart::Dismiss => "Clear".to_owned(),
+                                    olo_kit::glance::InboxPart::ClearAll => info.clear_plan.as_ref().unwrap().1.clone(),
+                                    part => part.name().to_owned(),
+                                };
+                                let btn_key = format!("inbox:{}:{}", w.id, part.name());
+                                if part == olo_kit::glance::InboxPart::ClearAll && pointer.hot(&btn_key) {
+                                    d.retext.push((btn_key.clone().into(), tip.clone().into()));
+                                }
+                                // (Its own: the card under it isn't clicked too;
+                                // mouse-down captures the exact targets so a redraw
+                                // while held never adds a newcomer on release, Astra 1.)
+                                let action = attach_press(hit(view, &btn_key, bounds, Some(tip)).occlude(), view, w.id, part, cmd.clone());
+                                d.hits.push(action.on_click(move |e: &ClickEvent, cx| {
+                                    if e.standard_click() {
+                                        let (m, fallback) = (m.clone(), cmd.clone());
+                                        v_click.update(cx, move |v, cx| {
+                                            let chosen = v.take_inbox_press(w.id, part).unwrap_or(fallback);
+                                            run(&m, &chosen, cx);
+                                        });
+                                    }
+                                }));
                             }
-                        }));
+                        }
                     }
                 }
                 d.placed.push(widgets::Placed { widget: w, spot });
@@ -4411,25 +4607,50 @@ impl Deskbar {
         top + height + TRAY_FOOT
     }
 
+    fn inbox_menu_info(&self, widget: u32) -> Option<InboxMenuInfo> {
+        let snap = self.glances.inbox_snapshot(widget)?;
+        Some(InboxMenuInfo {
+            widget,
+            top_id: snap.top.map(|c| c.id),
+            top_waits: snap.top.is_some_and(|c| c.attention),
+            count: snap.count,
+            snooze_minutes: snap.snooze_minutes,
+            preview: snap.preview,
+            clear_plan: snap.clear_plan,
+        })
+    }
+
     /// What a widget does under the pointer: a click opens Activity
     /// Monitor (a Token Pool widget's, Token Pool); the other button, a
     /// menu with it and Deskbar's preferences.
-    fn widget_hit(&self, h: Element, key: &str, r: Bounds<Pixels>, view: &ViewRef<BarView>, model: &Model) -> Element {
+    #[allow(clippy::too_many_arguments)]
+    fn widget_hit(
+        &self,
+        h: Element,
+        key: &str,
+        r: Bounds<Pixels>,
+        is_row: bool,
+        vacant_dismiss: Option<Bounds<Pixels>>,
+        inbox: Option<InboxMenuInfo>,
+        view: &ViewRef<BarView>,
+        model: &Model,
+    ) -> Element {
         let (m, v, key) = (model.clone(), view.clone(), key.to_owned());
         let widget = key.strip_prefix("widget:").or_else(|| key.strip_prefix("tray:widget:")).and_then(|id| id.parse::<u32>().ok()).and_then(|id| self.live.widgets.iter().find(|w| w.id == id));
         let pool = widget.is_some_and(|w| matches!(w.measure, olo_protocol::deskbar::Measure::Pool { .. }));
-        // (An app's widget opens its app.)
-        let inbox = widget.and_then(|w| self.glances.inbox(w.id).map(|(cards, at, mins, _)| (w.id, cards.get(at).map(|c| c.id), mins, cards.len())));
-        let (opens, name) = match (inbox, widget.and_then(|w| self.glances.opens(w))) {
-            (Some((_, Some(id), _, _)), _) => (format!("run:olo-notifications --invoke {id}"), "Open item"),
+        // Gate receipt lookup strictly on an active Notifications Inbox widget (Astra 21).
+        let receipt = widget.filter(|w| glances::is_inbox_widget(w)).and_then(|w| self.glances.inbox_receipt(w.id).map(|info| (w.id, info)));
+        let (opens, name) = match (&inbox, widget.and_then(|w| self.glances.opens(w))) {
+            (Some(InboxMenuInfo { top_id: Some(id), .. }), _) => (format!("run:olo-notifications --invoke {id}"), "Open Item"),
             (Some(_), _) => ("run:olo-notifications --history".to_owned(), "Open Notifications"),
             (_, Some((opens, name))) => (opens, name),
             (_, None) if pool => ("run:olo-pool".to_owned(), "Token Pool"),
             (_, None) => ("run:olo-activity".to_owned(), "Activity Monitor"),
         };
         // (An inbox's cards turn with the wheel: a notch, a card.)
-        let h = match inbox {
-            Some((id, _, _, len)) if len > 1 => {
+        let h = match (&inbox, receipt) {
+            (Some(info), None) if info.count > 1 => {
+                let id = info.widget;
                 let m = model.clone();
                 h.on_scroll_wheel(move |e: &ScrollWheelEvent, cx| {
                     let dy = f32::from(e.delta.pixel_delta(px(20.0)).y);
@@ -4442,29 +4663,241 @@ impl Deskbar {
         };
         // (A divider opens nothing: its menu has Deskbar's settings alone.)
         let divider = widget.is_some_and(|w| w.measure.is_divider());
-        h.on_any_button(move |e, cx| match button(e) {
-            MouseButton::Left if divider => {}
-            MouseButton::Left => run(&m, &opens, cx),
-            MouseButton::Right if divider => {
+        let m_left = m.clone();
+        let opens_left = opens.clone();
+        h.on_click(move |e: &ClickEvent, cx| {
+            if !e.standard_click() {
+                return;
+            }
+            let pos = match e {
+                ClickEvent::Mouse(m) => Some(m.up.position),
+                ClickEvent::Keyboard(_) => None,
+            };
+            if let Some(cmd) = widget_left_click_command(divider, is_row, receipt, vacant_dismiss, pos, &opens_left) {
+                run(&m_left, &cmd, cx);
+            }
+        })
+        .on_mouse_down(MouseButton::Right, move |_, cx| {
+            if divider {
                 let menu = Menu::new("Widget").settings_item("deskbar", "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
-            }
-            MouseButton::Right => {
-                let mut menu = Menu::new("Widget").item(name, opens.clone());
-                if let Some((widget, Some(id), minutes, len)) = inbox {
-                    for action in ["Previous", "Next", "Snooze", "Dismiss"] {
-                        menu = menu.item(action, inbox_command(action, widget, id, minutes)).enabled(len > 1 || matches!(action, "Snooze" | "Dismiss"));
-                    }
-                    menu = menu.item("Open Notifications", "run:olo-notifications --history");
-                }
-                let menu = menu.separator().settings_item("deskbar", "pref:deskbar");
+            } else {
+                let menu = build_widget_menu(name, &opens, receipt, inbox.as_ref());
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }
-            _ => {}
         })
     }
+}
+
+/// Shared Inbox summary handed from `widgets_section` into `widget_hit` so
+/// each Inbox widget is inspected once per build (Astra 24).
+#[derive(Debug, Clone)]
+struct InboxMenuInfo {
+    widget: u32,
+    top_id: Option<u32>,
+    top_waits: bool,
+    count: usize,
+    snooze_minutes: u32,
+    preview: bool,
+    clear_plan: Option<(Vec<(u32, u64)>, String)>,
+}
+
+/// Decide what a left-click at `pos` on a widget does:
+/// - Dividers do nothing.
+/// - On a standalone row (`is_row == true`) showing a receipt: interactive
+///   receipts ignore card-body clicks (Undo is its own button), while failure /
+///   no-op notice receipts dismiss immediately on click.
+/// - On shared cells or tray placements (`is_row == false`), where no receipt
+///   is painted, the widget keeps its normal primary click (Astra 20).
+/// - Clicking inside a waiting card's vacant Dismiss slot does nothing instead
+///   of opening the waiting item underneath (Astra 19).
+fn widget_left_click_command(
+    divider: bool,
+    is_row: bool,
+    receipt: Option<(u32, glances::ReceiptInfo)>,
+    vacant_dismiss: Option<Bounds<Pixels>>,
+    pos: Option<Point<Pixels>>,
+    opens: &str,
+) -> Option<String> {
+    if divider {
+        return None;
+    }
+    if is_row && let Some((widget, rcpt)) = receipt {
+        return rcpt.dismissible_notice.then(|| format!("inbox-dismiss-notice:{widget}:{}", rcpt.generation));
+    }
+    if let (Some(b), Some(p)) = (vacant_dismiss, pos)
+        && b.contains(&p)
+    {
+        return None;
+    }
+    Some(opens.to_owned())
+}
+
+/// Build a widget's right-click menu. For Inbox: a separator stands between
+/// Dismiss/Later and the bulk clear command, and `Open Notifications` sits in
+/// the same group as `Deskbar Settings…` (Round 4 item 18).
+fn build_widget_menu(name: &'static str, opens: &str, receipt: Option<(u32, glances::ReceiptInfo)>, inbox: Option<&InboxMenuInfo>) -> Menu {
+    if let Some((widget, rcpt)) = receipt {
+        let mut menu = Menu::new("Widget");
+        if rcpt.can_undo {
+            menu = menu.item("Undo", format!("inbox-undo:{widget}:{}", rcpt.generation)).separator();
+        }
+        return menu.item("Open Notifications", "run:olo-notifications --history").settings_item("deskbar", "pref:deskbar");
+    }
+    let mut menu = Menu::new("Widget").item(name, opens.to_owned());
+    if let Some(info) = inbox {
+        if let Some(id) = info.top_id {
+            menu = menu
+                .separator()
+                .item("Previous", inbox_command("Previous", info.widget, id, info.snooze_minutes))
+                .enabled(info.count > 1)
+                .item("Next", inbox_command("Next", info.widget, id, info.snooze_minutes))
+                .enabled(info.count > 1)
+                .separator()
+                .item(if info.top_waits { "Later" } else { "Snooze" }, inbox_command("Snooze", info.widget, id, info.snooze_minutes));
+            if !info.top_waits {
+                menu = menu.item("Dismiss", inbox_command("Dismiss", info.widget, id, info.snooze_minutes));
+            }
+            if let Some((clearable, label)) = &info.clear_plan {
+                menu = menu.separator().item(label.clone(), inbox_clear_command(info.widget, clearable));
+            }
+            return menu.separator().item("Open Notifications", "run:olo-notifications --history").settings_item("deskbar", "pref:deskbar");
+        }
+        // Empty Inbox: `name` is already "Open Notifications"; keep it in one group with Deskbar Settings….
+        return menu.settings_item("deskbar", "pref:deskbar");
+    }
+    menu.separator().settings_item("deskbar", "pref:deskbar")
+}
+
+/// Format an `inbox-clear` command carrying the exact captured `(id, instance)`
+/// targets so activation never clears newcomers or reposted IDs.
+fn inbox_clear_command(widget: u32, targets: &[(u32, u64)]) -> String {
+    let list = targets.iter().map(|(id, inst)| format!("{id}@{inst}")).collect::<Vec<_>>().join(",");
+    format!("inbox-clear:{widget}:{list}")
+}
+
+/// Parse the payload of `inbox-clear:{widget}:{id1}@{inst1},{id2}@{inst2},…`
+/// (accepting plain `{id}` as `(id, 0)` too). Returns `None` on an empty or
+/// malformed target list so nothing is sent.
+fn parse_inbox_clear(rest: &str) -> Option<(u32, Vec<(u32, u64)>)> {
+    let (widget, list) = rest.split_once(':')?;
+    let widget = widget.parse::<u32>().ok()?;
+    if list.is_empty() {
+        return None;
+    }
+    let targets: Vec<(u32, u64)> = list
+        .split(',')
+        .map(|s| match s.split_once('@') {
+            Some((id, inst)) => Some((id.parse::<u32>().ok()?, inst.parse::<u64>().ok()?)),
+            None => Some((s.parse::<u32>().ok()?, 0)),
+        })
+        .collect::<Option<_>>()?;
+    (!targets.is_empty()).then_some((widget, targets))
+}
+
+/// Bounded timeout on every Inbox D-Bus call so a stalled service never leaves
+/// cards hidden or a worker blocked indefinitely (Astra 9).
+const INBOX_DBUS_TIMEOUT: Duration = Duration::from_secs(5);
+
+enum InboxOp {
+    ClearMany { widget: u32, generation: u64, targets: Vec<(u32, u64)> },
+    UndoClear(glances::UndoRequest),
+}
+
+/// Queue an Inbox `ClearMany` or `UndoClear` operation onto Deskbar's single
+/// serialized D-Bus worker so mutations execute strictly in click order on one
+/// connection (Astra 5), with bounded timeouts and guaranteed completion on
+/// worker-start failure (Astra 9).
+fn enqueue_inbox_op(op: InboxOp) {
+    static WORKER: std::sync::OnceLock<Result<mpsc::Sender<InboxOp>, ()>> = std::sync::OnceLock::new();
+    let tx = WORKER.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<InboxOp>();
+        match std::thread::Builder::new().name("deskbar-inbox-bus".into()).spawn(move || inbox_bus_worker(rx)) {
+            Ok(_) => Ok(tx),
+            Err(e) => {
+                tracing::warn!("inbox worker spawn failed: {e}");
+                Err(())
+            }
+        }
+    });
+    match tx {
+        Ok(tx) => {
+            if let Err(mpsc::SendError(op)) = tx.send(op) {
+                fail_inbox_op(op);
+            }
+        }
+        Err(()) => fail_inbox_op(op),
+    }
+}
+
+fn fail_inbox_op(op: InboxOp) {
+    match op {
+        InboxOp::ClearMany { widget, generation, .. } => tell(Msg::InboxCleared { widget, generation, result: Err(()) }),
+        InboxOp::UndoClear(req) => tell(Msg::InboxUndone { widget: req.widget, generation: req.generation, result: Err(()) }),
+    }
+}
+
+fn inbox_bus_worker(rx: mpsc::Receiver<InboxOp>) {
+    let mut conn: Option<zbus::blocking::Connection> = None;
+    for op in rx {
+        let Some(c) = inbox_session_conn(&mut conn) else {
+            fail_inbox_op(op);
+            continue;
+        };
+        match op {
+            InboxOp::ClearMany { widget, generation, targets } => {
+                let res = notifications_clear_many_on(c, Some("org.freedesktop.Notifications"), targets);
+                if res.is_err() {
+                    // Drop potentially broken transport so the next call reconnects cleanly.
+                    conn = None;
+                }
+                tell(Msg::InboxCleared { widget, generation, result: res });
+            }
+            InboxOp::UndoClear(req) => {
+                // Address Undo strictly to the unique D-Bus owner that answered ClearMany (Astra 2).
+                let res = notifications_undo_clear_on(c, Some(req.owner.as_str()), &req.batch);
+                if res.is_err() {
+                    conn = None;
+                }
+                tell(Msg::InboxUndone { widget: req.widget, generation: req.generation, result: res });
+            }
+        }
+    }
+}
+
+fn inbox_session_conn(slot: &mut Option<zbus::blocking::Connection>) -> Option<&zbus::blocking::Connection> {
+    if slot.is_none() {
+        match zbus::blocking::connection::Builder::session().and_then(|b| b.method_timeout(INBOX_DBUS_TIMEOUT).build()) {
+            Ok(c) => *slot = Some(c),
+            Err(e) => {
+                tracing::warn!("inbox clear: session bus: {e}");
+                return None;
+            }
+        }
+    }
+    slot.as_ref()
+}
+
+fn notifications_clear_many_on(conn: &zbus::blocking::Connection, destination: Option<&str>, targets: Vec<(u32, u64)>) -> Result<(Vec<u32>, String, String), ()> {
+    let reply = conn.call_method(destination, olo_protocol::notifications::CONTROL_PATH, Some(olo_protocol::notifications::CONTROL), "ClearMany", &(targets, true)).map_err(|e| {
+        tracing::warn!("inbox clear: ClearMany failed: {e}");
+    })?;
+    let owner = reply.header().sender().map(|s| s.to_string()).unwrap_or_else(|| "p2p".to_owned());
+    let (cleared, batch): (Vec<u32>, String) = reply.body().deserialize().map_err(|e| {
+        tracing::warn!("inbox clear: bad ClearMany reply: {e}");
+    })?;
+    Ok((cleared, owner, batch))
+}
+
+fn notifications_undo_clear_on(conn: &zbus::blocking::Connection, destination: Option<&str>, batch: &str) -> Result<Vec<u32>, ()> {
+    let reply = conn.call_method(destination, olo_protocol::notifications::CONTROL_PATH, Some(olo_protocol::notifications::CONTROL), "UndoClear", &(batch,)).map_err(|e| {
+        tracing::warn!("inbox undo: UndoClear failed: {e}");
+    })?;
+    reply.body().deserialize::<Vec<u32>>().map_err(|e| {
+        tracing::warn!("inbox undo: bad UndoClear reply: {e}");
+    })
 }
 
 /// How long a snooze is, in words ("15 minutes", "1 hour").
@@ -4564,6 +4997,10 @@ struct Hub {
     approve: Option<WindowHandle<approve::Ask>>,
     /// Whether the clock shows seconds, to whoever ticks.
     seconds: mpsc::Sender<bool>,
+    /// Single cancellable looper timer for the soonest live inbox deadline
+    /// (receipt auto-collapse or single-card hide expiry): cancelled at once
+    /// when a receipt closes on Undo, newcomer, or widget removal (Astra 12).
+    inbox_timer: Option<(Instant, olo_kit::app_kit::TimerId)>,
 }
 
 impl Hub {
@@ -4619,7 +5056,24 @@ impl Hub {
         }
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>) {
+    /// Keep Deskbar's single looper inbox timer aligned with the soonest live
+    /// deadline (cancelling it completely when no deadline remains, Astra 12).
+    fn sync_inbox_timer(&mut self, app: &mut olo_kit::AppCx) {
+        let next = self.model.read().glances.next_deadline();
+        if self.inbox_timer.map(|(t, _)| t) == next {
+            return;
+        }
+        if let Some((_, id)) = self.inbox_timer.take() {
+            app.looper().cancel(id);
+        }
+        if let Some(at) = next {
+            let delay = at.saturating_duration_since(Instant::now());
+            let id = app.looper().after(delay, |_| tell(Msg::InboxTimer));
+            self.inbox_timer = Some((at, id));
+        }
+    }
+
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, app: &mut olo_kit::AppCx) {
         let Ok(m) = message.downcast::<Msg>() else { return };
         tracing::debug!(what = m.name(), "told");
         match *m {
@@ -4668,6 +5122,7 @@ impl Hub {
                 }
             }
         }
+        self.sync_inbox_timer(app);
     }
 }
 
@@ -4688,6 +5143,34 @@ fn tick(seconds: mpsc::Receiver<bool>) {
             }
         })
         .expect("thread");
+}
+
+/// State carried across an in-place Deskbar reload: backwards-compatible with
+/// the older order-only `Vec<String>` payload while also preserving any active
+/// acknowledged Inbox receipt and its remaining Undo time (Astra 13).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+enum SavedDeskbar {
+    V2 {
+        order: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        receipts: Vec<glances::SavedReceipt>,
+    },
+    OrderOnly(Vec<String>),
+}
+
+impl SavedDeskbar {
+    fn decode(text: &str) -> (Vec<String>, Vec<glances::SavedReceipt>) {
+        match serde_json::from_str::<SavedDeskbar>(text) {
+            Ok(SavedDeskbar::V2 { order, receipts }) => (order, receipts),
+            Ok(SavedDeskbar::OrderOnly(order)) => (order, Vec::new()),
+            Err(_) => (Vec::new(), Vec::new()),
+        }
+    }
+
+    fn encode(order: &[String], receipts: Vec<glances::SavedReceipt>) -> Option<String> {
+        if receipts.is_empty() { serde_json::to_string(order).ok() } else { serde_json::to_string(&SavedDeskbar::V2 { order: order.to_vec(), receipts }).ok() }
+    }
 }
 
 fn main() {
@@ -4720,7 +5203,9 @@ fn main() {
         }
         status::spawn(|s| tell(Msg::Status(s)));
         let tray_host = sni::start(None, |items| tell(Msg::Tray(items)));
-        let order = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let (order, restored_receipts) = olo_kit::restored_state().map(|s| SavedDeskbar::decode(&s)).unwrap_or_default();
+        let mut glances = glances::Glances::new();
+        glances.restore_receipts(restored_receipts);
         let model: Model = Arc::new(Mutex::new(Deskbar {
             drawing_for: None,
             outputs: Vec::new(),
@@ -4761,7 +5246,7 @@ fn main() {
             badges: Vec::new(),
             tray_pictures: HashMap::new(),
             live: widgets::Live::new(),
-            glances: glances::Glances::new(),
+            glances,
             pool_notes: None,
             portal_notes: None,
             portal_told: None,
@@ -4774,20 +5259,24 @@ fn main() {
         // still finding its displays), none: they come as app_server
         // lists them and this connection learns them (`sync_bars`).
         let bars = olo_kit::display_names().into_iter().flatten().map(|name| (Some(name.clone()), open_bar(model.clone(), Some(name)))).collect();
-        let mut hub = Hub { model: model.clone(), bars, approve: None, seconds };
+        let mut hub = Hub { model: model.clone(), bars, approve: None, seconds, inbox_timer: None };
+        hub.sync_inbox_timer(app);
         // A display app_server listed before this app's connection knew it
         // (after a restart they come one by one, the external ones last):
         // its bar is opened once it is known here, not on the main display
         // in its stead (the Dell's bar hid under the Studio Display's,
         // 2026-11-01).
         olo_kit::on_displays_changed(|| tell(Msg::Displays));
-        olo_kit::message_handler(app, move |message, _| hub.message(message));
+        olo_kit::message_handler(app, move |message, app| hub.message(message, app));
         // Deskbar stays with no bar open (between a display going and
         // another coming).
         olo_kit::stay_resident();
-        // Its applications' order, for the Deskbar it re-executes as (an
-        // upgrade, a lost GPU): they come back in the order they were.
-        olo_kit::on_upgrade(move |_| serde_json::to_string(&model.read().order).ok());
+        // Its applications' order and any active acknowledged Inbox receipts,
+        // for the Deskbar it re-executes as (an upgrade, a lost GPU).
+        olo_kit::on_upgrade(move |_| {
+            let d = model.read();
+            SavedDeskbar::encode(&d.order, d.glances.save_receipts())
+        });
     });
 }
 
@@ -4876,5 +5365,107 @@ mod tests {
         assert_eq!(listing(&n(&["A"])), "A");
         assert_eq!(listing(&n(&["A", "B", "C"])), "A, B and C");
         assert_eq!(listing(&n(&["A", "B", "C", "D", "E", "F"])), "A, B, C and 3 others");
+    }
+
+    #[test]
+    fn inbox_clear_command_carries_captured_targets_and_rejects_empty() {
+        let cmd = inbox_clear_command(12, &[(17, 170), (18, 180), (25, 250)]);
+        assert_eq!(cmd, "inbox-clear:12:17@170,18@180,25@250");
+        assert_eq!(parse_inbox_clear(cmd.strip_prefix("inbox-clear:").unwrap()), Some((12, vec![(17, 170), (18, 180), (25, 250)])));
+        assert_eq!(parse_inbox_clear("12:17,18"), Some((12, vec![(17, 0), (18, 0)])));
+        assert_eq!(parse_inbox_clear("12:"), None);
+        assert_eq!(parse_inbox_clear("12"), None);
+        assert_eq!(parse_inbox_clear("12:17@abc"), None);
+        assert_eq!(parse_inbox_clear("12:17,4294967296"), None);
+        assert_eq!(parse_inbox_clear("bad:17@1,18@2"), None);
+    }
+
+    /// Astra 1, 13, 14, 19, 20: mouse-down capture survives redraw; reload
+    /// state stays compatible with old order-only payloads; inbox menu commands
+    /// skip `HeldModifiers` IPC; vacant Dismiss click on waiting cards is a
+    /// no-op; shared-cell and tray placements keep their normal left-click even
+    /// while a receipt exists.
+    #[test]
+    fn deskbar_inbox_click_guards_modifiers_and_reload_state() {
+        // Astra 14: inbox menu commands never ask app_server for HeldModifiers.
+        assert!(!menu_command_needs_modifier("inbox-clear:12:17@1,18@2"));
+        assert!(!menu_command_needs_modifier("inbox-undo:12:1"));
+        assert!(!menu_command_needs_modifier("inbox-dismiss:12:17"));
+        assert!(!menu_command_needs_modifier("pref:deskbar"));
+        assert!(menu_command_needs_modifier("run:olo-notifications --history"));
+        assert!(menu_command_needs_modifier("desktop:olo-terminal"));
+
+        // Astra 19: clicking inside the vacant Dismiss slot on a waiting card does nothing.
+        let row = Bounds::new(point(px(0.0), px(0.0)), size(px(172.0), px(120.0)));
+        let vacant = olo_kit::glance::inbox_vacant_dismiss(row, 2, true, olo_protocol::deskbar::Size::Medium, TRAY_TEXT, true).unwrap();
+        assert_eq!(widget_left_click_command(false, true, None, Some(vacant), Some(vacant.center()), "run:olo-notifications --invoke 5"), None);
+        assert_eq!(
+            widget_left_click_command(false, true, None, Some(vacant), Some(point(px(20.0), px(20.0))), "run:olo-notifications --invoke 5"),
+            Some("run:olo-notifications --invoke 5".to_owned())
+        );
+
+        // Astra 20: receipt suppresses left-click ONLY on standalone Row, never Cell or Tray.
+        let rcpt = Some((12, glances::ReceiptInfo { generation: 1, can_undo: true, dismissible_notice: false }));
+        assert_eq!(widget_left_click_command(false, true, rcpt, None, Some(point(px(20.0), px(20.0))), "run:olo-notifications --history"), None);
+        assert_eq!(widget_left_click_command(false, false, rcpt, None, Some(point(px(20.0), px(20.0))), "run:olo-notifications --history"), Some("run:olo-notifications --history".to_owned()));
+        // Dismissible failure/no-op notice closes immediately on left-click on Row.
+        let notice = Some((12, glances::ReceiptInfo { generation: 2, can_undo: false, dismissible_notice: true }));
+        assert_eq!(widget_left_click_command(false, true, notice, None, Some(point(px(20.0), px(20.0))), "run:olo-notifications --history"), Some("inbox-dismiss-notice:12:2".to_owned()));
+
+        // Astra 13: SavedDeskbar decodes both legacy order-only JSON and V2 with receipts.
+        let (order_old, rcpts_old) = SavedDeskbar::decode(r#"["olo.terminal","olo.tracker"]"#);
+        assert_eq!(order_old, vec!["olo.terminal", "olo.tracker"]);
+        assert!(rcpts_old.is_empty());
+        let saved = vec![glances::SavedReceipt { widget: 12, count: 3, owner: ":1.9".into(), batch: "b-1".into(), remaining_ms: 5200 }];
+        let encoded = SavedDeskbar::encode(&order_old, saved.clone()).unwrap();
+        let (order_v2, rcpts_v2) = SavedDeskbar::decode(&encoded);
+        assert_eq!((order_v2, rcpts_v2), (order_old, saved));
+
+        // Astra 1: InboxPress captures the exact mouse-down command and ignores a newer listener's command on release.
+        let mut press = Some(InboxPress { widget: 12, part: olo_kit::glance::InboxPart::ClearAll, command: "inbox-clear:12:17@1,18@2".into() });
+        let taken = press.take().filter(|p| p.widget == 12 && p.part == olo_kit::glance::InboxPart::ClearAll).map(|p| p.command);
+        assert_eq!(taken.as_deref(), Some("inbox-clear:12:17@1,18@2"));
+    }
+
+    /// Astra 23 (Deskbar client side): verifies `notifications_clear_many_on`
+    /// and `notifications_undo_clear_on` send exactly ONE `ClearMany` call with
+    /// `(targets, unread_only = true)` (never multiple `Dismiss`) and one
+    /// `UndoClear(batch)` call over real D-Bus wire framing.
+    #[test]
+    fn deskbar_dbus_dispatch_sends_one_clear_many_and_one_undo_clear() {
+        struct RecordingDoor {
+            log: Arc<Mutex<Vec<String>>>,
+        }
+        #[zbus::interface(name = "com.olodesktop.Notifications1")]
+        impl RecordingDoor {
+            fn dismiss(&self, id: u32) {
+                self.log.lock().unwrap().push(format!("Dismiss:{id}"));
+            }
+            fn clear_many(&self, targets: Vec<(u32, u64)>, unread_only: bool) -> (Vec<u32>, String) {
+                self.log.lock().unwrap().push(format!("ClearMany:{unread_only}:{targets:?}"));
+                let ids = targets.into_iter().map(|(id, _)| id).collect();
+                (ids, "batch-xyz".into())
+            }
+            fn undo_clear(&self, batch: String) -> Vec<u32> {
+                self.log.lock().unwrap().push(format!("UndoClear:{batch}"));
+                vec![17, 18]
+            }
+        }
+
+        let (server_sock, client_sock) = std::os::unix::net::UnixStream::pair().unwrap();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let door = RecordingDoor { log: log.clone() };
+        let guid = zbus::Guid::generate();
+        let srv = std::thread::spawn(move || {
+            zbus::blocking::connection::Builder::async_io_unix_stream(server_sock).server(guid).unwrap().p2p().serve_at(olo_protocol::notifications::CONTROL_PATH, door).unwrap().build().unwrap()
+        });
+        let client = zbus::blocking::connection::Builder::async_io_unix_stream(client_sock).p2p().method_timeout(INBOX_DBUS_TIMEOUT).build().unwrap();
+        let _server_conn = srv.join().unwrap();
+
+        let (cleared, _owner, batch) = notifications_clear_many_on(&client, None, vec![(17, 100), (18, 200)]).unwrap();
+        assert_eq!((cleared, batch.as_str()), (vec![17, 18], "batch-xyz"));
+        let restored = notifications_undo_clear_on(&client, None, &batch).unwrap();
+        assert_eq!(restored, vec![17, 18]);
+        assert_eq!(*log.lock().unwrap(), vec!["ClearMany:true:[(17, 100), (18, 200)]", "UndoClear:batch-xyz"]);
     }
 }

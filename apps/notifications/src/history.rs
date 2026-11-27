@@ -1838,17 +1838,21 @@ impl Notifications {
         for (_, e) in &gone {
             if e.live {
                 self.take(e.id);
-                self.bus(|b| b.closed(e.id, Reason::Dismissed));
+                self.queue_closed(e.id, Reason::Dismissed);
             }
         }
         if !gone.is_empty() {
-            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect(), store::Why::Cleared);
-            self.steps.done("Clear", crate::Gone::Forgot(gone));
+            let archive_changed = self.archive.archive(gone.iter().map(|(_, e)| (e.clone(), store::Why::Cleared)), crate::now_secs());
+            if archive_changed {
+                self.archived_changed();
+            }
+            self.steps.done("Clear", crate::Gone::Forgot { entries: gone, batch: None, only_eligible: true });
+            store::History::save_pair(&self.archive, &self.history, None);
         }
         if self.view.selected.is_some() {
             self.view.selected = next;
         }
-        self.publish(true);
+        self.publish(false);
         self.changed();
     }
 

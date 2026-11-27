@@ -2401,6 +2401,15 @@ Clear All
 Clear All Tabs
 모든 탭 지우기
 
+Clear All {n} Notifications
+other: 알림 {n}개 모두 지우기
+
+Clear Both Notifications
+알림 2개 모두 지우기
+
+Clear {n} Notifications
+other: 알림 {n}개 지우기
+
 Clear Browsing Data
 인터넷 사용 기록 삭제
 
@@ -5488,6 +5497,9 @@ In {}, on its branch, {}.
 In:
 위치:
 
+Inbox
+받은 알림
+
 Inches
 인치
 
@@ -7945,6 +7957,12 @@ Nothing more today
 Nothing new
 새 항목 없음
 
+Nothing to undo
+실행 취소할 항목 없음
+
+Nothing was cleared
+지워진 항목 없음
+
 Nothing new to learn
 새로 학습할 내용 없음
 
@@ -8388,6 +8406,9 @@ Open Calendar
 
 Open Integrations…
 연동 열기…
+
+Open Item
+항목 열기
 
 Open Link
 링크 열기
@@ -15297,6 +15318,18 @@ other: {n}개 더 대기 중
 
 {n} new notifications
 other: 새 알림 {n}개
+
+{n} notifications cleared
+other: 알림 {n}개 지움
+
+{n} kept
+other: {n}개 유지됨
+
+{n} pinned
+other: {n}개 고정됨
+
+{n} waiting
+other: {n}개 대기 중
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {} 업데이트 {n}개가 대기 중입니다. ‘업데이트’에서 먼저 설치하세요.

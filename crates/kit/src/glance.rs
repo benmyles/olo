@@ -73,8 +73,14 @@ fn head_of(gl: &Glance, size: Size) -> f32 {
 
 /// How tall `glance` is drawn at `size` (one not come yet: its headline's).
 pub fn height(glance: Option<&Glance>, size: Size) -> f32 {
+    height_for(glance, size, Inbox::default())
+}
+
+/// [`height`], knowing an inbox's live state (a post-clear receipt keeps
+/// the card's height even while no cards remain).
+pub fn height_for(glance: Option<&Glance>, size: Size, inbox: Inbox) -> f32 {
     if let Some(Body::Inbox { preview, cards, .. }) = glance.and_then(|gl| gl.body.as_ref()) {
-        return inbox_height(cards.len(), *preview, size);
+        return inbox_height_for(!cards.is_empty() || inbox.receipt.is_some(), *preview, size);
     }
     if size == Size::Small {
         return LINE;
@@ -149,8 +155,11 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance, size: Size, in
 /// (red: something waiting in an app; blue: a notification), its title
 /// and, if asked for, its text; under them, Previous and Next at the
 /// left, Snooze and Dismiss at the right, small marks that light under
-/// the pointer. Small, it is one line: the dot, the title, Snooze and
-/// Dismiss. Empty, it says so in a line.
+/// the pointer; and left of Snooze, apart as its own group, Clear All
+/// where more than one unpinned notification is in the stack (Ben,
+/// 2026-11-27: "add another icon button for clearing all notifications
+/// not just the one on top"). Small, it is one line: the dot, the title,
+/// Snooze and Dismiss. Empty, it says so in a line.
 ///
 /// Around the stack.
 const INBOX_PAD: f32 = 4.0;
@@ -165,6 +174,9 @@ const INBOX_TEXT: f32 = 15.0;
 const INBOX_BAR: f32 = 25.0;
 /// A button on it.
 const INBOX_BUTTON: (f32, f32) = (22.0, 20.0);
+/// Clear All stands this far left of Snooze's plate: its own group
+/// ("all" beside "this one"), never sharing Snooze's slot.
+const INBOX_ALL_APART: f32 = 12.0;
 /// The cards under the top one: how many show, how much of each, and how
 /// much narrower each is at either side.
 const INBOX_UNDER: usize = 2;
@@ -176,22 +188,47 @@ const INBOX_SMALL: f32 = 26.0;
 const INBOX_ICON: f32 = 16.0;
 const INBOX_DOT: f32 = 3.5;
 
-/// How an inbox is shown: which card is on top, what the pointer is on.
+/// What a post-clear receipt card on top of an inbox stack shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InboxReceipt {
+    /// `count` notifications were cleared; `undoing` is true after Undo was
+    /// clicked while waiting for the provider's authoritative list to return.
+    Cleared { count: usize, undoing: bool },
+    /// Clear All cleared nothing (service failure, timeout, or every target
+    /// was already gone/pinned); cards were restored.
+    NothingCleared,
+    /// Undo could not restore the batch (service restarted, failed, or its
+    /// entries were already put back or deleted).
+    NothingToUndo,
+}
+
+/// How an inbox is shown: which card is on top, what the pointer is on,
+/// which button is held down, and any post-clear receipt on top of the
+/// stack.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Inbox {
     pub selected: usize,
     /// The pointer is on the widget.
     pub over: bool,
     pub hot: Option<InboxPart>,
+    /// The button held down while the primary mouse button is pressed.
+    pub pressed: Option<InboxPart>,
+    /// Post-clear receipt on top of the stack (shown for 8 s with Undo, or
+    /// briefly on failure/no-op).
+    pub receipt: Option<InboxReceipt>,
 }
 
-/// A button on an inbox's card.
+/// A button on an inbox's card (or its post-clear receipt).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InboxPart {
     Previous,
     Next,
+    /// Every unpinned notification in the stack cleared, not only the one on top.
+    ClearAll,
     Snooze,
     Dismiss,
+    /// Undo on the post-clear receipt card.
+    Undo,
 }
 
 impl InboxPart {
@@ -199,13 +236,61 @@ impl InboxPart {
         match self {
             InboxPart::Previous => "Previous",
             InboxPart::Next => "Next",
+            InboxPart::ClearAll => "Clear All",
             InboxPart::Snooze => "Snooze",
             InboxPart::Dismiss => "Dismiss",
+            InboxPart::Undo => "Undo",
         }
     }
 
     pub fn named(name: &str) -> Option<InboxPart> {
-        [InboxPart::Previous, InboxPart::Next, InboxPart::Snooze, InboxPart::Dismiss].into_iter().find(|p| p.name() == name)
+        [InboxPart::Previous, InboxPart::Next, InboxPart::ClearAll, InboxPart::Snooze, InboxPart::Dismiss, InboxPart::Undo].into_iter().find(|p| p.name() == name)
+    }
+}
+
+/// Whether an inbox of `cards` offers Clear All: every notification card
+/// carries pin-aware metadata (`instance != 0`: an older service or glance
+/// helper omits `pinned` and `instance`, so Clear All is withheld during a
+/// mixed-version upgrade), and more than one card is an unpinned notification
+/// (what waits in an app isn't one and can't be cleared, a pinned one stays
+/// put, and one alone has its ×).
+pub fn inbox_clears_all(cards: &[olo_protocol::notifications::InboxCard]) -> bool {
+    if cards.iter().any(|c| !c.attention && c.instance == 0) {
+        return false;
+    }
+    cards.iter().filter(|c| !c.attention && !c.pinned).nth(1).is_some()
+}
+
+/// The Clear All action's words (button tooltip and context menu):
+/// "Clear All {n} Notifications" (or "Clear Both Notifications" for two)
+/// when nothing will remain in the stack, and "Clear {n} Notifications"
+/// when pinned notifications or waiting cards will stay behind.
+pub fn inbox_clear_all_label(count: usize, some_stay: bool) -> String {
+    if some_stay {
+        crate::words::count(count as u64, "Clear 1 Notification", "Clear {n} Notifications")
+    } else if count == 2 {
+        crate::words::tr("Clear Both Notifications").to_owned()
+    } else {
+        crate::words::count(count as u64, "Clear 1 Notification", "Clear All {n} Notifications")
+    }
+}
+
+/// The post-clear receipt's header counter text saying what stayed behind
+/// under the receipt: "1 pinned", "1 waiting", or "2 kept" when both kinds
+/// (or mixed items) remain; `None` when the stack is empty.
+pub fn inbox_kept_label(cards: &[olo_protocol::notifications::InboxCard]) -> Option<String> {
+    if cards.is_empty() {
+        return None;
+    }
+    let pinned = cards.iter().filter(|c| !c.attention && c.pinned).count();
+    let waiting = cards.iter().filter(|c| c.attention).count();
+    let n = cards.len() as u64;
+    if pinned == cards.len() {
+        Some(crate::words::count(n, "1 pinned", "{n} pinned"))
+    } else if waiting == cards.len() {
+        Some(crate::words::count(n, "1 waiting", "{n} waiting"))
+    } else {
+        Some(crate::words::count(n, "1 kept", "{n} kept"))
     }
 }
 
@@ -226,10 +311,10 @@ fn inbox_card_height(preview: bool, size: Size) -> f32 {
     INBOX_IN + INBOX_HEAD + INBOX_TITLE + inbox_lines(preview, size) as f32 * INBOX_TEXT + INBOX_BAR + 3.0
 }
 
-/// An inbox's height: the same however many cards (room for the ones
-/// under is kept, so the bar doesn't move as they go), but empty.
-fn inbox_height(cards: usize, preview: bool, size: Size) -> f32 {
-    if cards == 0 {
+/// An inbox's height given only whether a card or post-clear receipt is
+/// showing (`has_card_or_receipt`): zero-copy sizing for Deskbar's layout.
+pub fn inbox_height_for(has_card_or_receipt: bool, preview: bool, size: Size) -> f32 {
+    if !has_card_or_receipt {
         return LINE + PAD;
     }
     let under = if size == Size::Small { 0.0 } else { INBOX_UNDER as f32 * INBOX_PEEK };
@@ -238,12 +323,14 @@ fn inbox_height(cards: usize, preview: bool, size: Size) -> f32 {
 
 /// Where an inbox's top card and its buttons are in row `r` (what's
 /// painted, and what Deskbar's clicks land on); None with no card.
-/// `waiting`: the top card is what waits in an app, not a notification:
-/// it has no × (it can't be cleared: it's there while its app says so),
-/// and its one button, where the × would be, puts it off (Later, drawn
-/// as Snooze's clock): clicking through a stack at that spot clears the
-/// notifications and puts off what waits.
-pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, inset: f32, waiting: bool) -> Option<(Bounds<Pixels>, Vec<(InboxPart, Bounds<Pixels>)>)> {
+/// Every button keeps its own fixed slot from the card's right edge on
+/// every kind of card: Dismiss at the right on notifications (left empty
+/// on waiting cards, which can't be dismissed), Snooze/Later in its own
+/// slot left of Dismiss on every card, and Clear All `INBOX_ALL_APART`
+/// (12 pt) left of Snooze on Medium and Large cards whenever more than
+/// one unpinned notification is in the stack ([`inbox_clears_all`]) and
+/// there is room beside Previous and Next.
+pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, inset: f32, waiting: bool, clear_all: bool) -> Option<(Bounds<Pixels>, Vec<(InboxPart, Bounds<Pixels>)>)> {
     if cards == 0 {
         return None;
     }
@@ -253,19 +340,63 @@ pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, in
     let card = Bounds::new(point(r.left() + px(side), r.top() + px(INBOX_PAD)), olo_interface::size(r.size.width - px(side * 2.0), px(inbox_card_height(preview, size))));
     let (bw, bh) = INBOX_BUTTON;
     let button = |x: Pixels, cy: Pixels| Bounds::new(point(x, cy - px(bh / 2.0)), olo_interface::size(px(bw), px(bh)));
-    let mut buttons = Vec::with_capacity(4);
+    let mut buttons = Vec::with_capacity(5);
     let cy = if size == Size::Small { card.center().y } else { card.bottom() - px(3.0 + INBOX_BAR / 2.0) };
     if size != Size::Small && cards > 1 {
         buttons.push((InboxPart::Previous, button(card.left() + px(3.0), cy)));
         buttons.push((InboxPart::Next, button(card.left() + px(3.0 + bw), cy)));
     }
-    if waiting {
-        buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw), cy)));
-    } else {
-        buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw * 2.0), cy)));
+    // Every button keeps its own distance from the card's right edge on
+    // notification and waiting cards alike: Dismiss's slot stays empty on
+    // waiting cards, Snooze/Later never shifts, and Clear All stays 12 pt
+    // left of Snooze on every card.
+    let all_left = card.right() - px(3.0 + bw * 3.0 + INBOX_ALL_APART);
+    if clear_all && size != Size::Small && all_left >= card.left() + px(3.0 + bw * 3.0) {
+        buttons.push((InboxPart::ClearAll, button(all_left, cy)));
+    }
+    buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw * 2.0), cy)));
+    if !waiting {
         buttons.push((InboxPart::Dismiss, button(card.right() - px(3.0 + bw), cy)));
     }
     Some((card, buttons))
+}
+
+/// The vacant Dismiss slot on a waiting card (where Dismiss stands on a
+/// notification card, so a rapid second click after dismissing the last blue
+/// card above a red one never opens the waiting item underneath). Returns
+/// `None` when the stack is empty or the top card is not a waiting card.
+pub fn inbox_vacant_dismiss(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, inset: f32, waiting: bool) -> Option<Bounds<Pixels>> {
+    if cards == 0 || !waiting {
+        return None;
+    }
+    let side = (inset / 2.0).max(4.0);
+    let card = Bounds::new(point(r.left() + px(side), r.top() + px(INBOX_PAD)), olo_interface::size(r.size.width - px(side * 2.0), px(inbox_card_height(preview, size))));
+    let (bw, bh) = INBOX_BUTTON;
+    let cy = if size == Size::Small { card.center().y } else { card.bottom() - px(3.0 + INBOX_BAR / 2.0) };
+    Some(Bounds::new(point(card.right() - px(3.0 + bw), cy - px(bh / 2.0)), olo_interface::size(px(bw), px(bh))))
+}
+
+/// Where an inbox's post-clear receipt card and its Undo button sit in
+/// row `r`: the card keeps the cleared card's exact height and bounds,
+/// and Undo is sized to fit its translated label in every catalog (the
+/// message giving way on Small). On Medium/Large cards Undo's visible
+/// frame is inset by `INBOX_IN` (flush with the header counter's right
+/// edge and equally inset from the card's bottom).
+pub fn inbox_receipt_laid(r: Bounds<Pixels>, preview: bool, size: Size, inset: f32) -> (Bounds<Pixels>, Bounds<Pixels>) {
+    inbox_receipt_laid_for(r, preview, size, inset, crate::words::tr("Undo"))
+}
+
+fn inbox_receipt_laid_for(r: Bounds<Pixels>, preview: bool, size: Size, inset: f32, label: &str) -> (Bounds<Pixels>, Bounds<Pixels>) {
+    let side = (inset / 2.0).max(4.0);
+    let card = Bounds::new(point(r.left() + px(side), r.top() + px(INBOX_PAD)), olo_interface::size(r.size.width - px(side * 2.0), px(inbox_card_height(preview, size))));
+    let (bw, bh) = INBOX_BUTTON;
+    let tw = style::text_width_app(label, style::DETAIL_SIZE, &style::ui_font(FontWeight::NORMAL));
+    let edge_inset = if size == Size::Small { 3.0 } else { INBOX_IN };
+    let max_w = (f32::from(card.size.width) - edge_inset * 2.0).max(bw * 2.0);
+    let w = (tw + 14.0).ceil().clamp(bw * 2.0, max_w);
+    let undo_top = if size == Size::Small { card.center().y - px(bh / 2.0) } else { card.bottom() - px(edge_inset + bh) };
+    let undo = Bounds::new(point(card.right() - px(edge_inset + w), undo_top), olo_interface::size(px(w), px(bh)));
+    (card, undo)
 }
 
 /// `text` as at most `lines` lines no wider than `width`, broken between
@@ -296,10 +427,162 @@ fn inbox_wrap(g: &mut Painter, text: &str, lines: usize, width: f32, font: &olo_
     out
 }
 
+/// Paint a rounded sunken pressed plate for an inbox button (foot icons
+/// and Undo alike): an outer ring one line wide in the border role
+/// (`ink.edge`: Undo's resting outline in light, the card's outline in
+/// dark) keeping the hover plate's exact footprint in both looks, with a
+/// 1-line shadow on top/left and 1-line highlight (`p.shine`) on
+/// bottom/right strictly inside the ring, framing Deskbar's well colour.
+fn paint_inbox_sunken(g: &mut Painter, plate: Bounds<Pixels>, radius: Pixels, p: &Palette, ink: style::CardInk) {
+    let line = style::hairline(g);
+    let bg = p.panel_background;
+    let shadow = style::shade(p, bg, 1.25);
+    let shine = style::c(p.shine);
+    let well = style::shade(p, bg, 1.03);
+    g.paint_quad(fill(plate, ink.edge).corner_radii(radius));
+    let inside = style::inset(g, plate, 1.0);
+    let r1 = (radius - line).max(px(0.0));
+    g.paint_quad(fill(inside, shine).corner_radii(r1));
+    let tl = Bounds::from_corners(inside.origin, point(inside.right() - line, inside.bottom() - line));
+    g.paint_quad(fill(tl, shadow).corner_radii(r1));
+    let inner = style::inset(g, plate, 2.0);
+    g.paint_quad(fill(inner, well).corner_radii((radius - line * 2.0).max(px(0.0))));
+}
+
+/// The hover plate colour for an inbox footer button: in dark mode the
+/// card's well lift; in light mode halfway between card paper and the
+/// sunken pressed well so it reads clearly on white at every scale.
+fn inbox_hover_plate(p: &Palette, ink: style::CardInk) -> Hsla {
+    if p.mode == olo_theme::ThemeMode::Dark {
+        ink.well
+    } else {
+        let (_, card) = style::card_paper(p);
+        let well = p.shade(p.panel_background, 1.03);
+        style::c(olo_theme::mix(card, well, 0.5))
+    }
+}
+
+/// The Undo text button's hover plate colour on the receipt card: a step
+/// stronger than its resting `ink.well` plate in both looks.
+fn inbox_undo_hover_plate(p: &Palette, ink: style::CardInk) -> Hsla {
+    if p.mode == olo_theme::ThemeMode::Dark {
+        let doc = p.document_text;
+        style::c([doc[0], doc[1], doc[2], (0.12_f32 * 255.0).round() as u8])
+    } else {
+        inbox_hover_plate(p, ink)
+    }
+}
+
+/// Paint the Clear All mark as one opaque shape centred inside `plate` to
+/// the half pixel: exact pixel art with no anti-aliasing at 1× (9 × 9) and
+/// 1.25× (11 × 11), and a single combined filled path with 1 pt strokes
+/// rounded to whole pixels (2 px at 1.5×, 1.75×, 2×) where the × ends
+/// strictly flush with the long row's right edge, row 2's top, and row 3's
+/// bottom.
+fn paint_clear_all_mark(g: &mut Painter, plate: Bounds<Pixels>, color: Hsla) {
+    let s = g.scale_factor();
+    let px0 = (f32::from(plate.origin.x) * s).round();
+    let py0 = (f32::from(plate.origin.y) * s).round();
+    let pw = (f32::from(plate.right()) * s).round() - px0;
+    let ph = (f32::from(plate.bottom()) * s).round() - py0;
+
+    let quad_px = |g: &mut Painter, ox: f32, oy: f32, x: f32, y: f32, w: f32, h: f32| {
+        let b = Bounds::from_corners(point(px((ox + x) / s), px((oy + y) / s)), point(px((ox + x + w) / s), px((oy + y + h) / s)));
+        g.paint_quad(fill(b, color));
+    };
+
+    if s <= 1.125 {
+        // 1×: 9 × 9 pixel art, no anti-aliasing. Rows 1 px at y = 0, 4, 8;
+        // long row x = 0..=8, short rows x = 0..=2; 5 × 5 × at x = 4..=8,
+        // y = 4..=8 with 1 px diagonals crossing on single pixel (6, 6).
+        let (bw, bh) = (9.0, 9.0);
+        let ox = px0 + ((pw - bw) / 2.0).floor();
+        let oy = py0 + ((ph - bh) / 2.0).floor();
+        quad_px(g, ox, oy, 0.0, 0.0, 9.0, 1.0);
+        quad_px(g, ox, oy, 0.0, 4.0, 3.0, 1.0);
+        quad_px(g, ox, oy, 0.0, 8.0, 3.0, 1.0);
+        for (x, y) in [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (8, 4), (7, 5), (5, 7), (4, 8)] {
+            quad_px(g, ox, oy, x as f32, y as f32, 1.0, 1.0);
+        }
+        return;
+    }
+
+    if s <= 1.375 {
+        // 1.25×: 11 × 11 pixel art, no anti-aliasing. Rows 1 px at y = 0, 5, 10;
+        // long row 11 px, short rows 4 px; 6 × 6 × at x = 5..=10, y = 5..=10
+        // with a 2 × 2 knot at its crossing.
+        let (bw, bh) = (11.0, 11.0);
+        let ox = px0 + ((pw - bw) / 2.0).floor();
+        let oy = py0 + ((ph - bh) / 2.0).floor();
+        quad_px(g, ox, oy, 0.0, 0.0, 11.0, 1.0);
+        quad_px(g, ox, oy, 0.0, 5.0, 4.0, 1.0);
+        quad_px(g, ox, oy, 0.0, 10.0, 4.0, 1.0);
+        for (x, y) in [(5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), (10, 5), (9, 6), (8, 7), (7, 8), (6, 9), (5, 10)] {
+            quad_px(g, ox, oy, x as f32, y as f32, 1.0, 1.0);
+        }
+        return;
+    }
+
+    // 1.5×, 1.75×, 2× (and higher): 1 pt strokes rounded to whole pixels
+    // (2 px at 1.5×, 1.75×, 2×), painted as one combined opaque filled path
+    // so the crossing never double-blends and the × lands flush with the
+    // long row's right end, row 2's top, and row 3's bottom.
+    let sw = s.round().max(1.0);
+    let pitch = (4.0 * s).round();
+    let bh = 2.0 * pitch + sw;
+    let bw = bh;
+    let short_w = (3.0 * s).floor();
+    let x_size = pitch + sw;
+    let ox = px0 + ((pw - bw) / 2.0).floor();
+    let oy = py0 + ((ph - bh) / 2.0).floor();
+
+    let pt = |x: f32, y: f32| point(px((ox + x) / s), px((oy + y) / s));
+    let mut path = olo_interface::PathBuilder::fill();
+    let mut add_rect = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        path.move_to(pt(x0, y0));
+        path.line_to(pt(x1, y0));
+        path.line_to(pt(x1, y1));
+        path.line_to(pt(x0, y1));
+        path.close();
+    };
+    add_rect(0.0, 0.0, bw, sw);
+    add_rect(0.0, pitch, short_w, pitch + sw);
+    add_rect(0.0, 2.0 * pitch, short_w, 2.0 * pitch + sw);
+
+    let (x0, x1) = (bw - x_size, bw);
+    let (y0, y1) = (pitch, bh);
+    let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let a = sw / std::f32::consts::SQRT_2;
+    // Trace the × as one simple 16-vertex non-self-intersecting outer polygon
+    // strictly inside `[x0, x1] × [y0, y1]`, so the crossing is solid under
+    // every fill rule with zero double-blending and zero overshoot.
+    path.move_to(pt(x0, y0));
+    path.line_to(pt(x0 + a, y0));
+    path.line_to(pt(cx, cy - a));
+    path.line_to(pt(x1 - a, y0));
+    path.line_to(pt(x1, y0));
+    path.line_to(pt(x1, y0 + a));
+    path.line_to(pt(cx + a, cy));
+    path.line_to(pt(x1, y1 - a));
+    path.line_to(pt(x1, y1));
+    path.line_to(pt(x1 - a, y1));
+    path.line_to(pt(cx, cy + a));
+    path.line_to(pt(x0 + a, y1));
+    path.line_to(pt(x0, y1));
+    path.line_to(pt(x0, y1 - a));
+    path.line_to(pt(cx - a, cy));
+    path.line_to(pt(x0, y0 + a));
+    path.close();
+    if let Ok(built) = path.build() {
+        g.paint_path(built, color);
+    }
+}
+
 /// A button's mark on a card, in its box `b`: lines a little over a
 /// device pixel wide, on the pixel grid.
 fn inbox_mark(g: &mut Painter, part: InboxPart, b: Bounds<Pixels>, color: Hsla) {
-    let c = style::snap_centred(g, b.center(), 12.0, 12.0).center();
+    let box12 = style::snap_centred(g, b.center(), 12.0, 12.0);
+    let c = box12.center();
     let w = px(1.4);
     let at = |dx: f32, dy: f32| point(c.x + px(dx), c.y + px(dy));
     match part {
@@ -311,13 +594,103 @@ fn inbox_mark(g: &mut Painter, part: InboxPart, b: Bounds<Pixels>, color: Hsla) 
             g.paint_segments(&[(at(0.0, -2.6), at(0.0, 0.0)), (at(0.0, 0.0), at(2.0, 1.2))], w, true, color);
         }
         InboxPart::Dismiss => g.paint_segments(&[(at(-3.5, -3.5), at(3.5, 3.5)), (at(3.5, -3.5), at(-3.5, 3.5))], w, true, color),
+        InboxPart::ClearAll => paint_clear_all_mark(g, b, color),
+        InboxPart::Undo => {}
+    }
+}
+
+/// Paint the stack's peeking edges under `face` for `under` cards behind it.
+fn paint_inbox_under(g: &mut Painter, face: Bounds<Pixels>, under: usize, p: &Palette, ink: style::CardInk) {
+    for k in (1..=INBOX_UNDER.min(under)).rev() {
+        let k = k as f32;
+        let card = Bounds::new(point(face.left() + px(INBOX_NARROWER * k), face.top() + px(INBOX_PEEK * k)), olo_interface::size(face.size.width - px(INBOX_NARROWER * 2.0 * k), face.size.height));
+        // (Each a shade further from the top one's paper, so the
+        // stack reads on a panel as light as its cards.)
+        let paper = olo_theme::mix(style::card_paper(p).1, p.document_text, 0.05 * k);
+        let card = style::snap(g, card);
+        g.paint_quad(fill(card, style::c(paper)).corner_radii(px(crate::metrics::CARD_RADIUS)).border_widths(style::hairline(g)).border_color(ink.edge));
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifications::InboxCard], preview: bool, size: Size, inset: f32, shown: Inbox, p: &Palette) {
+    if let Some(receipt) = shown.receipt {
+        let (face, undo) = inbox_receipt_laid(r, preview, size, inset);
+        let face = style::snap(g, face);
+        let ink = style::card_ink(p);
+        if size != Size::Small && !cards.is_empty() {
+            paint_inbox_under(g, face, cards.len(), p, ink);
+        }
+        style::card(g, face, p, false, false);
+        let (left, right) = (face.left() + px(INBOX_IN), face.right() - px(INBOX_IN));
+        let bold = style::ui_font(FontWeight::BOLD);
+        let plain = style::ui_font(FontWeight::NORMAL);
+        let (msg, show_undo, undoing) = match receipt {
+            InboxReceipt::Cleared { count, undoing } => (crate::words::count(count as u64, "1 notification cleared", "{n} notifications cleared"), true, undoing),
+            InboxReceipt::NothingCleared => (crate::words::tr("Nothing was cleared").to_owned(), false, false),
+            InboxReceipt::NothingToUndo => (crate::words::tr("Nothing to undo").to_owned(), false, false),
+        };
+        let undo_label = crate::words::tr("Undo");
+        let kept_text = inbox_kept_label(cards);
+        if size == Size::Small {
+            let cy = face.center().y;
+            let room = if show_undo { undo.left() - px(crate::metrics::TIGHT) - left } else { right - left };
+            style::label_fit(g, left, cy, Align::Left, msg.clone(), style::PLAIN_SIZE, bold, ink.text, room);
+        } else {
+            // Header row matching a notification card: Inbox icon + "Inbox"
+            // on the left, and what stayed ("1 pinned", "1 waiting", "2 kept")
+            // right-aligned in the counter slot.
+            let head_cy_raw = face.top() + px(INBOX_IN + INBOX_HEAD / 2.0);
+            let icon = style::snap_centred(g, point(left + px(INBOX_ICON / 2.0), head_cy_raw), INBOX_ICON, INBOX_ICON);
+            icons::paint(g, icon, "notifications");
+            let head_cy = icon.center().y;
+            let mut name_right = right;
+            if let Some(kept) = &kept_text {
+                let b = style::label(g, right, head_cy, Align::Right, kept.clone(), style::DETAIL_SIZE, plain.clone(), ink.dim);
+                name_right = b.left() - px(6.0);
+            }
+            let x = icon.right() + px(5.0);
+            style::label_fit(g, x, head_cy, Align::Left, crate::words::tr("Inbox").to_owned(), style::DETAIL_SIZE, bold.clone(), ink.dim, name_right - x);
+            // Message in the title's style (primary ink, bold, sentence case)
+            // on the title's first baseline, wrapping if a translation or large
+            // count exceeds one line.
+            let title_cy = face.top() + px(INBOX_IN + INBOX_HEAD + INBOX_TITLE / 2.0 + 1.0);
+            let lines = inbox_lines(preview, size);
+            let long = lines > 0 && style::fit(g, msg.clone().into(), style::PLAIN_SIZE, &bold, right - left).as_ref() != msg.as_str();
+            if long {
+                for (i, line) in inbox_wrap(g, &msg, 2, f32::from(right - left), &bold, style::PLAIN_SIZE).into_iter().enumerate() {
+                    style::label(g, left, title_cy + px((INBOX_TITLE / 2.0 - 1.0 + INBOX_TEXT / 2.0) * i as f32), Align::Left, line, style::PLAIN_SIZE, bold.clone(), ink.text);
+                }
+            } else {
+                style::label_fit(g, left, title_cy, Align::Left, msg.clone(), style::PLAIN_SIZE, bold, ink.text, right - left);
+            }
+        }
+        let remaining = kept_text.map(SharedString::from);
+        agent::record(g, agent::Node { role: "ListItem", name: Some(SharedString::from(msg)), value: remaining, bounds: face, enabled: true, ..Default::default() });
+        if show_undo {
+            let plate = style::snap(g, undo);
+            let hot = !undoing && shown.hot == Some(InboxPart::Undo);
+            let pressed = !undoing && shown.pressed == Some(InboxPart::Undo) && hot;
+            if pressed {
+                paint_inbox_sunken(g, plate, px(4.0), p, ink);
+            } else {
+                let plate_fill = if hot { inbox_undo_hover_plate(p, ink) } else { ink.well };
+                g.paint_quad(fill(plate, plate_fill).corner_radii(px(4.0)).border_widths(style::hairline(g)).border_color(ink.edge));
+            }
+            let off = if pressed { style::hairline(g) } else { px(0.0) };
+            let inner_w = (plate.size.width - px(8.0)).max(px(0.0));
+            let text_ink = if undoing { ink.dim } else { ink.text };
+            style::label_fit(g, plate.center().x, plate.center().y + off, Align::Center, undo_label.to_owned(), style::DETAIL_SIZE, plain, text_ink, inner_w);
+            if undoing {
+                agent::record(g, agent::Node { role: "Button", name: Some(SharedString::from("Undo")), bounds: undo, enabled: false, ..Default::default() });
+            } else {
+                agent::record(g, agent::Node::button("Undo", undo));
+            }
+        }
+        return;
+    }
     let top_waits = cards.get(shown.selected.min(cards.len().saturating_sub(1))).is_some_and(|c| c.attention);
-    let Some((face, buttons)) = inbox_laid(r, cards.len(), preview, size, inset, top_waits) else {
+    let Some((face, buttons)) = inbox_laid(r, cards.len(), preview, size, inset, top_waits, inbox_clears_all(cards)) else {
         // Nothing to deal with: said quietly, where a headline would be.
         let (_, dim) = inks(p);
         let left = f32::from(r.left()) + inset;
@@ -345,16 +718,7 @@ fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifi
     let ink = style::card_ink(p);
     // The cards under it, the furthest first: an edge of each.
     if size != Size::Small {
-        for k in (1..=INBOX_UNDER.min(cards.len() - 1)).rev() {
-            let k = k as f32;
-            let under =
-                Bounds::new(point(face.left() + px(INBOX_NARROWER * k), face.top() + px(INBOX_PEEK * k)), olo_interface::size(face.size.width - px(INBOX_NARROWER * 2.0 * k), face.size.height));
-            // (Each a shade further from the top one's paper, so the
-            // stack reads on a panel as light as its cards.)
-            let paper = olo_theme::mix(style::card_paper(p).1, p.document_text, 0.05 * k);
-            let under = style::snap(g, under);
-            g.paint_quad(fill(under, style::c(paper)).corner_radii(px(crate::metrics::CARD_RADIUS)).border_widths(style::hairline(g)).border_color(ink.edge));
-        }
+        paint_inbox_under(g, face, cards.len() - 1, p, ink);
     }
     style::card(g, face, p, shown.over && shown.hot.is_none(), false);
     let (left, right) = (face.left() + px(INBOX_IN), face.right() - px(INBOX_IN));
@@ -428,13 +792,23 @@ fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifi
             ..Default::default()
         },
     );
+    // Opaque resolved secondary colour on the card's current surface so
+    // intersecting glyph strokes never double-blend at their crossing.
+    let card_bg = {
+        let (_, base) = style::card_paper(p);
+        if shown.over && shown.hot.is_none() { olo_theme::mix(base, p.document_text, 0.025) } else { base }
+    };
+    let rest_ink = style::c(olo_theme::mix(card_bg, p.document_text, 0.52));
     for (part, b) in buttons {
         let hot = shown.hot == Some(part);
-        if hot {
-            let plate = style::snap(g, b);
-            g.paint_quad(fill(plate, ink.well).corner_radii(px(4.0)));
+        let pressed = shown.pressed == Some(part) && hot;
+        let plate = style::snap(g, b);
+        if pressed {
+            paint_inbox_sunken(g, plate, px(4.0), p, ink);
+        } else if hot {
+            g.paint_quad(fill(plate, inbox_hover_plate(p, ink)).corner_radii(px(4.0)));
         }
-        inbox_mark(g, part, b, if hot { ink.text } else { ink.dim });
+        inbox_mark(g, part, plate, if hot { ink.text } else { rest_ink });
         // (What waits in an app is put off, not snoozed for a time.)
         agent::record(g, agent::Node::button(if card.attention && part == InboxPart::Snooze { "Later" } else { part.name() }, b));
     }
@@ -834,6 +1208,166 @@ mod tests {
     use olo_protocol::glance::{Body, Glance, Slot, Span};
 
     use super::*;
+
+    /// Clear All on an inbox's card: there for a stack with more than one
+    /// unpinned notification, 12 pt left of Snooze's slot in its own fixed
+    /// place on every card (notification or waiting, so a waiting card
+    /// arriving on top never moves Clear All under a pointer resting on
+    /// Snooze), the other buttons where they were; not on the small card,
+    /// not where the card is too narrow for it beside Previous and Next,
+    /// not for one unpinned notification beside pinned or waiting cards;
+    /// and the post-clear receipt keeps the card height with Undo clear of
+    /// Clear All's old slot.
+    #[test]
+    fn clear_all_stands_left_of_snooze_where_a_stack_has_notifications() {
+        use olo_protocol::notifications::InboxCard;
+        let note = |id: u32, attention: bool, pinned: bool| InboxCard {
+            id,
+            app: "Rex".into(),
+            title: "Agent finished".into(),
+            attention,
+            pinned,
+            instance: if attention { 0 } else { u64::from(id) },
+            ..InboxCard::default()
+        };
+        assert!(!inbox_clears_all(&[]));
+        assert!(!inbox_clears_all(&[note(1, false, false)]), "one: its ×");
+        assert!(!inbox_clears_all(&[note(1, true, false), note(2, false, false)]), "one notification and what waits in an app");
+        assert!(!inbox_clears_all(&[note(1, false, true), note(2, false, false)]), "one pinned and one ordinary: only one clearable");
+        assert!(!inbox_clears_all(&[note(1, false, true), note(2, false, true)]), "two pinned: none clearable");
+        assert!(inbox_clears_all(&[note(1, false, false), note(2, false, false)]));
+        assert!(inbox_clears_all(&[note(1, false, true), note(2, false, false), note(3, false, false)]), "pinned plus two ordinary");
+        assert!(inbox_clears_all(&[note(1, true, false), note(2, false, false), note(3, false, false)]));
+        // Older producer that omitted pin metadata (`instance == 0`): Clear All withheld (Astra 17).
+        let legacy = |id: u32| InboxCard { id, app: "Rex".into(), title: "Old".into(), attention: false, pinned: false, instance: 0, ..InboxCard::default() };
+        assert!(!inbox_clears_all(&[legacy(1), legacy(2)]), "older service without pin metadata must not offer Clear All");
+        assert!(!inbox_clears_all(&[legacy(1), note(2, false, false), note(3, false, false)]), "any legacy card without pin metadata withholds Clear All");
+
+        assert_eq!(inbox_clear_all_label(2, false), "Clear Both Notifications");
+        assert_eq!(inbox_clear_all_label(3, false), "Clear All 3 Notifications");
+        assert_eq!(inbox_clear_all_label(2, true), "Clear 2 Notifications");
+        assert_eq!(inbox_clear_all_label(3, true), "Clear 3 Notifications");
+
+        assert_eq!(inbox_kept_label(&[]), None);
+        assert_eq!(inbox_kept_label(&[note(1, false, true)]).as_deref(), Some("1 pinned"));
+        assert_eq!(inbox_kept_label(&[note(1, false, true), note(2, false, true)]).as_deref(), Some("2 pinned"));
+        assert_eq!(inbox_kept_label(&[note(1, true, false)]).as_deref(), Some("1 waiting"));
+        assert_eq!(inbox_kept_label(&[note(1, true, false), note(2, true, false)]).as_deref(), Some("2 waiting"));
+        assert_eq!(inbox_kept_label(&[note(1, false, true), note(2, true, false)]).as_deref(), Some("2 kept"));
+
+        let row = |width: f32| Bounds::new(point(px(0.0), px(0.0)), olo_interface::size(px(width), px(120.0)));
+        let laid = |width: f32, cards: usize, size: Size, waiting: bool, all: bool| inbox_laid(row(width), cards, true, size, 12.0, waiting, all).unwrap().1;
+        let at = |buttons: &[(InboxPart, Bounds<Pixels>)], part: InboxPart| buttons.iter().find(|(p, _)| *p == part).map(|(_, b)| *b);
+        let (bw, _) = INBOX_BUTTON;
+
+        // Without it: the buttons exactly where they were.
+        let before = laid(172.0, 3, Size::Medium, false, false);
+        assert_eq!(before.iter().map(|(p, _)| *p).collect::<Vec<_>>(), [InboxPart::Previous, InboxPart::Next, InboxPart::Snooze, InboxPart::Dismiss]);
+        // With it: the same four in the same places, and Clear All 12 pt left of Snooze, on their line.
+        let with = laid(172.0, 3, Size::Medium, false, true);
+        for (part, b) in &before {
+            assert_eq!(at(&with, *part), Some(*b), "{part:?} moved");
+        }
+        let (all, snooze, dismiss, next) =
+            (at(&with, InboxPart::ClearAll).unwrap(), at(&with, InboxPart::Snooze).unwrap(), at(&with, InboxPart::Dismiss).unwrap(), at(&with, InboxPart::Next).unwrap());
+        assert_eq!(f32::from(snooze.left() - all.right()), 12.0);
+        assert_eq!((all.top(), all.size), (snooze.top(), snooze.size));
+        assert!(all.left() >= next.right(), "clear of Next");
+        // Every button keeps the same distance from the card's right edge on
+        // every kind of card: on a waiting card Dismiss's slot stays empty,
+        // Snooze/Later keeps Snooze's exact slot, and Clear All stays 12 pt
+        // left of Snooze.
+        let (card_with, _) = inbox_laid(row(172.0), 3, true, Size::Medium, 12.0, false, true).unwrap();
+        let (card_wait, waits) = inbox_laid(row(172.0), 3, true, Size::Medium, 12.0, true, true).unwrap();
+        let (card_wait_solo, waits_solo) = inbox_laid(row(172.0), 1, true, Size::Medium, 12.0, true, false).unwrap();
+        let (card_note_solo, note_solo) = inbox_laid(row(172.0), 1, true, Size::Medium, 12.0, false, false).unwrap();
+        assert_eq!(waits.iter().map(|(p, _)| *p).collect::<Vec<_>>(), [InboxPart::Previous, InboxPart::Next, InboxPart::ClearAll, InboxPart::Snooze]);
+        let waits_all = at(&waits, InboxPart::ClearAll).unwrap();
+        let waits_later = at(&waits, InboxPart::Snooze).unwrap();
+        assert_eq!(card_wait.right() - waits_all.right(), card_with.right() - all.right(), "Clear All distance from right edge invariant");
+        assert_eq!(card_wait.right() - waits_later.right(), card_with.right() - snooze.right(), "Snooze/Later distance from right edge invariant");
+        assert_eq!(card_wait_solo.right() - at(&waits_solo, InboxPart::Snooze).unwrap().right(), card_with.right() - snooze.right());
+        assert_eq!(card_note_solo.right() - at(&note_solo, InboxPart::Snooze).unwrap().right(), card_with.right() - snooze.right());
+        assert_eq!(card_note_solo.right() - at(&note_solo, InboxPart::Dismiss).unwrap().right(), card_with.right() - dismiss.right());
+        assert_eq!(f32::from(waits_later.left() - waits_all.right()), 12.0, "12 pt gap preserved on waiting cards");
+        assert_eq!(at(&waits, InboxPart::Dismiss), None, "Dismiss slot empty on waiting cards");
+        assert_eq!(inbox_vacant_dismiss(row(172.0), 3, true, Size::Medium, 12.0, true), Some(dismiss), "vacant Dismiss slot matches notification Dismiss rect");
+        assert_eq!(inbox_vacant_dismiss(row(172.0), 3, true, Size::Medium, 12.0, false), None);
+        assert_eq!(inbox_vacant_dismiss(row(172.0), 0, true, Size::Medium, 12.0, true), None);
+        assert!(!waits_all.contains(&snooze.center()), "stationary pointer on Snooze must not land on Clear All");
+        // Small card also keeps Snooze in its own slot on waiting cards.
+        let (card_sm_n, sm_n) = inbox_laid(row(172.0), 2, true, Size::Small, 12.0, false, true).unwrap();
+        let (card_sm_w, sm_w) = inbox_laid(row(172.0), 2, true, Size::Small, 12.0, true, true).unwrap();
+        assert_eq!(card_sm_w.right() - at(&sm_w, InboxPart::Snooze).unwrap().right(), card_sm_n.right() - at(&sm_n, InboxPart::Snooze).unwrap().right());
+        assert_eq!(inbox_vacant_dismiss(row(172.0), 2, true, Size::Small, 12.0, true), at(&sm_n, InboxPart::Dismiss));
+        // Receipt card keeps exact card bounds & height, with Undo inset by
+        // `INBOX_IN` on both right and bottom (matching header counter edge)
+        // and clear of Clear All's old slot in English.
+        let (receipt_card, undo) = inbox_receipt_laid(row(172.0), true, Size::Medium, 12.0);
+        assert_eq!(receipt_card, card_with);
+        assert_eq!(f32::from(receipt_card.right() - undo.right()), INBOX_IN, "Undo right edge aligned with content inset");
+        assert_eq!(f32::from(receipt_card.bottom() - undo.bottom()), INBOX_IN, "Undo bottom edge aligned with content inset");
+        assert!(undo.left() > all.right(), "a second click where Clear All stood must not hit Undo");
+        let empty_inbox = Glance { body: Some(Body::Inbox { cards: vec![], snooze_minutes: 15, preview: true }), ..Default::default() };
+        let full_inbox = Glance { body: Some(Body::Inbox { cards: vec![note(1, false, false)], snooze_minutes: 15, preview: true }), ..Default::default() };
+        assert_eq!(
+            height_for(Some(&empty_inbox), Size::Medium, Inbox { receipt: Some(InboxReceipt::Cleared { count: 3, undoing: false }), ..Default::default() }),
+            height(Some(&full_inbox), Size::Medium)
+        );
+        assert_eq!(inbox_height_for(true, true, Size::Medium), height(Some(&full_inbox), Size::Medium));
+        assert_eq!(inbox_height_for(false, true, Size::Medium), LINE + PAD);
+        assert_eq!(height(Some(&empty_inbox), Size::Medium), LINE + PAD);
+        // The small card is one line: never. A card too narrow for it beside Previous and Next: left out, the rest as they were.
+        assert_eq!(at(&laid(172.0, 3, Size::Small, false, true), InboxPart::ClearAll), None);
+        let narrow = 2.0 * 6.0 + 3.0 + bw * 3.0 + 3.0 + bw * 3.0 + INBOX_ALL_APART - 1.0;
+        assert_eq!(laid(narrow, 3, Size::Medium, false, true).iter().map(|(p, _)| *p).collect::<Vec<_>>(), [InboxPart::Previous, InboxPart::Next, InboxPart::Snooze, InboxPart::Dismiss]);
+        assert!(at(&laid(narrow + 1.0, 3, Size::Medium, false, true), InboxPart::ClearAll).is_some());
+        // By name, as Deskbar's hits and agents have it.
+        assert_eq!(InboxPart::named("Clear All"), Some(InboxPart::ClearAll));
+        assert_eq!(InboxPart::named("Undo"), Some(InboxPart::Undo));
+    }
+
+    /// Undo fits its translated label without truncation in every catalog
+    /// (Astra 25: Dutch "Ongedaan maken", German "Widerrufen"), and Russian
+    /// preserves the "all" distinction for 21 (Astra 26). Reads catalog files
+    /// directly without mutating the process-global language so parallel tests
+    /// stay isolated.
+    #[test]
+    fn undo_fits_all_catalogs_and_russian_plural_keeps_all() {
+        let row = Bounds::new(point(px(0.0), px(0.0)), olo_interface::size(px(172.0), px(120.0)));
+        let plain = style::ui_font(FontWeight::NORMAL);
+        let words_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/words");
+        let lookup = |text: &str, key: &str| -> Option<String> {
+            for block in text.split("\n\n") {
+                let mut lines = block.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#'));
+                if lines.next() == Some(key) {
+                    return lines.next().map(str::to_owned);
+                }
+            }
+            None
+        };
+        for lang in &olo_kit_base::words::LANGUAGES {
+            let label = if lang.code == "en" {
+                "Undo".to_owned()
+            } else {
+                let text = std::fs::read_to_string(words_dir.join(format!("{}.txt", lang.code))).unwrap();
+                lookup(&text, "Undo").unwrap_or_else(|| panic!("{}: missing Undo translation", lang.code))
+            };
+            let tw = style::text_width_app(&label, style::DETAIL_SIZE, &plain);
+            for sz in [Size::Small, Size::Medium, Size::Large] {
+                let (card, undo) = inbox_receipt_laid_for(row, true, sz, 12.0, &label);
+                let inner_w = f32::from(undo.size.width) - 8.0;
+                assert!(inner_w >= tw, "{}: {sz:?} Undo label {label:?} ({tw:.1} pt) truncated in {inner_w:.1} pt", lang.code);
+                assert!(undo.left() >= card.left(), "{}: Undo escaped left edge of card", lang.code);
+            }
+        }
+        // Russian 21 (Slavic `one` form) still distinguishes Clear All from partial Clear.
+        let ru = std::fs::read_to_string(words_dir.join("ru.txt")).unwrap();
+        let all_one = lookup(&ru, "Clear All {n} Notifications").unwrap();
+        let some_one = lookup(&ru, "Clear {n} Notifications").unwrap();
+        assert_ne!(all_one, some_one, "Russian `one` form (used for 21) must distinguish all vs partial: {all_one:?}");
+        assert!(all_one.contains("все"), "Russian all `one` form should say все: {all_one:?}");
+    }
 
     #[test]
     fn heights_follow_what_it_has() {

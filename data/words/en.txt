@@ -820,9 +820,12 @@ Cleaning up the microphone's sound: {} ms behind{}.
 Clear
 Clear All
 Clear All Tabs
+Clear All {n} Notifications
+Clear Both Notifications
 Clear Browsing Data
 Clear History
 Clear History…
+Clear {n} Notifications
 Clear Scrollback
 Clear copied secrets after:
 Clear sky
@@ -1859,6 +1862,7 @@ In {}, on a new branch, {}, from {}.
 In {}, on a new branch, {}.
 In {}, on its branch, {}.
 In:
+Inbox
 Inches
 Inches of Mercury
 Include passwords and sign-ins, sealed with a password
@@ -2714,6 +2718,8 @@ Nothing is changed yet.
 Nothing more today
 Nothing new
 Nothing new to learn
+Nothing to undo
+Nothing was cleared
 Nothing of yours on {} was deleted.
 Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
 Nothing on {} is changed yet.
@@ -2868,6 +2874,7 @@ Open
 Open Bluetooth…
 Open Calendar
 Open Integrations…
+Open Item
 Open Link
 Open Location
 Open Log File…
@@ -5220,14 +5227,17 @@ your own picture
 {n} items found
 {n} items found so far
 {n} items taken out.
+{n} kept
 {n} minutes
 {n} minutes ago
 {n} more waiting
 {n} new notifications
+{n} notifications cleared
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 {n} overdue
 {n} packs as sent, by their checksums
 {n} panes
+{n} pinned
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 {n} ports forwarded here.
 {n} problems reading 1Password…
@@ -5248,6 +5258,7 @@ your own picture
 {n} to do
 {n} to-dos
 {n} unread
+{n} waiting
 {n} waiting in their apps
 {n} weeks
 {}  ·  Set up with nothing

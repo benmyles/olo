@@ -15,8 +15,12 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
-    time::UNIX_EPOCH,
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
+    time::{Duration, UNIX_EPOCH},
 };
 
 use olo_protocol::NoteLook;
@@ -110,6 +114,11 @@ pub struct Entry {
     #[serde(skip_serializing)]
     pub(crate) attention: Option<serde_json::Value>,
     pub id: u32,
+    /// Monotonic entry instance identity: assigned when the entry is created,
+    /// preserved across in-place replacements (`replaces_id` / stack tag),
+    /// changed if withdrawn and later reposted under a reused `id`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub uid: u64,
     pub app: String,
     pub desktop_entry: Option<String>,
     pub icon: Option<String>,
@@ -173,6 +182,7 @@ impl Entry {
         Entry {
             attention: None,
             id: n.id,
+            uid: 0,
             app: n.app_name.clone(),
             desktop_entry: n.desktop_entry.clone(),
             icon: n.icon.clone(),
@@ -254,17 +264,108 @@ fn picture_path(dir: &Path, id: u32) -> PathBuf {
     dir.join("pictures").join(format!("{id}.png"))
 }
 
-#[derive(Debug, Default)]
+/// Identifies a specific notification entry across history and archive
+/// transitions (`uid` when known, falling back to `(id, time)` for legacy
+/// entries without a `uid`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EntryKey {
+    pub id: u32,
+    pub time: u64,
+    pub uid: u64,
+}
+
+impl EntryKey {
+    pub fn of(e: &Entry) -> Self {
+        EntryKey { id: e.id, time: e.time, uid: e.uid }
+    }
+
+    pub fn matches(&self, e: &Entry) -> bool {
+        if self.uid != 0 && e.uid != 0 { self.uid == e.uid } else { self.id == e.id && self.time == e.time }
+    }
+}
+
+#[derive(Debug)]
 pub struct History {
     /// Oldest first. Shared: the History window lays out what it holds
     /// without copying 200 notes at each step of a resize; a change made
     /// while it holds them copies them once (`entries_mut`).
     pub entries: Arc<Vec<Entry>>,
     path: Option<PathBuf>,
+    /// Shared monotonic generator for `Entry::uid` across history and archive.
+    next_uid: Arc<AtomicU64>,
     /// What has left by itself since it was last asked for
     /// ([`History::take_left`]: read and tidied away, or pushed out by
     /// newer ones), each with why: for the archive.
     left: Vec<(Entry, Why)>,
+}
+
+impl Default for History {
+    fn default() -> Self {
+        History { entries: Arc::default(), path: None, next_uid: Arc::new(AtomicU64::new(1)), left: Vec::new() }
+    }
+}
+
+enum PersistJob {
+    Write(PathBuf, Vec<u8>),
+    Pair { first: Option<(PathBuf, Vec<u8>)>, second: Option<(PathBuf, Vec<u8>)>, done: Option<futures_channel::oneshot::Sender<()>> },
+    Flush(mpsc::Sender<()>),
+}
+
+static PERSIST: OnceLock<mpsc::Sender<PersistJob>> = OnceLock::new();
+
+/// Single ordered persistence thread for `history.json` and `archive.json`:
+/// executes writes strictly in FIFO order (never coalescing across a `Pair`
+/// boundary) so `first` is always atomically renamed onto disk before `second`
+/// begins, guaranteeing no crash window ever loses entries from both files.
+fn persist_writer() -> &'static mpsc::Sender<PersistJob> {
+    PERSIST.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<PersistJob>();
+        let _ = std::thread::Builder::new().name("notes-store".into()).spawn(move || {
+            while let Ok(job) = rx.recv() {
+                match job {
+                    PersistJob::Write(path, bytes) => {
+                        if let Err(e) = olo_kit::store::write(&path, &bytes) {
+                            tracing::warn!("keeping {}: {e}", path.display());
+                        }
+                    }
+                    PersistJob::Pair { first, second, done } => {
+                        let first_ok = match first {
+                            Some((path, bytes)) => match olo_kit::store::write(&path, &bytes) {
+                                Ok(()) => true,
+                                Err(e) => {
+                                    tracing::warn!("keeping {}: {e}", path.display());
+                                    false
+                                }
+                            },
+                            None => true,
+                        };
+                        if first_ok
+                            && let Some((path, bytes)) = second
+                            && let Err(e) = olo_kit::store::write(&path, &bytes)
+                        {
+                            tracing::warn!("keeping {}: {e}", path.display());
+                        }
+                        if let Some(done) = done {
+                            let _ = done.send(());
+                        }
+                    }
+                    PersistJob::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        tx
+    })
+}
+
+/// Wait until all queued history and archive writes have been renamed onto disk.
+pub fn flush_writes() {
+    let Some(tx) = PERSIST.get() else { return };
+    let (done, wait) = mpsc::channel();
+    if tx.send(PersistJob::Flush(done)).is_ok() {
+        let _ = wait.recv_timeout(Duration::from_secs(2));
+    }
 }
 
 /// How many the archive keeps, and for how many days.
@@ -377,6 +478,8 @@ impl History {
                 attention: false,
                 time: e.time,
                 fade_minutes: fade_minutes.filter(|_| !e.pinned),
+                pinned: e.pinned,
+                instance: if e.uid != 0 { e.uid } else { u64::from(e.id).max(1) },
             })
             .collect()
     }
@@ -412,7 +515,63 @@ impl History {
             // its own had it.)
             e.shown &= e.pinned || (e.stays && e.unread);
         }
-        History { entries: Arc::new(entries), path, left: Vec::new() }
+        let max_uid = entries.iter().map(|e| e.uid).max().unwrap_or(0);
+        let next_uid = Arc::new(AtomicU64::new(max_uid.saturating_add(1).max(1)));
+        for e in &mut entries {
+            if e.uid == 0 {
+                e.uid = next_uid.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        History { entries: Arc::new(entries), path, next_uid, left: Vec::new() }
+    }
+
+    /// Load `history` and `archive` together, sharing one monotonic `uid`
+    /// sequence and deduplicating `archive` against `history` so recovery from
+    /// an interrupted clear or undo (where both files held the batch between
+    /// atomic renames) leaves every entry intact with zero duplicates.
+    pub fn load_pair(history_path: Option<PathBuf>, archive_path: Option<PathBuf>) -> (History, History) {
+        let mut history = History::load(history_path);
+        let mut archive = History::load(archive_path);
+        let max_uid = history.entries.iter().chain(archive.entries.iter()).map(|e| e.uid).max().unwrap_or(0);
+        let shared = Arc::new(AtomicU64::new(max_uid.saturating_add(1).max(1)));
+        // Ensure distinct non-zero uids if both files had legacy 0 entries loaded separately.
+        let mut seen = std::collections::HashSet::new();
+        let mut history_dirty = false;
+        let mut archive_dirty = false;
+        for e in Arc::make_mut(&mut history.entries) {
+            if e.uid == 0 || !seen.insert(e.uid) {
+                e.uid = shared.fetch_add(1, Ordering::Relaxed);
+                seen.insert(e.uid);
+                history_dirty = true;
+            }
+        }
+        let history_keys: Vec<EntryKey> = history.entries.iter().map(EntryKey::of).collect();
+        let before = archive.entries.len();
+        Arc::make_mut(&mut archive.entries).retain(|a| !history_keys.iter().any(|k| k.matches(a) || k.id == a.id && k.time == a.time));
+        if archive.entries.len() != before {
+            archive_dirty = true;
+        }
+        for e in Arc::make_mut(&mut archive.entries) {
+            if e.uid == 0 || !seen.insert(e.uid) {
+                e.uid = shared.fetch_add(1, Ordering::Relaxed);
+                seen.insert(e.uid);
+                archive_dirty = true;
+            }
+        }
+        history.next_uid = shared.clone();
+        archive.next_uid = shared;
+        if history_dirty {
+            history.save();
+        }
+        if archive_dirty {
+            archive.save();
+        }
+        (history, archive)
+    }
+
+    /// Allocate a fresh monotonic non-zero entry `uid`.
+    pub fn alloc_uid(&self) -> u64 {
+        self.next_uid.fetch_add(1, Ordering::Relaxed).max(1)
     }
 
     /// The entries, to change: copied first if anything else holds them.
@@ -455,8 +614,9 @@ impl History {
             e.pinned = false;
             e.snoozed_until = None;
             e.archived = now;
+            let key = EntryKey::of(&e);
             let entries = self.entries_mut();
-            entries.retain(|x| (x.id, x.time) != (e.id, e.time));
+            entries.retain(|x| !key.matches(x));
             entries.push(e);
             changed = true;
         }
@@ -479,9 +639,9 @@ impl History {
     }
 
     /// Out of the archive again, as an Undo puts them back in the
-    /// history (`which`: each one's id and time). Their pictures stay.
-    pub fn unarchive(&mut self, which: &[(u32, u64)]) -> bool {
-        !self.take_out(|_, e| !which.contains(&(e.id, e.time))).is_empty()
+    /// history (`which`: each entry's key). Their pictures stay.
+    pub fn unarchive(&mut self, which: &[EntryKey]) -> bool {
+        !self.take_out(|_, e| !which.iter().any(|k| k.matches(e))).is_empty()
     }
 
     pub fn entries_mut(&mut self) -> &mut Vec<Entry> {
@@ -515,27 +675,61 @@ impl History {
         }
     }
 
-    /// Write it out (whole), off the UI thread.
+    /// Write it out (whole), off the UI thread, on the ordered store writer.
     pub fn save(&self) {
         let Some(path) = self.path.clone() else { return };
         // (Compact: it's long.)
         let Ok(bytes) = serde_json::to_vec(&*self.entries) else { return };
-        olo_kit::store::save_bytes(path, bytes);
+        let _ = persist_writer().send(PersistJob::Write(path, bytes));
     }
 
-    /// Add `e`, or update the entry with its id still open (a replacement).
-    pub fn put(&mut self, e: Entry) {
+    /// Crash-safe ordered pair write: writes and atomically renames `first`
+    /// onto disk strictly before `second` begins (never reordered or coalesced
+    /// across the pair). When moving entries from history to archive, pass
+    /// `(archive, history)`; when restoring from archive to history, pass
+    /// `(history, archive)` so no crash window can ever lose an entry from
+    /// both files. Signals `done` once both writes have completed.
+    pub fn save_pair(first: &History, second: &History, done: Option<futures_channel::oneshot::Sender<()>>) {
+        let first_job = first.path.clone().and_then(|p| serde_json::to_vec(&*first.entries).ok().map(|b| (p, b)));
+        let second_job = second.path.clone().and_then(|p| serde_json::to_vec(&*second.entries).ok().map(|b| (p, b)));
+        if first_job.is_none() && second_job.is_none() {
+            if let Some(done) = done {
+                let _ = done.send(());
+            }
+            return;
+        }
+        let _ = persist_writer().send(PersistJob::Pair { first: first_job, second: second_job, done });
+    }
+
+    /// Add `e`, or update the entry with its id still in the history (a
+    /// replacement). In-place updates preserve `Entry::uid`; a new entry (or
+    /// one reposted under a reused tag id after withdrawal/clear) receives a
+    /// fresh monotonic `uid`.
+    pub fn put(&mut self, mut e: Entry) {
+        let next_uid = self.next_uid.clone();
         let entries = self.entries_mut();
         // (The one with its id, open at its app or not: an app that
         // replaces one it closed, or one from before a restart, has its
         // old one again, not a second with the same id beside it.)
         match entries.iter_mut().rev().find(|x| x.id == e.id) {
             Some(old) => {
-                // A replacement keeps being pinned, or snoozed.
+                // A replacement keeps its entry uid, pin and snooze state.
+                let uid = if old.uid != 0 {
+                    old.uid
+                } else if e.uid != 0 {
+                    e.uid
+                } else {
+                    next_uid.fetch_add(1, Ordering::Relaxed).max(1)
+                };
                 let (unread, pinned, snoozed_until) = (old.unread || e.unread, old.pinned || e.pinned, old.snoozed_until.or(e.snoozed_until));
-                *old = Entry { unread, pinned, snoozed_until, ..e };
+                *old = Entry { uid, unread, pinned, snoozed_until, ..e };
             }
-            None => entries.push(e),
+            None => {
+                if e.uid == 0 {
+                    e.uid = next_uid.fetch_add(1, Ordering::Relaxed).max(1);
+                }
+                entries.push(e);
+            }
         }
         // Past what's kept, the oldest go (to the archive: `take_left`),
         // but those pinned or snoozed: the read ones first, and unread
@@ -739,9 +933,13 @@ mod tests {
         h.put(Entry { time: 40, snoozed_until: Some(u64::MAX), ..entry(4, "Later") });
         let cards = h.inbox(|e| vec![e.app.to_lowercase()], Some(60));
         assert_eq!(
-            cards.iter().map(|c| (c.id, c.title.as_str(), c.detail.as_str(), c.attention, c.fade_minutes)).collect::<Vec<_>>(),
-            [(2, "Build failed", "", false, None), (1, "Dana", "Lunch at one?", false, Some(60))]
+            cards.iter().map(|c| (c.id, c.title.as_str(), c.detail.as_str(), c.attention, c.fade_minutes, c.pinned)).collect::<Vec<_>>(),
+            [(2, "Build failed", "", false, None, true), (1, "Dana", "Lunch at one?", false, Some(60), false)]
         );
+        // With fading disabled, `fade_minutes` is None for both, so `pinned`
+        // still distinguishes the pinned card from the unpinned one.
+        let no_fade = h.inbox(|e| vec![e.app.to_lowercase()], None);
+        assert_eq!(no_fade.iter().map(|c| (c.id, c.fade_minutes, c.pinned)).collect::<Vec<_>>(), [(2, None, true), (1, None, false)]);
         assert_eq!((h.unread(), cards[1].icons.clone()), (2, vec!["slack".to_owned()]));
         // One replaced after its app closed it (or after a restart): the
         // same entry again, unread, not a second with its id.
@@ -870,7 +1068,8 @@ mod tests {
         assert!(a.archive(cleared(&gone), 4100));
         assert_eq!(a.entries.iter().map(|e| (e.id, e.why)).collect::<Vec<_>>(), vec![(1, Some(Why::Tidied)), (3, Some(Why::Cleared))]);
         h.put_back(gone);
-        assert!(a.unarchive(&[(3, 5000)]) && !a.unarchive(&[(3, 5000)]));
+        let k3 = EntryKey { id: 3, time: 5000, uid: 0 };
+        assert!(a.unarchive(&[k3]) && !a.unarchive(&[k3]));
         assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1]);
         assert!(h.entries.iter().any(|e| e.id == 3 && e.unread && e.why.is_none()), "back as it was");
         // Archived again (a Redo): once, in its own place.

@@ -234,7 +234,18 @@ impl WaitingApps {
             .into_iter()
             .flat_map(|w| {
                 let waits: Vec<&Wait> = w.waits.iter().filter(|x| !x.seen).collect();
-                let card = |id: u32, title: String, detail: String| InboxCard { id, app: w.name.clone(), icons: icons(w), title, detail, attention: true, time: w.time, fade_minutes: None };
+                let card = |id: u32, title: String, detail: String| InboxCard {
+                    id,
+                    app: w.name.clone(),
+                    icons: icons(w),
+                    title,
+                    detail,
+                    attention: true,
+                    time: w.time,
+                    fade_minutes: None,
+                    pinned: false,
+                    instance: 0,
+                };
                 if w.waits.is_empty() {
                     let detail = match w.count {
                         0 | 1 => olo_kit::tr!("Open {} to see it.", w.name),

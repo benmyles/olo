@@ -355,6 +355,10 @@ pub struct NotificationState {
     pub badge: Option<olo_theme::Hue>,
 }
 
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
+}
+
 /// One thing to deal with, as Deskbar's Inbox widget shows it: a
 /// notification not yet read (blue), or something waiting in an app
 /// (red, `attention`: the app's own count on its Deskbar row).
@@ -375,6 +379,18 @@ pub struct InboxCard {
     /// stays: pinned, waiting in its app, or fading is off).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_minutes: Option<u32>,
+    /// Pinned in the history (stays put: never cleared by Clear All, never
+    /// fades). Default false for cards written by older services.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
+    /// Monotonic notification entry identity assigned when the entry was
+    /// created: preserved across in-place `replaces_id` / tag updates,
+    /// changed if withdrawn and reposted under a reused numeric `id`.
+    /// Zero for waiting cards and for cards written by older services/helpers
+    /// that did not emit pin information (Deskbar gates Clear All on every
+    /// notification card carrying a non-zero `instance`).
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub instance: u64,
 }
 
 impl InboxCard {
@@ -599,5 +615,50 @@ mod tests {
         let look = NoteLook { badge: Some("PR #42".into()), fields: vec![("Branch".into(), "main".into())], ..Default::default() };
         let back: NoteLook = serde_json::from_str(&serde_json::to_string(&look).unwrap()).unwrap();
         assert_eq!(back, look);
+    }
+
+    /// Upgrade compatibility of `InboxCard::pinned` and `InboxCard::instance`
+    /// both ways: a new reader given a card without those fields reads it as
+    /// unpinned with `instance == 0` (so Deskbar knows the producer was not
+    /// pin-aware); an older reader (whose struct has neither field) ignores
+    /// both when present; and false/zero fields are omitted on the wire.
+    #[test]
+    fn inbox_card_pinned_upgrade_compat() {
+        // New Deskbar reading a card an older olo-notifications wrote (no `pinned` or `instance`).
+        let old_json = r#"{"id":7,"app":"Rex","title":"Done","detail":"All pass","attention":false,"time":100}"#;
+        let card: InboxCard = serde_json::from_str(old_json).unwrap();
+        assert_eq!((card.id, card.pinned, card.instance, card.fade_minutes), (7, false, 0, None));
+        // Unpinned card with instance 0 omits both `pinned` and `instance` when serialized.
+        let unpinned_json = serde_json::to_string(&card).unwrap();
+        assert!(!unpinned_json.contains("pinned") && !unpinned_json.contains("instance"), "defaults should omit fields: {unpinned_json}");
+
+        // Pin-aware card serializes `"pinned":true` and `"instance":42`, round-trips on the
+        // new type, and is ignored without error by an older reader without those fields.
+        let pinned_card = InboxCard { pinned: true, instance: 42, ..card.clone() };
+        let pinned_json = serde_json::to_string(&pinned_card).unwrap();
+        assert!(pinned_json.contains(r#""pinned":true"#) && pinned_json.contains(r#""instance":42"#), "{pinned_json}");
+        assert_eq!(serde_json::from_str::<InboxCard>(&pinned_json).unwrap(), pinned_card);
+
+        #[derive(Debug, Deserialize, PartialEq, Eq)]
+        struct OldInboxCard {
+            id: u32,
+            app: String,
+            #[serde(default)]
+            icons: Vec<String>,
+            title: String,
+            detail: String,
+            attention: bool,
+            #[serde(default)]
+            time: u64,
+            #[serde(default)]
+            fade_minutes: Option<u32>,
+        }
+        let older: OldInboxCard = serde_json::from_str(&pinned_json).unwrap();
+        assert_eq!((older.id, older.title.as_str(), older.attention), (7, "Done", false));
+
+        // Inside NotificationState and Body::Inbox too.
+        let state = NotificationState { unread: 1, cards: vec![pinned_card.clone()], ..Default::default() };
+        let state_back: NotificationState = serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(state_back.cards, vec![pinned_card]);
     }
 }

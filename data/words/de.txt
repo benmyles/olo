@@ -2411,6 +2411,17 @@ Alle löschen
 Clear All Tabs
 Alle Tabs leeren
 
+Clear All {n} Notifications
+one: {n} Mitteilung löschen
+other: Alle {n} Mitteilungen löschen
+
+Clear Both Notifications
+Beide Mitteilungen löschen
+
+Clear {n} Notifications
+one: {n} Mitteilung löschen
+other: {n} Mitteilungen löschen
+
 Clear Browsing Data
 Browserdaten löschen
 
@@ -5512,6 +5523,9 @@ In {}, auf seinem Branch {}.
 In:
 In:
 
+Inbox
+Eingang
+
 Inches
 Zoll
 
@@ -7971,6 +7985,12 @@ Heute nichts mehr
 Nothing new
 Nichts Neues
 
+Nothing to undo
+Nichts zum Widerrufen
+
+Nothing was cleared
+Nichts wurde gelöscht
+
 Nothing new to learn
 Nichts Neues zu lernen
 
@@ -8414,6 +8434,9 @@ Kalender öffnen
 
 Open Integrations…
 Integrationen öffnen …
+
+Open Item
+Eintrag öffnen
 
 Open Link
 Link öffnen
@@ -15383,6 +15406,22 @@ other: {n} weitere warten
 {n} new notifications
 one: {n} neue Mitteilung
 other: {n} neue Mitteilungen
+
+{n} notifications cleared
+one: {n} Mitteilung gelöscht
+other: {n} Mitteilungen gelöscht
+
+{n} kept
+one: {n} behalten
+other: {n} behalten
+
+{n} pinned
+one: {n} angeheftet
+other: {n} angeheftet
+
+{n} waiting
+one: {n} wartet
+other: {n} warten
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: {n} Aktualisierung von Fedora {} wartet: Installieren Sie sie zuerst, in Updates.

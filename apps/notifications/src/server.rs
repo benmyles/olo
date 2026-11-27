@@ -108,6 +108,14 @@ pub struct Note {
     pub show: Vec<String>,
 }
 
+/// Maximum number of targets accepted in one `ClearMany` D-Bus request
+/// (`History::KEEP` is 200): checked at bus ingress before posting to the UI
+/// or allocating collections.
+pub const MAX_CLEAR_MANY: usize = 512;
+
+/// Maximum batch id length accepted by `UndoClear`.
+const MAX_BATCH_ID_LEN: usize = 128;
+
 /// What the bus asks of the UI.
 #[derive(Debug)]
 pub enum In {
@@ -118,6 +126,23 @@ pub enum In {
     SenderGone(String),
     /// Told once it has been done (so `List` reflects it).
     Control(Control, Option<Done>),
+    /// Clear matching notification targets `(id, instance)` in one batch and
+    /// one Undo step (never pinned, snoozed or waiting items; when `unread_only`
+    /// is true, only notifications still unread in the Inbox and matching
+    /// non-zero `instance`). Replies with `(cleared_ids, batch_id, persisted)`
+    /// where `persisted` resolves once both atomic file writes finish on disk.
+    ClearMany {
+        targets: Vec<(u32, u64)>,
+        unread_only: bool,
+        reply: futures_channel::oneshot::Sender<(Vec<u32>, String, Option<futures_channel::oneshot::Receiver<()>>)>,
+    },
+    /// Undo the ClearMany batch identified by `batch`, reconciling against
+    /// current archive and history membership. Replies with `(restored_ids,
+    /// persisted)`.
+    UndoClear {
+        batch: String,
+        reply: futures_channel::oneshot::Sender<(Vec<u32>, Option<futures_channel::oneshot::Receiver<()>>)>,
+    },
 }
 
 /// Sent once the UI has done what it was asked.
@@ -223,12 +248,18 @@ impl Service {
 
 /// `com.olodesktop.Notifications1`: what is on screen and in the history, and
 /// acting on it.
-struct Controls {
+pub(crate) struct Controls {
     /// `List`'s answer, kept current by the UI.
     snapshot: std::sync::Arc<olo_sync::Mutex<String>>,
     /// `ListArchived`'s.
     archived: std::sync::Arc<olo_sync::Mutex<String>>,
     to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>,
+}
+
+impl Controls {
+    pub(crate) fn new(snapshot: std::sync::Arc<olo_sync::Mutex<String>>, archived: std::sync::Arc<olo_sync::Mutex<String>>, to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>) -> Self {
+        Controls { snapshot, archived, to_ui }
+    }
 }
 
 #[zbus::interface(name = "com.olodesktop.Notifications1")]
@@ -259,6 +290,49 @@ impl Controls {
 
     async fn dismiss(&self, id: u32) {
         self.ask(Control::Dismiss(id)).await
+    }
+
+    /// Clear matching `(id, instance)` targets in one batch and one Undo step,
+    /// skipping pinned, snoozed, missing and waiting items. When `unread_only`
+    /// is true (Deskbar's Inbox), only notifications still unread in the Inbox
+    /// whose `uid` matches non-zero `instance` are cleared; when false (CLI),
+    /// read history entries are eligible too. Returns the ids actually cleared
+    /// and a globally unique batch id (empty string if nothing was cleared).
+    async fn clear_many(&self, targets: Vec<(u32, u64)>, unread_only: bool) -> zbus::fdo::Result<(Vec<u32>, String)> {
+        if targets.len() > MAX_CLEAR_MANY {
+            return Err(zbus::fdo::Error::InvalidArgs(format!("ClearMany accepts at most {MAX_CLEAR_MANY} targets, got {}", targets.len())));
+        }
+        if targets.is_empty() {
+            return Ok((Vec::new(), String::new()));
+        }
+        let (reply, applied) = futures_channel::oneshot::channel();
+        (self.to_ui)(In::ClearMany { targets, unread_only, reply });
+        let Ok((cleared, batch, persisted)) = applied.await else {
+            return Ok((Vec::new(), String::new()));
+        };
+        if let Some(persisted) = persisted {
+            let _ = persisted.await;
+        }
+        Ok((cleared, batch))
+    }
+
+    /// Undo the ClearMany batch identified by `batch`, putting back exactly
+    /// those entries of that batch that are still among the cleared and not
+    /// already back in the history. Independent of History's Undo stack.
+    /// Returns the ids actually put back.
+    async fn undo_clear(&self, batch: String) -> zbus::fdo::Result<Vec<u32>> {
+        if batch.is_empty() || batch.len() > MAX_BATCH_ID_LEN {
+            return Ok(Vec::new());
+        }
+        let (reply, applied) = futures_channel::oneshot::channel();
+        (self.to_ui)(In::UndoClear { batch, reply });
+        let Ok((restored, persisted)) = applied.await else {
+            return Ok(Vec::new());
+        };
+        if let Some(persisted) = persisted {
+            let _ = persisted.await;
+        }
+        Ok(restored)
     }
 
     async fn clear_history(&self) {
@@ -471,11 +545,23 @@ fn picture(v: &OwnedValue) -> Option<Picture> {
     Some(Picture { width: w, height: h, rgba })
 }
 
+/// Outbound D-Bus signal emitted off the UI thread and outside the model lock
+/// in strict FIFO order (preserving `ActivationToken` → `ActionInvoked` →
+/// `NotificationClosed` spec order without ever blocking banners or History).
+enum BusSignal {
+    Closed(u32, Reason),
+    Action(u32, String),
+    ActivationToken(u32, String),
+    Replied(u32, String),
+}
+
 /// The service, while it runs.
 pub struct Bus {
     conn: zbus::blocking::Connection,
     /// Notes that came over org.gtk.Notifications, answered differently.
     gtk: crate::gtk::Shared,
+    /// Non-blocking ordered emitter for freedesktop signals.
+    signals: std::sync::mpsc::Sender<BusSignal>,
 }
 
 impl Bus {
@@ -501,7 +587,7 @@ impl Bus {
         let ui = to_ui.clone();
         let gtk_service = crate::gtk::Service { next, registry: gtk.clone(), to_ui: Box::new(move |m| ui(m)) };
         let to_ui_gone = to_ui.clone();
-        let controls = Controls { snapshot, archived, to_ui };
+        let controls = Controls::new(snapshot, archived, to_ui);
         let conn = builder.serve_at(PATH, service)?.serve_at(crate::gtk::PATH, gtk_service)?.serve_at(CONTROL_PATH, controls)?.build()?;
         // (The builder's `name` counts "someone else has it" as success.)
         let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
@@ -516,7 +602,27 @@ impl Bus {
             tracing::info!("notifications: no {}: {e}", crate::gtk::NAME);
         }
         follow_senders(&conn, senders, to_ui_gone);
-        Ok(Bus { conn, gtk })
+        let (signals, rx) = std::sync::mpsc::channel::<BusSignal>();
+        let sig_conn = conn.clone();
+        let _ = std::thread::Builder::new().name("notes-signals".into()).spawn(move || {
+            for sig in rx {
+                match sig {
+                    BusSignal::Closed(id, reason) => {
+                        let _ = sig_conn.emit_signal(None::<()>, PATH, NAME, "NotificationClosed", &(id, reason as u32));
+                    }
+                    BusSignal::Action(id, key) => {
+                        let _ = sig_conn.emit_signal(None::<()>, PATH, NAME, "ActionInvoked", &(id, key));
+                    }
+                    BusSignal::ActivationToken(id, token) => {
+                        let _ = sig_conn.emit_signal(None::<()>, PATH, NAME, "ActivationToken", &(id, token));
+                    }
+                    BusSignal::Replied(id, text) => {
+                        let _ = sig_conn.emit_signal(None::<()>, PATH, NAME, "NotificationReplied", &(id, text));
+                    }
+                }
+            }
+        });
+        Ok(Bus { conn, gtk, signals })
     }
 
     pub fn closed(&self, id: u32, reason: Reason) {
@@ -526,7 +632,7 @@ impl Bus {
             gtk.forget(id);
             return;
         }
-        let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "NotificationClosed", &(id, reason as u32));
+        let _ = self.signals.send(BusSignal::Closed(id, reason));
     }
 
     pub fn action(&self, id: u32, key: &str) {
@@ -534,7 +640,7 @@ impl Bus {
             crate::gtk::activate(self.conn.clone(), app, action, token);
             return;
         }
-        let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "ActionInvoked", &(id, key));
+        let _ = self.signals.send(BusSignal::Action(id, key.to_owned()));
     }
 
     /// Sent just before an action, so the app may bring its window forward.
@@ -544,12 +650,12 @@ impl Bus {
             gtk.set_token(id, token);
             return;
         }
-        let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "ActivationToken", &(id, token));
+        let _ = self.signals.send(BusSignal::ActivationToken(id, token.to_owned()));
     }
 
     /// The answer typed into an inline reply.
     pub fn replied(&self, id: u32, text: &str) {
-        let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "NotificationReplied", &(id, text));
+        let _ = self.signals.send(BusSignal::Replied(id, text.to_owned()));
     }
 }
 
@@ -573,13 +679,22 @@ fn follow_senders(conn: &zbus::blocking::Connection, senders: Senders, to_ui: st
     });
 }
 
+/// Bounded timeout for CLI calls so a stalled service never hangs indefinitely.
+const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The command line's side: a call to the running service on a connection.
+pub fn call_on(conn: &zbus::blocking::Connection, destination: Option<&str>, method: &str, body: &(impl serde::Serialize + zbus::zvariant::DynamicType)) -> zbus::Result<zbus::Message> {
+    conn.call_method(destination, CONTROL_PATH, Some(CONTROL), method, body)
+}
+
 /// The command line's side: a call to the running service.
 pub fn call(address: Option<&str>, method: &str, body: &(impl serde::Serialize + zbus::zvariant::DynamicType)) -> zbus::Result<zbus::Message> {
-    let conn = match address {
-        Some(a) => zbus::blocking::connection::Builder::address(a)?.build()?,
-        None => zbus::blocking::Connection::session()?,
+    let builder = match address {
+        Some(a) => zbus::blocking::connection::Builder::address(a)?,
+        None => zbus::blocking::connection::Builder::session()?,
     };
-    conn.call_method(Some(NAME), CONTROL_PATH, Some(CONTROL), method, body)
+    let conn = builder.method_timeout(CALL_TIMEOUT).build()?;
+    call_on(&conn, Some(NAME), method, body)
 }
 
 #[cfg(test)]

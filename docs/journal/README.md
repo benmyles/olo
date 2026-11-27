@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### Deskbar's Inbox: what was cleared, and Undo
+
+*13:28* — After Clear All the card says how many went, for eight seconds, with Undo: the service puts back exactly that batch.
+
+![Deskbar's Inbox: what was cleared, and Undo](2026-11-27/132806-deskbar-s-inbox-what-was-cleared-and-undo.png)
+
+### Deskbar's Inbox: Clear All
+
+*13:28* — A third button on the Inbox card's foot clears every notification in the stack that may go (pinned ones and ones that wait for an answer stay), in one step the notifications service can take back. Ben: 'add another icon button for clearing all notifications not just the one on top'.
+
+![Deskbar's Inbox: Clear All](2026-11-27/132806-deskbar-s-inbox-clear-all.png)
+
 ### Rex: Keep It Going and Auto Approve on every agent's row in Activity
 
 *07:58* — Right-clicking any agent in the Activity list now offers Keep It Going and Auto Approve for that row's own pane (a tab's own agent's row had neither; a child's did). Both rows' menus read in one order: what shows, the two switches, what folds, and, apart, what stops.

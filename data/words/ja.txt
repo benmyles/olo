@@ -2401,6 +2401,15 @@ Clear All
 Clear All Tabs
 すべてのタブを消去
 
+Clear All {n} Notifications
+other: {n}件の通知をすべて消去
+
+Clear Both Notifications
+2件の通知をどちらも消去
+
+Clear {n} Notifications
+other: {n}件の通知を消去
+
 Clear Browsing Data
 閲覧履歴データを削除
 
@@ -5488,6 +5497,9 @@ In {}, on its branch, {}.
 In:
 場所:
 
+Inbox
+受信箱
+
 Inches
 インチ
 
@@ -7945,6 +7957,12 @@ Nothing more today
 Nothing new
 新着なし
 
+Nothing to undo
+元に戻すものはありません
+
+Nothing was cleared
+何も消去されませんでした
+
 Nothing new to learn
 新しく学習する内容はありません
 
@@ -8388,6 +8406,9 @@ Open Calendar
 
 Open Integrations…
 連携を開く…
+
+Open Item
+項目を開く
 
 Open Link
 リンクを開く
@@ -15297,6 +15318,18 @@ other: ほか{n}件待機中
 
 {n} new notifications
 other: 新着通知{n}件
+
+{n} notifications cleared
+other: {n}件の通知を消去しました
+
+{n} kept
+other: 保持{n}件
+
+{n} pinned
+other: 固定{n}件
+
+{n} waiting
+other: 待機中{n}件
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {}の更新が{n}件あります。先に「更新」でインストールしてください。

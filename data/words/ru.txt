@@ -2431,6 +2431,21 @@ Clear All
 Clear All Tabs
 Удалить все позиции табуляции
 
+Clear All {n} Notifications
+one: Очистить все {n} уведомление
+few: Очистить все {n} уведомления
+many: Очистить все {n} уведомлений
+other: Очистить все {n} уведомления
+
+Clear Both Notifications
+Очистить оба уведомления
+
+Clear {n} Notifications
+one: Очистить {n} уведомление
+few: Очистить {n} уведомления
+many: Очистить {n} уведомлений
+other: Очистить {n} уведомления
+
 Clear Browsing Data
 Очистить историю
 
@@ -5560,6 +5575,9 @@ In {}, on its branch, {}.
 In:
 В папке:
 
+Inbox
+Входящие
+
 Inches
 Дюймы
 
@@ -8023,6 +8041,12 @@ Nothing more today
 Nothing new
 Ничего нового
 
+Nothing to undo
+Нечего отменять
+
+Nothing was cleared
+Ничего не очищено
+
 Nothing new to learn
 Новых примеров для обучения нет
 
@@ -8466,6 +8490,9 @@ Open Calendar
 
 Open Integrations…
 Открыть интеграции…
+
+Open Item
+Открыть элемент
 
 Open Link
 Открыть ссылку
@@ -15555,6 +15582,30 @@ one: {n} новое уведомление
 few: {n} новых уведомления
 many: {n} новых уведомлений
 other: {n} нового уведомления
+
+{n} notifications cleared
+one: Очищено {n} уведомление
+few: Очищено {n} уведомления
+many: Очищено {n} уведомлений
+other: Очищено {n} уведомления
+
+{n} kept
+one: Оставлено {n}
+few: Оставлено {n}
+many: Оставлено {n}
+other: Оставлено {n}
+
+{n} pinned
+one: Закреплено {n}
+few: Закреплено {n}
+many: Закреплено {n}
+other: Закреплено {n}
+
+{n} waiting
+one: В очереди: {n}
+few: В очереди: {n}
+many: В очереди: {n}
+other: В очереди: {n}
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: Ожидают установки обновления Fedora {} ({n}). Сначала установите их в «Обновлениях».

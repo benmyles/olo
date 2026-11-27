@@ -2411,6 +2411,17 @@ Tout effacer
 Clear All Tabs
 Effacer tous les onglets
 
+Clear All {n} Notifications
+one: Effacer {n} notification
+other: Effacer les {n} notifications
+
+Clear Both Notifications
+Effacer les deux notifications
+
+Clear {n} Notifications
+one: Effacer {n} notification
+other: Effacer {n} notifications
+
 Clear Browsing Data
 Effacer les données de navigation
 
@@ -5512,6 +5523,9 @@ Dans {}, sur sa branche, {}.
 In:
 Dans :
 
+Inbox
+Boîte de réception
+
 Inches
 Pouces
 
@@ -7971,6 +7985,12 @@ Plus rien aujourd’hui
 Nothing new
 Rien de nouveau
 
+Nothing to undo
+Rien à annuler
+
+Nothing was cleared
+Rien n’a été effacé
+
 Nothing new to learn
 Rien de nouveau à apprendre
 
@@ -8414,6 +8434,9 @@ Ouvrir Calendrier
 
 Open Integrations…
 Ouvrir Intégrations…
+
+Open Item
+Ouvrir l’élément
 
 Open Link
 Ouvrir le lien
@@ -15383,6 +15406,22 @@ other: {n} autres en attente
 {n} new notifications
 one: {n} nouvelle notification
 other: {n} nouvelles notifications
+
+{n} notifications cleared
+one: {n} notification effacée
+other: {n} notifications effacées
+
+{n} kept
+one: {n} conservée
+other: {n} conservées
+
+{n} pinned
+one: {n} épinglée
+other: {n} épinglées
+
+{n} waiting
+one: {n} en attente
+other: {n} en attente
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: {n} mise à jour de Fedora {} attend : installez-la d’abord, dans Updates.

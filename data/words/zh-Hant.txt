@@ -2401,6 +2401,15 @@ Clear All
 Clear All Tabs
 清除所有定位點
 
+Clear All {n} Notifications
+other: 清除全部 {n} 則通知
+
+Clear Both Notifications
+清除這兩則通知
+
+Clear {n} Notifications
+other: 清除 {n} 則通知
+
 Clear Browsing Data
 清除瀏覽資料
 
@@ -5488,6 +5497,9 @@ In {}, on its branch, {}.
 In:
 位置：
 
+Inbox
+收件箱
+
 Inches
 英吋
 
@@ -7945,6 +7957,12 @@ Nothing more today
 Nothing new
 沒有新內容
 
+Nothing to undo
+沒有可復原的操作
+
+Nothing was cleared
+未清除任何內容
+
 Nothing new to learn
 沒有新的學習內容
 
@@ -8388,6 +8406,9 @@ Open Calendar
 
 Open Integrations…
 開啟服務整合…
+
+Open Item
+開啟項目
 
 Open Link
 開啟連結
@@ -15297,6 +15318,18 @@ other: 另有 {n} 項正在等待
 
 {n} new notifications
 other: {n} 則新通知
+
+{n} notifications cleared
+other: 已清除 {n} 則通知
+
+{n} kept
+other: 已保留 {n} 項
+
+{n} pinned
+other: 已固定 {n} 則
+
+{n} waiting
+other: {n} 項正在等待
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {} 有 {n} 項待安裝的更新，請先在「更新」中安裝。

@@ -2411,6 +2411,17 @@ Alles wissen
 Clear All Tabs
 Alle tabbladen wissen
 
+Clear All {n} Notifications
+one: {n} melding wissen
+other: Alle {n} meldingen wissen
+
+Clear Both Notifications
+Beide meldingen wissen
+
+Clear {n} Notifications
+one: {n} melding wissen
+other: {n} meldingen wissen
+
 Clear Browsing Data
 Browsegegevens wissen
 
@@ -5512,6 +5523,9 @@ In {}, op de bijbehorende branch {}.
 In:
 In:
 
+Inbox
+Postvak
+
 Inches
 Inch
 
@@ -7971,6 +7985,12 @@ Verder niets vandaag
 Nothing new
 Niets nieuws
 
+Nothing to undo
+Niets om ongedaan te maken
+
+Nothing was cleared
+Er is niets gewist
+
 Nothing new to learn
 Niets nieuws om te leren
 
@@ -8414,6 +8434,9 @@ Agenda openen
 
 Open Integrations…
 Integraties openen…
+
+Open Item
+Item openen
 
 Open Link
 Koppeling openen
@@ -15383,6 +15406,22 @@ other: nog {n} in afwachting
 {n} new notifications
 one: {n} nieuwe melding
 other: {n} nieuwe meldingen
+
+{n} notifications cleared
+one: {n} melding gewist
+other: {n} meldingen gewist
+
+{n} kept
+one: {n} bewaard
+other: {n} bewaard
+
+{n} pinned
+one: {n} vastgemaakt
+other: {n} vastgemaakt
+
+{n} waiting
+one: {n} in afwachting
+other: {n} in afwachting
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: Er staat {n} update voor Fedora {} klaar. Installeer die eerst in Updates.

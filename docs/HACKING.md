@@ -21201,17 +21201,33 @@ or fitted whole), kept, and the windows drawn again as each comes.
 - For agents: `com.olodesktop.Notifications1` at `/com/olodesktop/Notifications`
   (`List` → JSON: `unread`, `quiet` and each note with its `look`, `via`,
   `pinned`, `snoozed_until` and `strength`; `Invoke`, `Dismiss`,
-  `SetRead(id, read)`, `MarkAllRead`, `SetPinned(id, pinned)`,
-  `Snooze(id, minutes)`, `ClearHistory`, `ShowHistory`,
-  `SetDoNotDisturb`, `VisitedSite(host)`, `ListArchived`; the names are
-  `olo_protocol::notifications::CONTROL`, `CONTROL_PATH`). Each
-  returns once the UI has done it (it answers through a oneshot), so a
-  `List` straight after sees the change. The same from the command line
-  (cli.rs): `olo-notifications [--bus A] --list [--json] | --history |
-  --invoke ID [ACTION] | --dismiss ID | --read ID|all | --unread ID |
-  --pin ID | --unpin ID | --snooze ID MINUTES | --clear | --dnd
-  on|off|MINUTES | --archived [--json]`; `--list` says which are pinned
-  and until when each is snoozed.
+  `ClearMany(targets: Vec<(u32, u64)>, unread_only: bool) -> (Vec<u32>, String)`,
+  `UndoClear(batch: String) -> Vec<u32>`, `SetRead(id, read)`, `MarkAllRead`,
+  `SetPinned(id, pinned)`, `Snooze(id, minutes)`, `ClearHistory`,
+  `ShowHistory`, `SetDoNotDisturb`, `VisitedSite(host)`, `ListArchived`;
+  the names are `olo_protocol::notifications::CONTROL`, `CONTROL_PATH`).
+  Each returns once the UI has applied it (and for `ClearMany` / `UndoClear`,
+  after crash-safe ordered persistence completes), so a `List` straight after
+  sees the change. `ClearMany` accepts at most 512 `(id, instance)` targets
+  (rejecting larger batches with `InvalidArgs` at ingress), skips pinned,
+  snoozed, missing and waiting items, and archives the eligible entries in
+  one Undo step, returning the cleared ids and a non-repeating string batch id
+  (`{128-bit hex}-{seq}`, empty if nothing was cleared). When `unread_only` is
+  true (Deskbar's Inbox), only unread entries whose monotonic `uid` matches
+  the non-zero `instance` are cleared; when false (the CLI), read history
+  entries are eligible too. `UndoClear(batch)` consumes that batch from an
+  independent bounded batch queue (decoupled from History's own Undo stack),
+  reconciles against current archive and history membership so already-put-back
+  entries are never duplicated, and returns the ids put back; History's Redo
+  of a bulk clear rechecks pin and snooze state. Freedesktop close signals are
+  queued while mutating and dispatched off the model lock on a FIFO worker.
+  The same from the command line (`cli.rs`):
+  `olo-notifications [--bus A] --list [--json] | --cleared [--json] | --history | --invoke ID [ACTION] | --clear [ID…] | --dismiss ID… | --read ID|all | --unread ID | --pin ID | --unpin ID | --snooze ID MINUTES | --dnd on|off|MINUTES`.
+  Bare `--clear` clears all eligible history entries (`ClearHistory`); one ID
+  calls `Dismiss`; multiple IDs call `ClearMany(targets, false)` in a single
+  request, summarize cleared and skipped IDs, and exit `0` only when every
+  unique requested ID was cleared (non-zero on partial or empty results).
+  `--list` says which are pinned and until when each is snoozed.
 
 Test it on a private bus: `busd -a unix:path=/var/tmp/olo-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
@@ -24714,32 +24730,47 @@ app only to make what's next.
   "2 of 5"; a dot of its kind, red or blue, draining as a notification
   fades (the card itself stays whole); its title; its text, a line
   (two, large; none if the widget's Text is "Title only"); then
-  Previous and Next at the left and Snooze and Dismiss at the right,
-  drawn marks (`inbox_mark`) on a plate under the pointer. Small: one
-  line, the dot, the title, Snooze and Dismiss. Empty: "Nothing new".
-  Its height doesn't change with how many there are (the room for the
-  cards under is kept), so the buttons stay under the pointer as cards
-  go. `glance::inbox_laid` is where the card and each button are, for
-  the painting and for Deskbar's hits both. In Deskbar
-  (`Glances::inbox`, `inbox_shown`): a click on the card opens the item
-  (`olo-notifications --invoke ID`: its action at its app, or what it
-  said shows it, or its app brought forward), the wheel or the arrows
-  turn the cards; Dismiss and Snooze take the card away at once
-  (`Glances::dealt_with`: the service's answer comes a quarter of a
-  second later, and the next card is under the pointer meanwhile) and
-  ask the service (`--dismiss`, `--snooze ID MINUTES`); one that
-  arrives goes on top, whichever was chosen ("if newer ones arrive
-  they should be added on top of the card stack too, not the bottom");
-  a card stays until it's read or cleared (it once left when it
-  "faded away", which took unread things out of sight: no more), its
-  dot draining with its age to the floor ("the dot should animate …
-  like we do in deskbar"). Its options: what it shows (everything, red, blue), the
-  order, how long Snooze snoozes, and whether cards show their text.
-  Agents read the top card as a list item ("Slack: Dana: lunch?", "2 of
-  5, waiting in its app") and each button by name. The layer over the
-  bar is drawn again when a widget's data changes
-  (`Taken::Widgets`: it showed a card dismissed elsewhere until the
-  pointer moved).
+  Previous and Next at the left and Clear All (when 2+ clearable
+  notifications with non-zero `instance` are in the stack), Snooze/Later
+  and Dismiss at the right, drawn marks (`inbox_mark`) on a plate under
+  the pointer (pressed plates use a 1-line `ink.edge` outer border ring
+  on the exact hover footprint with inner shadow/highlight inside). On a
+  waiting (red) card, Dismiss is omitted and its vacant slot consumes
+  clicks without opening the waiting item. Small: one line, the dot,
+  the title, Snooze and Dismiss (Clear All lives in the context menu).
+  Empty: "Nothing new". Its height (`glance::inbox_height_for`) does not
+  change with how many cards there are and takes a single bool without
+  cloning the stack, so buttons stay under the pointer as cards go.
+  `glance::inbox_laid`, `inbox_vacant_dismiss`, and `inbox_receipt_laid`
+  (sizing Undo to its localized label across all 13 catalogs) give the
+  geometry for both painting and Deskbar's hits. In Deskbar
+  (`Glances::inbox_snapshot`, `begin_clear_all`, `begin_undo`): a click
+  on the card opens the item (`olo-notifications --invoke ID`); the
+  wheel or arrows turn cards; Dismiss and Snooze hide the card at once
+  and ask the service (`--dismiss`, `--snooze ID MINUTES`). Clear All
+  captures its target `(id, instance)` list at mouse-down (or menu
+  open) so redraws while held cannot add newly arrived cards, skips
+  pinned and waiting cards (and withholds the action if an older
+  producer omits `instance`), hides the cleared cards until the
+  provider omits them (`GoneAt::Confirmed`), and sends one `ClearMany`
+  over a single serialized D-Bus worker thread (`deskbar-inbox-bus`,
+  5 s method timeout). The notifications service is the single
+  authority: Deskbar keeps no local Undo stack, shows an 8-second
+  receipt card with Undo (paused while hovered, backed by one
+  cancellable looper timer, persisted across Deskbar in-place reload,
+  and never blocking clicks on non-row placements or non-Inbox widgets),
+  and addresses `UndoClear(batch)` strictly to the unique D-Bus sender
+  that answered `ClearMany` (preserving a queued Undo even if a new
+  card arrives before the clear reply). On Undo, the receipt holds
+  quietly until the provider republishes the authoritative order; on
+  error or empty clear, hides roll back with a dismissible notice
+  receipt ("Nothing was cleared" / "Nothing to undo"). The context menu
+  groups single-item actions, separates `Clear …` below `Dismiss`/
+  `Later`, and keeps `Open Notifications` and `Deskbar Settings…`
+  together at the bottom, skipping compositor `HeldModifiers` IPC for
+  Inbox commands. One that arrives goes on top (replacing any active
+  receipt); a card stays until read or cleared, its dot draining with
+  age. Agents read the top card as a list item and each button by name.
 * **Preferences ▸ Deskbar**: the Add menu has each app's kinds ("Weather:
   Next Hours"); an app widget's settings are what it shows, its kind's
   line about it, a menu for each of its options, its name, where, its

@@ -2411,6 +2411,17 @@ Clear All
 Clear All Tabs
 सभी टैब स्टॉप हटाएँ
 
+Clear All {n} Notifications
+one: {n} सूचना साफ़ करें
+other: सभी {n} सूचनाएँ साफ़ करें
+
+Clear Both Notifications
+दोनों सूचनाएँ साफ़ करें
+
+Clear {n} Notifications
+one: {n} सूचना साफ़ करें
+other: {n} सूचनाएँ साफ़ करें
+
 Clear Browsing Data
 ब्राउज़िंग डेटा मिटाएँ
 
@@ -5512,6 +5523,9 @@ In {}, on its branch, {}.
 In:
 स्थान:
 
+Inbox
+इनबॉक्स
+
 Inches
 इंच
 
@@ -7971,6 +7985,12 @@ Nothing more today
 Nothing new
 कुछ नया नहीं
 
+Nothing to undo
+पूर्ववत करने के लिए कुछ नहीं
+
+Nothing was cleared
+कुछ भी साफ़ नहीं किया गया
+
 Nothing new to learn
 सीखने के लिए कुछ नया नहीं
 
@@ -8414,6 +8434,9 @@ Open Calendar
 
 Open Integrations…
 एकीकरण खोलें…
+
+Open Item
+आइटम खोलें
 
 Open Link
 लिंक खोलें
@@ -15383,6 +15406,22 @@ other: {n} और प्रतीक्षा में
 {n} new notifications
 one: {n} नई सूचना
 other: {n} नई सूचनाएँ
+
+{n} notifications cleared
+one: {n} सूचना साफ़ की गई
+other: {n} सूचनाएँ साफ़ की गईं
+
+{n} kept
+one: {n} रखा गया
+other: {n} रखे गए
+
+{n} pinned
+one: {n} पिन की गई
+other: {n} पिन की गईं
+
+{n} waiting
+one: {n} प्रतीक्षा में
+other: {n} प्रतीक्षा में
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: Fedora {} का {n} अपडेट लंबित है। पहले “अपडेट” में इसे इंस्टॉल करें।

@@ -2411,6 +2411,17 @@ Cancella tutto
 Clear All Tabs
 Cancella tutte le schede
 
+Clear All {n} Notifications
+one: Cancella {n} notifica
+other: Cancella tutte le {n} notifiche
+
+Clear Both Notifications
+Cancella entrambe le notifiche
+
+Clear {n} Notifications
+one: Cancella {n} notifica
+other: Cancella {n} notifiche
+
 Clear Browsing Data
 Cancella dati di navigazione
 
@@ -5512,6 +5523,9 @@ In {}, sul suo ramo {}.
 In:
 In:
 
+Inbox
+In arrivo
+
 Inches
 Pollici
 
@@ -7971,6 +7985,12 @@ Nient’altro per oggi
 Nothing new
 Nessuna novità
 
+Nothing to undo
+Niente da annullare
+
+Nothing was cleared
+Non è stato cancellato nulla
+
 Nothing new to learn
 Niente di nuovo da imparare
 
@@ -8414,6 +8434,9 @@ Apri Calendario
 
 Open Integrations…
 Apri Integrazioni…
+
+Open Item
+Apri elemento
 
 Open Link
 Apri collegamento
@@ -15383,6 +15406,22 @@ other: ancora {n} in attesa
 {n} new notifications
 one: {n} nuova notifica
 other: {n} nuove notifiche
+
+{n} notifications cleared
+one: {n} notifica cancellata
+other: {n} notifiche cancellate
+
+{n} kept
+one: {n} mantenuta
+other: {n} mantenute
+
+{n} pinned
+one: {n} fissata
+other: {n} fissate
+
+{n} waiting
+one: {n} in attesa
+other: {n} in attesa
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: È in attesa {n} aggiornamento di Fedora {}. Installalo prima in Aggiornamenti.

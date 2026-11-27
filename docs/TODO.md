@@ -906,6 +906,34 @@ something nobody here has is in "Blocked", with what it waits for.
   `Light::Waiting`, wherever it is used). Gemini: buttons and links end
   in three full stops beside typographic apostrophes ("check whether
   `...` is the intended … convention or should be `…`").
+- **The Inbox card's foot, left after the Clear All button's third look**
+  (2026-11-27; both reviewers, their words; the button itself was
+  committed after it). Opus: "The mark is now from a different icon
+  family than the glyphs beside it … drawn by the pixel. The clock
+  beside it is still anti-aliased at a steady 1 pt … 1.25x: 1 px = 0.8
+  pt, the faintest glyph in the foot. 1.5x: 2 px = 1.33 pt, the boldest
+  … Draw the whole foot by the mark's rule"; "'Centred in its plate' is
+  true only at 2x … Size the plate in device pixels, from the mark
+  outward: the mark plus an even number"; "One clock, two names … on a
+  waiting card the clock stands exactly where Snooze stands, but its
+  menu item is called 'Later'"; "The tip counts what will go but not
+  what stays … add a second line to the tip … '1 pinned stays'"; "In
+  the waiting menu, keep Dismiss but disabled". Gemini: "At 1.5x and
+  1.75x, render the mark anti-aliased at its scaled stroke weight";
+  "At 2x, the long top bar has crisp, solid square corners, whereas the
+  two shorter bars beneath it have softened/rounded end caps"; "Light
+  `Undo` hover contrast … the shift to hover is much subtler than the
+  newly strengthened icon hover plates"; "Uneven menu separator
+  brightness at 1.25x … due to fractional-scale rounding" (the kit's
+  menus); "The gray body line … aligns flush with the unread dot and
+  app icon rather than with the title's text column".
+- **Left by the Clear All button's code review** (Astra 6.2,
+  `/var/tmp/olo-reviews/astra-caa7a86644/astra-review.md`: its 27 were
+  each answered with a test in the change; not confirmed by a further
+  review, the change having had its two). To try by hand when next
+  there: a Deskbar reload within a receipt's eight seconds (its 13);
+  an older notifications service beside a new Deskbar during an
+  upgrade (its 17: Clear is withheld where cards carry no `instance`).
 - **Deskbar's bar, as two reviewers saw it beside the Clear All button**
   (2026-11-27; there before it; their words). Opus: "Dark depth is
   upside down"; "The small card cuts the news away … 'morning-cre…'

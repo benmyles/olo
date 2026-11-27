@@ -2411,6 +2411,17 @@ Limpar tudo
 Clear All Tabs
 Limpar todas as abas
 
+Clear All {n} Notifications
+one: Limpar {n} notificação
+other: Limpar todas as {n} notificações
+
+Clear Both Notifications
+Limpar ambas as notificações
+
+Clear {n} Notifications
+one: Limpar {n} notificação
+other: Limpar {n} notificações
+
 Clear Browsing Data
 Limpar dados de navegação
 
@@ -5512,6 +5523,9 @@ Em {}, no próprio branch, {}.
 In:
 Em:
 
+Inbox
+Caixa de entrada
+
 Inches
 Polegadas
 
@@ -7971,6 +7985,12 @@ Nada mais hoje
 Nothing new
 Nada de novo
 
+Nothing to undo
+Nada para desfazer
+
+Nothing was cleared
+Nada foi limpo
+
 Nothing new to learn
 Nada novo para aprender
 
@@ -8414,6 +8434,9 @@ Abrir Calendário
 
 Open Integrations…
 Abrir Integrações…
+
+Open Item
+Abrir item
 
 Open Link
 Abrir link
@@ -15383,6 +15406,22 @@ other: mais {n} aguardando
 {n} new notifications
 one: {n} nova notificação
 other: {n} novas notificações
+
+{n} notifications cleared
+one: {n} notificação limpa
+other: {n} notificações limpas
+
+{n} kept
+one: {n} mantida
+other: {n} mantidas
+
+{n} pinned
+one: {n} fixada
+other: {n} fixadas
+
+{n} waiting
+one: {n} aguardando
+other: {n} aguardando
 
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 one: Há {n} atualização do Fedora {} pendente. Instale-a primeiro em Atualizações.
