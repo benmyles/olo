@@ -744,6 +744,23 @@ try:
         assert "--effort" in seen_launch[0][2] and seen_launch[0][2][seen_launch[0][2].index("--effort") + 1] == "high", seen_launch[0]
         assert "--model" in seen_launch[1][2] and seen_launch[1][2][seen_launch[1][2].index("--model") + 1] == "gemini-4-neon-xhigh", seen_launch[1]
         assert "--effort" in seen_launch[1][2] and seen_launch[1][2][seen_launch[1][2].index("--effort") + 1] == "xhigh", seen_launch[1]
+        # RULES & HELP_RULES pass the absolute BOARD_BIN path (works in older worktrees), and _open_initial_board auto-opens the pane:
+        rendered_rules = agents.RULES.format(root="/var/tmp/wt", crate="crates/pool", package="olo-token-pool", name="pool-agy", dir=bd, approvals="", board=agents.BOARD_BIN)
+        assert agents.BOARD_BIN in rendered_rules and "\n    tools/dev/agent-board " not in rendered_rules, rendered_rules
+        rendered_help = agents.HELP_RULES.format(root=agents.ROOT, dir=bd, approvals="", board=agents.BOARD_BIN, name="help-x")
+        assert agents.BOARD_BIN in rendered_help, rendered_help
+        json.dump({"via": "rex", "block_id": "block:fake-child", "root": agents.ROOT}, open(os.path.join(bd, "meta.json"), "w"))
+        board_calls = []
+        orig_sub_run = agents.subprocess.run
+        try:
+            def fake_run(cmd, **kw):
+                board_calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, "ok\n", "")
+            agents.subprocess.run = fake_run
+            agents._open_initial_board("b1", bd, "Builder", "crates/pool", "# Add agy support\nImplement agy in Token Pool.")
+            assert board_calls and board_calls[0][1] == agents.BOARD_BIN and "init" in board_calls[0] and "--open" in board_calls[0] and "block:fake-child" in board_calls[0], board_calls
+        finally:
+            agents.subprocess.run = orig_sub_run
 finally:
     agents.HOME = orig_home3
     agents.olo = orig_olo3

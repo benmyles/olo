@@ -87,6 +87,7 @@ MINDER_MODEL = "gemini-4-neon-high"
 MINDER_EFFORT = "high"
 MINDER_GUIDE = os.path.join(ROOT, ".claude/skills/olo-agents/minder.md")
 MINDER_RULES = os.path.join(ROOT, ".claude/skills/olo-agents/minder-rules.md")
+BOARD_BIN = os.path.join(ROOT, "tools/dev/agent-board")
 # Visual design reviewer (changes involving visual design work use all three
 # reviewers: agy Neon 4 xhigh, codex Astra 6.2 xhigh, and claude Opus 5.5 xhigh).
 OPUS = "claude-opus-5-5"
@@ -834,7 +835,7 @@ Scope
 Building and testing
 - Your builds go in a target folder of your own (CARGO_TARGET_DIR is
   set for you: leave it). Debug builds; run the tests of what you change
-  (`cargo test -p {package}`) and keep them passing; add tests for what
+  (`jato test -p {package}`) and keep them passing; add tests for what
   you add, as the code around it does.
 - Leave the person's desktop alone: never run a GUI program from your
   shell (it would open on their screen), never reload, upgrade or install
@@ -880,19 +881,19 @@ How to work
   kit's widgets, the palette (theme::palette), the spacing (metrics) and
   text (style); don't invent a new look. Say in your report what anything
   new looks like, so the lead can check it.
-- Live standup board (MANDATORY — open immediately on startup and keep
-  current as you work): open a right-hand Rex split pane using
-  `tools/dev/agent-board` (runs unasked; zero CPU at rest via inotify;
-  shows a plain-English 1-2 paragraph summary of your goal/brief, a
-  standup of Recently Did / Doing Now / Up Next, a color progress meter,
-  and your todo checklist). Run once at startup:
-    tools/dev/agent-board init --open --title "{name}" --role "Builder" --crate "{crate}" \
+- Live standup board (MANDATORY — keep current from your very first turn):
+  a right-hand Rex split pane watching `{dir}/board.json` has ALREADY been
+  opened beside your tab (if not, pass `--open` on `init`). ALWAYS call the
+  absolute board path `{board}` (works in every worktree, runs unasked,
+  0% CPU at rest via inotify). On your VERY FIRST turn, populate your
+  plain-English 1-2 paragraph goal and full todo checklist:
+    {board} init --open --title "{name}" --role "Builder" --crate "{crate}" \
       --goal "1-2 easy-to-understand paragraphs explaining your goal in plain English." \
       --now "Reading brief and mapping files" \
       --next "Implement changes" --next "Run tests and clippy" \
       --todo "[>] Read brief and map files" --todo "[ ] Implement changes" --todo "[ ] Verify tests"
   Then after EVERY milestone or phase change, update ONLY what changed:
-    tools/dev/agent-board update --status working|testing|review|blocked|done \
+    {board} update --status working|testing|review|blocked|done \
       --did "What you just finished" --now "What you are doing right now" \
       --check-todo "Read brief" --start-todo "Implement" --note "Optional metric/test count"
 - If something is unclear, blocked, or would take you outside your scope,
@@ -959,9 +960,11 @@ you look into.)
   their windows show) goes to any outside service.
 - You are the helper: don't start another (tools/dev/agy-help, the
   olo-debug-help skill), nor any other agent or subagent of your own.
-- Live standup board (open at startup and keep current as you investigate):
-  run `tools/dev/agent-board init --open --title "Investigator" --role "Investigator" --goal "1-2 plain-English paragraphs of the bug you are root-causing" --now "Gathering initial evidence" --todo "[>] Reproduce / inspect code" --todo "[ ] Write answer.md"`
-  and call `tools/dev/agent-board update --did "…" --now "…" --check-todo "…"`
+- Live standup board (MANDATORY — your right-hand Rex pane is ALREADY opened
+  for `{dir}/board.json`; keep it current from your very first turn using the
+  absolute binary `{board}`, which runs unasked in every worktree):
+  run `{board} init --open --title "{name}" --role "Investigator" --goal "1-2 plain-English paragraphs of the bug you are root-causing" --now "Gathering initial evidence" --todo "[>] Reproduce / inspect code" --todo "[ ] Write answer.md"`
+  and call `{board} update --did "…" --now "…" --check-todo "…"`
   as you confirm hypotheses or rule them out (goes ahead unasked).
 - A script of more than one line (python3 -c '…', a heredoc, a loop)
   goes in a file in your folder, run from there: a long command shows
@@ -1201,6 +1204,7 @@ def session(name, cwd, env, program, native=None, subagent=True):
             "via": "rex",
             "rex_id": said.get("id") or name,
             "window": said.get("window_id"),
+            "block_id": said.get("block_id"),
             "owner_window": said.get("parent_window_id") or info[3],
             "root": ROOT,
             "minded": bool(os.environ.get("OLO_MINDER")),
@@ -1382,6 +1386,57 @@ def check_crate_overlap(repo, crate, skip_name=None):
         sys.exit(f"agents: {MOST} workers are already active in {repo} ({', '.join(active_in_repo)}): stop one first")
 
 
+def _brief_goal_summary(task_text, fallback):
+    """Extract a short plain-English opening summary from a brief for the
+    auto-opened initial standup board (replaced by the agent on turn 1)."""
+    lines = []
+    for raw in (task_text or "").splitlines():
+        s = raw.strip().lstrip("#").strip()
+        if not s or s.startswith("```") or s.startswith("---"):
+            if lines:
+                break
+            continue
+        lines.append(s)
+        if sum(len(x) for x in lines) >= 240:
+            break
+    summary = " ".join(lines).strip()
+    if len(summary) > 320:
+        summary = summary[:317].rstrip() + "…"
+    return summary or fallback
+
+
+def _open_initial_board(name, d, role, crate="", task_text="", board_file=None):
+    """Auto-open a live right-hand Standup board split pane beside a newly
+    started/resumed Rex tab so no builder, investigator, or minder ever runs
+    without a visible progress board (even in worktrees on older commits)."""
+    m = meta(name) or {}
+    block_id = m.get("block_id")
+    if m.get("via") != "rex" or not block_id or not os.path.isfile(BOARD_BIN):
+        return
+    bf = board_file or os.path.join(d, "board.json")
+    try:
+        if os.path.isfile(bf):
+            cmd = ["/usr/bin/python3", BOARD_BIN, "open", "--block", block_id, "--file", bf]
+        else:
+            fallback = f"{role} `{name}`" + (f" working on {crate}" if crate else "")
+            goal = _brief_goal_summary(task_text, fallback)
+            cmd = [
+                "/usr/bin/python3", BOARD_BIN, "init", "--open",
+                "--block", block_id, "--file", bf,
+                "--title", name, "--role", role, "--crate", crate or "",
+                "--goal", goal,
+                "--status", "starting",
+                "--now", "Starting — reading brief and setting up plan",
+                "--todo", "[>] Read brief and update board plan",
+            ]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            msg = (r.stderr or r.stdout).strip()
+            print(f"agents: warning: could not auto-open board for {name}: {msg}", file=sys.stderr)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"agents: warning: could not auto-open board for {name}: {e}", file=sys.stderr)
+
+
 def start_minder(brief=None, name="minder"):
     """Start the agy Neon 4 high minder directly under the lead tab."""
     refuse_nested()
@@ -1413,6 +1468,7 @@ def start_minder(brief=None, name="minder"):
         save_meta(name, m0)
         save_trusted_meta(name, m0)
         launch_minder(name, d, ROOT)
+        _open_initial_board(name, d, "Minder", "", task)
     m = meta(name) or {}
     print(f"agents: minder `{name}` started ({MINDER_MODEL}, effort {MINDER_EFFORT}, id={m.get('rex_id', name)}); folder {d}")
     if m.get("via") == "rex":
@@ -1448,12 +1504,13 @@ def start(name, crate, brief, tree=None):
             shutil.rmtree(d)
         os.makedirs(os.path.join(d, "target"))
         open(os.path.join(d, "task.md"), "w").write(task + "\n")
-        rules = RULES.format(root=repo, crate=crate, package=package or "-", name=name, dir=d, approvals=APPROVALS)
+        rules = RULES.format(root=repo, crate=crate, package=package or "-", name=name, dir=d, approvals=APPROVALS, board=BOARD_BIN)
         if not is_crate:
             rules = rules.replace(f"- Change files under {crate}/ only", f"- Change {crate} only (it isn't a crate: build nothing of Olo's unless the task says how it is checked)")
         open(os.path.join(d, "brief.md"), "w").write(rules + task + "\n")
         save_meta(name, {"crate": crate, "package": package, "root": ROOT, "worktree": repo, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
         launch(name, d, repo, [], os.path.join(d, "target"))
+        _open_initial_board(name, d, "Builder", crate, task)
     print(f"agents: {name} started on {crate} ({package}) in {repo}; its folder is {d}")
     print(f"agents: now wait on `olo agent watch --all` or `tools/dev/agents watch` to hear from it")
 
@@ -1488,9 +1545,10 @@ def investigate(brief, where, wait=True):
             for old in ("answer.md",):
                 if os.path.exists(os.path.join(work, old)):
                     os.replace(os.path.join(work, old), os.path.join(work, old + ".before"))
-            open(os.path.join(d, "brief.md"), "w").write(HELP_RULES.format(root=ROOT, dir=work, approvals=APPROVALS) + open(brief).read().strip() + "\n")
+            open(os.path.join(d, "brief.md"), "w").write(HELP_RULES.format(root=ROOT, dir=work, approvals=APPROVALS, board=BOARD_BIN, name=name) + open(brief).read().strip() + "\n")
             save_meta(name, {"work": work, "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(work, "answer.md")})
             launch(name, d, ROOT, [work], os.path.join(work, "target"))
+            _open_initial_board(name, d, "Investigator", "", open(brief).read().strip(), board_file=os.path.join(work, "board.json"))
             print(f"agents: {name} started on {brief}; its answer will be {work}/answer.md, its notes {work}/notes.md", flush=True)
         else:
             print(f"agents: {name} is on it already" + ("; waiting for it" if wait else ""), flush=True)
@@ -2886,15 +2944,18 @@ def resume(name, text, result=None, session=None):
                 m["done"] = os.path.abspath(result)
             save_meta(name, m)
             save_trusted_meta(name, m)
+            _open_initial_board(name, d, "Builder", m.get("crate") or "", text)
             print(f"agents: {name} is back, by its conversation's own id, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
             return
         _SUBTREE_IDS[0] = None
-        m.update({"rex_id": said["id"], "window": said.get("window_id"), "owner_window": said.get("parent_window_id") or m.get("owner_window"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "worktree": repo, "seen": "", "seen_state": "", "said_at": told_at})
+        m.update({"rex_id": said["id"], "window": said.get("window_id"), "block_id": said.get("block_id") or m.get("block_id"), "owner_window": said.get("parent_window_id") or m.get("owner_window"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "worktree": repo, "seen": "", "seen_state": "", "said_at": told_at})
         m.pop("ended", None)
         if result:
             m["done"] = os.path.abspath(result)
         save_meta(name, m)
         save_trusted_meta(name, m)
+        if m.get("crate"):
+            _open_initial_board(name, folder(name), "Builder", m.get("crate") or "", text)
     print(f"agents: {name} is back with its conversation, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
 
 

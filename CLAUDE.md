@@ -323,15 +323,16 @@ are universal and non-negotiable:
   screenshots from the right pane progress board for me please they're
   too intrusive").
 - **A live standup board beside every subagent (`tools/dev/agent-board`).**
-  (Ben, 2026-11-27: every builder, investigator, and minder opens a Rex
-  split pane to its right using `tools/dev/agent-board init --open …`
-  and keeps it up to date incrementally via `tools/dev/agent-board
-  update …`, supplying only what changed.) The board displays a plain-
-  English 1–2 paragraph version of the agent's goal/brief, a standup
-  (Recently Did, Doing Now, Up Next), a color progress bar with ASCII
-  status art, and its todo checklist — driven by `inotify` (0% CPU at
-  rest) and pre-allowed in `tools/dev/agents` so subagents update it
-  unasked.
+  (Ben, 2026-11-27: every builder, investigator, and minder gets a Rex
+  split pane to its right automatically opened by `tools/dev/agents` on
+  `start`/`resume`/`investigate`/`minder start` using the absolute
+  `tools/dev/agent-board` path so it works in every worktree, and keeps
+  it up to date incrementally via `agent-board update …`, supplying only
+  what changed.) The board displays a plain-English 1–2 paragraph
+  version of the agent's goal/brief, a standup (Recently Did, Doing Now,
+  Up Next), a color progress bar with ASCII status art, and its todo
+  checklist — driven by `inotify` (0% CPU at rest) and pre-allowed in
+  `tools/dev/agents` so subagents update it unasked.
 - **Agent hierarchy through `olo agent`: Lead ▸ Minder (`agy` Neon 4
   `high`) ▸ Builders & Reviewers.** (Ben, 2026-11-26 & 2026-11-27: all
   helpers are native Rex subagents via `olo agent` — never the harness
