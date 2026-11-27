@@ -164,9 +164,10 @@ end
 -- for a host (`bridge::OpCarry`).
 if cmd == "op" then
   local stdin = os.getenv("OLO_BRIDGE_STDIN")
+  -- (The file is `olo`'s to put away once the desktop has answered:
+  -- refused, it is what the host's own op reads instead.)
   if stdin and stdin ~= "" then
     a.stdin = base64_of(stdin)
-    os.remove(stdin)
   end
   local reads = { ["-i"] = true, ["--in-file"] = true, ["--template"] = true, ["--env-file"] = true }
   local files, i = {}, 1

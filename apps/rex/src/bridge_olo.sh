@@ -168,5 +168,23 @@ if [ "$OLO_SCREEN_ON" = desktop ]; then
 	fi
 	exit "$rc"
 fi
+# What op was given on its standard input is this script's to put away
+# (olo.lua sends it and leaves the file be): gone with the answer, but
+# for one case. Where the desktop couldn't be asked or may not do it
+# (69) and the caller is the stand-in for `op` (it names a place:
+# OLO_BRIDGE_KEEP_STDIN), the input is moved there, for the host's own
+# `op` to read: without that the stand-in went on to the host's own
+# program with its input already read and gone (a piped `op inject`
+# got an empty template; found by a code review, 2026-11-27).
+if [ -n "${OLO_BRIDGE_STDIN:-}" ]; then
+	${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"
+	rc=$?
+	if [ "$rc" = 69 ] && [ -n "${OLO_BRIDGE_KEEP_STDIN:-}" ]; then
+		mv -f "$OLO_BRIDGE_STDIN" "$OLO_BRIDGE_KEEP_STDIN" 2> /dev/null || rm -f "$OLO_BRIDGE_STDIN"
+	else
+		rm -f "$OLO_BRIDGE_STDIN"
+	fi
+	exit "$rc"
+fi
 # (OLO_BRIDGE_REX: another way to say `rex`, for Olo's own tests.)
 exec ${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"

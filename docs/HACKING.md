@@ -30453,7 +30453,14 @@ Rex server, as every Rex client offers its own
   status: `BridgeResponse::refused`, `bridge::REFUSED`, and the hub's
   for send, sync and forward. Until 2026-11-27 those for links,
   passwords, screens and files came back as 1, so with the permission
-  off a host's `xdg-open` failed instead of being the host's own.) Kept in step at each connection as the skill is
+  off a host's `xdg-open` failed instead of being the host's own. And
+  what `op` was given on its input is kept until the desktop has
+  answered: `olo` takes it in for the desktop, and on 69 hands it to
+  the stand-in at the place it names, `OLO_BRIDGE_KEEP_STDIN`, for the
+  host's own `op` to read; else it is removed with the answer. Before,
+  a piped `op inject` that was refused reached the host's own `op`
+  with nothing to read: `a_refused_op_gives_the_hosts_own_its_input`,
+  through the real `olo` script.) Kept in step at each connection as the skill is
   (`bridge::commands_there`, `.olo-commands`). Tried on the rig: copied
   on the host and pasted back through this computer's clipboard; a
   host's picture opened in Viewer here; with the clipboard not granted,

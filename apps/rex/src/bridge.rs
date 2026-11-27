@@ -1356,6 +1356,74 @@ mod commands_tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
+    /// What `op` was given on its input reaches the host's own `op` where
+    /// the desktop refuses or can't be asked: through the real `olo`
+    /// script (which takes the input in for the desktop first), with a
+    /// stand-in only for `rex`. Refusals came back as 1 until the day
+    /// they were made 69; from then the stand-in went on to the host's
+    /// own `op` with its input already read and gone (a code review,
+    /// 2026-11-27). Answered by the desktop, or failed there, the host's
+    /// own isn't run; and nothing of the input is left behind either way.
+    #[test]
+    fn a_refused_op_gives_the_hosts_own_its_input() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-shim-in-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (shims, own, run_dir) = (dir.join("shims"), dir.join("own"), dir.join("run"));
+        for d in [&shims, &own, &run_dir] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let exec = |path: &std::path::Path, text: &str| {
+            std::fs::write(path, text).unwrap();
+            std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        };
+        exec(&shims.join("olo-desktop-command"), SHIM);
+        exec(&shims.join("olo"), SKILL_OLO);
+        std::fs::write(shims.join("olo.lua"), SKILL_LUA).unwrap();
+        std::os::unix::fs::symlink("olo-desktop-command", shims.join("op")).unwrap();
+        // (`rex`: says what the desktop would have been sent of the input, and answers REX_STATUS.)
+        exec(&dir.join("rex"), "#!/bin/sh\nprintf 'sent: ' >> \"$LOG\"; [ -n \"$OLO_BRIDGE_STDIN\" ] && cat \"$OLO_BRIDGE_STDIN\" >> \"$LOG\"; echo >> \"$LOG\"; exit ${REX_STATUS:-0}\n");
+        exec(&own.join("op"), "#!/bin/sh\nprintf 'own op %s: ' \"$*\" >> \"$LOG\"; cat >> \"$LOG\"; echo >> \"$LOG\"\n");
+        let log = dir.join("log");
+        let run = |status: i32| -> (i32, String) {
+            let _ = std::fs::remove_file(&log);
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("printf 'user: {{ op://vault/item/user }}\\n' | op inject")
+                .current_dir(&dir)
+                .env("PATH", format!("{}:{}:/usr/bin:/bin", shims.display(), own.display()))
+                .env("LOG", &log)
+                .env("REX_SESSION", "session:1")
+                .env("XDG_RUNTIME_DIR", &run_dir)
+                .env("OLO_BRIDGE_REX", dir.join("rex"))
+                .env("REX_STATUS", status.to_string())
+                .output()
+                .unwrap();
+            (out.status.code().unwrap_or(-1), std::fs::read_to_string(&log).unwrap_or_default())
+        };
+        let left = || -> Vec<String> {
+            let mut names: Vec<String> = Vec::new();
+            for d in std::fs::read_dir(&run_dir).unwrap().flatten() {
+                if d.path().is_dir() {
+                    names.extend(std::fs::read_dir(d.path()).unwrap().flatten().map(|f| f.path().display().to_string()));
+                } else {
+                    names.push(d.path().display().to_string());
+                }
+            }
+            names
+        };
+        let template = "user: {{ op://vault/item/user }}\n";
+        // Refused, or no desktop (69): the host's own op, with the input whole.
+        assert_eq!(run(69), (0, format!("sent: {template}\nown op inject: {template}\n")));
+        assert!(left().is_empty(), "{:?}", left());
+        // Answered by the desktop: its answer is the command's; the host's own isn't run.
+        assert_eq!(run(0), (0, format!("sent: {template}\n")));
+        assert!(left().is_empty(), "{:?}", left());
+        // Failed there: its status; the host's own isn't run.
+        assert_eq!(run(1), (1, format!("sent: {template}\n")));
+        assert!(left().is_empty(), "{:?}", left());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// What each command does, with stand-ins for `olo` (what it was
     /// asked, and the status it answers) and for the host's own
     /// commands (what they were given).

@@ -159,7 +159,18 @@ wl-paste)
 	real "$@"
 	;;
 op)
+	# (What op was given on its input is the host's own op's again where
+	# the desktop can't be asked or may not do it: `olo` keeps it at the
+	# place named here on 69, and nowhere otherwise.)
+	OLO_BRIDGE_KEEP_STDIN="${XDG_RUNTIME_DIR:-${TMPDIR:-/var/tmp}}/olo-op-input.$$"
+	export OLO_BRIDGE_KEEP_STDIN
 	asked op "$@"
+	if [ -f "$OLO_BRIDGE_KEEP_STDIN" ] && [ ! -L "$OLO_BRIDGE_KEEP_STDIN" ]; then
+		(real "$@") < "$OLO_BRIDGE_KEEP_STDIN"
+		status=$?
+		rm -f "$OLO_BRIDGE_KEEP_STDIN"
+		exit "$status"
+	fi
 	real "$@"
 	;;
 olo-screen)
