@@ -4112,6 +4112,31 @@ their host's"):
   collect the `ESC [ ? N h` it writes. When a person reports what a
   check says works, the first question is what the real program does
   that the stand-in doesn't.
+- **A minder that hasn't answered may be reading: read all of what is
+  asked before answering in its place.** The watch said a builder's
+  question had stood a minute and a half unanswered by its minder
+  (leave to run its picture script), and I read the script for its
+  bus, its signals and its deletes, saw those were right, and said
+  yes. The minder had read all of it: the script wrote a file of its
+  own in the person's runtime folder and found Deskbar by scanning
+  every process of that name, the person's own too, and read their
+  environments. It refused, a moment after my yes had started the
+  script (2026-11-27; the job stopped, the script changed). A yes of
+  the lead's over a minder is for when the lead has read more than the
+  minder, not less.
+- **A code review at max does not converge, so it is triaged, not
+  obeyed.** Astra's three reviews of 2026-11-27 found 23, 27 and 43
+  things, the last of commits that fixed the second's; most were of
+  the development tools, each certain and each with its case. What
+  worked: read every finding; make the ones that touch what the
+  product does to a person (what Return is pressed on, a password's
+  input, what is removed) happen and fix them with a test that fails
+  before; put the rest in the TODO in its own words; and hold to the
+  rule's bound (one review a change, one more to confirm), or nothing
+  ships. A reviewer's "hold the release" is its reading of severity,
+  to be checked like the rest. Its findings of *new* code were the
+  valuable ones (a race the pointer fix itself made); say in the brief
+  what is new and what only confirms.
 - **A trial of a tool that reviews "what isn't committed" keeps its
   scratch outside the repository it tries.** Mine put the tool's own
   folders inside the trial repository (2026-11-27): every asking then

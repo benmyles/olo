@@ -42,11 +42,9 @@ What it does, each as the desktop's own install does it
    the new helper's itself, its lock handed down (`retire --to HELPER`):
    one step, whoever else asks meanwhile. One from before that just
    ends, and an asker of an old build may start the old one again in
-   that moment: this tool takes such a service over in its place
-   (`take_over`: a child of the tool sleeps on the service's lock and
-   becomes the new helper's service the moment the old one's process
-   ends). Where neither can be done it is asked the old way, until the
-   service is the new helper's. The running service is found without
+   that moment: it is asked again, until the service is the new
+   helper's (twelve times at most; every service since v2026.11.27.7
+   has the one step). The running service is found without
    asking it through the new helper (`quietly`): asked so, a service
    that isn't held hands itself over the old way.
 
@@ -316,7 +314,10 @@ def main():
             fail(f"{helper} isn't a helper that can be run")
         if "--dry-run" in args:
             was, runs, hands_over = quietly(helper)
-            if was is None:
+            # (What it would do, as it would do it: held, it would do nothing.)
+            if os.path.exists(HOLD) and "--even-if-held" not in args:
+                print(f"host-upgrade: dry run: held by {HOLD}: nothing would be done (--even-if-held: all the same)" + (f"; the agents service is pid {was} running {os.path.basename(runs)}" if was is not None else ""))
+            elif was is None:
                 print(f"host-upgrade: dry run: no agents service to hand over ({runs})")
             elif same_file(runs, helper):
                 print(f"host-upgrade: dry run: the agents service (pid {was}) runs {os.path.basename(helper)} already: nothing to hand over")

@@ -224,6 +224,7 @@ tools/dev/agents approve NAME y|p|no         # what it asks leave for
 tools/dev/agents answer NAME N               # the Nth choice of another question
 tools/dev/agents keys NAME down enter        # keys, where choices have no numbers; esc stops its step
 tools/dev/agents stop NAME                   # end it; its folder stays
+tools/dev/agents resume NAME [--result FILE] "TEXT…"   # bring a stopped one back with its conversation, told TEXT
 tools/dev/agents forget NAME                 # remove its folder
 tools/dev/agents attach NAME                 # what the person runs to watch it
 tools/dev/agents allowed                     # what goes ahead unasked, what is refused

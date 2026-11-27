@@ -36,8 +36,8 @@ too: "always do it through tmux never a script that just goes silent".
                                      tools/dev/opus-look). The review is
                                      written beside the first picture and printed,
                                      waited for as `investigate` waits
-  agents review [--about TEXT] [--tree DIR] RANGE [PATH…]
-  agents review [--about TEXT] [--tree DIR] --working [PATH…]
+  agents review [--about TEXT] [--tree DIR] [--dry-run] FROM..TO [PATH…]
+  agents review [--about TEXT] [--tree DIR] [--dry-run] --working [PATH…]
                                      have a change's code reviewed by Astra 6.2 at
                                      max in the Codex CLI (tools/dev/astra-review is
                                      this): the commits of RANGE (`main~3..main`,
@@ -84,6 +84,13 @@ too: "always do it through tmux never a script that just goes silent".
                                      folder, /var/tmp/olo-agents/NAME, with its
                                      report, stays until `forget`; its builds a day
                                      more: below)
+  agents resume NAME [--result FILE] TEXT…
+                                     bring a stopped worker back with its
+                                     conversation (a child tab: `olo agent resume`),
+                                     told TEXT, with a minder as at its start; FILE
+                                     is what it is to write this time (DONE is then
+                                     that file's, not its last report's). For a
+                                     second pass on its own work, after its review
   agents tidy                        end what nobody needs any more (list, watch and
                                      start do this too): an agent whose program has
                                      exited, one done and untouched for half an hour,
@@ -593,12 +600,6 @@ def asked(name):
 # until 2026-11-27: Codex's marked choice wasn't read as one), its
 # number, its words.
 CHOICE = re.compile(r"^\s*([>❯›])?\s*(\d)\.\s+(.*)$")
-
-
-def marked(text):
-    """The numbers of the choices that carry the mark, as the question's
-    lines show them (one, where the box is read right)."""
-    return [m.group(2) for m in (CHOICE.match(l) for l in text) if m and m.group(1)]
 
 
 def progress(name):
@@ -1368,7 +1369,7 @@ def review(args):
     # 2026-11-27.)
     def git(*a, ok=(0,)):
         try:
-            ran = subprocess.run(["git", "-C", tree, "--literal-pathspecs", "-c", "core.quotepath=off", *a], capture_output=True, timeout=120)
+            ran = subprocess.run(["git", "-C", tree, "--literal-pathspecs", "-c", "core.quotepath=off", *a], capture_output=True, stdin=subprocess.DEVNULL, timeout=120)
         except subprocess.TimeoutExpired:
             sys.exit(f"agents: git {a[0]} in {tree} hadn't answered in two minutes: nothing reviewed")
         if ran.returncode not in ok:
@@ -1384,10 +1385,14 @@ def review(args):
         of, paths = "what isn't committed", args
         head = commit("HEAD")
         diff = git("diff", *plain, head, "--", *paths)
-        # (New files nobody has added yet: whole, as a diff shows them.)
+        changed = git("diff", "--name-only", "-z", head, "--", *paths).split(b"\0")
+        # (New files nobody has added yet: whole, as a diff shows them. By
+        # a path that is plainly one: a file named `-` is standard input
+        # to `git diff --no-index`.)
         for new in git("ls-files", "-z", "--others", "--exclude-standard", "--", *paths).split(b"\0"):
             if new:
-                diff += git("diff", *plain, "--no-index", "--", "/dev/null", os.fsdecode(new), ok=(0, 1))
+                diff += git("diff", *plain, "--no-index", "--", "/dev/null", os.path.join(".", os.fsdecode(new)), ok=(0, 1))
+                changed.append(new)
         commits = b""
         at = (f"It is of the working tree over commit {head}, read at {time.strftime('%H:%M:%S', time.gmtime())} UTC: others may be changing "
               "files there while you read, so where a file in the tree doesn't match the diff, go by the diff and say so.")
@@ -1398,6 +1403,7 @@ def review(args):
             sys.exit(f"agents: a range is FROM..TO, two commits (`{of}` isn't): for one commit, COMMIT^..COMMIT\n" + usage)
         first, last = commit(ends[0]), commit(ends[1])
         diff = git("diff", *plain, first, last, "--", *paths)
+        changed = git("diff", "--name-only", "-z", first, last, "--", *paths).split(b"\0")
         commits = git("log", "--reverse", "--format=commit %h%n%n%s%n%n%b%n", f"{first}..{last}", "--", *paths)
         of = f"{first[:12]}..{last[:12]}"
         at = (f"The change ends at commit {last}: the tree may have moved on since, so read a file as it was reviewed with "
@@ -1415,7 +1421,7 @@ def review(args):
     if dry:
         # (What would be reviewed, and nothing started: the files as the
         # diff names them.)
-        files = [l[6:].decode(errors="replace") for l in diff.splitlines() if l.startswith(b"+++ b/")]
+        files = [os.fsdecode(f) for f in changed if f]
         print(f"agents: dry run: {name} would review {of}: {lines} lines of diff in {len(files)} files\n  " + "\n  ".join(files))
         return
     kept = os.path.join(REVIEWS, name)
@@ -1817,6 +1823,13 @@ def say(name, text, now=False):
         sys.exit(f"agents: {name} isn't running")
     if st == "asking":
         sys.exit(f"agents: {name} is asking you something: answer that first (agents approve {name} y|p|no, agents answer {name} N)")
+    # (When it was last told anything, written down before the words go:
+    # a result written before that is of what it was asked before
+    # (`finished`), and one written a moment after must count.)
+    m = meta(name)
+    if m is not None:
+        m["said_at"] = time.time()
+        save_meta(name, m)
     # (As one paste, so a new line in it is a new line and not a send;
     # then Enter by itself, a moment later.)
     paste(name, text)
@@ -1833,55 +1846,41 @@ def say(name, text, now=False):
         press(name, "M-m")
         time.sleep(1.0)
     seen(name)
-    # (When it was last told anything: a result written before that is
-    # of what it was asked before, `finished`.)
-    m = meta(name)
-    if m is not None:
-        m["said_at"] = time.time()
-        save_meta(name, m)
     print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until the step it is on ends (`agents say {name} --now …` delivers at once)"))
 
 
-def choose(name, pick, choices, text):
-    """Take `pick`, one of the `choices` a question shows (its key and
-    its words). In tmux: its own key, a digit. In a child tab a digit
-    can't be pressed (text there is pasted where the program takes
-    pastes, and refused while a child asks leave), so it is taken as the
-    service takes an answer: by what the choice means (`olo agent
-    approve`, which sees its mark on that very choice before Return and
-    Escapes otherwise). Where the service declines, nothing is pressed:
-    it declines a box it can't read for certain (a number seen twice, a
-    mark it can't place), and this used to go on to count rows down from
-    the first and press Return, on whatever the mark then stood on (a
-    code review, 2026-11-27: with the mark on No it confirmed No, and it
-    could confirm a standing permission). A choice that is none of the
-    service's kinds is taken by moving the mark down to it, only with
-    the mark seen on the first choice, alone."""
-    if via(name) != "rex":
-        press(name, pick[0])
-        return True
-    words = pick[1]
-    kind = ("--once" if words.startswith("Yes") and "always" not in words and "auto mode" not in words
-            else "--session" if words.startswith("Yes") and "in this conversation" in words
-            else "--no" if words.startswith("No") else None)
-    if kind:
-        r = olo("approve", child(name), kind, "--json")
-        if r.returncode != 0:
-            print(f"agents: olo agent approve {kind} didn't take ({(r.stderr or r.stdout).strip()[:300]}): nothing pressed. Look (agents peek {name}) and answer in its tab, or with `agents keys {name} …` once you have seen where its mark stands", file=sys.stderr)
-        return r.returncode == 0
-    first = choices[0][0] if choices else None
-    if marked(text) != [first]:
-        print(f"agents: the mark isn't seen on the first choice alone (it is on {', '.join(marked(text)) or 'none'}): nothing pressed. Look (agents peek {name}) and move to the choice yourself (`agents keys {name} …`)", file=sys.stderr)
-        return False
-    for _ in range([c[0] for c in choices].index(pick[0])):
-        press(name, "Down")
-        time.sleep(0.15)
-    press(name, "C-m")
-    return True
+def service_asks(name):
+    """What the agents service reads of what a child asks: the question,
+    its choices each with its number, its whole label and what it means
+    (`kind`), and the box's own key; None where it reads no question it
+    would answer (a box it can't read for certain is one)."""
+    r = olo("status", child(name), "--json")
+    try:
+        said = json.loads(r.stdout) if r.returncode == 0 else {}
+    except ValueError:
+        said = {}
+    return said.get("approval") or None
 
 
 def answer(name, how):
-    """Answer what it asks: y, p, no, or the number of a choice."""
+    """Answer what it asks: y, p, no, or the number of a choice.
+
+    A child tab is answered by the agents service and by nothing else:
+    the choice is the service's own reading of the box (each choice
+    whole, with what it means), the answer is asked for by its meaning
+    and for that very box (`olo agent approve --once|--session|--no
+    --box KEY`: the service moves the mark, sees it on the choice, and
+    only then presses Return; another box that stands by then is not
+    answered), and where the service declines, nothing is done here.
+    This tool used to read the choices off the screen itself, a line
+    each, and where the service declined it counted rows down from the
+    first and pressed Return: a label wrapped onto a second line lost
+    its "(Persist to settings.json)" and passed for a choice that keeps
+    nothing; with the mark elsewhere it confirmed whatever the mark
+    stood on (two code reviews, 2026-11-27). A choice that keeps
+    something for good, or changes the agent's mode, is not given from
+    here: in its tab, by the person or by the lead with `agents keys`
+    once its mark has been seen."""
     refuse_nested()
     if state(name) != "asking":
         sys.exit(f"agents: {name} isn't asking for anything ({state(name)})")
@@ -1890,26 +1889,45 @@ def answer(name, how):
     again = second_time(name, text)
     if again:
         print(f"agents: {again}")
-    if how.isdigit():
-        pick = next((c for c in choices if c[0] == how), None)
-    else:
-        kind = {"y": "y", "yes": "y", "p": "p", "no": "n", "n": "n"}.get(how)
-        if not kind:
-            sys.exit("agents: approve with y, p or no; or `answer NAME N` for the Nth choice")
-        # (agy 1.5.14: "Yes, run command"; "Yes, and always allow in this
-        # conversation for commands that start with '…'"; the same
-        # "(Persist to settings.json)"; "No, cancel".)
-        want = {"y": lambda w: w.startswith("Yes") and "always" not in w and "auto mode" not in w,
-                "p": lambda w: w.startswith("Yes") and "in this conversation" in w,
-                "n": lambda w: w.startswith("No")}[kind]
-        pick = next((c for c in choices if want(c[1])), None)
-    if not pick:
-        sys.exit(f"agents: no such choice in what {name} asks: look (agents peek {name}), and answer with `agents answer {name} N`, or where its choices have no numbers move to one and confirm it (`agents keys {name} down enter`)")
-    if any(x in pick[1] for x in SAVES):
-        sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
+    kind = {"y": "once", "yes": "once", "p": "allow_session", "no": "no", "n": "no"}.get(how)
+    if not how.isdigit() and not kind:
+        sys.exit("agents: approve with y, p or no; or `answer NAME N` for the Nth choice")
     before = screen(name, 400) or ""
-    if not choose(name, pick, choices, text):
-        return 4
+    if via(name) == "rex":
+        ap = service_asks(name)
+        if not ap:
+            sys.exit(f"agents: the agents service reads no question of {name}'s that it would answer (a box it can't read for certain, or none any more): nothing done. Look (agents peek {name}); answer in its tab, or with `agents keys {name} …` once you have seen where its mark stands")
+        mine = next((c for c in ap.get("choices", []) if (str(c.get("number")) == how if how.isdigit() else c.get("kind") == kind)), None)
+        if not mine:
+            sys.exit(f"agents: no such choice in what {name} asks, as the service reads it ({', '.join(str(c.get('number')) + ' ' + str(c.get('kind')) for c in ap.get('choices', []))}): look (agents peek {name})")
+        flag = {"once": "--once", "allow_session": "--session", "no": "--no"}.get(mine.get("kind"))
+        if not flag:
+            sys.exit(f"agents: that choice ({mine.get('number')}. {str(mine.get('label'))[:120]}) is one that {'is kept for good' if mine.get('kind') == 'dont_ask_again' else 'changes the agent’s mode' if mine.get('kind') == 'switch_mode' else 'the service has no word for'}: not from here (y allows this once)")
+        r = olo("approve", child(name), flag, *(["--box", ap["box"]] if ap.get("box") else []), "--json")
+        said = f"{mine.get('number')}. {mine.get('label')}"
+        if r.returncode != 0:
+            # (What the service did before it gave up is its to say: it
+            # may have moved the mark, or pressed Escape.)
+            print(f"agents: the service didn't answer {name} ({(r.stderr or r.stdout).strip()[:400]}): look (agents peek {name}) before answering again", file=sys.stderr)
+            return 4
+    else:
+        pick = next((c for c in choices if c[0] == how), None) if how.isdigit() else None
+        if not how.isdigit():
+            # (agy 1.5.14: "Yes, run command"; "Yes, and always allow in this
+            # conversation for commands that start with '…'"; the same
+            # "(Persist to settings.json)"; "No, cancel".)
+            want = {"once": lambda w: w.startswith("Yes") and "always" not in w and "auto mode" not in w,
+                    "allow_session": lambda w: w.startswith("Yes") and "in this conversation" in w,
+                    "no": lambda w: w.startswith("No")}[kind]
+            pick = next((c for c in choices if want(c[1])), None)
+        if not pick:
+            sys.exit(f"agents: no such choice in what {name} asks: look (agents peek {name}), and answer with `agents answer {name} N`, or where its choices have no numbers move to one and confirm (`agents keys {name} down enter`)")
+        # (In tmux a choice is taken by its own key, a digit; its label is
+        # read with the lines under it, where its words go on.)
+        if any(x in whole_label(text, pick[0]) for x in SAVES):
+            sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
+        press(name, pick[0])
+        said = pick[1]
     # (Whether it took: its screen moves on. The same question again after
     # that is a second asking, not this one left up: an agent that ran a
     # script asked to run it again, and the minder took it for an answer
@@ -1922,13 +1940,28 @@ def answer(name, how):
     if m is not None:
         m["answered"] = {"text": "\n".join(text), "at": time.time()}
         save_meta(name, m)
-    print(f"agents: answered {name}: {pick[1]}")
+    print(f"agents: answered {name}: {said}")
     if (screen(name, 400) or "") == before:
         print(f"agents: {name}'s screen hasn't changed since: look (agents peek {name}) before answering again")
         return 4
     time.sleep(0.5)
     if state(name) == "asking" and asked(name)[0] == text:
         print(f"agents: {name} asks the same again: a second time (its screen moved on in between), to be answered as one")
+
+
+def whole_label(text, number):
+    """A choice's words with the lines under it that go on with them, to
+    the next choice: as the question's lines show them."""
+    out, on = [], False
+    for l in text:
+        m = CHOICE.match(l)
+        if m:
+            on = m.group(2) == number
+            if on:
+                out.append(m.group(3).strip())
+        elif on:
+            out.append(l.strip())
+    return " ".join(out)
 
 
 def second_time(name, question):
@@ -1976,12 +2009,21 @@ def end(name, sessions=True):
     code review, 2026-11-27)."""
     d = folder(name)
     ended = True
+    # (A code reviewer's is never swept, whoever ends it: `stop`, the
+    # tidy and its own front door alike.)
+    sessions = sessions and not (meta(name) or {}).get("review_of")
     if via(name) == "rex":
         # (The service keeps all it said as it stops it; its tab closes.)
         kept = ["--save", os.path.join(d, "transcript.txt")] if os.path.isdir(d) else []
         if state(name) != "gone":
-            r = olo("stop", child(name), "--force", *kept)
-            if r.returncode != 0 and state(name) not in ("gone", "exited"):
+            r = olo("stop", child(name), "--force", "--json", *kept)
+            # (Its own word that it ended: it answers without an error and
+            # `ended: false` where its program outlived the time it gave it.)
+            try:
+                still = r.returncode == 0 and json.loads(r.stdout).get("ended") is False
+            except ValueError:
+                still = False
+            if (r.returncode != 0 or still) and state(name) not in ("gone", "exited"):
                 ended = False
                 print(f"agents: {name} couldn't be stopped ({(r.stderr or r.stdout).strip()[:200]}): it runs still; `olo agent stop {child(name)}` and look", file=sys.stderr)
     else:
@@ -2030,27 +2072,42 @@ def tidy(now=None):
     now = time.time() if now is None else now
     said = []
     for n in names():
-        m = meta(n) or {}
-        st = state(n)
-        if st == "exited":
+        # (Every session on this computer keeps its helpers in this one
+        # folder, and another's may be forgotten between the listing and
+        # the look at it: a review's front door ended on exactly that,
+        # its reviewer still at work with nothing waiting on it,
+        # 2026-11-27. One that has gone is nothing to tidy.)
+        try:
+            tidy_one(n, now, said)
+        except OSError:
+            continue
+    return said
+
+
+def tidy_one(n, now, said):
+    m = meta(n) or {}
+    st = state(n)
+    if st == "exited":
+        end(n)
+        said.append(f"{n}: its program had ended; its session closed (transcript.txt in {folder(n)})")
+    elif st == "idle":
+        p = progress(n)
+        if p != m.get("still"):
+            m["still"], m["still_since"] = p, now
+            save_meta(n, m)
+            return
+        sat = now - m.get("still_since", now)
+        has_result = finished(n)
+        if (has_result and sat >= DONE_KEPT) or sat >= IDLE_KEPT:
             end(n)
-            said.append(f"{n}: its program had ended; its session closed (transcript.txt in {folder(n)})")
-        elif st == "idle":
-            p = progress(n)
-            if p != m.get("still"):
-                m["still"], m["still_since"] = p, now
-                save_meta(n, m)
-                continue
-            sat = now - m.get("still_since", now)
-            has_result = finished(n)
-            if (has_result and sat >= DONE_KEPT) or sat >= IDLE_KEPT:
-                end(n)
-                said.append(f"{n}: {'done' if has_result else 'idle'} and untouched for {int(sat // 60)} minutes; stopped (its folder {folder(n)} stays)")
-        elif st == "gone":
-            ended = m.get("ended") or os.path.getmtime(os.path.join(folder(n), "meta.json"))
-            if now - ended >= FOLDER_KEPT:
-                shutil.rmtree(folder(n), ignore_errors=True)
-                said.append(f"{n}: ended over a week ago; its folder removed")
+            said.append(f"{n}: {'done' if has_result else 'idle'} and untouched for {int(sat // 60)} minutes; stopped (its folder {folder(n)} stays)")
+    elif st == "gone":
+        ended = m.get("ended") or os.path.getmtime(os.path.join(folder(n), "meta.json"))
+        if now - ended >= FOLDER_KEPT:
+            # (What it wrote is kept first, as `forget` keeps it.)
+            kept = keep_result(n)
+            shutil.rmtree(folder(n), ignore_errors=True)
+            said.append(f"{n}: ended over a week ago; its folder removed" + (f" (its result kept at {kept})" if kept else ""))
     return said
 
 
@@ -2107,6 +2164,45 @@ def keep_result(name):
     return kept
 
 
+def resume(name, text, result=None):
+    """A helper that was stopped, brought back with its conversation and
+    told `text` (`olo agent resume`: started again with what it was
+    started with, in its own session of its CLI), with a minder as at
+    its start; `result`, the file it is to write this time (its report
+    of the task before is not this one's). A builder is stopped when its
+    task is done, to give its tabs back, and what its work is found to
+    need comes after: its second pass is its own to make, knowing what
+    it knows (2026-11-27: done by hand the first time, its record here
+    left pointing at the child that had ended)."""
+    refuse_nested()
+    m = meta(name)
+    if not m:
+        sys.exit(f"agents: no {name} here to bring back (tools/dev/agents list)")
+    if live(name):
+        sys.exit(f"agents: {name} is running: `agents say {name} …` tells it more")
+    if via(name) != "rex" or not rex_here():
+        sys.exit(f"agents: {name} was a tmux session, or this isn't a Rex pane: only a child tab can be brought back with its conversation; start it anew with a brief that says what it did")
+    r = olo("resume", child(name), "--prompt", text, "--json")
+    try:
+        said = json.loads(r.stdout) if r.returncode == 0 else {}
+    except ValueError:
+        said = {}
+    if not said.get("id"):
+        sys.exit(f"agents: {name} couldn't be brought back ({(r.stderr or r.stdout).strip()[:300]})")
+    minded = os.environ.get("OLO_AGENTS_MINDER") != "off" and os.path.exists(MINDER_RULES)
+    if minded:
+        asked = olo("mind", said["id"], "--with", MINDER, "--rules", MINDER_RULES, "--json")
+        if asked.returncode != 0:
+            print(f"agents: {name} runs WITHOUT a minder ({(asked.stderr or asked.stdout).strip()[:200]}): what it asks comes to you; `olo agent mind {said['id']} --with {MINDER} --rules {MINDER_RULES}` once there is room", file=sys.stderr, flush=True)
+            minded = False
+    m.update({"rex_id": said["id"], "window": said.get("window_id"), "minded": minded, "seen": "", "seen_state": "", "said_at": time.time()})
+    m.pop("ended", None)
+    if result:
+        m["done"] = os.path.abspath(result)
+    save_meta(name, m)
+    print(f"agents: {name} is back with its conversation, and told; now wait on `tools/dev/agents watch`")
+
+
 def forget(name):
     refuse_nested()
     if live(name):
@@ -2142,7 +2238,10 @@ def main():
         print(__doc__)
         return
     cmd, rest = a[0], a[1:]
-    if cmd in ("start", "list", "watch", "investigate", "look", "review", "tidy"):
+    # (Not before a dry run, which changes nothing: it stopped idle
+    # helpers and removed old builds on its way to saying what a review
+    # would read.)
+    if cmd in ("start", "list", "watch", "investigate", "look", "review", "tidy") and "--dry-run" not in rest:
         say_swept(sweep_builds())
         say_tidied(tidy())
     if cmd == "start" and len(rest) == 3:
@@ -2175,6 +2274,10 @@ def main():
         keys(rest[0], rest[1:])
     elif cmd == "stop" and rest:
         stop(rest[0])
+    elif cmd == "resume" and len(rest) >= 2:
+        # resume NAME [--result FILE] TEXT…
+        result, words = (rest[2], rest[3:]) if rest[1] == "--result" and len(rest) >= 4 else (None, rest[1:])
+        resume(rest[0], " ".join(words), result)
     elif cmd == "forget" and rest:
         forget(rest[0])
     elif cmd == "attach" and rest:

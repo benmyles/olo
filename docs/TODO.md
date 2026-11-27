@@ -883,6 +883,63 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Left from Astra's third code review** (2026-11-27,
+  `/var/tmp/olo-reviews/astra-3bb707db3e/astra-review.md`, 43 findings
+  of five commits; what was fixed is in the commits that followed it).
+  In its words, each a claim until made to happen:
+  - *Rex, typing and Auto Approve* (its 19, 25, 37): "Type in All Panes
+    reads keyboard modes only from the focused pane. With a legacy shell
+    focused and a kitty-protocol agent in a sibling pane, an unbound
+    Ctrl+Enter is encoded as a carriage return and copied to both …
+    Choose the encoder per destination"; "Rex recognizes new output on a
+    150 ms timer. If the person presses an encoded key just after the
+    chooser is drawn, `Watch::typed` can find no pending question. The
+    later look starts an unstopped countdown on that same chooser.
+    Remote file drops and pasted images have a longer gap: the server
+    pastes the path after upload, bypassing `typed` completely"; "a
+    delayed clipboard reply from before a reconnect can stop the new
+    countdown even though its bytes are discarded. A commands-socket
+    invocation of Paste also … marks the question as the person's".
+  - *The parser* (its 2 in part, 29): the folder-trust reading "scans
+    the full screen and accepts the first of several marked trust
+    rows"; "a footerless Codex capture can show a multiline command
+    between the question and answer 1. A command line starting with
+    `Ctrl+G` becomes `foot`, leaving an empty answer region" (declined,
+    where it was read before); "a separate shortcut after the real
+    footer and a status row can pull that status into the choices.
+    Constrain footer candidates to the actual menu".
+  - *The agents' stand-ins* (its 39): "the stand-in logs every SGR mouse
+    report and leaves its mark fixed … Record ordered events per
+    question and the selected row on Return"; they "omit the real
+    programs' bracketed-paste mode".
+  - *The upgrade tool* (its 16, 17, 18, 36): `quietly` "reads
+    `/proc/PID/exe` as a pathname and later executes that pathname for
+    `ping`. If a concurrent installation replaces it in between, the
+    probe runs the later inode"; "a running service with an unlinked
+    executable is reported absent"; "two upgrades can both observe the
+    old PID … serialize host upgrades and make the service check an
+    expected serving generation with the retire request"; "every error
+    except stderr containing `held` proceeds to a 30-second PID poll".
+    And the suite's old-helper test (`OLO_TEST_OLD_HELPER`, its 40)
+    still asserts "in one step" of a helper that now says "asked 1
+    time".
+  - *The helpers' tool* (its 6, 10, 12 to 15, 21 to 23, 34, 35, 38): a
+    helper's record is in a folder it can write, and names where its
+    result is kept and which child to stop ("keep destination, backend,
+    exact child ID and input identity in a launcher-owned record outside
+    the reviewer's writable directory"); "a Rex timeout, handover, or
+    lookup from a different session makes `state` return `gone`"; "a
+    helper-shaped name is enough to reclaim someone else's work";
+    "`sweep_builds` rejects a symlink at `target` but follows one at
+    `home/name`"; "`whole(src)` and `open(src)` are separate lookups";
+    the lock is by the reviews' folder while the child lives in the
+    agents' folder; "a nonempty draft … is served as a completed
+    review"; "the conflict copy can overwrite an earlier result"; "two
+    branches can carry byte-identical changes … the second gets the
+    first review"; "the byte limit is enforced after the potentially
+    unbounded allocation"; "a repository with an unborn HEAD … exits at
+    `commit("HEAD")`".
+
 - **Left from Astra's second code review** (2026-11-27,
   `/var/tmp/olo-reviews/astra-0ea13780e6/astra-review.md`, 27 findings;
   what was fixed is in the commits of that day). Each is a claim until

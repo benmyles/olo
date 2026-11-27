@@ -20009,11 +20009,19 @@ marked number, or the box isn't read (a blockquote an answer quotes,
 screen: a quoted line that fits the numbering at the answers' column
 (a "3." under Antigravity's 1, 2, 4) is read as an answer; it costs an
 Escape, never a wrong yes, since the mark is seen on the very choice
-before Return. A choice's kind is read from the CLI's own words
-(`own_words`: what it quotes taken out, and "this session" counted
-only before any path): quoted words moved choices between "this
-conversation" and "kept in settings". A yes for this once is only ever
-one of a list of whole labels. Reading a box is one pass over its rows
+before Return. A chooser an answer quotes is never the chooser: where
+the last question on the screen has an earlier one above it with a
+marked answer between them, the box is not read (the quoted mark on
+the quoted Yes, the real cursor on a real answer above). A choice's
+kind is read from the CLI's own sentences first, told by how they
+begin and end (Antigravity's "always allow in this conversation for
+commands that start with …", Claude Code's "always allow access to …
+from this project"), then from its own words (`own_words`: what it
+quotes taken out, and "this session" counted only before any path):
+quoted words moved choices between "this conversation" and "kept in
+settings". A yes for this once is only ever one of a list of whole
+labels, and only a key in brackets after it is a shortcut ("Yes
+(always)" read as one). The last answer's label is read to the foot. Reading a box is one pass over its rows
 (`the_cost_of_reading_a_box`: 13 µs a plain box; 78 µs one whose
 answers quote two hundred lines, 809 µs before). And Antigravity's "⋯ (19
 lines hidden)" is read with its brackets, which it never was, and only
@@ -22794,9 +22802,17 @@ test session is swept by a reviewer's name. A helper's name is one word
 (`folder`): `forget` given a path removed that folder, any folder. A
 result written before the lead last spoke to a helper is of its last
 task, not this one (`finished`: a builder on its second task read as
-DONE by its first report). `approve` presses nothing where the service
-declines to (`choose`: it went on to count rows down from the first and
-press Return, on a box the service had declined as unreadable). For a
+DONE by its first report). A child tab's question is answered by the
+agents service and nothing else (`answer`: the service's own reading
+of the box, each choice whole with its kind, asked by its meaning and
+for that very box, `--box`; where it declines nothing is done; a
+choice that is kept for good is never given from here). The tool read
+the choices itself, a line each, and where the service declined it
+counted rows down from the first and pressed Return. `agents resume
+NAME [--result FILE] TEXT` brings a stopped helper back with its
+conversation for a second pass. A helper of another session that goes
+away under the tidy is nothing to tidy (it ended a review's front
+door, the reviewer still at work). For a
 trial of the tool itself, `OLO_AGENTS_DIR` and `OLO_REVIEWS_DIR` name
 other folders (outside the repository tried: inside it, they are part
 of "what isn't committed", a new change at every asking). `--tree DIR` reviews
@@ -28914,8 +28930,15 @@ forward, or the wheel turned to read a long command took the question
 for the person for good, and no countdown showed (Ben: "it seems auto
 approve still doesn't work in rex terminal? i see no countdown"); it
 also began Keep It Going's quiet again at every cell crossed. A click
-or an arrow that moves the chooser's mark is no danger: Return is
-pressed only with the mark seen on Yes. While a question counts
+or the wheel's arrows may move the chooser's mark, and Return is
+pressed on what the screen here shows: so after a button pressed or
+let go, or the wheel's arrows (`send_pointer_press`), a question
+counting down is not answered for `agent::SETTLE` (1.5 s), time for
+what the program made of it to be drawn here, and is read again then
+(`Watch::touched`: a pause, never a stop; a click 100 ms before the
+countdown's end that moved the mark to "don't ask again" would have
+had Return confirm that). Moves and the wheel's steps are passive.
+While a question counts
 down the window is redrawn once a second, and not otherwise. The tab,
 the pane's head and its Activity row carry the marks
 (`widgets::agent_marks`), and the tab's words say "kept going" and
@@ -30555,13 +30578,20 @@ Rex server, as every Rex client offers its own
   for send, sync and forward. Until 2026-11-27 those for links,
   passwords, screens and files came back as 1, so with the permission
   off a host's `xdg-open` failed instead of being the host's own. And
-  what `op` was given on its input is kept until the desktop has
-  answered: `olo` takes it in for the desktop, and on 69 hands it to
-  the stand-in at the place it names, `OLO_BRIDGE_KEEP_STDIN`, for the
-  host's own `op` to read; else it is removed with the answer. Before,
-  a piped `op inject` that was refused reached the host's own `op`
-  with nothing to read: `a_refused_op_gives_the_hosts_own_its_input`,
-  through the real `olo` script.) Kept in step at each connection as the skill is
+  what `op` is given on its input is kept by the stand-in itself
+  before anyone reads it (where `op` reads any: `olo`'s own rule), in a
+  file of that run's own in the bridge's private folder, removed
+  however the run ends; `olo` is given it as its input, and on 69 the
+  host's own `op` gets it whole, opened and unlinked first so nothing
+  of it is on disk while `op` runs. `olo` removes its own copy always,
+  also when cut off, and clears the variables of its own that a caller
+  may have inherited. An answer lost after the desktop has the request
+  is 75, not 69: whether it was done isn't known, and the host's own
+  is not run on top of it. Before, a piped `op inject` that was
+  refused reached the host's own `op` with nothing to read:
+  `a_refused_op_gives_the_hosts_own_its_input`, through the real
+  scripts, with the run cut off and an inherited variable among its
+  cases.) Kept in step at each connection as the skill is
   (`bridge::commands_there`, `.olo-commands`). Tried on the rig: copied
   on the host and pasted back through this computer's clipboard; a
   host's picture opened in Viewer here; with the clipboard not granted,
