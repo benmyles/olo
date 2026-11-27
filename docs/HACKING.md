@@ -19992,7 +19992,13 @@ menu and Tabs ▸ Auto Approve (`tab-auto-approve:SHELL`). A coding
 agent's question asking leave to go on (`agent::approvable_for`: any
 permission question `olo_agent_screen::parse_approval` reads, each
 agent's: "Do you want to …?", "Would you like to …?", "Allow this …?",
-Antigravity's "Run this command?", a question wrapped over two lines)
+Antigravity's "Run this command?", a question wrapped over two lines;
+its choices read to the last one where a choice quotes the command it
+would allow over several lines, with a blank line or more lines than a
+label wraps to: such a box was read as two choices and its "No" never
+seen, so `olo agent approve --no` had nothing to choose, 2026-11-27;
+and Antigravity's "⋯ (19 lines hidden)" read with its brackets, which
+it never was: `ApprovalPrompt::folded_lines`)
 is answered `AUTO_APPROVE_AFTER` (30 s) after it shows, **every one,
 whatever its shape** (Ben, 2026-11-26, of a pane where Claude Code's
 read outside the working directories sat with no countdown: "when
