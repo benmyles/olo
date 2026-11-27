@@ -537,14 +537,18 @@ fn normalize_choice_text(label: &str) -> String {
     replaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Strips a single trailing parenthetical shortcut hint such as `(y)`, `(1)`, `(enter)`.
+/// Strips a single trailing parenthetical shortcut hint such as `(y)`,
+/// `(1)`, `(esc)`, `(shift+tab)`: a key and nothing else. Any short
+/// word in brackets used to go: "Yes (always)" lost its "(always)" and
+/// read as a yes for this once (a code review, 2026-11-27).
 fn strip_trailing_shortcut(s: &str) -> &str {
     let t = s.trim();
     if let Some(open) = t.rfind('(')
         && t.ends_with(')')
     {
         let inside = &t[open + 1..t.len() - 1];
-        if !inside.is_empty() && inside.len() <= 10 && inside.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '+' | '-' | '/')) {
+        let key = |k: &str| (k.len() == 1 && k.chars().all(|c| c.is_ascii_alphanumeric())) || matches!(k, "esc" | "escape" | "enter" | "return" | "tab" | "space" | "shift" | "ctrl" | "alt" | "cmd");
+        if !inside.is_empty() && inside.split('+').all(key) {
             return t[..open].trim_end();
         }
     }
@@ -560,17 +564,25 @@ fn strip_trailing_shortcut(s: &str) -> &str {
 /// anything.
 fn own_words(lower: &str) -> String {
     let chars: Vec<char> = lower.chars().collect();
+    let closes = |j: usize, c: char| chars[j] == c && (j + 1 == chars.len() || chars[j + 1].is_whitespace() || matches!(chars[j + 1], ',' | '.' | ';' | ':' | ')' | ']' | '?'));
     let mut out = String::with_capacity(lower.len());
+    // (A quote with nothing to close it from here has nothing to close it
+    // further on either: not looked for twice, so a label of many
+    // unclosed quotes is still read once through.)
+    let mut unclosed = [false; 2];
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
-        let opens = matches!(c, '\'' | '"') && (i == 0 || chars[i - 1].is_whitespace() || matches!(chars[i - 1], '(' | '[' | ':'));
+        let which = usize::from(c == '"');
+        let opens = matches!(c, '\'' | '"') && !unclosed[which] && (i == 0 || chars[i - 1].is_whitespace() || matches!(chars[i - 1], '(' | '[' | ':'));
         if opens {
-            let closes = |j: usize| chars[j] == c && (j + 1 == chars.len() || chars[j + 1].is_whitespace() || matches!(chars[j + 1], ',' | '.' | ';' | ':' | ')' | ']' | '?'));
-            if let Some(end) = (i + 1..chars.len()).find(|&j| closes(j)) {
-                out.push(' ');
-                i = end + 1;
-                continue;
+            match (i + 1..chars.len()).find(|&j| closes(j, c)) {
+                Some(end) => {
+                    out.push(' ');
+                    i = end + 1;
+                    continue;
+                }
+                None => unclosed[which] = true,
             }
         }
         out.push(c);
@@ -593,6 +605,19 @@ pub fn classify_choice_kind(label: &str) -> ChoiceKind {
     let whole = normalize_choice_text(label);
     if whole.is_empty() {
         return ChoiceKind::Other;
+    }
+    // The CLIs' own sentences around what they quote, told by how they
+    // begin and end, before anything inside them is read: what a label
+    // quotes may have quotes of its own (`python3 -c '` and a script:
+    // the outer quote then "closes" at the inner one, and the script's
+    // words were read as the CLI's), and a path may hold any words
+    // ("this session notes/": a folder kept for the project read as
+    // allowed for the session).
+    if whole.starts_with("yes, and always allow in this conversation for commands that start with ") {
+        return ChoiceKind::AllowSession;
+    }
+    if whole.starts_with("yes, and always allow for commands that start with ") || (whole.starts_with("yes, and always allow access to ") && whole.ends_with(" from this project")) {
+        return ChoiceKind::DontAskAgain;
     }
     let lower = own_words(&whole);
     if lower.contains("switch to auto")
@@ -843,6 +868,19 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
         None
     })?;
 
+    // The question found is the last one on the screen. Where an earlier
+    // one stands above it with a marked answer between them, the last is
+    // one an answer quotes (a transcript of a chooser, in a command an
+    // "always allow" answer shows), and the CLI's own cursor is up there,
+    // on an answer of the real question: this box would be read as the
+    // quoted one, its quoted mark on its quoted Yes, and Return pressed
+    // on whatever the real mark stands on. Not read at all. (A code
+    // review, 2026-11-27.)
+    if let Some(earlier) = lines[..q_start_idx].iter().rposition(|l| is_known_question(l.trim()))
+        && lines[earlier + 1..q_start_idx].iter().any(|l| numbered_at(l).is_some_and(|(selected, ..)| selected))
+    {
+        return None;
+    }
     let rest = &lines[q_idx + 1..];
     // Where the chooser ends: its foot, the last such lines read (a run
     // of them: Antigravity draws two). Looked for from the bottom: a
@@ -901,8 +939,8 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     // choices quoted `python3 -c '` and a script was read as two
     // choices, its "No" never seen, and `olo agent approve --no` found
     // no "No" to choose: a minder's report, 2026-11-27.) The last
-    // answer's goes on as a wrapped label does: three lines at most, to
-    // a blank line or a rule. One pass over the rows (each answer once:
+    // answer's goes on as a wrapped label does, to a blank line or a
+    // rule (three lines at most where no foot was found). One pass over the rows (each answer once:
     // every line under an answer used to look ahead for the next).
     let is_rule_or_chrome =
         |t: &str| t.starts_with('─') || t.starts_with('╌') || t.starts_with('═') || t.starts_with('━') || t.starts_with('❯') || t.starts_with('›') || t.starts_with("> ") || t.starts_with("? for ");
@@ -916,6 +954,11 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
         };
         if index + 1 < answers.len() {
             under.filter(|t| !t.is_empty()).for_each(&mut add);
+        } else if foot.is_some() {
+            // (To the foot, where one was found: a last answer wrapped
+            // over more lines than three lost its end, and "Yes, but ask
+            // again next time" cut short is no yes for this once.)
+            under.take_while(|t| !t.is_empty() && !is_rule_or_chrome(t)).for_each(&mut add);
         } else {
             under.take_while(|t| !t.is_empty() && !is_rule_or_chrome(t)).take(3).for_each(&mut add);
         }
@@ -1452,6 +1495,35 @@ mod tests {
         }
     }
 
+    /// A chooser an answer quotes is never the chooser: where the last
+    /// question on the screen has an earlier one above it with a marked
+    /// answer between them, the box is not read. (It was read as the
+    /// quoted one, its quoted mark on its quoted "Yes", while the CLI's
+    /// own cursor stood on an answer of the real question above: Return
+    /// then takes that answer, whatever it is.) And a last answer
+    /// wrapped over many lines is read whole to the foot.
+    #[test]
+    fn a_chooser_quoted_in_an_answer_is_not_the_chooser() {
+        for marked in 1..=2 {
+            let m = |n: usize| if n == marked { ">" } else { " " };
+            let quoting = agy(&format!(
+                "● Bash(cat <<EOF)\nCommand\n{AGY_RULE}\nRequesting permission for:\n   cat <<EOF …\nRun this command?\n{} 1. Yes, run command\n{} 2. Yes, and always allow in this conversation for commands that start with 'cat <<EOF\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\nEOF'\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel\n",
+                m(1),
+                m(2)
+            ));
+            assert!(parse_approval(Agent::Antigravity, &quoting).is_none(), "the real mark on answer {marked}: the quoted chooser was read");
+        }
+        // (The same box with nothing quoted is read.)
+        let plain = agy(&format!("● Bash(ls)\nCommand\n{AGY_RULE}\nRequesting permission for:\n   ls\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n"));
+        assert_eq!(parse_approval(Agent::Antigravity, &plain).expect("a box of two").choices.len(), 2);
+        // A last answer in a narrow pane, over five lines: whole, and so still the yes for this once.
+        let narrow = agy(&format!(
+            "● Read(a.png)\nCommand\n{AGY_RULE}\nRequesting permission for:\n   a.png\nRun this command?\n> 1. No, cancel\n  2. Yes, but\n     ask\n     again\n     next\n     time\n  ↑/↓ Navigate\nesc to cancel\n"
+        ));
+        let ap = parse_approval(Agent::Antigravity, &narrow).expect("a box of two");
+        assert_eq!((ap.choices[1].label.as_str(), ap.choices[1].kind), ("Yes, but ask again next time", ChoiceKind::Once));
+    }
+
     /// What a choice does is read from the CLI's own words, never from
     /// what it quotes (a command, a path): words there moved a choice
     /// from "this session" to "kept for good" and back.
@@ -1473,6 +1545,14 @@ mod tests {
             ("Yes, and always allow access to tmp/ from this project", DontAskAgain),
             ("Yes, and always allow access to notes/for this session/ from this project", DontAskAgain),
             ("Yes, and always allow access to ~/this conversation/ from this project", DontAskAgain),
+            // (Its words before the path's first slash, the folder's name having spaces.)
+            ("Yes, and always allow access to this session notes/ from this project", DontAskAgain),
+            // What it quotes has a quote of its own (`python3 -c '` and a script): the script's words are not the CLI's.
+            ("Yes, and always allow in this conversation for commands that start with 'python3 -c ' import json print(open(\"settings.json\").read())'", AllowSession),
+            // Only a key in brackets is a shortcut: a word there is the CLI's, and no yes for this once.
+            ("Yes (always)", Other),
+            ("Yes (y)", Once),
+            ("Yes, allow all edits during this session (shift+tab)", SwitchMode),
             // A no that quotes a yes; a yes that quotes: not on the list of yeses for this once.
             ("No, and tell Codex what to do differently (esc)", No),
             ("Yes, run 'ls'", Other),
