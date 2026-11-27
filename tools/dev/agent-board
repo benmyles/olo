@@ -1,0 +1,763 @@
+#!/usr/bin/python3
+"""Live standup & goal board in a Rex split pane to the right of a subagent.
+
+Opens a right-hand Rex split pane (`rex split --split=right --focus=false`)
+running an inotify-driven renderer (0% CPU at rest, instant redraw on update
+or terminal resize). Agents initialize it once with a plain-English 1-2
+paragraph goal + initial standup/todo list, then call `update` supplying ONLY
+the fields that changed.
+
+  agent-board init [--open] [--file PATH] --title TITLE --goal TEXT [...]
+  agent-board update [--open] [--file PATH] [--status S] [--phase P]
+                     [--progress 0..100] [--goal TEXT]
+                     [--did TEXT ...] [--now TEXT] [--next TEXT ...]
+                     [--add-todo TEXT ...] [--start-todo MATCH ...]
+                     [--check-todo MATCH ...] [--block-todo MATCH ...]
+                     [--drop-todo MATCH ...] [--set-todos ITEM ...]
+                     [--note TEXT | --clear-note]
+  agent-board open [--file PATH] [--ratio 38]
+  agent-board show PATH
+  agent-board preview [--file PATH] [--width 64]
+  agent-board path
+"""
+import argparse
+import contextlib
+import ctypes
+import fcntl
+import json
+import os
+import re
+import select
+import shutil
+import signal
+import struct
+import subprocess
+import sys
+import textwrap
+import time
+import unicodedata
+
+# ANSI styling (standard 16-color + bold/dim so it stays crisp in both
+# light and dark Rex terminal themes).
+RESET = "\x1b[0m"
+BOLD = "\x1b[1m"
+DIM = "\x1b[2m"
+RED = "\x1b[31m"
+GREEN = "\x1b[32m"
+YELLOW = "\x1b[33m"
+BLUE = "\x1b[34m"
+MAGENTA = "\x1b[35m"
+CYAN = "\x1b[36m"
+WHITE = "\x1b[37m"
+B_RED = "\x1b[91m"
+B_GREEN = "\x1b[92m"
+B_YELLOW = "\x1b[93m"
+B_BLUE = "\x1b[94m"
+B_MAGENTA = "\x1b[95m"
+B_CYAN = "\x1b[96m"
+B_WHITE = "\x1b[97m"
+BG_GREEN = "\x1b[42m\x1b[30m"
+BG_YELLOW = "\x1b[43m\x1b[30m"
+BG_BLUE = "\x1b[44m\x1b[97m"
+BG_MAGENTA = "\x1b[45m\x1b[97m"
+BG_RED = "\x1b[41m\x1b[97m"
+BG_CYAN = "\x1b[46m\x1b[30m"
+
+ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
+CTRL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+AGENTS_HOME = os.environ.get("OLO_AGENTS_DIR") or "/var/tmp/olo-agents"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MAX_DID = 6
+
+STATUS_META = {
+    "working": ("● WORKING", BG_CYAN, B_CYAN, [
+        "   /\\   ",
+        "  /◉◉\\  ",
+        " /_||_\\ ",
+    ]),
+    "testing": ("◈ TESTING", BG_BLUE, B_BLUE, [
+        "  ╔══╗  ",
+        "  ║◈◈║  ",
+        "  ╚══╝  ",
+    ]),
+    "review": ("◎ REVIEW", BG_MAGENTA, B_MAGENTA, [
+        "  .──.  ",
+        " ( ◉◉ ) ",
+        "  '──'  ",
+    ]),
+    "blocked": ("▲ BLOCKED", BG_RED, B_RED, [
+        "   /\\   ",
+        "  /!!\\  ",
+        " /____\\ ",
+    ]),
+    "done": ("✓ DONE", BG_GREEN, B_GREEN, [
+        "  ★  ★  ",
+        "  \\✓✓/  ",
+        "   ▀▀   ",
+    ]),
+}
+
+
+def clean_text(s, keep_newlines=False):
+    """Strip ANSI escape sequences and control characters from user text."""
+    t = ANSI_RE.sub("", str(s or ""))
+    t = t.replace("\r\n", "\n").replace("\r", "\n")
+    if not keep_newlines:
+        t = t.replace("\n", " ")
+    t = t.replace("\t", " ")
+    return CTRL_RE.sub("", t)
+
+
+def char_width(ch):
+    cat = unicodedata.category(ch)
+    if cat in ("Mn", "Me", "Cf"):
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+
+
+def vis_len(s):
+    return sum(char_width(ch) for ch in ANSI_RE.sub("", s))
+
+
+def truncate_plain(s, max_cols):
+    """Truncate plain (non-ANSI) text to fit within `max_cols` display cells."""
+    if max_cols <= 0:
+        return ""
+    if vis_len(s) <= max_cols:
+        return s
+    if max_cols == 1:
+        return "…"
+    out, w = [], 0
+    for ch in s:
+        cw = char_width(ch)
+        if w + cw > max_cols - 1:
+            break
+        out.append(ch)
+        w += cw
+    return "".join(out) + "…"
+
+
+def pad_vis(s, width):
+    gap = width - vis_len(s)
+    return s + (" " * max(0, gap))
+
+
+def default_path():
+    home = os.environ.get("OLO_AGENTS_DIR") or AGENTS_HOME
+    who = os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER")
+    if who and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", who):
+        return os.path.join(home, who, "board.json")
+    return os.path.join(home, "board.json")
+
+
+def safe_path(path):
+    p = os.path.abspath(path or default_path())
+    rp = os.path.realpath(p)
+    if os.path.isdir(p) or os.path.isdir(rp):
+        sys.exit(f"agent-board: {p} is a directory; pass a file path like /var/tmp/olo-agents/<name>/board.json")
+    for cand in (p, rp):
+        if cand == "/tmp" or cand.startswith("/tmp/"):
+            sys.exit(f"agent-board: {p} resolves to RAM (/tmp); store boards under /var/tmp")
+    real_repo = os.path.realpath(REPO_ROOT)
+    for cand in (p, rp):
+        if cand == real_repo or cand.startswith(real_repo + os.sep):
+            sys.exit(f"agent-board: refusing to write board inside repository ({p}); use /var/tmp/olo-agents/<name>/board.json")
+    return p
+
+
+@contextlib.contextmanager
+def board_lock(path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lf = open(f"{path}.lock", "w", encoding="utf-8")
+    try:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            fcntl.flock(lf, fcntl.LOCK_UN)
+        lf.close()
+
+
+def load_board(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (OSError, ValueError):
+        pass
+    who = os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER") or "agent"
+    return {
+        "title": who,
+        "role": "Minder" if os.environ.get("OLO_MINDER") else "Builder",
+        "crate": "",
+        "status": "working",
+        "phase": "",
+        "progress": None,
+        "goal": "",
+        "did": [],
+        "now": "",
+        "next": [],
+        "todos": [],
+        "note": "",
+        "updated_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
+        "updates": 0,
+    }
+
+
+def save_json_atomic(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+        f.flush()
+    os.replace(tmp, path)
+
+
+def parse_todo_str(raw):
+    s = clean_text(raw).strip()
+    for prefix, st in (("[x]", "done"), ("[X]", "done"), ("[>]", "now"), ("[!]", "blocked"), ("[ ]", "todo")):
+        if s.startswith(prefix):
+            return {"state": st, "text": s[3:].strip()}
+    return {"state": "todo", "text": s}
+
+
+def match_todo(todos, needle):
+    """Match a todo by 1-based index or case-insensitive substring."""
+    if needle.isdigit():
+        idx = int(needle) - 1
+        if 0 <= idx < len(todos):
+            return idx
+    low = needle.lower()
+    for i, t in enumerate(todos):
+        if low == t["text"].lower():
+            return i
+    for i, t in enumerate(todos):
+        if low in t["text"].lower():
+            return i
+    return None
+
+
+def compute_progress(data):
+    todos = data.get("todos") or []
+    done = sum(1 for t in todos if t.get("state") == "done")
+    active = sum(1 for t in todos if t.get("state") == "now")
+    total = len(todos)
+    explicit = data.get("progress")
+    if explicit is not None:
+        pct = max(0, min(100, int(explicit)))
+    elif total > 0:
+        pct = int(round((done + 0.35 * active) * 100.0 / total))
+        if done == total:
+            pct = 100
+        elif pct == 100:
+            pct = 99
+    elif data.get("status") == "done":
+        pct = 100
+    else:
+        pct = 0
+    return pct, done, active, total
+
+
+def progress_bar(pct, done, active, total, max_width):
+    """Render a 2-tone progress bar guaranteed to fit within `max_width` cells."""
+    if total > 0 and done == total:
+        pct = 100
+    long_cnt = f" ({done}/{total} todos)" if total > 0 else ""
+    short_cnt = f" ({done}/{total})" if total > 0 else ""
+    pct_plain = f" {pct:3d}%"
+    # Choose long count label if at least 10 cells remain for the bar, else short.
+    if max_width - (2 + len(pct_plain) + len(long_cnt)) >= 10:
+        cnt_plain = long_cnt
+    elif max_width - (2 + len(pct_plain) + len(short_cnt)) >= 6:
+        cnt_plain = short_cnt
+    else:
+        cnt_plain = ""
+    bar_w = max(4, min(36, max_width - 2 - len(pct_plain) - len(cnt_plain)))
+    filled = int(round(bar_w * pct / 100.0))
+    if total > 0:
+        done_cells = min(bar_w, int(round(bar_w * done / total)))
+        act_cells = min(bar_w - done_cells, max(1 if active and done_cells < bar_w else 0, filled - done_cells))
+    else:
+        done_cells = filled
+        act_cells = 0
+    rem_cells = max(0, bar_w - done_cells - act_cells)
+    done_str = f"{B_GREEN}{'█' * done_cells}{RESET}" if done_cells else ""
+    act_str = f"{B_YELLOW}{'▓' * act_cells}{RESET}" if act_cells else ""
+    rem_str = f"{DIM}{'░' * rem_cells}{RESET}" if rem_cells else ""
+    pct_col = B_GREEN if pct >= 100 else B_CYAN if pct >= 50 else B_YELLOW
+    cnt_str = f"{DIM}{cnt_plain}{RESET}" if cnt_plain else ""
+    return f"{DIM}▐{RESET}{done_str}{act_str}{rem_str}{DIM}▌{RESET} {BOLD}{pct_col}{pct:3d}%{RESET}{cnt_str}"
+
+
+def wrap_lines(text, width):
+    width = max(16, width)
+    out = []
+    for para in clean_text(text, keep_newlines=True).splitlines():
+        p = para.strip()
+        if not p:
+            if out and out[-1] != "":
+                out.append("")
+            continue
+        out.extend(textwrap.wrap(p, width=width, break_long_words=True, break_on_hyphens=True))
+    return out
+
+
+def section_header(icon, title, color, total_w):
+    max_title = max(4, total_w - 6)
+    shown = truncate_plain(title, max_title)
+    label = f" {icon} {shown} "
+    dash_n = max(1, total_w - vis_len(label) - 1)
+    return f"{color}{BOLD}─{label}{RESET}{DIM}{'─' * dash_n}{RESET}"
+
+
+def render(data, cols=68):
+    cols = max(34, min(140, cols))
+    inner = cols - 2
+    status = str(data.get("status") or "working").lower()
+    if status not in STATUS_META:
+        status = "working"
+    badge_txt, badge_bg, accent, art = STATUS_META[status]
+
+    title = clean_text(data.get("title") or "Subagent").strip()
+    role = clean_text(data.get("role") or "").strip()
+    crate = clean_text(data.get("crate") or "").strip()
+    phase = clean_text(data.get("phase") or "").strip()
+    updated = clean_text(data.get("updated_at") or "").strip()
+    updates = int(data.get("updates") or 0)
+    pct, done, active, total = compute_progress(data)
+
+    lines = []
+    lines.append(f"{accent}╭{'─' * inner}╮{RESET}")
+
+    meta_bits = [b for b in (role, crate) if b]
+    meta_line = " · ".join(meta_bits) or "Olo Agent Standup Board"
+
+    show_art = cols >= 50
+    art_w = 9 if show_art else 0
+    left_w = inner - 2 - art_w
+
+    title_shown = truncate_plain(title, left_w)
+    meta_shown = truncate_plain(meta_line, left_w)
+    badge_shown = truncate_plain(f" {badge_txt} ", left_w)
+    badge = f"{badge_bg}{BOLD}{badge_shown}{RESET}"
+    phase_room = left_w - vis_len(badge) - 2
+    if phase and phase_room >= 4:
+        phase_s = f"  {accent}{truncate_plain(phase, phase_room)}{RESET}"
+    else:
+        phase_s = ""
+
+    hdr_rows = [
+        f"{BOLD}{B_WHITE}{title_shown}{RESET}",
+        f"{DIM}{meta_shown}{RESET}",
+        f"{badge}{phase_s}",
+    ]
+    for i, row in enumerate(hdr_rows):
+        if show_art:
+            art_s = f"{accent}{BOLD}{art[i]}{RESET}"
+            content = " " + pad_vis(row, left_w) + " " + art_s + " "
+        else:
+            content = " " + pad_vis(row, inner - 2) + " "
+        lines.append(f"{accent}│{RESET}{content}{accent}│{RESET}")
+
+    lines.append(f"{accent}├{'─' * inner}┤{RESET}")
+    bar = progress_bar(pct, done, active, total, inner - 2)
+    lines.append(f"{accent}│{RESET} {pad_vis(bar, inner - 2)} {accent}│{RESET}")
+    lines.append(f"{accent}╰{'─' * inner}╯{RESET}")
+
+    # Goal section (1-2 easy-to-understand paragraphs)
+    goal = clean_text(data.get("goal") or "", keep_newlines=True).strip()
+    lines.append("")
+    lines.append(section_header("◎", "GOAL", B_CYAN, cols))
+    if goal:
+        for gl in wrap_lines(goal, cols - 4):
+            if gl == "":
+                lines.append(f" {CYAN}┃{RESET}")
+            else:
+                lines.append(f" {CYAN}┃{RESET} {gl}")
+    else:
+        lines.append(f" {DIM}┃ (goal not set yet){RESET}")
+
+    # Standup: Doing Now
+    now = clean_text(data.get("now") or "", keep_newlines=True).strip()
+    note = clean_text(data.get("note") or "", keep_newlines=True).strip()
+    lines.append("")
+    lines.append(section_header("▸", "DOING NOW", B_YELLOW, cols))
+    if now:
+        for idx, nl in enumerate(wrap_lines(now, cols - 5)):
+            lead = f"{B_YELLOW}▸{RESET}" if idx == 0 else " "
+            lines.append(f" {YELLOW}┃{RESET} {lead} {BOLD}{B_WHITE}{nl}{RESET}")
+    else:
+        lines.append(f" {DIM}┃ (waiting for next step){RESET}")
+    if note:
+        for nl in wrap_lines(note, cols - 6):
+            lines.append(f" {MAGENTA}┃{RESET} {B_MAGENTA}★ {nl}{RESET}")
+
+    # Standup: Recently Did
+    did = list(data.get("did") or [])
+    lines.append("")
+    lines.append(section_header("✓", "RECENTLY DID", B_GREEN, cols))
+    did_rows = []
+    for entry in did[-MAX_DID:]:
+        if isinstance(entry, dict):
+            txt = clean_text(entry.get("text") or "").strip()
+            ts = clean_text(entry.get("at") or "").strip()
+        else:
+            txt, ts = clean_text(entry).strip(), ""
+        if txt:
+            did_rows.append((ts, txt))
+    if did_rows:
+        for ts, txt in did_rows:
+            tag = f"{DIM}[{ts}]{RESET} " if ts else ""
+            indent = len(ts) + 3 if ts else 0
+            wlines = wrap_lines(txt, cols - 3 - indent)
+            for i, wl in enumerate(wlines):
+                if i == 0:
+                    lines.append(f" {B_GREEN}✓{RESET} {tag}{wl}")
+                else:
+                    lines.append(f"   {' ' * indent}{wl}")
+    else:
+        lines.append(f" {DIM}· just getting started{RESET}")
+
+    # Standup: Up Next
+    nxt = [clean_text(x).strip() for x in (data.get("next") or []) if clean_text(x).strip()]
+    lines.append("")
+    lines.append(section_header("→", "UP NEXT", B_BLUE, cols))
+    if nxt:
+        for item in nxt[:5]:
+            for i, wl in enumerate(wrap_lines(item, cols - 4)):
+                lead = f"{B_BLUE}→{RESET}" if i == 0 else " "
+                lines.append(f" {lead} {wl}")
+    else:
+        lines.append(f" {DIM}· wrap up and report{RESET}")
+
+    # Todo Checklist
+    todos = list(data.get("todos") or [])
+    lines.append("")
+    todo_hdr = f"TODO ({done}/{total})" if total else "TODO"
+    lines.append(section_header("☑", todo_hdr, B_MAGENTA, cols))
+    if todos:
+        for idx, t in enumerate(todos, 1):
+            st = t.get("state") or "todo"
+            txt = clean_text(t.get("text") or "").strip()
+            if st == "done":
+                mark, style = f"{B_GREEN}✓{RESET}", DIM
+            elif st == "now":
+                mark, style = f"{B_YELLOW}▸{RESET}", f"{BOLD}{B_YELLOW}"
+            elif st == "blocked":
+                mark, style = f"{B_RED}✕{RESET}", f"{BOLD}{B_RED}"
+            else:
+                mark, style = f"{WHITE}○{RESET}", WHITE
+            num = f"{DIM}{idx:2d}.{RESET}"
+            for i, wl in enumerate(wrap_lines(txt, cols - 7)):
+                if i == 0:
+                    lines.append(f" {mark} {num} {style}{wl}{RESET}")
+                else:
+                    lines.append(f"       {style}{wl}{RESET}")
+    else:
+        lines.append(f" {DIM}· no checklist items yet{RESET}")
+
+    # Footer
+    lines.append("")
+    foot_l = f"Updated {updated or 'now'}" + (f" · #{updates}" if updates else "")
+    foot_r = "live · inotify"
+    lines.append(f"{DIM}{'─' * cols}{RESET}")
+    if len(foot_l) + 1 + len(foot_r) <= cols:
+        gap = cols - len(foot_l) - len(foot_r)
+        lines.append(f"{DIM}{foot_l}{' ' * gap}{foot_r}{RESET}")
+    else:
+        lines.append(f"{DIM}{truncate_plain(foot_l, cols)}{RESET}")
+    return "\n".join(lines) + "\n"
+
+
+def draw_screen(path):
+    cols = shutil.get_terminal_size((68, 36)).columns
+    data = load_board(path)
+    sys.stdout.write("\x1b[H\x1b[2J\x1b[3J")
+    sys.stdout.write(render(data, cols=cols))
+    sys.stdout.flush()
+
+
+def show(path):
+    path = safe_path(path)
+    folder, name = os.path.split(path)
+    os.makedirs(folder, exist_ok=True)
+    libc = ctypes.CDLL(None, use_errno=True)
+    fd = libc.inotify_init1(0)
+    if fd < 0 or libc.inotify_add_watch(fd, folder.encode(), 0x008 | 0x080 | 0x100) < 0:
+        if fd >= 0:
+            os.close(fd)
+        sys.exit(f"agent-board: can't watch {folder}")
+    resized = [False]
+    stopping = [False]
+
+    def on_winch(_sig, _frame):
+        resized[0] = True
+
+    def on_stop(_sig, _frame):
+        stopping[0] = True
+
+    signal.signal(signal.SIGWINCH, on_winch)
+    signal.signal(signal.SIGTERM, on_stop)
+    signal.signal(signal.SIGHUP, on_stop)
+    try:
+        sys.stdout.write("\x1b[?25l")
+        draw_screen(path)
+        while not stopping[0]:
+            try:
+                rlist, _, _ = select.select([fd], [], [])
+            except InterruptedError:
+                if stopping[0]:
+                    break
+                if resized[0]:
+                    resized[0] = False
+                    draw_screen(path)
+                continue
+            if stopping[0]:
+                break
+            if resized[0]:
+                resized[0] = False
+                draw_screen(path)
+            if fd in rlist:
+                buf = os.read(fd, 4096)
+                if not buf:
+                    break
+                i, changed = 0, False
+                while i + 16 <= len(buf):
+                    _, _, _, length = struct.unpack_from("iIII", buf, i)
+                    changed |= buf[i + 16:i + 16 + length].rstrip(b"\0").decode(errors="replace") == name
+                    i += 16 + length
+                if changed:
+                    draw_screen(path)
+    except (KeyboardInterrupt, BrokenPipeError):
+        pass
+    finally:
+        with contextlib.suppress(OSError):
+            sys.stdout.write("\x1b[?25h")
+            sys.stdout.flush()
+        os.close(fd)
+
+
+def board_meta_path(path):
+    return f"{path}.meta.json"
+
+
+def pane_is_placed(rex_bin, session, pane_id):
+    try:
+        chk = subprocess.run(
+            [rex_bin, "block", "list", "-s", session, "--json"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if chk.returncode != 0:
+        return False
+    try:
+        said = json.loads(chk.stdout)
+    except ValueError:
+        return False
+    blocks = said.get("blocks") if isinstance(said, dict) else (said if isinstance(said, list) else [])
+    return any(isinstance(b, dict) and b.get("block_id") == pane_id and b.get("placement") == "placed" for b in blocks)
+
+
+def open_pane(path, ratio=38):
+    path = safe_path(path)
+    ratio = max(20, min(65, int(ratio)))
+    session, block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
+    if not (session and block):
+        print(f"agent-board: not in a Rex pane; board saved at {path}")
+        return
+    rex_bin = shutil.which("rex") or "/usr/bin/rex"
+    meta_p = board_meta_path(path)
+    with board_lock(path):
+        try:
+            with open(meta_p, encoding="utf-8") as f:
+                bm = json.load(f)
+        except (OSError, ValueError):
+            bm = {}
+        if bm.get("anchor_block") == block and bm.get("path") == path and bm.get("pane_block"):
+            if pane_is_placed(rex_bin, session, bm["pane_block"]):
+                print(f"agent-board: already open in {bm['pane_block']} ({path})")
+                return
+        if not os.path.exists(path):
+            save_json_atomic(path, load_board(path))
+        me = os.path.abspath(__file__)
+        try:
+            ran = subprocess.run(
+                [
+                    rex_bin, "split", "-s", session, "-b", block,
+                    "--split=right", f"--ratio={ratio}", "--focus=false",
+                    "--shell=none", "--label", "Standup", "--json",
+                    "--", "/usr/bin/python3", "-I", me, "show", path,
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            sys.exit(f"agent-board: rex split failed: {e}")
+        if ran.returncode:
+            sys.exit(f"agent-board: rex split failed: {(ran.stderr or ran.stdout).strip()}")
+        pane_id = ""
+        try:
+            said = json.loads(ran.stdout)
+            pane_id = said.get("block_id") or said.get("id") or (said.get("block") or {}).get("block_id") or (said.get("block") or {}).get("id") or ""
+        except ValueError:
+            pane_id = ran.stdout.strip()
+        with contextlib.suppress(OSError):
+            save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "path": path})
+    print(f"agent-board: opened right split pane {pane_id or '(ok)'} watching {path}")
+
+
+def add_common_flags(p):
+    p.add_argument("--file", dest="file", default=None, help="Path to board.json (defaults to /var/tmp/olo-agents/$OLO_SUBAGENT/board.json)")
+    p.add_argument("--open", action="store_true", help="Open the right-hand Rex split pane if not already open")
+    p.add_argument("--ratio", type=int, default=38, help="Split pane width percentage (20..65, default 38)")
+    p.add_argument("--title", default=None)
+    p.add_argument("--role", default=None)
+    p.add_argument("--crate", default=None)
+    p.add_argument("--status", choices=sorted(STATUS_META), default=None)
+    p.add_argument("--phase", default=None)
+    p.add_argument("--progress", type=int, default=None, help="Explicit 0-100 progress override (-1 clears override to auto)")
+    p.add_argument("--goal", default=None, help="1-2 plain-English paragraphs summarizing the goal/brief")
+    p.add_argument("--now", default=None, help="What you are doing right now")
+    p.add_argument("--did", action="append", default=[], help="Append an accomplishment to Recently Did (repeatable)")
+    p.add_argument("--set-did", action="append", default=None, help="Replace Recently Did list (repeatable)")
+    p.add_argument("--next", action="append", default=None, help="Replace Up Next list (repeatable)")
+    p.add_argument("--add-next", action="append", default=[], help="Append to Up Next (repeatable)")
+    p.add_argument("--todo", "--add-todo", dest="add_todo", action="append", default=[], help="Add a todo item (repeatable)")
+    p.add_argument("--set-todos", action="append", default=None, help="Replace entire todo list; items may start with [x], [>], [!], [ ]")
+    p.add_argument("--start-todo", action="append", default=[], help="Mark matching todo (1-based index or substring) as in-progress [>]")
+    p.add_argument("--check-todo", action="append", default=[], help="Mark matching todo (1-based index or substring) as done [x]")
+    p.add_argument("--block-todo", action="append", default=[], help="Mark matching todo (1-based index or substring) as blocked [!]")
+    p.add_argument("--drop-todo", action="append", default=[], help="Remove matching todo (1-based index or substring)")
+    p.add_argument("--log-checked", action="store_true", help="Also append checked todos to Recently Did")
+    p.add_argument("--note", default=None, help="Set highlight/metric/blocker note")
+    p.add_argument("--clear-note", action="store_true", help="Clear highlight note")
+
+
+def apply_updates(data, args, is_init=False):
+    now_hm = time.strftime("%H:%M", time.gmtime())
+    if is_init:
+        data = {
+            "title": data.get("title", "Agent"),
+            "role": data.get("role", "Builder"),
+            "crate": "",
+            "status": "working",
+            "phase": "",
+            "progress": None,
+            "goal": "",
+            "did": [],
+            "now": "",
+            "next": [],
+            "todos": [],
+            "note": "",
+            "updated_at": "",
+            "updates": 0,
+        }
+    for k in ("title", "role", "crate", "status", "phase", "goal", "now"):
+        v = getattr(args, k)
+        if v is not None:
+            data[k] = clean_text(v, keep_newlines=(k in ("goal", "now")))
+    if args.progress is not None:
+        data["progress"] = None if args.progress < 0 else max(0, min(100, args.progress))
+    if args.clear_note:
+        data["note"] = ""
+    elif args.note is not None:
+        data["note"] = clean_text(args.note, keep_newlines=True)
+
+    if args.set_did is not None:
+        data["did"] = [{"at": now_hm, "text": clean_text(x).strip()} for x in args.set_did if clean_text(x).strip()][-MAX_DID:]
+    for item in args.did:
+        t = clean_text(item).strip()
+        if t:
+            data.setdefault("did", []).append({"at": now_hm, "text": t})
+            data["did"] = data["did"][-MAX_DID:]
+
+    if args.next is not None:
+        data["next"] = [clean_text(x).strip() for x in args.next if clean_text(x).strip()]
+    for item in args.add_next:
+        t = clean_text(item).strip()
+        if t:
+            data.setdefault("next", []).append(t)
+
+    todos = list(data.get("todos") or [])
+    if args.set_todos is not None:
+        todos = [parse_todo_str(x) for x in args.set_todos if clean_text(x).strip()]
+    for item in args.add_todo:
+        if clean_text(item).strip():
+            todos.append(parse_todo_str(item))
+    for needle in args.start_todo:
+        idx = match_todo(todos, needle)
+        if idx is not None:
+            todos[idx]["state"] = "now"
+    for needle in args.check_todo:
+        idx = match_todo(todos, needle)
+        if idx is not None:
+            todos[idx]["state"] = "done"
+            if args.log_checked:
+                data.setdefault("did", []).append({"at": now_hm, "text": todos[idx]["text"]})
+                data["did"] = data["did"][-MAX_DID:]
+    for needle in args.block_todo:
+        idx = match_todo(todos, needle)
+        if idx is not None:
+            todos[idx]["state"] = "blocked"
+    for needle in args.drop_todo:
+        idx = match_todo(todos, needle)
+        if idx is not None:
+            todos.pop(idx)
+    data["todos"] = todos
+
+    data["updated_at"] = time.strftime("%H:%M:%S UTC", time.gmtime())
+    data["updates"] = int(data.get("updates") or 0) + 1
+    return data
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="agent-board", description="Live standup & goal board in a right-hand Rex split pane")
+    sub = parser.add_subparsers(dest="cmd")
+
+    p_init = sub.add_parser("init", help="Initialize board and optionally open right split pane")
+    add_common_flags(p_init)
+
+    p_upd = sub.add_parser("update", help="Incrementally update only changed fields")
+    add_common_flags(p_upd)
+
+    p_open = sub.add_parser("open", help="Open right-hand Rex split pane for board")
+    p_open.add_argument("--file", default=None)
+    p_open.add_argument("--ratio", type=int, default=38)
+
+    p_show = sub.add_parser("show", help="Live inotify renderer (run inside split pane)")
+    p_show.add_argument("path")
+
+    p_prev = sub.add_parser("preview", help="Render board once to stdout")
+    p_prev.add_argument("--file", default=None)
+    p_prev.add_argument("--width", type=int, default=68)
+
+    sub.add_parser("path", help="Print default board path for this agent")
+
+    args = parser.parse_args()
+    if not args.cmd:
+        parser.print_help()
+        return
+    if args.cmd == "path":
+        print(safe_path(None))
+    elif args.cmd == "show":
+        show(args.path)
+    elif args.cmd == "open":
+        open_pane(args.file, ratio=args.ratio)
+    elif args.cmd == "preview":
+        p = safe_path(args.file)
+        sys.stdout.write(render(load_board(p), cols=args.width))
+    elif args.cmd in ("init", "update"):
+        p = safe_path(args.file)
+        with board_lock(p):
+            data = apply_updates(load_board(p), args, is_init=(args.cmd == "init"))
+            save_json_atomic(p, data)
+        if args.open:
+            open_pane(p, ratio=args.ratio)
+        pct, done, _act, total = compute_progress(data)
+        print(f"agent-board: updated {p} ({data['status']}, {pct}%, {done}/{total} todos)")
+
+
+if __name__ == "__main__":
+    main()

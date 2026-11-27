@@ -22717,7 +22717,8 @@ helper runs interactively as a native Rex child tab through `olo agent`
     to `/var/tmp/olo-reviews/astra-HASH/astra-review.md`.
   - `tools/dev/agy-review` (`agents review --by agy`): **Antigravity
     Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`), read-only
-    commands (`READING + GIT`) writing only to
+    commands (`READING_RO + GIT`, Default mode via `"agentMode": ""` +
+    `--no-auto`) writing only to
     `/var/tmp/olo-reviews/agyrev-HASH/agy-review.md`.
 - **Visual design reviews (any change involving visual design work —
   all three reviewers):** alongside `astra-review` (`xhigh`) and
@@ -22728,6 +22729,15 @@ helper runs interactively as a native Rex child tab through `olo agent`
   --restricted --tools Read,Write`, product/visual design quality).
   Changes with no visual design work use only the `agy` (`xhigh`) and
   `codex` (`xhigh`) reviewers.
+- **Subagent right-pane standup board (`tools/dev/agent-board`):**
+  Every builder, investigator, and minder opens a right-hand Rex split
+  pane (`rex split --split=right --ratio=38 --focus=false --shell=none`)
+  showing a plain-English 1–2 paragraph summary of its goal/brief, a
+  live standup (Recently Did, Doing Now, Up Next), a color progress
+  meter with ASCII status art, and its todo checklist. `agent-board` is
+  pre-allowed for subagents and minders (`TOOLS` / `minder_allow`), uses
+  `inotify` + `SIGWINCH` for 0% CPU at rest, and supports incremental
+  `update` calls that modify only the supplied fields.
 - **Multi-lead isolation:** `tools/dev/agents` records `root` in each
   helper's `meta.json` and filters `list`, `room`, `watch`, `tidy`, and
   `sweep_builds` to helpers belonging to the current tab's `olo agent`
@@ -22919,8 +22929,9 @@ process's word), what it breaks elsewhere (callers, an older build
 meeting a newer one), the project's rules, what the tests don't hold,
 each with a case in which it goes wrong and how sure it is; then what
 it checked and found sound. The review and the diff it read are kept in
-`/var/tmp/olo-reviews/astra-HASH/`, named by the change itself (the
-diff's own bytes, however it was asked for): the same diff asked again
+`/var/tmp/olo-reviews/astra-HASH/` (or `agyrev-HASH/`), keyed by the
+diff bytes, commit list, reviewer/model/effort, canonical tree, and base
+commit: the same change asked again under the same reviewer/effort
 prints the review written. What the tool holds to, each from its own
 second review (2026-11-27, 27 findings, most of this tool): the diff is
 taken in bytes with every asking of git checked (a new file with an
@@ -32180,8 +32191,8 @@ agents through the night, could not move to it.
   Claude doing this session?", Antigravity's "How's the CLI experience
   so far?", which hid a permission prompt for 25 minutes) is set aside
   by the service with the survey's own key (`olo_agent_screen::
-  parse_survey`, `screen_under_survey`: three times at most, and one
-  that stays is said in `status`). **What a box asks leave for is that
+  parse_survey`, `screen_under_survey`: at most once per showing via
+  `SurveyState`, and one that stays is said in `status`). **What a box asks leave for is that
   box's own command, or none** (`state::approval_to_json`, 2026-11-27):
   `approval.command` is what the box shows where it shows it whole
   (`command_from: "screen"`), else the whole command of the one call
@@ -32210,7 +32221,8 @@ agents through the night, could not move to it.
   were one box to both. A question is answered by what a
   choice means, wherever it stands (`approve --once | --session | --no`,
   `spec::Answer`): the one choice of that kind, the mark seen on its very
-  label before Return and Escape otherwise; two of a kind, or none, is
+  label before Return (and aborting cleanly without sending Escape if the
+  mark never lands or authority changes); two of a kind, or none, is
   refused with the choices named. The kinds (`olo_agent_screen::
   ChoiceKind`) tell a yes for this once ("Yes", "Yes, but ask again next
   time") from one for this conversation (`allow_session`, Antigravity's)
@@ -32688,64 +32700,76 @@ agents through the night, could not move to it.
   grant); the edge is cleared and the watcher woken only *after* the
   box has gone or its two seconds are up (`box_finish`: one that didn't
   go, or whose Return wasn't seen to be written, is told afresh, to a
-  person, and is not the list's again for thirty seconds,
-  `Live::list_skip`); should the asking be dropped on its way the box
+  person, and is kept out of the list for the entire showing with no
+  wall-clock expiry, `Live::list_skip`, until a genuinely different
+  complete box or an ordered, positively `elsewhere` reading arrives;
+  `event_gen` tags `latest_event` outside the 2,000-event ring, and
+  `pending_handoff` schedules bounded retries on transient reread
+  failures instead of turning a failed read into `"starting"` Working);
+  should the asking be dropped on its way the box
   is finished all the same (`Answering`'s drop, there before the
   Return). **Which box stands is said by the readings of the screen,
   in the order they were begun, and by nothing else**
-  (`Live::box_after`, in `look`; `Looked::boxed` carries it; `box_key`
-  only reads): a slow `status`, formatting its answer, had put the box
+  (`Live::box_after`, in `look`; `Looked::live`, `Looked::ordered`,
+  `Looked::seq`, and `Looked::boxed` carry it; `box_key`
+  only reads; key-writing paths require `live && ordered`, and `status`
+  never overwrites a newer box's minder grant or relabels A with B's
+  key): a slow `status`, formatting its answer, had put the box
   it read in the place of one answered since, unanswered. **A box is
-  gone** when another stands in its place, when the agent is plainly
-  somewhere else (at work in its turn, at its own prompt), or when no
+  gone** when another complete box stands in its place, when the agent
+  is plainly somewhere else (positively at work in its turn, at its own
+  prompt, or at a refusal reason field — never a bare `"esc to interrupt"`
+  footer or incomplete 2-choice repaint), or when no
   box shows for two readings 150 ms apart: one frame with none on it
   is a repaint caught half-way as often (taken for the box's going,
   the list answered the same box again when the repaint was done);
-  and an answered box is kept through such frames. A box that went
-  with only an empty screen to show for it (`BoxEnd::Blank`) may as
-  well be a repaint that is slow, on a busy host: it is put away, and
+  and an answered box is kept through such frames, while an ordered,
+  positively `elsewhere` reading retires it immediately (`last_elsewhere_box`).
+  A box that went with only an empty screen to show for it (`BoxEnd::Blank`)
+  may as well be a repaint that is slow, on a busy host: it is put away,
+  `--no --reason` is never pasted after `BoxEnd::Blank` or timer expiry
+  (only on `BoxEnd::Gone` with a fresh, live, ordered positive
+  identification of the prompt or refusal reason field), and
   **the very same box seen next, with nothing else seen first, is a
-  person's and not the list's** (`Live::list_skip`, let go by another
-  box, by the agent seen at work or at its prompt, or in thirty
-  seconds). **An asking that
+  person's and not the list's** (`Live::list_skip`, let go only by a
+  genuinely different complete box or by the agent seen positively
+  elsewhere). **An asking that
   names no box answers nothing it never saw**: where another answer is
   on its way it is told so ("is being answered just now … `--box
-  KEY`"); one that names its box, and a minder (its grant is for one
-  box), waits its turn and is held to that box. A list's yes is by the
+  KEY`"); one that names its box (empty `--box=""` rejected with exit 2),
+  and a minder (whose `(token, rules_gen)` grant is captured BEFORE
+  awaiting `answer_lock`), waits its turn and is held strictly to that
+  captured box. A list's yes is by the
   list as it stands when the answer is written (`--by-list`,
-  `list_allows`: one taken away while the mark was walked to the yes
-  allows nothing), and never for a box that **stood when this service
-  took the child over** (the service before may have answered it: a
-  person's; a survey standing then is left too). Where another
-  question stands by the time the mark has been walked, nothing more
-  is pressed (an Escape was, onto that other question). The trust
-  answer reads once under the lock, presses its arrows once, waits for
-  the mark to be seen on the yes (three seconds, a repaint waited
-  through) and presses Return once, each key within the start's
-  fifteen seconds; the question at a child's start is **one question
-  whether or not its path is drawn yet** (read both ways it was
-  answered twice), and a `--trust` child's own folders' questions are
-  the service's, and nobody's to be told of, **from the moment the
-  child's record is made** until they are answered or the start's time
-  is up (`TrustAtStart` in `Live::trust`, there before its screen is
-  first read: `run --trust` came back "question" for one answered a
-  moment later, wherever a reading came before the answering had taken
-  the question; where the telling is held back the service's bell is
-  rung all the same, which is how the answering learns of its
-  question). One that isn't the child's own, or still stands after its
-  keys, is told as any other. A survey's key is
-  pressed once for a showing, by whichever reading takes it
-  (`Live::survey_pressed`: let go if that reading is dropped before
-  its key, and only by a reading taken after the key that has
-  something on it: an empty frame between two paints of one survey
-  had its key pressed again, "00"), the screen read again before the
-  key, and the survey waited for by that reading alone; one that
-  stays is said. A second box that asks the very same
-  is another box and is answered **where something was seen between
-  them** (the agent at work, its prompt, another box): two that follow
-  with nothing between, or with only an empty screen between, can't be
-  told from one on a screen, and the second is then a person's, not
-  the list's.
+  `list_allows_locked` checked on the LATEST verified prompt, including
+  `folded_lines.is_none()`, atomically under the same lock as
+  `box_mark_answered_locked`: one taken away while the mark was walked
+  to the yes allows nothing), and never for a box that **stood when this
+  service took the child over** (`Live::adopted_pending`, set explicitly
+  at reconciliation and adoption rather than by wall-clock comparison: a
+  person's; a survey standing then is marked `Stays`, while a minded
+  child's standing approval/question is redelivered once with a fresh
+  grant). On unresolved navigation timeout or revocation, `approve`
+  aborts cleanly **without sending Escape**. The trust
+  answer starts its 15 s monotonic budget BEFORE `session.new_window`
+  (spawned immediately at registration before awaiting `write_now()`),
+  bounds all reads/writes by remaining time, checks `TrustAtStart::owns_parts`
+  and process-cwd binding on every verifying frame, waits across pathless
+  `--add-dir` partial frames without claiming, separates arrows sent from
+  Return submitted, and never terminates early on a blank frame between
+  primary and `--add-dir` prompts; suppression records a dedupe boundary
+  so returning to a quiet chooser question afterwards always confirms
+  and publishes it. A survey's key is pressed at most once per showing
+  via `SurveyState::{Idle, Claimed, Submitted, Stays}` (with owner tokens
+  and `Submitted` set BEFORE `rex.write().await` so timeout/cancel never
+  double-presses `0`; partial survey fragments never clear an active
+  state; `send` awaits or refuses while a survey is pending/staying so
+  `send --key 2` never rates it). All dismissal and navigation waits in
+  `trust_at_start`, `approve`, `send`, and `screen_under_survey` wake on
+  per-child `output_notify`/`state_notify` + a single expiry timer with
+  zero stationary polling, while `watch_child` splits stream reading
+  from transition handling so stream notifications never block behind a
+  dismissal wait.
   `approve`'s own walk to an answer (`--no` on Claude Code:
   three Downs) has 1.5 s for the mark to land and passes over two
   readings without the box (a repaint): on the busy host it gave up
@@ -32940,8 +32964,9 @@ agents through the night, could not move to it.
   the same, the service answers the question for the first fifteen
   seconds of the child, for those folders alone, by where the mark is
   seen to stand and never by timing (`parse_folder_trust`: the mark
-  moved to the yes, the screen read again, Return only with the mark on
-  it; a Return that didn't take is given again, four times at most): a
+  moved once to the yes, the screen read again, and Return pressed at
+  most once with the mark on it, strictly within the 15 s monotonic
+  budget started before `session.new_window`): a
   key sent in a question's first moments is dropped by Claude Code, and
   by timing that was a Return on "No, exit". Claude Code's, Codex's and,
   since 2026-11-27, Antigravity's ("Do you trust the contents of this

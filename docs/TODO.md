@@ -1029,6 +1029,22 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Rex & Terminal: `Cmd+T` new tab opens immediately to the right of the active tab in its working directory**
+  (Ben, 2026-11-27: "in rex or terminal apps if i have a tab selected
+  and then press cmd+t to launch a new tab it should open the new tab
+  next to, on the right, the tab i launched from and it should open in
+  the same working dir as the tab i launched from"). Check both
+  `apps/terminal` and `apps/rex` (local and SSH host tabs): insert the
+  newly created tab immediately to the right of the selected tab rather
+  than appending at the end, and inherit the active pane's current
+  working directory (`pwd`).
+- **Fix `agy` agent working/thinking status showing as "at rest" in Rex Activity sidebar**
+  (Ben, 2026-11-27: an `agy` agent clearly working/thinking shows as
+  "at rest" in the sidebar when its braille spinner sits above a
+  multi-line step checklist and its bottom footer has right-aligned
+  mode/model text beside `esc to cancel`, causing `olo-agent-screen` /
+  `olo-rex` status classification to read `idle` instead of `working`;
+  fix in progress in Update 11 `crates/agent-screen/src/lib.rs`).
 - **Rex: suppress notifications for minded subagents by default, configurable in Rex Settings**
   (Ben, 2026-11-27: "make it so that by default rex doesn't notify me if
   a subagent that has a minder is waiting on an approval etc. (by
@@ -1039,6 +1055,16 @@ something nobody here has is in "Blocked", with what it waits for.
   default only top-level/lead agents (and escalations to the lead) raise
   desktop notifications, with a Rex Settings toggle/option to notify for
   all agents if desired.
+- **`tools/dev/agents` non-critical hardening remainders (Round 2 code reviews `astra-36ecf4e49a` & `agyrev-89352811d0`, 2026-11-27; reviewers' words):**
+  - "Require a certain parent before every native launch and bind the launch to that verified window. A failed service probe inside Rex should report the failure instead of silently selecting the shared tmux server."
+  - "Give each tmux lead a stable identity and socket namespace, pass that identity to its minder, and filter management by it. Exclude the minder itself from its child watch."
+  - "Record the exact test-session owner at creation and match that owner before stopping a session" (avoid prefix match `agy-ui` hitting `agy-ui-kit`).
+  - "Give reviewer commands a read-only view of the reviewed tree with only scratch writable, or constrain the permitted argument forms" (`sort -o` etc. in `READING_RO`).
+  - "Version the launch policy and recreate the settings and arguments for the saved role when resuming an older record."
+  - "Provide session-local trust for [Opus] launch and use one component to answer the startup prompt" (avoid `hasTrustDialogAccepted` in `.claude.json`).
+  - "Provide a migration using verified Rex ancestry and the original cwd, or an explicit reconciliation operation for ambiguous old records" (pre-cutover records missing `root`).
+  - "Record the orchestration minder's ID/window and check that it is still the live parent before deferring" (promoted builder after minder exit).
+  - "Give [a tmux minder] a report or escalation file in its own folder that the lead's tmux watch actually recognizes."
 - **Rex's Host window and its confirmations, as two reviewers saw them
   beside the limits tweak** (2026-11-27; there before it; their words).
   Opus: "All three confirmations: the 30 pt alert stripe is empty. The

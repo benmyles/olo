@@ -1,8 +1,12 @@
 #!/usr/bin/python3
-"""What tools/dev/agents reads off a helper's screen, tried on screens that
-have fooled it, plus policy, multi-lead isolation, collision, containment,
-collect validation, and PATH tests. Nothing is started and nothing is asked
-of any real agent.
+"""Unit tests for `tools/dev/agents` and `tools/dev/agent-board`.
+
+Covers the field reader, model/effort policy, minder/reviewer permissions and
+Default-mode settings, clean PATH (including symlinked bridge dirs), multi-lead
+isolation, parent-owned trusted metadata, trimmed ended-record sweeping,
+collisions, scope overlap, collect_one hardening, git_bounded timeouts/stderr,
+and `agent-board` rendering/updates/path safety. Nothing is started and nothing
+is asked of any real agent.
 
   agents-check
 """
@@ -15,9 +19,15 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-loader = importlib.machinery.SourceFileLoader("agents_tool", os.path.join(HERE, "agents"))
-agents = importlib.util.module_from_spec(importlib.util.spec_from_loader("agents_tool", loader))
-loader.exec_module(agents)
+
+def load_script(name, mod_name):
+    loader = importlib.machinery.SourceFileLoader(mod_name, os.path.join(HERE, name))
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(mod_name, loader))
+    loader.exec_module(mod)
+    return mod
+
+agents = load_script("agents", "agents_tool")
+board = load_script("agent-board", "agent_board_tool")
 
 R = "─" * 60
 TRAY = f"● Read(x)\n{R}\n>\n{R}\n  ● [18:29:34] ls -la /var/tmp/x && ... running\n{R}\nesc to cancel            accept-edits · Gemini 4 Neon · xhigh · 1 task(s) · /tasks\n"
@@ -46,29 +56,41 @@ assert agents.ASTRA_EFFORT == "xhigh", agents.ASTRA_EFFORT
 assert agents.OPUS == "claude-opus-5-5", agents.OPUS
 assert agents.OPUS_EFFORT == "xhigh", agents.OPUS_EFFORT
 
-# 2. Minder vs reviewer permissions, deny rules, and read-only boundaries:
-ms = agents.settings(["/repo", "/d", "/var/tmp/olo-reviews"], commands="minder", own=["/d"])
-assert "command(olo agent watch)" in ms["permissions"]["allow"]
-assert "command(olo agent start)" not in ms["permissions"]["allow"], "raw olo agent start must require approval"
-assert "command(tools/dev/astra-review)" in ms["permissions"]["allow"]
-assert "command(tools/dev/agy-review)" in ms["permissions"]["allow"]
-assert "command(olo agent prune)" in ms["permissions"]["deny"]
-assert "command(git push)" in ms["permissions"]["deny"]
-assert "write_file(/repo)" in ms["permissions"]["deny"]
-assert "write_file(/var/tmp/olo-reviews)" in ms["permissions"]["deny"]
-assert "write_file(/d)" in ms["permissions"]["allow"]
-assert "write_file(/d)" not in ms["permissions"]["deny"]
-for variant in (
-    "tools/dev/agents minder",
-    "./tools/dev/agents minder",
-    f"{agents.ROOT}/tools/dev/agents minder",
-    "/usr/bin/python3 tools/dev/agents minder",
-    "/usr/bin/python3 ./tools/dev/agents minder",
-    f"/usr/bin/python3 {agents.ROOT}/tools/dev/agents minder",
-):
-    assert f"command({variant})" in ms["permissions"]["deny"], f"missing deny for {variant}"
+# 2. Minder vs reviewer permissions, ancestor own-dir handling, Default mode, and agent-board allow:
+with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-agents-settings-") as td:
+    home_dir = os.path.join(td, "agents")
+    minder_dir = os.path.join(home_dir, "minder")
+    os.makedirs(minder_dir)
+    ms = agents.settings(["/repo", home_dir, "/var/tmp/olo-reviews"], commands="minder", own=[minder_dir])
+    assert ms["agentMode"] == "", f"minder must force Default mode: {ms.get('agentMode')!r}"
+    assert "command(olo agent watch)" in ms["permissions"]["allow"]
+    assert "command(olo agent start)" not in ms["permissions"]["allow"], "raw olo agent start must require approval"
+    assert "command(tools/dev/astra-review)" in ms["permissions"]["allow"]
+    assert "command(tools/dev/agy-review)" in ms["permissions"]["allow"]
+    assert "command(tools/dev/agent-board)" in ms["permissions"]["allow"]
+    assert "command(olo agent prune)" in ms["permissions"]["deny"]
+    assert "command(git push)" in ms["permissions"]["deny"]
+    assert "write_file(/repo)" in ms["permissions"]["deny"]
+    assert "write_file(/var/tmp/olo-reviews)" in ms["permissions"]["deny"]
+    assert f"write_file({home_dir})" not in ms["permissions"]["deny"], "ancestor of own dir must not be in deny"
+    assert f"write_file({minder_dir})" in ms["permissions"]["allow"]
+    assert f"write_file({minder_dir})" not in ms["permissions"]["deny"]
+    for variant in (
+        "tools/dev/agents minder",
+        "./tools/dev/agents minder",
+        f"{agents.ROOT}/tools/dev/agents minder",
+        "/usr/bin/python3 tools/dev/agents minder",
+        "/usr/bin/python3 ./tools/dev/agents minder",
+        f"/usr/bin/python3 {agents.ROOT}/tools/dev/agents minder",
+    ):
+        assert f"command({variant})" in ms["permissions"]["deny"], f"missing deny for {variant}"
+
+    bs = agents.settings(["/repo", minder_dir], commands=True, own=[minder_dir])
+    assert "command(tools/dev/agent-board)" in bs["permissions"]["allow"]
+    assert "agentMode" not in bs
 
 rs = agents.settings(["/d", "/repo"], commands="review", own=["/d"])
+assert rs["agentMode"] == "", "agy-review must force Default mode"
 assert "command(git show)" in rs["permissions"]["allow"]
 assert "command(mkdir)" not in rs["permissions"]["allow"], "review must not allow mkdir"
 assert "command(touch)" not in rs["permissions"]["allow"], "review must not allow touch"
@@ -76,15 +98,20 @@ assert "write_file(/d)" in rs["permissions"]["allow"]
 assert "write_file(/repo)" in rs["permissions"]["deny"]
 assert not any("cargo" in x or "jato" in x for x in rs["permissions"]["allow"])
 
-# 3. clean_path strips bridge dirs (including trailing slash) and relative entries while retaining real dirs:
+# 3. clean_path strips bridge dirs (trailing slash & symlinks) and relative entries while retaining real dirs:
 with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-agents-path-") as td:
     real_bin = os.path.join(td, "bin")
+    bridge_real = os.path.join(td, "olo", "rex", "bin")
+    bridge_link = os.path.join(td, "link-to-bridge")
     os.makedirs(real_bin)
-    raw = f"/x/rex-commands:/x/rex-commands/:/x/olo/rex/bin:/x/olo/rex/bin/:relative/bin:{real_bin}:/usr/bin"
+    os.makedirs(bridge_real)
+    os.symlink(bridge_real, bridge_link)
+    raw = f"/x/rex-commands:/x/rex-commands/:/x/olo/rex/bin:/x/olo/rex/bin/:{bridge_link}:relative/bin:{real_bin}:/usr/bin"
     cp = agents.clean_path(raw)
     parts = cp.split(":")
     assert "/x/rex-commands" not in parts, parts
     assert "/x/olo/rex/bin" not in parts, parts
+    assert bridge_link not in parts, f"symlinked bridge dir must be stripped: {parts}"
     assert "relative/bin" not in parts, parts
     assert real_bin in parts, parts
     assert "/usr/bin" in parts, parts
@@ -92,7 +119,7 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-agents-path-") as t
     if os.path.isdir(local_bin):
         assert local_bin in parts, f"expected {local_bin} in {parts}"
 
-# 4. Multi-lead isolation, fail-closed ownership, trimmed ended records, collision, scope overlap, and collect_one:
+# 4. Multi-lead isolation, parent-owned trusted_meta, fail-closed ownership, collisions, overlap, state, collect_one:
 orig_home = agents.HOME
 orig_reviews = agents.REVIEWS
 orig_olo = agents.olo
@@ -101,6 +128,8 @@ orig_sub = agents._SUBTREE_IDS[0]
 orig_live = agents.live
 orig_state = agents.state
 orig_at_rest = agents.at_rest
+orig_env_sub = os.environ.get("OLO_SUBAGENT")
+orig_env_minder = os.environ.get("OLO_MINDER")
 
 def expect_exit(fn, substr):
     try:
@@ -111,6 +140,8 @@ def expect_exit(fn, substr):
     raise AssertionError(f"expected SystemExit containing {substr!r}")
 
 try:
+    os.environ.pop("OLO_SUBAGENT", None)
+    os.environ.pop("OLO_MINDER", None)
     with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-agents-check-") as td:
         home = os.path.join(td, "agents")
         reviews = os.path.join(td, "reviews")
@@ -118,10 +149,16 @@ try:
         os.makedirs(reviews)
         open(os.path.join(home, "tmux.conf"), "w").write("set -g remain-on-exit on\n")
 
-        def make_helper(name, m, target_age=None):
+        agents.HOME = home
+        agents.REVIEWS = reviews
+        agents._REX[:] = [True]
+
+        def make_helper(name, m, target_age=None, trusted=True):
             d = os.path.join(home, name)
             os.makedirs(d, exist_ok=True)
             json.dump(m, open(os.path.join(d, "meta.json"), "w"))
+            if trusted:
+                agents.save_trusted_meta(name, m)
             if target_age is not None:
                 t = os.path.join(d, "target")
                 os.makedirs(os.path.join(t, "debug"), exist_ok=True)
@@ -129,15 +166,15 @@ try:
                 os.utime(os.path.join(t, "debug"), (target_age, target_age))
                 os.utime(t, (target_age, target_age))
 
-        make_helper("mine-live", {"via": "rex", "rex_id": "sa-mine", "root": agents.ROOT, "crate": "apps/rex", "worktree": agents.ROOT})
-        make_helper("mine-trimmed", {"via": "rex", "rex_id": "sa-old", "root": agents.ROOT, "ended": 1000.0}, target_age=1000.0)
-        make_helper("foreign-tab", {"via": "rex", "rex_id": "sa-other", "root": agents.ROOT, "crate": "apps/rex", "worktree": agents.ROOT}, target_age=1000.0)
-        make_helper("foreign-repo", {"via": "rex", "rex_id": "sa-repo2", "root": "/var/tmp/other-checkout", "crate": "apps/rex"}, target_age=1000.0)
+        make_helper("mine-live", {"via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT, "crate": "apps/rex", "worktree": agents.ROOT})
+        make_helper("mine-trimmed", {"via": "rex", "rex_id": "sa-old", "owner_window": "win-lead-a", "root": agents.ROOT, "ended": 1000.0}, target_age=1000.0)
+        make_helper("other-trimmed", {"via": "rex", "rex_id": "sa-old-b", "owner_window": "win-lead-b", "root": agents.ROOT, "ended": 1000.0}, target_age=1000.0)
+        make_helper("foreign-tab", {"via": "rex", "rex_id": "sa-other", "owner_window": "win-lead-b", "root": agents.ROOT, "crate": "apps/rex", "worktree": agents.ROOT}, target_age=1000.0)
+        make_helper("foreign-ended", {"via": "rex", "rex_id": "sa-other-done", "owner_window": "win-lead-b", "root": agents.ROOT, "ended": 1000.0})
+        make_helper("foreign-repo", {"via": "rex", "rex_id": "sa-repo2", "owner_window": "win-lead-c", "root": "/var/tmp/other-checkout", "crate": "apps/rex"}, target_age=1000.0)
         make_helper("legacy-noroot", {"via": "tmux"}, target_age=1000.0)
+        os.makedirs(os.path.join(home, "bare-dir"))
 
-        agents.HOME = home
-        agents.REVIEWS = reviews
-        agents._REX[:] = [True]
         agents.live = lambda n: n in ("mine-live", "foreign-tab", "foreign-repo")
 
         # Mock healthy `olo agent list --all --fast --json` with parent_certain=True:
@@ -145,30 +182,36 @@ try:
             "parent_certain": True,
             "parent_window_id": "win-lead-a",
             "subagents": [
-                {"id": "sa-mine", "parent_window_id": "win-lead-a", "window_id": "win-mine"},
-                {"id": "sa-other", "parent_window_id": "win-lead-b", "window_id": "win-other"},
-                {"id": "sa-repo2", "parent_window_id": "win-lead-c", "window_id": "win-repo2"},
+                {"id": "sa-mine", "parent_window_id": "win-lead-a", "window_id": "win-mine", "state": "working"},
+                {"id": "sa-other", "parent_window_id": "win-lead-b", "window_id": "win-other", "state": "working"},
+                {"id": "sa-other-done", "parent_window_id": "win-lead-b", "window_id": "win-other-done", "state": "exited", "exited_at": 1000},
+                {"id": "sa-repo2", "parent_window_id": "win-lead-c", "window_id": "win-repo2", "state": "working"},
             ],
         })
         agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, list_payload, "")
         agents._SUBTREE_IDS[0] = None
 
         assert agents.is_ours("mine-live") is True
-        assert agents.is_ours("mine-trimmed") is True, "trimmed ended helper of this checkout stays ours for sweeping"
+        assert agents.is_ours("mine-trimmed") is False, "trimmed ended helper must require allow_trimmed=True"
+        assert agents.is_ours("mine-trimmed", allow_trimmed=True) is True
+        assert agents.is_ours("other-trimmed", allow_trimmed=True) is False, "another lead's trimmed record must fail closed"
         assert agents.is_ours("foreign-tab") is False
         assert agents.is_ours("foreign-repo") is False
-        assert agents.is_ours("legacy-noroot") is False, "records missing root must fail closed"
+        assert agents.is_ours("legacy-noroot") is False
 
         # sweep_builds on HOME only removes mine-trimmed/target, leaving foreign targets intact:
         swept = agents.sweep_builds(now=1e12, home=home, is_live=lambda n: n == "mine-live")
         assert [n for n, _ in swept] == ["mine-trimmed"], swept
         assert not os.path.exists(os.path.join(home, "mine-trimmed", "target"))
+        assert os.path.exists(os.path.join(home, "other-trimmed", "target"))
         assert os.path.exists(os.path.join(home, "foreign-tab", "target"))
         assert os.path.exists(os.path.join(home, "foreign-repo", "target"))
 
-        # Collision check refuses overwriting another tab/repo's active helper:
-        expect_exit(lambda: agents.check_collision("foreign-tab"), "already in use")
-        expect_exit(lambda: agents.check_collision("foreign-repo"), "already in use")
+        # Collision check refuses foreign active, foreign ended, and bare directories:
+        expect_exit(lambda: agents.check_collision("foreign-tab"), "belongs to")
+        expect_exit(lambda: agents.check_collision("foreign-ended"), "belongs to")
+        expect_exit(lambda: agents.check_collision("foreign-repo"), "belongs to")
+        expect_exit(lambda: agents.check_collision("bare-dir"), "without readable metadata")
 
         # Cross-tab crate overlap check blocks assigning apps/rex while foreign-tab holds it:
         expect_exit(lambda: agents.check_crate_overlap(agents.ROOT, "apps/rex", skip_name="mine-live"), "one agent to a crate")
@@ -177,32 +220,57 @@ try:
         agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 1, "", "service down")
         agents._SUBTREE_IDS[0] = None
         assert agents.is_ours("mine-live") is False
-        assert agents.is_ours("mine-trimmed") is False
+        assert agents.is_ours("mine-trimmed", allow_trimmed=True) is False
+        assert agents.state("mine-live") == "unknown", "failed status must return unknown, not gone"
+
+        uncertain_payload = json.dumps({"parent_certain": False, "parent_window_id": "win-lead-a", "subagents": []})
+        agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, uncertain_payload, "")
+        agents._SUBTREE_IDS[0] = None
+        assert agents.is_ours("mine-live") is False
+
+        # agents_lock invalidates cached subtree_ids on entry:
+        agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, list_payload, "")
+        with agents.agents_lock():
+            assert agents.is_ours("mine-live") is True
 
         # Restore healthy lookup for collect_one tests:
-        agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, list_payload, "")
-        agents._SUBTREE_IDS[0] = None
         agents.state = lambda n: "idle"
         agents.at_rest = lambda n: True
 
-        # Untrusted meta.json pointing `kept` into ROOT or outside REVIEWS is refused:
+        # Tampering with helper-writable meta.json cannot override parent-owned trusted_meta:
         evil = os.path.join(home, "agyrev-deadbeef00")
         os.makedirs(evil, exist_ok=True)
         open(os.path.join(evil, "review.md"), "w").write("review")
+        legit_kept = os.path.join(reviews, "agyrev-deadbeef00", "agy-review.md")
+        agents.save_trusted_meta("agyrev-deadbeef00", {
+            "via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT, "kind": "review",
+            "done": os.path.join(evil, "review.md"),
+            "kept": os.path.join(agents.ROOT, "CLAUDE.md"),
+        })
         json.dump({
             "via": "rex", "rex_id": "sa-mine", "root": agents.ROOT, "kind": "review",
             "done": os.path.join(evil, "review.md"),
-            "kept": os.path.join(agents.ROOT, "CLAUDE.md"),
+            "kept": legit_kept,
         }, open(os.path.join(evil, "meta.json"), "w"))
         expect_exit(lambda: agents.collect_one("agyrev-deadbeef00"), "untrusted result path")
 
-        # Review kept outside REVIEWS (even outside ROOT) is refused:
-        json.dump({
-            "via": "rex", "rex_id": "sa-mine", "root": agents.ROOT, "kind": "review",
+        # Review kept outside REVIEWS is refused:
+        agents.save_trusted_meta("agyrev-deadbeef00", {
+            "via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT, "kind": "review",
             "done": os.path.join(evil, "review.md"),
             "kept": os.path.join(td, "escape.md"),
-        }, open(os.path.join(evil, "meta.json"), "w"))
+        })
         expect_exit(lambda: agents.collect_one("agyrev-deadbeef00"), "outside")
+
+        # Unknown state refuses collect_one:
+        agents.save_trusted_meta("agyrev-deadbeef00", {
+            "via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT, "kind": "review",
+            "done": os.path.join(evil, "review.md"),
+            "kept": legit_kept,
+        })
+        agents.state = lambda n: "unknown"
+        expect_exit(lambda: agents.collect_one("agyrev-deadbeef00"), "temporarily unavailable")
+        agents.state = lambda n: "idle"
 
         # Nested subagent cannot call collect_one:
         os.environ["OLO_SUBAGENT"] = "builder-1"
@@ -221,10 +289,17 @@ try:
         open(brief_p, "w").write("do thing\n")
         expect_exit(lambda: agents.start("escape", "../tree-b", brief_p, tree=tree_a), "resolves outside")
 
-        # Scope overlap covers root "." and nested crates:
+        # Scope overlap covers root ".", "./", trailing slashes, and nested crates:
         assert agents.scopes_overlap(".", "crates/rex") is True
-        assert agents.scopes_overlap("crates/rex", "crates/rex/src") is True
+        assert agents.scopes_overlap("./", "crates/rex") is True
+        assert agents.scopes_overlap("crates/rex/", "crates/rex/src") is True
         assert agents.scopes_overlap("crates/rex", "crates/rex-link") is False
+
+        # git_bounded drains stdout & stderr concurrently under deadline and caps stdout:
+        data = agents.git_bounded(agents.ROOT, ["rev-parse", "HEAD"], 1024, timeout_secs=10)
+        assert len(data.strip()) == 40, data
+        expect_exit(lambda: agents.git_bounded(agents.ROOT, ["rev-parse", "HEAD"], 8, timeout_secs=10), "exceeds")
+        expect_exit(lambda: agents.git_bounded("/nonexistent-olo-dir", ["status"], 1024, timeout_secs=5), "git status")
 finally:
     agents.HOME = orig_home
     agents.REVIEWS = orig_reviews
@@ -234,11 +309,66 @@ finally:
     agents.live = orig_live
     agents.state = orig_state
     agents.at_rest = orig_at_rest
+    if orig_env_sub is not None:
+        os.environ["OLO_SUBAGENT"] = orig_env_sub
+    else:
+        os.environ.pop("OLO_SUBAGENT", None)
+    if orig_env_minder is not None:
+        os.environ["OLO_MINDER"] = orig_env_minder
+    else:
+        os.environ.pop("OLO_MINDER", None)
 
-# 5. Verify launch_opus passes --trust and launch_agy_review/launch_minder use --mode default:
+# 5. Verify launch_opus passes --trust and launch_agy_review/launch_minder use --no-auto (never invalid `--mode default`):
 src = open(os.path.join(HERE, "agents")).read()
 assert '"--trust", "--prompt", first' in src.split("def launch_opus")[1].split("def launch_astra")[0], "launch_opus missing --trust"
-assert '"--mode", "default"' in src.split("def launch_agy_review")[1].split("def launch_minder")[0], "launch_agy_review must use default mode"
-assert '"--mode", "default"' in src.split("def launch_minder")[1].split("def launch(")[0], "launch_minder must use default mode"
+assert '"--mode", "default"' not in src, "invalid `--mode default` must not appear in tools/dev/agents"
+assert '"--no-auto"' in src.split("def launch_agy_review")[1].split("def launch_minder")[0], "launch_agy_review must pass --no-auto"
+assert '"--no-auto"' in src.split("def launch_minder")[1].split("def launch(")[0], "launch_minder must pass --no-auto"
 
-print(f"ok: field reader ({len(CASES)} screens), policy, deny/RO boundaries, clean PATH, multi-lead isolation, fail-closed ownership, collisions, collect_one, containment, and --trust/default mode")
+# 6. Test `tools/dev/agent-board` incremental updates, sanitization, path safety, and width-exact borders:
+with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as td:
+    bp = os.path.join(td, "builder-x", "board.json")
+    expect_exit(lambda: board.safe_path("/tmp/bad-board.json"), "/tmp")
+    expect_exit(lambda: board.safe_path(os.path.join(agents.ROOT, "board.json")), "inside repository")
+    sym_tmp = os.path.join(td, "sym-tmp.json")
+    os.symlink("/tmp/escape-board.json", sym_tmp)
+    expect_exit(lambda: board.safe_path(sym_tmp), "/tmp")
+
+    run_init = subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init",
+        "--file", bp, "--title", "rexside\x1b[31m-evil", "--role", "Builder", "--crate", "apps/rex",
+        "--phase", "Step 5 final pass — long phase label",
+        "--goal", "Harden Rex host screen plumbing.\n\nKeep parity with the stand-in.",
+        "--now", "Running full regression suite",
+        "--did", "Fixed shutdown wait_true race",
+        "--next", "Collect Round 2 agy-review",
+        "--todo", "[x] Fix shutdown race",
+        "--todo", "[>] Run live FarHost rig",
+        "--todo", "[ ] Collect agy-review",
+        "--note", "204/204 tests passing",
+    ], capture_output=True, text=True, check=True)
+    assert "33%" in run_init.stdout or "45%" in run_init.stdout, run_init.stdout
+
+    # Incremental update supplying ONLY changed fields preserves goal, title, and earlier did items:
+    subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+        "--file", bp, "--status", "testing",
+        "--check-todo", "FarHost", "--log-checked",
+        "--start-todo", "agy-review",
+        "--now", "Waiting on confirming review",
+    ], capture_output=True, text=True, check=True)
+    saved = board.load_board(bp)
+    assert saved["title"] == "rexside-evil", f"ANSI escape was not stripped: {saved['title']!r}"
+    assert "Harden Rex host screen plumbing." in saved["goal"], "incremental update dropped goal"
+    assert len(saved["did"]) == 2 and "FarHost" in saved["did"][-1]["text"], saved["did"]
+    assert [t["state"] for t in saved["todos"]] == ["done", "done", "now"], saved["todos"]
+
+    # Render across narrow, standard, and wide widths and assert every box border fits exact `cols`:
+    for w in (34, 42, 50, 68, 100):
+        out = board.render(saved, cols=w)
+        box_lines = [l for l in out.splitlines() if "╭" in l or "│" in l or "├" in l or "╰" in l]
+        assert len(box_lines) == 7, (w, len(box_lines))
+        for bl in box_lines:
+            assert board.vis_len(bl) == w, f"width mismatch at cols={w}: got {board.vis_len(bl)} for {bl!r}"
+
+print(f"ok: field reader ({len(CASES)} screens), policy, Default mode, clean PATH, multi-lead isolation, trusted_meta, fail-closed ownership, collisions, collect_one, git_bounded, and agent-board")

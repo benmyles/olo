@@ -74,6 +74,10 @@ tools/dev/opus-look [--about "…"] [--no-wait] PICTURE.png…
 
 # Collect a finished --no-wait review or look
 tools/dev/agents collect NAME
+
+# Subagent right-pane standup board (pre-allowed for minders, builders & investigators)
+tools/dev/agent-board init --open --title NAME --role Builder --crate CRATE --goal "…" --now "…" --todo "…"
+tools/dev/agent-board update --did "…" --now "…" --check-todo "…" --start-todo "…" --status testing
 ```
 
 ## Multi-Lead Isolation

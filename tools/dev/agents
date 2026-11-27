@@ -64,6 +64,7 @@ import hashlib
 import json
 import os
 import re
+import selectors
 import shutil
 import stat
 import subprocess
@@ -158,7 +159,7 @@ CARGO = ["cargo build", "cargo check", "cargo test", "cargo clippy", "cargo fmt 
          "jato build", "jato check", "jato test", "jato clippy", "jato cargo fmt -p", "jato --version"]
 GIT = ["git status", "git diff", "git log", "git show", "git blame", "git ls-files", "git grep", "git rev-parse", "git merge-base", "git describe", "git cat-file",
        "git branch --show-current", "git worktree list"]
-TOOLS = ["tsession", "ui-lint", "cost", "bench", "scroll-check", "words", "layout-check", "damage-check", "rest-check"]
+TOOLS = ["tsession", "ui-lint", "cost", "bench", "scroll-check", "words", "layout-check", "damage-check", "rest-check", "agent-board"]
 # The agent programs' own account of themselves: read by whoever's task is about them.
 ABOUT_AGENTS = [f"{cli} {word}" for cli in ("claude", "codex", "agy") for word in ("--help", "--version", "help", "-h", "-V")]
 # Refused without asking: what an agent's rules forbid outright, so it
@@ -193,7 +194,7 @@ def minder_allow():
         "olo agent resume", "olo agent approve", "olo agent send",
         "olo agent stop", "olo agent escalate", "olo agent focus",
     ]
-    for t in ("agents", "astra-review", "agy-review", "agy-look", "opus-look", "agy-help", "tsession list"):
+    for t in ("agents", "agent-board", "astra-review", "agy-review", "agy-look", "opus-look", "agy-help", "tsession list"):
         for path in (f"tools/dev/{t}", f"./tools/dev/{t}", f"{ROOT}/tools/dev/{t}"):
             out += [path, f"/usr/bin/python3 {path}"]
     return out
@@ -203,12 +204,15 @@ def settings(folders, commands=True, own=()):
     """An agent's settings, for its run alone: its folders trusted (agy
     asks at its start otherwise, and waits), what it may run.
       commands=True     builder / investigator (READING + CARGO + GIT + TOOLS)
-      commands="review" agy code reviewer (READING_RO + GIT, write_file in own only)
-      commands="read"   agy picture look (READING_RO, write_file in own only)
-      commands="minder" agy Neon 4 high minder (orchestrates builders & reviewers, write_file in own only)
+      commands="review" agy code reviewer (READING_RO + GIT, write_file in own only, Default mode)
+      commands="read"   agy picture look (READING_RO, write_file in own only, Default mode)
+      commands="minder" agy Neon 4 high minder (orchestrates builders & reviewers, write_file in own only, Default mode)
     """
-    own_real = {os.path.realpath(d) for d in own}
-    non_own = [f for f in folders if os.path.realpath(f) not in own_real]
+    own_real = [os.path.realpath(d) for d in own]
+    # Never emit a write_file deny on an ancestor of an allowed `own` dir
+    # (e.g. HOME is an ancestor of HOME/minder, and deny takes precedence
+    # over allow in agy, which would block the minder's own state.json).
+    non_own = [f for f in folders if not any(_inside(o, f) for o in own_real)]
     if commands == "minder":
         yes = [f"command({c})" for c in minder_allow()] + [f"write_file({d})" for d in own]
         deny = [f"command({c})" for c in MINDER_DENY] + [f"write_file({f})" for f in non_own]
@@ -224,7 +228,12 @@ def settings(folders, commands=True, own=()):
         deny = [f"command({c})" for c in DENY]
         if commands in ("review", "read"):
             deny += [f"write_file({f})" for f in non_own]
-    return {"trustedWorkspaces": folders, "permissions": {"allow": yes, "deny": deny}}
+    cfg = {"trustedWorkspaces": folders, "permissions": {"allow": yes, "deny": deny}}
+    # Explicitly select agy's Default mode ("agentMode": "") for review/read/minder
+    # so agy never falls back to Auto mode (which auto-approves repo edits).
+    if commands in ("review", "read", "minder"):
+        cfg["agentMode"] = ""
+    return cfg
 
 
 # The server's options, read whenever it starts (it ends with its last
@@ -246,10 +255,39 @@ _REX = []
 _SUBTREE_IDS = [None]
 
 
+def trusted_meta_path(name):
+    if not NAMED.fullmatch(name or ""):
+        sys.exit(f"agents: `{name}` isn't a helper's name (lowercase letters, digits and dashes; never a path)")
+    return os.path.join(HOME, ".meta", f"{name}.json")
+
+
+def trusted_meta(name):
+    """Parent-owned helper metadata stored outside the helper's writable folder."""
+    try:
+        return json.load(open(trusted_meta_path(name)))
+    except (OSError, ValueError):
+        return None
+
+
+def save_trusted_meta(name, m):
+    meta_dir = os.path.join(HOME, ".meta")
+    os.makedirs(meta_dir, mode=0o700, exist_ok=True)
+    path = trusted_meta_path(name)
+    tmp = f"{path}.new.{os.getpid()}"
+    with open(tmp, "w") as f:
+        json.dump(m, f, indent=1)
+    os.replace(tmp, path)
+
+
+def delete_trusted_meta(name):
+    with contextlib.suppress(OSError):
+        os.remove(trusted_meta_path(name))
+
+
 def subtree_ids(refresh=False):
-    """`(owned, all_known)` sets of `olo agent` subagent IDs from `list --all
-    --fast --json`, where `owned` contains strictly THIS tab's descendant tree
-    (walked from `parent_window_id` when `parent_certain` is true). Returns
+    """`(owned, all_known, live_ids, me, owned_windows)` from `olo agent list
+    --all --fast --json`, where `owned` contains strictly THIS tab's descendant
+    tree (walked from `parent_window_id` when `parent_certain` is true). Returns
     None if the lookup fails or caller window identity is uncertain so callers
     fail closed and never tidy or claim another tab's helpers."""
     if not rex_here():
@@ -264,10 +302,11 @@ def subtree_ids(refresh=False):
             subs = said["subagents"]
             me = said["parent_window_id"]
             all_known = {s.get("id") for s in subs if s.get("id")}
+            live_ids = {s.get("id") for s in subs if s.get("id") and s.get("state") != "exited" and s.get("exited_at") is None}
             by_parent = {}
             for s in subs:
                 by_parent.setdefault(s.get("parent_window_id"), []).append(s)
-            owned, stack = set(), [me]
+            owned, owned_wins, stack = set(), {me}, [me]
             while stack:
                 w = stack.pop()
                 for s in by_parent.get(w, ()):
@@ -275,28 +314,30 @@ def subtree_ids(refresh=False):
                     if sid and sid not in owned:
                         owned.add(sid)
                         if s.get("window_id"):
+                            owned_wins.add(s["window_id"])
                             stack.append(s["window_id"])
-            _SUBTREE_IDS[0] = (owned, all_known)
+            _SUBTREE_IDS[0] = (owned, all_known, live_ids, me, owned_wins)
         else:
             _SUBTREE_IDS[0] = False
     return None if _SUBTREE_IDS[0] is False else _SUBTREE_IDS[0]
 
 
-def is_ours(name, allow_trimmed=True):
+def is_ours(name, allow_trimmed=False):
     """Whether `name` belongs to this tab's subtree / repository checkout.
     Fails closed when ownership or checkout root is missing/uncertain so
     multiple leads sharing /var/tmp/olo-agents never touch each other's
-    helpers. Trimmed ended Rex records whose `root` matches ROOT stay ours
-    for build sweeping and week-old folder cleanup."""
-    m = meta(name) or {}
+    helpers. Only `sweep_builds`/`tidy` pass `allow_trimmed=True` so trimmed
+    ended Rex records launched by THIS tab/subtree stay sweepable."""
+    tm = trusted_meta(name)
+    m = tm if tm is not None else (meta(name) or {})
     root = m.get("root")
     if not root or os.path.realpath(root) != os.path.realpath(ROOT):
         return False
     if m.get("via") == "rex":
-        pair = subtree_ids()
-        if pair is None:
+        info = subtree_ids()
+        if info is None:
             return False
-        owned, all_known = pair
+        owned, all_known, _live_ids, _me, owned_wins = info
         rid = m.get("rex_id")
         if not rid:
             return False
@@ -304,18 +345,22 @@ def is_ours(name, allow_trimmed=True):
             return True
         if rid in all_known:
             return False
-        return bool(allow_trimmed and m.get("ended"))
+        if not (allow_trimmed and m.get("ended")):
+            return False
+        owner_win = m.get("owner_window")
+        return owner_win is None or owner_win in owned_wins
     return True
 
 
 @contextlib.contextmanager
 def agents_lock():
-    """Serialize helper admission and scratch folder reservation across
-    concurrent leads/minders sharing HOME."""
+    """Serialize helper admission and scratch folder lifecycle across
+    concurrent leads/minders sharing HOME, refreshing subtree cache on entry."""
     os.makedirs(HOME, exist_ok=True)
     f = open(os.path.join(HOME, ".agents.lock"), "w")
     try:
         fcntl.flock(f, fcntl.LOCK_EX)
+        _SUBTREE_IDS[0] = None
         yield
     finally:
         with contextlib.suppress(OSError):
@@ -324,14 +369,20 @@ def agents_lock():
 
 
 def check_collision(name):
-    """Refuse overwriting or removing a scratch directory owned by another
-    checkout or tab that has not ended."""
-    m = meta(name)
-    if not m or is_ours(name):
+    """Refuse overwriting or removing any existing scratch directory not
+    positively owned by this tab/checkout (including ended foreign records
+    and directories missing readable metadata)."""
+    d = folder(name)
+    tm = trusted_meta(name)
+    m = tm if tm is not None else meta(name)
+    if m is None:
+        if os.path.exists(d):
+            sys.exit(f"agents: `{name}` already exists at {d} without readable metadata: inspect or remove it manually, or choose another name")
         return
-    if not m.get("ended") or live(name):
-        who = m.get("root") or "another session"
-        sys.exit(f"agents: `{name}` is already in use by {who} ({folder(name)}): choose another name or set OLO_AGENTS_DIR")
+    if is_ours(name):
+        return
+    who = m.get("root") or "another session"
+    sys.exit(f"agents: `{name}` belongs to {who} ({d}): choose another name or set OLO_AGENTS_DIR")
 
 
 def olo(*args, check=False, timeout=180):
@@ -521,12 +572,17 @@ def state(name):
         # is doing is read from its screen here, as for a tmux one: the
         # lists of what may go ahead are this tool's.)
         r = olo("status", child(name), "--json")
+        if r.returncode != 0:
+            err_txt = (r.stderr or r.stdout or "").lower()
+            if "not found" in err_txt or "no subagent" in err_txt or "unknown subagent" in err_txt:
+                return "gone"
+            return "unknown"
         try:
-            said = json.loads(r.stdout) if r.returncode == 0 else None
+            said = json.loads(r.stdout)
         except ValueError:
-            said = None
-        if not said:
-            return "gone"
+            return "unknown"
+        if not isinstance(said, dict):
+            return "unknown"
         if said.get("state") == "exited" or said.get("running") is False:
             # (The service keeps a child it has stopped, as exited, where
             # tmux forgets a session it killed: one this tool has ended
@@ -766,6 +822,21 @@ How to work
   kit's widgets, the palette (theme::palette), the spacing (metrics) and
   text (style); don't invent a new look. Say in your report what anything
   new looks like, so the lead can check it.
+- Live standup board (MANDATORY — open immediately on startup and keep
+  current as you work): open a right-hand Rex split pane using
+  `tools/dev/agent-board` (runs unasked; zero CPU at rest via inotify;
+  shows a plain-English 1-2 paragraph summary of your goal/brief, a
+  standup of Recently Did / Doing Now / Up Next, a color progress meter,
+  and your todo checklist). Run once at startup:
+    tools/dev/agent-board init --open --title "{name}" --role "Builder" --crate "{crate}" \
+      --goal "1-2 easy-to-understand paragraphs explaining your goal in plain English." \
+      --now "Reading brief and mapping files" \
+      --next "Implement changes" --next "Run tests and clippy" \
+      --todo "[>] Read brief and map files" --todo "[ ] Implement changes" --todo "[ ] Verify tests"
+  Then after EVERY milestone or phase change, update ONLY what changed:
+    tools/dev/agent-board update --status working|testing|review|blocked|done \
+      --did "What you just finished" --now "What you are doing right now" \
+      --check-todo "Read brief" --start-todo "Implement" --note "Optional metric/test count"
 - If something is unclear, blocked, or would take you outside your scope,
   stop and ask: write your question as your reply and wait for the
   answer. Don't guess at what the lead wants.
@@ -830,6 +901,10 @@ you look into.)
   their windows show) goes to any outside service.
 - You are the helper: don't start another (tools/dev/agy-help, the
   olo-debug-help skill), nor any other agent or subagent of your own.
+- Live standup board (open at startup and keep current as you investigate):
+  run `tools/dev/agent-board init --open --title "Investigator" --role "Investigator" --goal "1-2 plain-English paragraphs of the bug you are root-causing" --now "Gathering initial evidence" --todo "[>] Reproduce / inspect code" --todo "[ ] Write answer.md"`
+  and call `tools/dev/agent-board update --did "…" --now "…" --check-todo "…"`
+  as you confirm hypotheses or rule them out (goes ahead unasked).
 - A script of more than one line (python3 -c '…', a heredoc, a loop)
   goes in a file in your folder, run from there: a long command shows
   folded where leave is asked ("⋯ N lines hidden"), can't be read, and
@@ -987,25 +1062,32 @@ else), then reply DONE and wait: the lead may ask more.
 UNSET = ["WAYLAND_DISPLAY", "DISPLAY", "OLO_SOCKET", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]
 
 
+def _is_bridge_dir(p):
+    for cand in (os.path.normpath(p), os.path.realpath(p)):
+        if cand.endswith("/rex-commands") or cand.endswith("/olo/rex/bin"):
+            return True
+    return False
+
+
 def clean_path(raw_path=None):
     """Caller's PATH minus Rex desktop-bridge directories (`rex-commands`,
-    `olo/rex/bin`) and relative entries so `--desktop none` stays fenced
-    while systemd-started Rex servers (whose own PATH is only
-    `/usr/local/bin:/usr/bin`) still find `agy`, `claude`, `codex`, `jato`,
-    `cargo`, `zig`, and `olo`."""
+    `olo/rex/bin`, checked via both normpath and realpath to catch symlinks)
+    and relative entries so `--desktop none` stays fenced while systemd-started
+    Rex servers still find `agy`, `claude`, `codex`, `jato`, `cargo`, `zig`,
+    and `olo`."""
     src = os.environ.get("PATH", "") if raw_path is None else raw_path
     dirs = []
     for raw in src.split(":"):
         if not raw or not os.path.isabs(raw):
             continue
-        norm = os.path.normpath(raw)
-        if norm.endswith("/rex-commands") or norm.endswith("/olo/rex/bin"):
+        if _is_bridge_dir(raw):
             continue
+        norm = os.path.normpath(raw)
         if norm not in dirs:
             dirs.append(norm)
     for extra in (os.path.expanduser("~/.local/bin"), os.path.expanduser("~/.cargo/bin"), "/usr/local/bin", "/usr/bin"):
         norm = os.path.normpath(extra)
-        if norm not in dirs and os.path.isdir(norm):
+        if not _is_bridge_dir(norm) and norm not in dirs and os.path.isdir(norm):
             dirs.append(norm)
     return ":".join(dirs)
 
@@ -1038,6 +1120,9 @@ def session(name, cwd, env, program, native=None, subagent=True):
             if os.environ.get(k) and not any(e.startswith(f"{k}=") for e in env):
                 env.append(f"{k}={os.environ[k]}")
     if native and rex_here():
+        info = subtree_ids(refresh=True)
+        if info is None:
+            sys.exit("agents: Rex agents service could not confirm this tab's window identity (`parent_certain=false`); refusing to launch under an uncertain parent")
         args = ["start", *native[:1], "--name", name, "--title", name, "--cwd", cwd, "--desktop", "none", "--env", marker]
         for e in env:
             args += ["--env", e]
@@ -1050,14 +1135,24 @@ def session(name, cwd, env, program, native=None, subagent=True):
             sys.exit(f"agents: olo agent start {name}: {r.stdout.strip() or r.stderr.strip()}")
         _SUBTREE_IDS[0] = None
         m = meta(name) or {}
-        m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id"), "root": ROOT, "minded": bool(os.environ.get("OLO_MINDER")), "start_cursor": said.get("cursor")})
+        m.update({
+            "via": "rex",
+            "rex_id": said.get("id") or name,
+            "window": said.get("window_id"),
+            "owner_window": said.get("parent_window_id") or info[3],
+            "root": ROOT,
+            "minded": bool(os.environ.get("OLO_MINDER")),
+            "start_cursor": said.get("cursor"),
+        })
         save_meta(name, m)
+        save_trusted_meta(name, m)
         return
     env = ["env", *[x for u in UNSET for x in ("-u", u)], marker, *env]
     tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", cwd, *env, *program, check=True)
     m = meta(name) or {}
     m.update({"via": "tmux", "root": ROOT, "minded": bool(os.environ.get("OLO_MINDER"))})
     save_meta(name, m)
+    save_trusted_meta(name, m)
 
 
 def launch_opus(name, cwd, brief):
@@ -1094,29 +1189,29 @@ def launch_astra_review(name, cwd):
 def launch_agy_review(name, cwd, tree):
     """Gemini 4 Neon at xhigh, for a code review: the Antigravity CLI in a
     child tab working in `cwd`, reading the diff and `tree` with read-only
-    commands and writing only its review in `cwd` (mode `default` + explicit
-    `write_file(tree)` deny so repo edits can never be auto-accepted)."""
+    commands and writing only its review in `cwd` (Default mode via
+    `"agentMode": ""` + `--no-auto` + explicit `write_file(tree)` deny)."""
     folders = list(dict.fromkeys([cwd, tree]))
     json.dump(settings(folders, commands="review", own=[cwd]), open(os.path.join(cwd, "settings.json"), "w"), indent=1)
     add = [a for x in folders[1:] for a in ("--add-dir", x)]
     first = f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."
-    agy = ["agy", "--model", MODEL, "--mode", "default", "--settings", os.path.join(cwd, "settings.json"), *add, "-i", first]
-    session(name, cwd, [], agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--mode", "default",
+    agy = ["agy", "--model", MODEL, "--settings", os.path.join(cwd, "settings.json"), *add, "-i", first]
+    session(name, cwd, [], agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--no-auto",
                                         "--settings", os.path.join(cwd, "settings.json"), *add, "--trust", "--prompt", first])
 
 
 def launch_minder(name, d, cwd):
     """The minder: ALWAYS agy Gemini 4 Neon at high, directly under the lead
     (`Lead ▸ minder ▸ builders & reviewers`). Runs with OLO_MINDER set (not
-    OLO_SUBAGENT) and `--mode default` + `write_file` restricted to `d` so
-    it can orchestrate children without auto-editing repository files."""
+    OLO_SUBAGENT) and Default mode (`"agentMode": ""` + `--no-auto`) +
+    `write_file` restricted to `d` (never denying ancestor HOME)."""
     others = [x for x in (HOME, REVIEWS, "/var/tmp/olo-hs") if os.path.isdir(x)]
     folders = list(dict.fromkeys([cwd, d, *others]))
     json.dump(settings(folders, commands="minder", own=[d]), open(os.path.join(d, "settings.json"), "w"), indent=1)
     add = [a for x in folders[1:] for a in ("--add-dir", x)]
     first = f"Read {d}/brief.md (your minder rules, review pipeline, and current instructions) and begin minding."
-    agy = ["agy", "--model", MINDER_MODEL, "--mode", "default", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
-    session(name, cwd, [], agy, native=["agy", "--model", MINDER_MODEL, "--effort", MINDER_EFFORT, "--mode", "default",
+    agy = ["agy", "--model", MINDER_MODEL, "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
+    session(name, cwd, [], agy, native=["agy", "--model", MINDER_MODEL, "--effort", MINDER_EFFORT, "--no-auto",
                                         "--settings", os.path.join(d, "settings.json"), *add, "--trust", "--prompt", first],
             subagent=False)
 
@@ -1175,29 +1270,57 @@ def room(name, program="agy", kind="worker", worktree=None):
 
 def scopes_overlap(a, b):
     """Whether two relative scope paths inside the same worktree overlap
-    (including the checkout root `.`)."""
-    pa = [] if a in ("", ".") else os.path.normpath(a).split(os.sep)
-    pb = [] if b in ("", ".") else os.path.normpath(b).split(os.sep)
+    (normalizing `./` and `.` to the checkout root)."""
+    na = os.path.normpath(a or ".")
+    nb = os.path.normpath(b or ".")
+    pa = [] if na == "." else na.split(os.sep)
+    pb = [] if nb == "." else nb.split(os.sep)
     n = min(len(pa), len(pb))
     return pa[:n] == pb[:n]
 
 
+def _other_is_active(name, m):
+    """Whether a helper record (possibly owned by another tab/minder) is
+    still active for crate-overlap / checkout-cap accounting."""
+    if m.get("ended"):
+        return False
+    if is_ours(name):
+        return live(name)
+    if m.get("via") == "rex":
+        info = subtree_ids()
+        rid = m.get("rex_id")
+        if info is not None and rid:
+            _owned, all_known, live_ids, _me, _wins = info
+            if rid in all_known:
+                return rid in live_ids
+        return True
+    return live(name)
+
+
 def check_crate_overlap(repo, crate, skip_name=None):
-    """Prevent two active builders (even under different minders/tabs) from
-    editing overlapping paths in the same canonical worktree."""
+    """Prevent two active builders (even under different minders/tabs or
+    through different `--tree` sub-roots) from editing overlapping physical
+    paths, and enforce the checkout-wide MOST worker cap."""
+    target_scope = os.path.realpath(os.path.join(repo, crate))
     real_repo = os.path.realpath(repo)
+    active_in_repo = []
     for n in names():
         if n == skip_name:
             continue
-        other_m = meta(n) or {}
+        other_m = trusted_meta(n) or meta(n) or {}
         other = other_m.get("crate")
-        if not other or other_m.get("ended"):
+        other_base = other_m.get("worktree") or other_m.get("root")
+        if not other or not other_base:
             continue
-        if is_ours(n) and not live(n):
+        if not _other_is_active(n, other_m):
             continue
-        other_repo = os.path.realpath(other_m.get("worktree") or other_m.get("root") or ROOT)
-        if other_repo == real_repo and scopes_overlap(other, crate):
-            sys.exit(f"agents: {n} is working in {other} ({repo}): one agent to a crate")
+        other_scope = os.path.realpath(os.path.join(other_base, other))
+        if _inside(other_scope, target_scope) or _inside(target_scope, other_scope):
+            sys.exit(f"agents: {n} is working in {other} ({other_base}): one agent to a crate")
+        if os.path.realpath(other_base) == real_repo:
+            active_in_repo.append(n)
+    if len(active_in_repo) >= MOST:
+        sys.exit(f"agents: {MOST} workers are already active in {repo} ({', '.join(active_in_repo)}): stop one first")
 
 
 def start_minder(brief=None, name="minder"):
@@ -1215,19 +1338,27 @@ def start_minder(brief=None, name="minder"):
             sys.exit(f"agents: minder `{name}` is already running (use `tools/dev/agents say {name} …` or `stop {name}`)")
         d = folder(name)
         os.makedirs(d, exist_ok=True)
+        # Archive previous assignment state so a fresh minder never inherits old review counts.
+        stamp = int(time.time())
+        for stale in ("state.json", "report.md"):
+            p = os.path.join(d, stale)
+            if os.path.isfile(p):
+                os.replace(p, f"{p}.before.{stamp}")
         guide = open(MINDER_GUIDE).read().strip() if os.path.exists(MINDER_GUIDE) else ""
         rules = open(MINDER_RULES).read().strip() if os.path.exists(MINDER_RULES) else ""
         task = open(brief).read().strip() if brief else ""
         header = f"## Minder Instance\n\n- Name: `{name}`\n- Folder: `{d}`\n- State file: `{d}/state.json` (use this exact path for tracking children and review rounds)\n- Mode: {'Rex (`olo agent watch --all`)' if rex_here() else 'tmux (`tools/dev/agents watch --for 2`)'}"
         parts = [p for p in (header, guide, rules, "## Lead's current assignment\n\n" + task if task else "") if p]
         open(os.path.join(d, "brief.md"), "w").write("\n\n---\n\n".join(parts) + "\n")
-        save_meta(name, {"role": "minder", "cli": "agy", "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
+        m0 = {"role": "minder", "cli": "agy", "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")}
+        save_meta(name, m0)
+        save_trusted_meta(name, m0)
         launch_minder(name, d, ROOT)
     m = meta(name) or {}
     print(f"agents: minder `{name}` started ({MINDER_MODEL}, effort {MINDER_EFFORT}, id={m.get('rex_id', name)}); folder {d}")
     if m.get("via") == "rex":
         cur = m.get("start_cursor") if m.get("start_cursor") is not None else cursor_now()
-        print(f"agents: keep a watch on it from start cursor {cur}: `olo agent watch {m.get('rex_id', name)} --since {cur} --on approval,question,escalation,error,exit --timeout 90 --json`")
+        print(f"agents: keep a watch on it from start cursor {cur}: `olo agent watch {m.get('rex_id', name)} --since {cur} --on approval,question,escalation,idle,done,error,exit --timeout 90 --json`")
     else:
         print(f"agents: keep a watch on it (tmux mode): `tools/dev/agents minder watch --name {name}`")
 
@@ -1349,7 +1480,7 @@ def sweep_builds(now=None, home=None, is_live=None):
     for n in agents:
         if not NAMED.fullmatch(n):
             continue
-        if home == HOME and not is_ours(n):
+        if home == HOME and not is_ours(n, allow_trimmed=True):
             continue
         target = os.path.join(home, n, "target")
         # (A folder of ours: with its record, and a target/ that is a real
@@ -1393,7 +1524,7 @@ def look(args):
         codex_bin = which_clean("codex")
         if not codex_bin:
             sys.exit("agents: no codex on PATH (the Codex CLI, signed in)")
-        status = subprocess.run([codex_bin, "login", "status"], capture_output=True, text=True, env=clean_env())
+        status = subprocess.run([codex_bin, "login", "status"], capture_output=True, text=True, env=clean_env(), timeout=30)
         if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
             sys.exit("agents: Codex isn't signed in on this computer, so Astra can't look: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
     if not args or args[0].startswith("--"):
@@ -1408,6 +1539,8 @@ def look(args):
         pictures.append(full)
     work = os.path.dirname(pictures[0])
     out = os.path.join(work, front + ".md")
+    if _inside(out, ROOT):
+        sys.exit(f"agents: refusing to place visual review inside repository ({out}); keep screenshots under /var/tmp")
     name = ({"astra": "astra-", "gemini": "agy-", "opus": "opus-"}[by] + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
     d = folder(name)
     review = os.path.join(d, "review.md")
@@ -1421,8 +1554,6 @@ def look(args):
             if os.path.exists(d):
                 shutil.rmtree(d)
             os.makedirs(d)
-            if os.path.exists(out):
-                os.remove(out)
             copies = []
             for i, pic in enumerate(pictures):
                 base = os.path.basename(pic)
@@ -1435,17 +1566,23 @@ def look(args):
             if by == "astra":
                 brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
                 open(os.path.join(d, "brief.md"), "w").write(brief)
-                save_meta(name, {**record, "cli": "codex"})
+                rec = {**record, "cli": "codex"}
+                save_meta(name, rec)
+                save_trusted_meta(name, rec)
                 launch_astra(name, d)
             elif by == "gemini":
                 brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
                 open(os.path.join(d, "brief.md"), "w").write(brief)
-                save_meta(name, {**record, "cli": "agy"})
+                rec = {**record, "cli": "agy"}
+                save_meta(name, rec)
+                save_trusted_meta(name, rec)
                 launch(name, d, d, [], commands="read")
             else:
                 brief = OPUS_RULES.format(**said) + (f"\nWhat it is, and what changed: {about}\n" if about else "")
                 open(os.path.join(d, "brief.md"), "w").write(brief)
-                save_meta(name, {**record, "cli": "claude"})
+                rec = {**record, "cli": "claude"}
+                save_meta(name, rec)
+                save_trusted_meta(name, rec)
                 launch_opus(name, d, brief)
             print(f"agents: {name} is looking at {len(pictures)} picture{'s' if len(pictures) != 1 else ''}; its review will be {out}", flush=True)
         else:
@@ -1465,98 +1602,165 @@ def _inside(path, root):
     return rp == rr or rp.startswith(rr + os.sep)
 
 
+def _already_collected_review(name):
+    """Idempotent lookup for an already-collected review whose scratch folder
+    was removed by a prior collector/waiter."""
+    if not (name.startswith("astra-") or name.startswith("agyrev-")):
+        return None
+    kept_dir = os.path.join(REVIEWS, name)
+    asked_p = os.path.join(kept_dir, "asked.json")
+    expected_name = "astra-review.md" if name.startswith("astra-") else "agy-review.md"
+    out = os.path.join(kept_dir, expected_name)
+    try:
+        asked = json.load(open(asked_p))
+    except (OSError, ValueError):
+        return None
+    if whole(out) and asked.get("sha256"):
+        return out
+    return None
+
+
 def collect_one(name, print_out=False, written_override=None, out_override=None, locked=False, force_ready=False):
     """Publish a finished look/review's result to its `kept` path and stop it.
-    Validates caller, ownership, containment, completion readiness, and per-review
-    locking because `meta.json` lives inside the helper's writable folder."""
+    Reads trusted paths/role from parent-owned `HOME/.meta/{name}.json`
+    outside the helper's writable scratch folder and serializes under
+    `agents_lock()` + per-review lock."""
     refuse_nested()
-    m = meta(name) or {}
-    if not m or not is_ours(name):
-        sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
-    if m.get("kind") not in ("review", "look") and not (m.get("review_of") or m.get("pictures")):
-        sys.exit(f"agents: {name} is not a look or review helper")
-    d = folder(name)
-    written = written_override or m.get("done")
-    out = out_override or m.get("kept")
-    if not (written and out):
-        sys.exit(f"agents: {name} has no recorded result paths")
-    if not _inside(written, d) or _inside(out, ROOT) or not out.endswith(".md"):
-        sys.exit(f"agents: refusing untrusted result path for {name} ({written} -> {out})")
-    is_review = m.get("kind") == "review" or bool(m.get("review_of"))
-    if is_review and not _inside(out, REVIEWS):
-        sys.exit(f"agents: refusing review destination outside {REVIEWS}: {out}")
     lock_f = None
-    try:
-        if is_review and not locked:
-            os.makedirs(REVIEWS, mode=0o700, exist_ok=True)
-            lock_f = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
-            fcntl.flock(lock_f, fcntl.LOCK_EX)
-        if not whole(written):
-            if whole(out):
+    with agents_lock():
+        tm = trusted_meta(name)
+        m = tm if tm is not None else meta(name)
+        if not m:
+            already = _already_collected_review(name)
+            if already:
                 if print_out:
-                    print(open(out).read().rstrip())
+                    print(open(already).read().rstrip())
                 else:
-                    print(f"agents: {name} already collected -> {out}")
+                    print(f"agents: {name} already collected -> {already}")
                 return
-            sys.exit(f"agents: {name} has no finished review at {written}")
-        if not force_ready:
+            sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
+        if not is_ours(name):
+            sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
+        if m.get("kind") not in ("review", "look") and not (m.get("review_of") or m.get("pictures")):
+            sys.exit(f"agents: {name} is not a look or review helper")
+        d = folder(name)
+        written = written_override or m.get("done")
+        out = out_override or m.get("kept")
+        if not (written and out):
+            sys.exit(f"agents: {name} has no recorded result paths")
+        if not _inside(written, d) or _inside(out, ROOT) or not out.endswith(".md"):
+            sys.exit(f"agents: refusing untrusted result path for {name} ({written} -> {out})")
+        is_review = m.get("kind") == "review" or bool(m.get("review_of"))
+        if is_review:
+            expected_dir = os.path.join(REVIEWS, name)
+            expected_file = "astra-review.md" if name.startswith("astra-") else "agy-review.md"
+            if os.path.realpath(out) != os.path.realpath(os.path.join(expected_dir, expected_file)):
+                sys.exit(f"agents: refusing review destination outside {expected_dir}/{expected_file}: {out}")
+        try:
+            if is_review and not locked:
+                os.makedirs(REVIEWS, mode=0o700, exist_ok=True)
+                lock_f = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
+                fcntl.flock(lock_f, fcntl.LOCK_EX)
+            if not whole(written):
+                if whole(out):
+                    if print_out:
+                        print(open(out).read().rstrip())
+                    else:
+                        print(f"agents: {name} already collected -> {out}")
+                    return
+                sys.exit(f"agents: {name} has no finished review at {written}")
             if not finished(name):
                 sys.exit(f"agents: {name}'s result predates its last prompt: wait for it to finish")
-            st = state(name)
-            if st not in ("idle", "exited", "gone") and not at_rest(name):
-                sys.exit(f"agents: {name} is still {st}: wait for it to finish before collecting")
-        screen_said = None if via(name) == "rex" else (screen(name, 200000) or "") + "\n"
-        ended = end(name, sessions=False)
-        publish(written, out)
-        log_path = os.path.join(d, "transcript.txt")
-        if screen_said is not None:
-            open(log_path, "w").write(screen_said)
-        if whole(log_path):
-            publish(log_path, out[:-3] + ".log")
-        if print_out:
-            print(open(out).read().rstrip())
-        else:
-            print(f"agents: collected {name} -> {out}")
-        if ended:
+            if not force_ready:
+                st = state(name)
+                if st == "unknown":
+                    sys.exit(f"agents: {name}'s status is temporarily unavailable: refusing to collect until confirmed finished")
+                if st not in ("idle", "exited", "gone") and not at_rest(name):
+                    sys.exit(f"agents: {name} is still {st}: wait for it to finish before collecting")
+            screen_said = None if via(name) == "rex" else (screen(name, 200000) or "") + "\n"
+            ended = end(name, sessions=False)
+            if not ended:
+                sys.exit(f"agents: {name} did not stop cleanly; scratch folder {d} kept for retry before publishing")
+            publish(written, out)
+            log_path = os.path.join(d, "transcript.txt")
+            if screen_said is not None:
+                open(log_path, "w").write(screen_said)
+            if whole(log_path):
+                publish(log_path, out[:-3] + ".log")
+            if print_out:
+                print(open(out).read().rstrip())
+            else:
+                print(f"agents: collected {name} -> {out}")
             shutil.rmtree(d, ignore_errors=True)
-        else:
-            print(f"agents: warning: {name} did not stop cleanly; scratch folder {d} kept for retry", file=sys.stderr)
-    finally:
-        if lock_f is not None:
-            with contextlib.suppress(OSError):
-                fcntl.flock(lock_f, fcntl.LOCK_UN)
-            lock_f.close()
+            delete_trusted_meta(name)
+        finally:
+            if lock_f is not None:
+                with contextlib.suppress(OSError):
+                    fcntl.flock(lock_f, fcntl.LOCK_UN)
+                lock_f.close()
 
 
-def git_bounded(tree, args, budget, ok=(0,)):
-    """Run git reading stdout up to `budget` bytes, stopping the producer
-    immediately if output exceeds the remaining allowance."""
+def git_bounded(tree, args, budget, ok=(0,), timeout_secs=120):
+    """Run git draining both stdout and stderr concurrently via selectors
+    under a monotonic deadline, killing the producer immediately if stdout
+    exceeds `budget` or the deadline expires (never deadlocking on >64 KiB stderr)."""
     proc = subprocess.Popen(
         ["git", "-C", tree, "--literal-pathspecs", "-c", "core.quotepath=off", *args],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
     )
-    chunks, total = [], 0
-    deadline = time.time() + 120
     assert proc.stdout is not None and proc.stderr is not None
-    while True:
-        chunk = proc.stdout.read(65536)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > budget:
+    out_fd, err_fd = proc.stdout.fileno(), proc.stderr.fileno()
+    sel = selectors.DefaultSelector()
+    sel.register(out_fd, selectors.EVENT_READ, "out")
+    sel.register(err_fd, selectors.EVENT_READ, "err")
+    out_chunks, err_chunks = [], []
+    out_total, err_total = 0, 0
+    err_cap = 65536
+    deadline = time.monotonic() + timeout_secs
+    try:
+        while sel.get_map():
+            rem = deadline - time.monotonic()
+            if rem <= 0:
+                proc.kill()
+                proc.wait()
+                sys.exit(f"agents: git {args[0]} in {tree} hadn't answered in {timeout_secs}s: nothing reviewed")
+            events = sel.select(timeout=min(rem, 1.0))
+            if not events:
+                continue
+            for key, _ in events:
+                data = os.read(key.fd, 65536)
+                if not data:
+                    sel.unregister(key.fd)
+                    continue
+                if key.data == "out":
+                    out_total += len(data)
+                    if out_total > budget:
+                        proc.kill()
+                        proc.wait()
+                        sys.exit(f"agents: diff in {tree} exceeds {REVIEW_MOST // 2**20} MiB limit: name the paths to be reviewed, or leave out what is generated")
+                    out_chunks.append(data)
+                else:
+                    if err_total < err_cap:
+                        take = data[:err_cap - err_total]
+                        err_chunks.append(take)
+                        err_total += len(take)
+        rem = max(0.1, deadline - time.monotonic())
+        try:
+            rc = proc.wait(timeout=rem)
+        except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-            sys.exit(f"agents: diff in {tree} exceeds {REVIEW_MOST // 2**20} MiB limit: name the paths to be reviewed, or leave out what is generated")
-        chunks.append(chunk)
-        if time.time() > deadline:
-            proc.kill()
-            proc.wait()
-            sys.exit(f"agents: git {args[0]} in {tree} hadn't answered in two minutes: nothing reviewed")
-    stderr = proc.stderr.read()
-    rc = proc.wait()
+            sys.exit(f"agents: git {args[0]} in {tree} hadn't answered in {timeout_secs}s: nothing reviewed")
+    finally:
+        sel.close()
+        with contextlib.suppress(OSError):
+            proc.stdout.close()
+        with contextlib.suppress(OSError):
+            proc.stderr.close()
     if rc not in ok:
+        stderr = b"".join(err_chunks)
         sys.exit(f"agents: git {' '.join(args[:3])} in {tree}: {stderr.decode(errors='replace').strip()[:300] or f'status {rc}'}")
-    return b"".join(chunks)
+    return b"".join(out_chunks)
 
 
 def review(args):
@@ -1630,10 +1834,13 @@ def review(args):
     rev_model = ASTRA if by == "astra" else MODEL
     rev_effort = ASTRA_EFFORT if by == "astra" else MODEL.rsplit("-", 1)[-1]
     real_tree = os.path.realpath(tree)
-    # Include reviewer model/effort, canonical tree, and base rev in cache key so
-    # old-effort reviews or identical diffs from another tree never collide.
+    # Include reviewer model/effort, canonical tree, base rev, and commit text in
+    # cache key so old-effort reviews, different ranges with same diff, or other
+    # checkouts never collide.
     cache_h = hashlib.sha256()
     cache_h.update(diff)
+    cache_h.update(b"\0")
+    cache_h.update(commits)
     cache_h.update(f"\0{by}\0{rev_model}\0{rev_effort}\0{real_tree}\0{base_rev}\0".encode())
     digest = cache_h.hexdigest()
     diff_sha = hashlib.sha256(diff).hexdigest()
@@ -1655,7 +1862,7 @@ def review(args):
             break
         except BlockingIOError:
             if not wait:
-                print(f"agents: {name} is already active under another review waiter; collect once finished (`tools/dev/agents collect {name}` -> {out})", flush=True)
+                print(f"agents: {name} is already active under another review waiter (it will publish to {out}; `tools/dev/agents collect {name}` is idempotent once published)", flush=True)
                 return
             if not said_waiting:
                 said_waiting = True
@@ -1675,7 +1882,7 @@ def review(args):
             before = json.load(open(asked_file))
         except (OSError, ValueError):
             before = {}
-        if (before.get("model"), before.get("effort"), os.path.realpath(before.get("tree") or "")) != (rev_model, rev_effort, real_tree):
+        if before.get("cache_key") != digest:
             return False
         print(f"agents: this very change was reviewed already ({out}):", flush=True)
         if before.get("about") and before.get("about") != about:
@@ -1685,28 +1892,31 @@ def review(args):
 
     if kept_already():
         return
+    # Run CLI preflight (including bounded `codex login status`) BEFORE taking
+    # the global `agents_lock()` so a slow auth check never stalls other tabs.
+    prog = "codex" if by == "astra" else "agy"
+    prog_bin = which_clean(prog)
+    if not prog_bin:
+        sys.exit(f"agents: no {prog} on PATH: {by} can't review")
+    if by == "astra":
+        status = subprocess.run([prog_bin, "login", "status"], capture_output=True, text=True, env=clean_env(), timeout=30)
+        if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
+            sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
     d = folder(name)
     written = os.path.join(d, "review.md")
     with agents_lock():
         check_collision(name)
         m = meta(name)
         if not (m and is_ours(name) and live(name)):
-            if m and is_ours(name) and whole(written):
+            if m and is_ours(name) and finished(name) and whole(written):
                 publish(written, out)
                 if whole(os.path.join(d, "transcript.txt")):
                     publish(os.path.join(d, "transcript.txt"), out[:-3] + ".log")
                 print(f"agents: {name} had written its review and it was never kept: kept now ({out}):", flush=True)
                 print(open(out).read().rstrip())
                 shutil.rmtree(d, ignore_errors=True)
+                delete_trusted_meta(name)
                 return
-            prog = "codex" if by == "astra" else "agy"
-            prog_bin = which_clean(prog)
-            if not prog_bin:
-                sys.exit(f"agents: no {prog} on PATH: {by} can't review")
-            if by == "astra":
-                status = subprocess.run([prog_bin, "login", "status"], capture_output=True, text=True, env=clean_env())
-                if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
-                    sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
             room(name, prog, kind="helper")
             if os.path.exists(d):
                 shutil.rmtree(d)
@@ -1718,7 +1928,9 @@ def review(args):
             json.dump({"of": of, "paths": paths, "tree": real_tree, "base": base_rev, "about": about, "sha256": diff_sha, "cache_key": digest, "by": by, "model": rev_model, "effort": rev_effort, "asked": time.time()}, open(asked_file, "w"), indent=1)
             brief = REVIEW_RULES.format(**said) + (f"\nWhat it is, and what changed, in the lead's words: {about}\n" if about else "")
             open(os.path.join(d, "brief.md"), "w").write(brief)
-            save_meta(name, {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": prog, "kind": "review", "root": ROOT})
+            rec = {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": prog, "kind": "review", "root": ROOT}
+            save_meta(name, rec)
+            save_trusted_meta(name, rec)
             if by == "astra":
                 launch_astra_review(name, d)
             else:
@@ -1850,7 +2062,12 @@ def watch(stuck_min, only=None, at_most=None, among=None):
         # minute on a minder that took it at its word, 2026-11-24.)
         out_of_time = bool(at_most) and time.time() - began >= at_most * 60
         if rex_here():
-            subtree_ids(refresh=True)
+            if subtree_ids(refresh=True) is None:
+                if out_of_time:
+                    print(f"agents: Rex service lookup unavailable at timeout; run watch again", file=sys.stderr)
+                    return 0
+                time.sleep(5)
+                continue
         rows = [n for n in names() if (only == n or (only is None and is_ours(n))) and (not among or any(n.startswith(p) for p in among))]
         if not any(state(n) in ("starting", "working", "asking", "idle") for n in rows):
             # (One waited for alone: how it ended, which "none running"
@@ -1999,7 +2216,8 @@ def peek(name, lines):
         sys.exit(f"agents: no {name}")
     print("\n".join([l for l in s.splitlines() if l.strip()][-lines:]))
     print(f"--- {name}: {state(name)}")
-    seen(name)
+    if is_ours(name):
+        seen(name)
 
 
 def log(name):
@@ -2007,7 +2225,8 @@ def log(name):
     if s is None:
         sys.exit(f"agents: no {name}")
     print(s)
-    seen(name)
+    if is_ours(name):
+        seen(name)
 
 
 def field_of(text):
@@ -2327,7 +2546,7 @@ def tidy(now=None):
     now = time.time() if now is None else now
     said = []
     for n in names():
-        if not is_ours(n):
+        if not is_ours(n, allow_trimmed=True):
             continue
         try:
             tidy_one(n, now, said)
@@ -2368,17 +2587,21 @@ def say_tidied(said):
         print(f"agents: {line}", file=sys.stderr)
 
 
+MAX_REPORT_BYTES = 16 * 1024 * 1024
+
+
 def publish(src, dst):
     """A result put where it is kept, whole or not at all: read from a
-    file of its own (never through a link), written beside its place
-    under another name and moved there in one step, so a disk that
-    fills or a copy cut short leaves no half of a review under the
-    review's name (which the next asking would have served as the
-    review, and `forget` taken for it kept). A link standing at `dst`
-    is replaced, not written through. For the person alone to read."""
+    file of its own (never through a link), bounded to MAX_REPORT_BYTES,
+    written beside its place under another name and moved there in one step,
+    so a disk that fills or a copy cut short leaves no half of a review.
+    A link standing at `dst` is replaced, not written through."""
     if not whole(src):
         raise OSError(f"{src} isn't a file with something in it")
-    data = open(src, "rb").read()
+    with open(src, "rb") as rf:
+        data = rf.read(MAX_REPORT_BYTES + 1)
+    if len(data) > MAX_REPORT_BYTES:
+        raise OSError(f"{src} exceeds {MAX_REPORT_BYTES // 2**20} MiB limit")
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     part = f"{dst}.{os.getpid()}.part"
     with contextlib.suppress(FileNotFoundError):
@@ -2424,15 +2647,16 @@ def require_ours(name):
 def resume(name, text, result=None, session=None):
     """A helper that was stopped, brought back with its conversation and
     told `text` under the caller's tab (with its original `worktree`
-    preserved and crate overlap rechecked). Pre-cutover legacy helpers
-    with a saved `cli_session` relaunch via `launch(..., again=...)` so
-    native `olo agent resume` does not resurrect an old Opus minder."""
+    preserved, checkout ownership verified, and crate/worker caps rechecked)."""
     refuse_nested()
     with agents_lock():
-        m = meta(name)
+        m = trusted_meta(name) or meta(name)
         if not m:
             sys.exit(f"agents: no {name} here to bring back (tools/dev/agents list)")
-        check_collision(name)
+        if not m.get("root") or os.path.realpath(m["root"]) != os.path.realpath(ROOT):
+            sys.exit(f"agents: `{name}` belongs to {m.get('root') or 'another checkout'}: refusing cross-checkout resume")
+        if not m.get("ended") and not is_ours(name):
+            sys.exit(f"agents: `{name}` belongs to another tab and has not ended: refusing resume")
         if live(name):
             sys.exit(f"agents: {name} is running: `agents say {name} …` tells it more")
         if via(name) != "rex" or not rex_here():
@@ -2463,36 +2687,35 @@ def resume(name, text, result=None, session=None):
             if result:
                 m["done"] = os.path.abspath(result)
             save_meta(name, m)
+            save_trusted_meta(name, m)
             print(f"agents: {name} is back, by its conversation's own id, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
             return
         _SUBTREE_IDS[0] = None
-        m.update({"rex_id": said["id"], "window": said.get("window_id"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "worktree": repo, "seen": "", "seen_state": "", "said_at": told_at})
+        m.update({"rex_id": said["id"], "window": said.get("window_id"), "owner_window": said.get("parent_window_id") or m.get("owner_window"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "worktree": repo, "seen": "", "seen_state": "", "said_at": told_at})
         m.pop("ended", None)
         if result:
             m["done"] = os.path.abspath(result)
         save_meta(name, m)
+        save_trusted_meta(name, m)
     print(f"agents: {name} is back with its conversation, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
 
 
 def forget(name):
     refuse_nested()
-    require_ours(name)
-    if live(name):
-        sys.exit(f"agents: {name} is running: stop it first")
-    # (What it wrote is kept before its folder goes. A review's front
-    # door had ended early, its review still in the folder alone, and
-    # the folder was removed with it: put back from the lead's own
-    # reading of it, 2026-11-27.)
-    kept = keep_result(name)
-    if kept:
-        print(f"agents: {name}'s result wasn't kept yet: it is now, at {kept}")
-    # (A helper's own folder, which has its record: never a folder that
-    # only bears a name. And what couldn't be removed is said.)
-    where = folder(name)
-    if not os.path.isfile(os.path.join(where, "meta.json")) or os.path.islink(where):
-        sys.exit(f"agents: {name} isn't a helper of this tool's ({where} has no record of one): nothing removed")
-    left = []
-    shutil.rmtree(where, onerror=lambda _f, path, _e: left.append(path))
+    with agents_lock():
+        require_ours(name)
+        if live(name):
+            sys.exit(f"agents: {name} is running: stop it first")
+        kept = keep_result(name)
+        if kept:
+            print(f"agents: {name}'s result wasn't kept yet: it is now, at {kept}")
+        where = folder(name)
+        if not os.path.isfile(os.path.join(where, "meta.json")) or os.path.islink(where):
+            sys.exit(f"agents: {name} isn't a helper of this tool's ({where} has no record of one): nothing removed")
+        left = []
+        shutil.rmtree(where, onerror=lambda _f, path, _e: left.append(path))
+        if not left:
+            delete_trusted_meta(name)
     print(f"agents: {name}'s folder removed" if not left else f"agents: {name}'s folder couldn't be removed whole ({len(left)} left, the first {left[0]})")
 
 
@@ -2541,12 +2764,16 @@ def main():
         elif rest[0] in ("peek", "log", "say", "stop", "watch"):
             sub, sub_rest = rest[0], list(rest[1:])
             mname = None
-            if len(sub_rest) >= 2 and sub_rest[0] == "--name":
+            if sub_rest and sub_rest[0] == "--name":
+                if len(sub_rest) < 2 or not sub_rest[1] or sub_rest[1].startswith("-"):
+                    sys.exit("usage: tools/dev/agents minder peek|log|say|stop|watch [--name NAME] ...")
                 mname, sub_rest = sub_rest[1], sub_rest[2:]
             if mname is None:
-                ours = [n for n in names() if is_ours(n) and (meta(n) or {}).get("role") == "minder" and live(n)]
+                ours = [n for n in names() if is_ours(n) and (trusted_meta(n) or meta(n) or {}).get("role") == "minder" and live(n)]
                 mname = ours[0] if len(ours) == 1 else "minder"
             require_ours(mname)
+            if (trusted_meta(mname) or meta(mname) or {}).get("role") != "minder":
+                sys.exit(f"agents: `{mname}` is not a minder: use `tools/dev/agents {sub} {mname}` for non-minder helpers")
             if sub == "peek":
                 if sub_rest and not sub_rest[0].isdigit():
                     sys.exit("usage: tools/dev/agents minder peek [--name NAME] [LINES]")
