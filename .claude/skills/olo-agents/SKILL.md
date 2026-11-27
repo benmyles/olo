@@ -62,10 +62,41 @@ Every helper is run this way, never as a script that answers only at
 its end (Ben, 2026-11-22: "always do it through tmux never a script
 that just goes silent … for all the subagents/reviewers etc"): the
 second investigator (`tools/dev/agy-help`, the `olo-debug-help` skill),
-Gemini 4 Neon's look at a change's pictures (`tools/dev/agy-look`) and Opus
-5.5's design review of them (`tools/dev/opus-look`) are front doors to
-the same `tools/dev/agents`, and everything under "Running them" below
-(peek, say, approve, the watching) holds for them too.
+Gemini 4 Neon's look at a change's pictures (`tools/dev/agy-look`), Opus
+5.5's design review of them (`tools/dev/opus-look`) and Astra 6.2's
+review of the change's code (`tools/dev/astra-review`, the Codex CLI at
+max: below) are front doors to the same `tools/dev/agents`, and
+everything under "Running them" below (peek, say, approve, the
+watching) holds for them too.
+
+## The code review of every change
+
+Ben, 2026-11-27: "please start getting a code review from a codex
+subagent running astra 6.2 on max for all changes (in addition to the
+existing reviews)". Run in the background, with the looks at the
+change's pictures where it has any:
+
+    tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working [PATH…]   # not committed yet
+    tools/dev/astra-review --about "…" RANGE [PATH…]                               # commits: main~2..main
+    tools/dev/astra-review --tree /var/tmp/NAME/tree …                             # another checkout
+
+- It works in a folder of its own with the diff (`change.diff`) and
+  what the commits said (`commits.txt`); its sandbox lets it read the
+  disk, write only there, and reach no network; it is never asked leave
+  and asks none; it runs nothing. `--about` is the lead's own account:
+  what the change is for and where its risk is (a lock, a signal, what
+  two builds share), so the hardest part is read hardest.
+- Its review is printed and kept, with the diff it read, in
+  `/var/tmp/olo-reviews/astra-HASH/` (`astra-review.md`, its screen in
+  `astra-review.log`). The name is the change's own: the same diff
+  asked again prints the review written, a changed one is reviewed
+  anew.
+- A finding is a claim. Make each happen (a test that fails) before
+  fixing it; say in the commit what it found and what you did, and
+  what you checked and found not to be so, with why.
+- Astra at max thinks for a long while: ten minutes and more for a
+  thousand lines. Go on with other work; `agents peek astra-HASH`
+  shows where it is.
 
 ## The minder
 

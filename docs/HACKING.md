@@ -22732,6 +22732,30 @@ pixel, opus-look for whether the design is any good. Run both in the
 background at once; each returns when its review is written, or when
 it needs its lead.
 
+**And a review of its code** (`tools/dev/astra-review`, which is
+`agents review`; Ben, 2026-11-27: "please start getting a code review
+from a codex subagent running astra 6.2 on max for all changes (in
+addition to the existing reviews)"): `astra-review --about "WHAT IT IS,
+WHAT CHANGED" --working [PATH…]` (what isn't committed, new files too)
+or `… RANGE [PATH…]` (commits) writes the diff, and what the commits
+said of themselves, into a folder of the review's own and starts Astra
+6.2 there in the Codex CLI (`codex -m gpt-6.2-astra -c
+model_reasoning_effort="max" -s workspace-write -a never`, its agents
+and hooks off: its sandbox reads the disk, writes only that folder, and
+has no network; it is never asked leave and asks none) as a child tab
+with a minder, like every helper. Its brief: what is wrong (logic,
+error paths, races, waits with no end, memory taken on another
+process's word), what it breaks elsewhere (callers, an older build
+meeting a newer one), the project's rules, what the tests don't hold,
+each with a case in which it goes wrong and how sure it is; then what
+it checked and found sound. The review and the diff it read are kept in
+`/var/tmp/olo-reviews/astra-HASH/`, named by the change itself: the
+same diff asked again prints the review written. `--tree DIR` reviews
+another checkout (a scratch one, while builders are in the shared
+tree). The tool lets six looks, reviews and investigators run at once
+(three before: a change has three reviewers now, and every session on
+the computer counts in one folder).
+
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`
 refuses every action on that screen (`history::ACTIONS` but `start`,

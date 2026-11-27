@@ -124,11 +124,14 @@ it starts, then every six hours: `crates/session/src/upgrade.rs`).
 
 ## The helpers' sign-ins
 
-- **Codex** (no helper of Olo's is Codex now; it is one of the agents
-  Olo supports, and its live tests run it): `codex login status`. Not
-  signed in, ask the person to run `codex login --device-auth` (a `!`
-  command in their prompt). Never sign in for them, never open a
-  sign-in link.
+- **Codex** (Astra 6.2's code review of every change,
+  `tools/dev/astra-review`; it is also one of the agents Olo supports,
+  and its live tests run it): `codex login status`. Not signed in, the
+  review refuses at once and says so; ask the person to run `codex
+  login --device-auth` (a `!` command in their prompt). Never sign in
+  for them, never open a sign-in link. Which models it offers and the
+  efforts each takes are in `~/.codex/models_cache.json` (Astra 6.2 is
+  `gpt-6.2-astra`: low to max, and ultra).
 - **Claude Code** (Opus's looks) asks once per computer whether to
   trust a folder; `agents watch` answers it for a look's own folder.
 - **agy** (subagents, the second investigator): its front doors show

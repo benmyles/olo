@@ -36,6 +36,17 @@ too: "always do it through tmux never a script that just goes silent".
                                      tools/dev/opus-look). The review is
                                      written beside the first picture and printed,
                                      waited for as `investigate` waits
+  agents review [--about TEXT] [--tree DIR] RANGE [PATH…]
+  agents review [--about TEXT] [--tree DIR] --working [PATH…]
+                                     have a change's code reviewed by Astra 6.2 at
+                                     max in the Codex CLI (tools/dev/astra-review is
+                                     this): the commits of RANGE (`main~3..main`,
+                                     `v2026.11.27.7..HEAD`), or with --working what
+                                     isn't committed yet (PATHs: only those). It
+                                     reads the diff and the tree (DIR: another
+                                     checkout than this one), runs nothing, and
+                                     writes its review under /var/tmp/olo-reviews;
+                                     waited for and printed as a look is
   agents list                        each one: what it's on, its state (working, asking,
                                      idle: a question or waiting, done: its result
                                      written, exited, gone), when it was started
@@ -157,11 +168,17 @@ MINDER_RULES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 MINDER_HAS = 90
 # What a helper's minder handed back and the lead hasn't been told yet.
 ESCALATED = {}
-# Astra 6.2, in the Codex CLI at high: kept for `look --by astra`, by
-# name only and never by default. Every helper is Gemini 4 Neon at xhigh
-# or Opus 5.5 at max (Ben, 2026-11-25: "everything should be either opus
-# 5.5 max or neon 4 xhigh").
+# Astra 6.2, in the Codex CLI. At max, the code review of every change
+# (`review`; Ben, 2026-11-27: "please start getting a code review from a
+# codex subagent running astra 6.2 on max for all changes (in addition
+# to the existing reviews)"). At high, kept for `look --by astra`, by
+# name only and never by default: every other helper is Gemini 4 Neon at
+# xhigh or Opus 5.5 at max (Ben, 2026-11-25: "everything should be
+# either opus 5.5 max or neon 4 xhigh").
 ASTRA = "gpt-6.2-astra"
+# Where code reviews are kept: each in a folder of its name, with the
+# diff it read.
+REVIEWS = "/var/tmp/olo-reviews"
 # What each program's TUI shows (agy 1.5.14, Claude Code 2.1.330; both
 # drawn inline, so the pane's history is the transcript). A question
 # with choices (leave to run something among them) has this under it:
@@ -228,7 +245,7 @@ ABOUT_AGENTS = [f"{cli} {word}" for cli in ("claude", "codex", "agy") for word i
 # hears no at once and no approval waits on you that you'd never give.
 DENY = ["git push", "git commit", "git add", "git stash", "git checkout", "git switch", "git reset", "git restore", "git rebase", "git merge", "git clean", "git rm",
         "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "tools/dev/agents",
-        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/astra-look", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
+        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/astra-look", "tools/dev/astra-review", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
         "systemctl", "loginctl", "reboot", "shutdown", "poweroff"]
 
 
@@ -812,6 +829,55 @@ The pictures:
 """
 
 
+REVIEW_RULES = """You are reviewing a change to Olo, a desktop written in Rust (its own
+toolkit, its compositor, its apps, and a service that runs coding
+agents), as the senior engineer who must find what is wrong with it
+before it ships. The lead who wrote it has tested it and thinks it is
+right.
+
+The change is {diff}: git's unified diff. What each commit said of
+itself, where it is committed, is {commits}. The tree it is in is
+{tree}: read whatever you need there, the changed files whole, their
+callers, the tests, `docs/HACKING.md` for how a thing is meant to work
+(it is very long: search it), with `rg`, `sed -n`, `git -C {tree} show`
+and `git -C {tree} log`. Read only: build nothing, run no test, start
+no agent or subagent of any kind, change no file but your review, and
+nothing outside your own folder.
+
+Look for, the most important first:
+
+- **What is wrong.** Logic that does not do what its comment or its
+  commit says; conditions the wrong way round, off by one; an error
+  path that loses data, hangs, or leaves something half done; races and
+  deadlocks (two processes, two threads, a file written by one and read
+  by another); a wait with no end; memory taken on the word of another
+  process or another machine; a signal, a kill or a delete that could
+  reach the wrong thing.
+- **What it breaks elsewhere.** Callers of a function it changed; other
+  apps that use a kit widget it changed; what is kept on disk or said
+  between programs, where an older build meets a newer one (a helper, a
+  service, a desktop, a host each upgrade apart).
+- **The project's rules** ({tree}/CLAUDE.md): the UI never blocked;
+  nothing polled, nothing done while idle; nothing wrapped from the
+  system's tools; Wayland only; scratch under /var/tmp, never /tmp;
+  nothing of the machine's name or accounts in the repository.
+- **Tests.** What the change claims that no test holds; a test that
+  passes while the thing is broken; one that will fail now and then (a
+  sleep for a wait, a shared path or port, an order assumed).
+- **Words.** A comment or a doc that no longer says what the code does.
+
+For each finding: the file and line, what is wrong, a concrete case in
+which it goes wrong (this state, this input, this order of events, and
+what then happens), how sure you are (certain, likely, to check), and
+the smallest fix. No style notes unless they hide a bug, and nothing
+listed that is right. Then, in a line each, what you checked and found
+sound, so the lead knows what was covered and what was not.
+
+Write the whole review as Markdown to {out} (that one file, nothing
+else), then reply DONE and wait: the lead may ask more.
+"""
+
+
 # What no agent here is given of the lead's shell: the person's screen,
 # and what marks a shell as inside Claude Code.
 UNSET = ["WAYLAND_DISPLAY", "DISPLAY", "OLO_SOCKET", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]
@@ -876,6 +942,19 @@ def launch_astra(name, cwd):
                             "-c", f'projects."{cwd}".trust_level="trusted"', f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."])
 
 
+def launch_astra_review(name, cwd):
+    """Astra 6.2 at max, for a code review: the Codex CLI in a child tab
+    (a tmux session where there is no Rex pane), working in `cwd`, its
+    own folder. Its sandbox lets it read the disk and write only there,
+    with no network; it is never asked leave nor asks it (`never`: what
+    the sandbox refuses is refused), none of the person's Codex hooks
+    run, and it starts no agents."""
+    first = f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."
+    plain = ["--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-c", f'projects."{cwd}".trust_level="trusted"']
+    session(name, cwd, [], ["codex", "-m", ASTRA, "-c", 'model_reasoning_effort="max"', "-s", "workspace-write", "-a", "never", *plain, "-C", cwd, first],
+            native=["codex", "--model", ASTRA, "--effort", "max", "--sandbox", "workspace-write", "--approval", "never", "--prompt", first, "--", *plain])
+
+
 def launch(name, d, cwd, others, target=None, commands=True):
     """An agy of its own in a tmux session, working in `cwd` (and
     reading `d`, its folder here, and `others`): started on its brief,
@@ -896,8 +975,12 @@ def launch(name, d, cwd, others, target=None, commands=True):
                                          "--settings", os.path.join(d, "settings.json"), *add, "--prompt", first])
 
 
-# Looks and second investigators at once, apart from the workers.
-HELPERS_MOST = 3
+# Looks, code reviews and second investigators at once, apart from the
+# workers. (Three until 2026-11-27: a change now has three reviewers,
+# two of its pictures and one of its code, and every session on this
+# computer counts in the same folder; a second session's two looks
+# left room for one.)
+HELPERS_MOST = 6
 
 
 def room(name, program="agy", kind="worker"):
@@ -1164,6 +1247,92 @@ def look(args):
     sys.exit(rc)
 
 
+def review(args):
+    """Start a code review of a change (or find the one started on it),
+    wait until it needs the lead or has written its review, and print
+    it: Astra 6.2 at max, in the Codex CLI (Ben, 2026-11-27: "a code
+    review from a codex subagent running astra 6.2 on max for all
+    changes"). The change is a range of commits, or with `--working`
+    what isn't committed (of the PATHs given, or everything)."""
+    refuse_nested()
+    about, tree, working = "", ROOT, False
+    while args and args[0] in ("--about", "--tree", "--working"):
+        if args[0] == "--working":
+            working, args = True, args[1:]
+        elif len(args) < 2:
+            break
+        elif args[0] == "--about":
+            about, args = args[1], args[2:]
+        else:
+            tree, args = os.path.abspath(args[1]), args[2:]
+    if (not working and not args) or any(a.startswith("--") for a in args):
+        sys.exit('usage: tools/dev/astra-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] RANGE [PATH…]\n'
+                 '       tools/dev/astra-review [--about …] [--tree DIR] --working [PATH…]')
+    status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True)
+    if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
+        sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
+    git = lambda *a: subprocess.run(["git", "-C", tree, *a], capture_output=True, text=True)
+    if working:
+        of, paths = "what isn't committed", args
+        diff = git("diff", "HEAD", "--", *paths).stdout
+        # (New files nobody has added yet: whole, as a diff shows them.)
+        for new in git("ls-files", "--others", "--exclude-standard", "--", *paths).stdout.splitlines():
+            diff += subprocess.run(["git", "-C", tree, "diff", "--no-index", "--", "/dev/null", new], capture_output=True, text=True).stdout
+        commits = ""
+    else:
+        of, paths = args[0], args[1:]
+        ran = git("diff", of, "--", *paths)
+        if ran.returncode:
+            sys.exit(f"agents: git diff {of}: {ran.stderr.strip()}")
+        diff = ran.stdout
+        commits = git("log", "--reverse", "--format=commit %h%n%n%s%n%n%b%n", of, "--", *paths).stdout
+    if not diff.strip():
+        sys.exit(f"agents: nothing to review ({of}" + (f", {' '.join(paths)}" if paths else "") + f" in {tree}: no difference)")
+    # (Named by what it reads: the same change asked again is the same review.)
+    name = "astra-" + hashlib.sha1((tree + of + " ".join(paths) + diff).encode()).hexdigest()[:10]
+    kept = os.path.join(REVIEWS, name)
+    out = os.path.join(kept, "astra-review.md")
+    m = meta(name)
+    d = folder(name)
+    written = os.path.join(d, "review.md")
+    if not (m and live(name)):
+        if os.path.isfile(out) and os.path.getsize(out):
+            # (Reviewed before, to the byte: its review as it was written.)
+            print(f"agents: this very change was reviewed already ({out}):", flush=True)
+            print(open(out).read().rstrip())
+            return
+        room(name, "codex", kind="helper")
+        if os.path.exists(d):
+            shutil.rmtree(d)
+        os.makedirs(d)
+        os.makedirs(kept, exist_ok=True)
+        said = {"diff": os.path.join(d, "change.diff"), "commits": os.path.join(d, "commits.txt"), "tree": tree, "out": written}
+        open(said["diff"], "w").write(diff)
+        open(said["commits"], "w").write(commits or "(Not committed yet: there is no message. What the lead says of it is below.)\n")
+        shutil.copyfile(said["diff"], os.path.join(kept, "change.diff"))
+        brief = REVIEW_RULES.format(**said) + (f"\nWhat it is, and what changed, in the lead's words: {about}\n" if about else "")
+        open(os.path.join(d, "brief.md"), "w").write(brief)
+        save_meta(name, {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": "codex"})
+        launch_astra_review(name, d)
+        print(f"agents: {name} is reviewing {of} ({len(diff.splitlines())} lines of diff); its review will be {out}", flush=True)
+    else:
+        print(f"agents: {name} is on it already; waiting for it", flush=True)
+    rc = watch(20, only=name)
+    if rc == 0:
+        shutil.copyfile(written, out)
+        if via(name) == "rex":
+            end(name)
+            log_kept = os.path.join(d, "transcript.txt")
+            if os.path.exists(log_kept):
+                shutil.copyfile(log_kept, out[:-3] + ".log")
+        else:
+            open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
+        print(open(out).read().rstrip())
+        end(name)
+        shutil.rmtree(d, ignore_errors=True)
+    sys.exit(rc)
+
+
 def ago(t):
     s = int(time.time() - t)
     return f"{s // 3600}h{s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m{s % 60:02d}s"
@@ -1188,7 +1357,7 @@ def list_():
         # (In its first moments it shows its prompt before it has begun:
         # not a turn over. The watch waits as long for it.)
         st = "starting" if st == "idle" and time.time() - m.get("started", 0) < 30 else st
-        on = m.get("crate") or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"a bug ({m.get('work', '?')})")
+        on = m.get("crate") or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"code ({m['review_of']})" if m.get("review_of") else f"a bug ({m.get('work', '?')})")
         done = f" {os.path.basename(done_file(n))}" if os.path.exists(done_file(n)) else ""
         print(f"{n:16} {st:8} {on:28} started {ago(m['started'])} ago{done}")
 
@@ -1373,6 +1542,15 @@ def latest(name):
     step of six looked stuck writing its report for ten minutes, a
     minder found, 2026-11-24)."""
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+    if cli(name) == "codex":
+        # (Codex draws no rules round its field: its last lines are the
+        # field and two of status, and those were told as what it was
+        # doing. What it does and says each begins with a bullet; while
+        # it works, the last is "Working (12s • esc to interrupt)".)
+        said = [l.strip() for l in lines if re.match(r"\s*•\s", l)]
+        done = [l for l in said if WORKING["codex"] not in l]
+        if said:
+            return ((done[-1] + " · " if done else "") + (said[-1].lstrip("• ") if WORKING["codex"] in said[-1] else ""))[:160].rstrip(" ·")
     rules = [i for i, l in enumerate(lines) if is_rule(l)]
     said = [l for l in (lines[:rules[-2]] if len(rules) >= 2 else lines) if not re.match(r"\s*└ Tip:", l) and not NOTICE.search(l)]
     turning = [l for l in said if SPINNER.match(l)]
@@ -1662,7 +1840,7 @@ def main():
         print(__doc__)
         return
     cmd, rest = a[0], a[1:]
-    if cmd in ("start", "list", "watch", "investigate", "look", "tidy"):
+    if cmd in ("start", "list", "watch", "investigate", "look", "review", "tidy"):
         say_swept(sweep_builds())
         say_tidied(tidy())
     if cmd == "start" and len(rest) == 3:
@@ -1672,6 +1850,8 @@ def main():
         investigate(given[0], given[1] if len(given) > 1 else None, wait="--no-wait" not in rest)
     elif cmd == "look":
         look(rest)
+    elif cmd == "review":
+        review(rest)
     elif cmd == "list":
         list_()
     elif cmd == "watch":

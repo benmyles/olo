@@ -1,0 +1,33 @@
+#!/bin/bash
+# A code review of a change, from Astra 6.2 at max in the Codex CLI
+# (Ben, 2026-11-27: "please start getting a code review from a codex
+# subagent running astra 6.2 on max for all changes (in addition to the
+# existing reviews)"). Every change gets one before it is released,
+# beside the two looks at its pictures: what is wrong in the code (logic,
+# error paths, races, waits with no end, what an older build meeting a
+# newer one breaks), what it breaks elsewhere, the project's rules, and
+# what its tests don't hold, each with a case in which it goes wrong.
+#
+#   tools/dev/astra-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] RANGE [PATH…]
+#   tools/dev/astra-review [--about …] [--tree DIR] --working [PATH…]
+#
+# RANGE: the commits to review, as git names them (`main~2..main`,
+# `v2026.11.27.7..HEAD`). --working: what isn't committed yet, new files
+# too (PATHs: only those; name them where others are at work in the
+# tree). --tree: another checkout than this one. It reads the diff and
+# whatever it needs of the tree, runs nothing and changes nothing; its
+# review is printed and kept, with the diff it read, in a folder of its
+# own under /var/tmp/olo-reviews. The same change asked again is its
+# review as written, not a second one. Check each thing it says against
+# the code yourself, fix what's real, and say in the commit what it
+# found and what you did.
+#
+# The review is the Codex CLI in a child tab of yours (a tmux session
+# where you aren't in a Rex pane), as every agent here is
+# (`tools/dev/agents review`: this is that), so it can be read while it
+# works (`tools/dev/agents peek astra-…`) and told more (`agents say`).
+# Run this in the background: it prints a line a minute of what the
+# review is doing, and returns when the review is written (0), or as
+# soon as it needs you (3: answer it, then run this again with the same
+# arguments to go on waiting).
+exec /usr/bin/python3 "$(dirname "$0")/agents" review "$@"

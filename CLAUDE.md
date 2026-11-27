@@ -166,6 +166,26 @@ are universal and non-negotiable:
   before it's built out, and again when it's done. Check each thing
   they find against the picture yourself, fix what's real, and say in
   the commit what each found and what you did about it.
+- **A third reviewer, on every change's code: Astra 6.2's.** Every
+  change gets a code review from a Codex subagent running Astra 6.2 at
+  max, beside the two looks at its pictures, and a change with no
+  pictures gets it all the same (Ben, 2026-11-27: "please start getting
+  a code review from a codex subagent running astra 6.2 on max for all
+  changes (in addition to the existing reviews)"):
+  `tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working
+  [PATH…]` for what isn't committed yet (name the paths where others
+  are at work in the tree), `tools/dev/astra-review … RANGE` for
+  commits. Run it in the background with the looks, in the same batch;
+  it reads the diff and the tree, runs nothing, and its review is kept
+  with the diff it read under `/var/tmp/olo-reviews`. It is asked what
+  is wrong, each with a case in which it goes wrong: check each against
+  the code yourself (a finding is a claim until you have made it
+  happen), fix what's real with a test that fails before the fix, and
+  say in the commit what it found and what you did about it. Where
+  something broken now can't wait for it, commit, ask for the review at
+  once, and fix what it finds in a commit after: nothing is released
+  with a commit in it that hasn't been reviewed. One review a change,
+  and one more only to confirm what the first said must be fixed.
 - **Three rounds of looks at most, each a whole batch.** (Ben,
   2026-11-23, after one button's change took six rounds: "all these
   reviewer rounds are getting kinda crazy and taking a very long time.
@@ -338,11 +358,13 @@ are universal and non-negotiable:
 - **Subagents: Antigravity, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
   Gemini 4 Neon at xhigh in the Antigravity CLI (`agy`) but Opus's
-  design review (never Codex nor Astra: Ben, 2026-11-22, "stop using codex/astra for
+  design review and Astra's code review (Codex and Astra for nothing
+  else: Ben, 2026-11-22, "stop using codex/astra for
   olo qa/dev tasks and everywhere we use codex/astra at the moment for
   olo dev/qa replace it with antigravity (`agy`) and gemini 4 neon on
-  xhigh"; never a Claude fork, and never the Agent tool: every helper,
-  its minder too, is a native Rex agent, below). That is for the
+  xhigh"; then, 2026-11-27, Astra 6.2 at max for the code review of
+  every change, above; never a Claude fork, and never the Agent tool:
+  every helper, its minder too, is a native Rex agent, below). That is for the
   help Olo's development gets: Olo's own support for Codex and Astra
   (Terminal, Rex, the pool, Preferences) is the product's and stays.
   - Narrow, targeted work items that can go on in parallel: subagents,
@@ -371,12 +393,16 @@ are universal and non-negotiable:
     `tools/dev/opus-look`, Opus 5.5's design review of the same
     pictures (the Claude CLI in a tmux session, with the tools to read
     and write files in a folder of the pictures' copies and no other).
+  - `tools/dev/astra-review`, the code review of every change (above):
+    Astra 6.2 at max in the Codex CLI, in a folder of its own with the
+    diff, reading the tree and writing nothing but its review.
 - **Every helper on a screen of its own, never a script that goes
-  silent.** A subagent, the investigator and both reviewers each run
+  silent.** A subagent, the investigator and the reviewers (of
+  pictures, of code) each run
   their program's own interactive screen in a child tab of yours (a
   tmux session where there is no Rex pane: above)
-  (`tools/dev/agents`; `agy-help`, `agy-look` and `opus-look` are its
-  front doors), so what each is doing can be read at any moment
+  (`tools/dev/agents`; `agy-help`, `agy-look`, `opus-look` and
+  `astra-review` are its front doors), so what each is doing can be read at any moment
   (`agents peek NAME`), it can be told more (`agents say`), and what it
   asks leave for reaches you (`agents approve`). Never `agy --print`,
   `claude -p` or any other run that answers only at its end (Ben,
@@ -410,7 +436,7 @@ are universal and non-negotiable:
   agent.** (Ben, 2026-11-27: "as a standing rule please setup a minder
   for all subagents you launch (add this to the project rules) and
   also for all subagents use a native rex olo agent".) Each subagent
-  you start (a worker, the second investigator, both reviewers) is a
+  you start (a worker, the second investigator, each reviewer) is a
   child tab of yours through `olo agent`, and has a minder of its own
   from its start: `olo agent start … --minder claude:claude-opus-5-5:max
   --rules .claude/skills/olo-agents/minder-rules.md`, which
@@ -448,13 +474,16 @@ are universal and non-negotiable:
   program exited, one done and untouched for half an hour, one idle
   for three hours: `agents tidy`, which `list`, `watch` and `start`
   run), but that is the net, not the way.
-- **Opus 5.5 at max, Gemini 4 Neon at xhigh: nothing else.** Every
-  helper is one of the two (Ben, 2026-11-25: "NOTHING should still be
-  using fable -- everything should be either opus 5.5 max or neon 4
-  xhigh"): wherever Gemini reasons for Olo (a subagent, the second
-  investigator, the look at pictures) it is Gemini 4 Neon at xhigh
-  (`gemini-4-neon-xhigh`); Opus 5.5's design review and the minder run
-  at max. No Fable, no Astra, no other model, at no other effort.
+- **Opus 5.5 at max, Gemini 4 Neon at xhigh, Astra 6.2 at max for the
+  code review: nothing else.** Every helper is one of them (Ben,
+  2026-11-25: "NOTHING should still be using fable -- everything should
+  be either opus 5.5 max or neon 4 xhigh"; 2026-11-27: "a code review
+  from a codex subagent running astra 6.2 on max"): wherever Gemini
+  reasons for Olo (a subagent, the second investigator, the look at
+  pictures) it is Gemini 4 Neon at xhigh (`gemini-4-neon-xhigh`); Opus
+  5.5's design review and the minder run at max; the code review is
+  Astra 6.2 at max (`gpt-6.2-astra`), and Astra does nothing else. No
+  Fable, no other model, at no other effort.
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`
