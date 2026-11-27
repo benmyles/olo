@@ -84,6 +84,28 @@ pub fn shared_server(comm: &str, exe: &str, args: &[String]) -> bool {
     identify(comm, exe, args) == Some(Agent::Codex) && args.iter().skip(1).take(3).any(|a| a == "app-server")
 }
 
+/// Codex's own word that it is at work, wherever its field has pushed
+/// it: its status line ("• Working (1m 43s • esc to interrupt)") stands
+/// above its field, and the field grows with what is typed or queued in
+/// it. Looked for in the screen's last six lines alone, a working Codex
+/// with a long message waiting in its field read as at rest, at its
+/// prompt: a lead's `list` said `idle` of ten reviewers at work, and a
+/// `run` took the first words of a turn for its end (the ShiftUp lead's
+/// items 50 and 51, 2026-11-27). The line is told by its own shape (a
+/// bullet or a spinner, then words ending "esc to interrupt)"), among
+/// the dozen lines above the field: words of a transcript that only
+/// mention it are not it.
+fn codex_at_work(screen: &str) -> bool {
+    let lines: Vec<&str> = screen.lines().collect();
+    let numbered = |s: &str| s.split_once('.').is_some_and(|(n, rest)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) && rest.starts_with(' '));
+    let Some(field) = lines.iter().rposition(|l| l.trim_start().strip_prefix('›').is_some_and(|rest| !numbered(rest.trim_start()))) else { return false };
+    lines[..field].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(12).any(|l| {
+        let mut chars = l.chars();
+        let led = chars.next().is_some_and(|c| !c.is_alphanumeric() && !c.is_ascii_punctuation()) && chars.next() == Some(' ');
+        led && l.to_ascii_lowercase().ends_with("esc to interrupt)")
+    })
+}
+
 /// What the agent is doing, from the bottom of its screen (where its
 /// prompt, dialogs and status line are). Antigravity's words are its
 /// own: "esc to cancel" is under its field while it works (Claude
@@ -119,7 +141,7 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     let bottom6 = tail_joined(6);
     let bottom10 = tail_joined(10);
     // Genuine working indicator in Claude Code / Codex status footer.
-    if bottom6.contains("esc to interrupt") {
+    if bottom6.contains("esc to interrupt") || (agent == Agent::Codex && codex_at_work(screen)) {
         return State::Working;
     }
     // Check chooser/dialog chrome strictly within the bottom region so prose never triggers Blocked.
@@ -1343,6 +1365,21 @@ mod tests {
         assert_eq!(classify(Agent::Claude, asking), State::Blocked);
         let idle = "● Done: the tests pass.\n\n╭────────╮\n│ >      │\n╰────────╯\n  ? for shortcuts\n";
         assert_eq!(classify(Agent::Claude, idle), State::Idle);
+        // (Codex 0.172 at work, as it draws it: its status line over its field, the field's two lines under.)
+        let codex_field = |held: &str| {
+            format!("• Explored\n  └ Read review.md\n\n• Working (19m 43s • esc to interrupt)\n\n› {held}\n\n  GPT-6.2-Astra max · /var/tmp/x · Context 52% left\n  ← for agents · ? for shortcuts\n")
+        };
+        assert_eq!(classify(Agent::Codex, &codex_field("Ask Codex to do anything")), State::Working);
+        // A long message waiting in its field (nine lines of it) pushes the status line out of the
+        // screen's last six lines: still at work.
+        let long = (1..=9).map(|i| format!("line {i} of what the lead sent while it works")).collect::<Vec<_>>().join("\n  ");
+        assert_eq!(classify(Agent::Codex, &codex_field(&long)), State::Working, "a long message in its field");
+        // At rest with the same field: no status line over it. And words that only mention the line,
+        // in what it wrote, are not the line.
+        let rested = codex_field(&long).replace("• Working (19m 43s • esc to interrupt)\n", "");
+        assert_eq!(classify(Agent::Codex, &rested), State::Idle);
+        let mentions = rested.replace("  └ Read review.md", "  └ the service looks for \"esc to interrupt\" in the last six lines; Working (1m • esc to interrupt) is the line");
+        assert_eq!(classify(Agent::Codex, &mentions), State::Idle, "its own words about the line");
         let codex = "• Working (4s • esc to interrupt)\n▌ \n";
         assert_eq!(classify(Agent::Codex, codex), State::Working);
         let codex_ask = "Would you like to run the following command?\n  $ cargo test\n› 1. Yes, proceed (y)\n";
@@ -1576,6 +1613,35 @@ mod tests {
     /// line under an answer stopped looking ahead for the next answer:
     /// the long box 809 µs before and 78 µs after, the plain one 13.8
     /// µs and 12.6 µs.)
+    /// What telling a Codex at rest from one at work costs, on a screen of
+    /// thirty lines read at each change of it (`jato test --release -p
+    /// olo-agent-screen -- --ignored the_cost_of_telling --nocapture`):
+    /// with the look above its field for its status line (2026-11-27:
+    /// 20.6 µs a reading; the same screen read as Claude Code's, which
+    /// has no such look, 18.4 µs).
+    #[test]
+    #[ignore]
+    fn the_cost_of_telling_a_codex_at_rest() {
+        let screen = format!(
+            "{}\n› Ask Codex to do anything\n\n  GPT-6.2-Astra max · /var/tmp/x · Context 52% left\n  ← for agents · ? for shortcuts\n",
+            (0..26).map(|i| format!("• Ran step {i} of the work, and said so at some length")).collect::<Vec<_>>().join("\n")
+        );
+        assert_eq!(classify(Agent::Codex, &screen), State::Idle);
+        for (what, agent) in [("Codex at rest", Agent::Codex), ("the same screen as Claude Code's", Agent::Claude)] {
+            let least = (0..20)
+                .map(|_| {
+                    let t = std::time::Instant::now();
+                    for _ in 0..500 {
+                        std::hint::black_box(classify(agent, std::hint::black_box(&screen)));
+                    }
+                    t.elapsed() / 500
+                })
+                .min()
+                .unwrap();
+            println!("{what} ({} lines): {least:?} a reading", screen.lines().count());
+        }
+    }
+
     #[test]
     #[ignore]
     fn the_cost_of_reading_a_box() {

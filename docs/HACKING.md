@@ -32021,6 +32021,26 @@ agents through the night, could not move to it.
   its own after its first turn (the one its process holds the lock of),
   never the first's. It failed before (the second was given the
   first's, and the first's transcript as its own).
+- *A working Codex, whatever its field holds* (`olo_agent_screen::
+  classify`, `codex_at_work`; the ShiftUp lead's items 50 and 51,
+  2026-11-27: "`olo agent run codex` returns at Codex's first message
+  as if the turn had ended"; "a Codex tab that is working is listed as
+  `idle` … while its screen says 'Working (1m 43s • esc to interrupt)':
+  seen on ten reviewers at once"). Codex's word that it works is its
+  status line, which stands over its field; the classifier looked for
+  "esc to interrupt" in the screen's last six lines, and the field
+  grows with what is typed or queued in it: a lead's long message
+  waiting there pushed the line out, and a Codex at work read as at
+  rest at its prompt, its last words given as its turn's end. The line
+  is now also looked for over the field, by its own shape (a bullet or
+  a spinner, words ending "esc to interrupt)"), among the dozen lines
+  above it; words of a transcript that only mention it are not it
+  (`states`: a nine-line message in the field; fails before). 2 µs more
+  for a Codex screen at rest (`the_cost_of_telling_a_codex_at_rest`:
+  20.6 µs a reading, 18.4 without the look). Rex's own reading of its
+  panes uses the same classifier. Not yet tried against the real
+  Codex with a long message queued (its field's lines are drawn here
+  as the one seen at work was): to do with the next live test of it.
 - *An agent's own shells* (`background_shells`, `waiting_on`;
   `agent.rs`, `find_background_shells`; the ShiftUp lead's item 26,
   2026-11-26: "A Claude Code agent whose turn ended with its own
