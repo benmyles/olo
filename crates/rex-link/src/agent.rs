@@ -229,7 +229,13 @@ struct PendingToolInfo {
 #[derive(Debug, Serialize)]
 struct BackgroundShellInfo {
     pid: i32,
+    /// Its command, whole: its tail is what tells a test run from a
+    /// server (it was cut at 240 characters; the ShiftUp lead's item
+    /// 41, 2026-11-27). Past [`CMD_MOST`] characters it is cut all the
+    /// same, and `cmd_cut` says so.
     cmd: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    cmd_cut: bool,
     cwd: String,
     kind: &'static str,
     /// The file its output goes to, where it goes to one (a shell of
@@ -426,6 +432,19 @@ fn collect_descendants<'a>(root_pid: i32, by_ppid: &HashMap<i32, Vec<&'a Proc>>)
     out
 }
 
+/// The most of a background shell's command that is told: a heredoc of
+/// a megabyte isn't sent with every `status`.
+const CMD_MOST: usize = 32_000;
+
+/// A command as it is told: whole, or its first [`CMD_MOST`]
+/// characters and that it was cut.
+fn whole_cmd(cmd: &str) -> (String, bool) {
+    match cmd.char_indices().nth(CMD_MOST) {
+        Some((at, _)) => (cmd[..at].to_owned(), true),
+        None => (cmd.to_owned(), false),
+    }
+}
+
 fn classify_bg_process(cmd: &str) -> &'static str {
     let low = cmd.to_ascii_lowercase();
     let base = low.split_whitespace().next().unwrap_or("").rsplit('/').next().unwrap_or("");
@@ -478,7 +497,8 @@ fn find_background_shells(cli: &str, agent_pid: i32, by_ppid: &HashMap<i32, Vec<
         let (output, last_wrote_ms) = output_of(shell.pid);
         own.insert(shell.pid);
         own.extend(collect_descendants(shell.pid, by_ppid).iter().map(|p| p.pid));
-        out.push(BackgroundShellInfo { pid: shell.pid, kind: classify_bg_process(&cmd), cmd: cmd.chars().take(240).collect(), cwd: read_cwd(shell.pid), output, last_wrote_ms });
+        let (told, cmd_cut) = whole_cmd(&cmd);
+        out.push(BackgroundShellInfo { pid: shell.pid, kind: classify_bg_process(&cmd), cmd: told, cmd_cut, cwd: read_cwd(shell.pid), output, last_wrote_ms });
     }
     // Claude Code's shells of the agent's own are those, and all of
     // them: what else runs under it is Claude Code's own doing (as it
@@ -524,7 +544,8 @@ fn find_background_shells(cli: &str, agent_pid: i32, by_ppid: &HashMap<i32, Vec<
         let kind = classify_bg_process(&cmd);
         let cwd = read_cwd(p.pid);
         let (output, last_wrote_ms) = output_of(p.pid);
-        out.push(BackgroundShellInfo { pid: p.pid, cmd: cmd.chars().take(240).collect(), cwd, kind, output, last_wrote_ms });
+        let (cmd, cmd_cut) = whole_cmd(&cmd);
+        out.push(BackgroundShellInfo { pid: p.pid, cmd, cmd_cut, cwd, kind, output, last_wrote_ms });
     }
     out
 }
@@ -1251,6 +1272,18 @@ pub(crate) fn trust(home_override: Option<&str>, config_dir_override: Option<&st
 
 #[cfg(test)]
 mod tests {
+    /// A background shell's command is told whole (it was cut at 240 characters), up to a cap that says so.
+    #[test]
+    fn a_shells_command_is_told_whole() {
+        let long = format!("cd /a/long/worktree && jato test -p some-package -- {} --exact the_last_word", "x".repeat(600));
+        assert_eq!(super::whole_cmd(&long), (long.clone(), false));
+        let (told, cut) = super::whole_cmd(&"é".repeat(super::CMD_MOST + 5));
+        assert!(cut && told.chars().count() == super::CMD_MOST);
+        let shell = super::BackgroundShellInfo { pid: 1, cmd: long.clone(), cmd_cut: false, cwd: String::new(), kind: "task", output: None, last_wrote_ms: None };
+        let told = serde_json::to_value(&shell).unwrap();
+        assert!(told["cmd"] == long.as_str() && told.get("cmd_cut").is_none(), "{told}");
+    }
+
     use super::*;
 
     /// The command of an agent's own shell, from the script Claude Code

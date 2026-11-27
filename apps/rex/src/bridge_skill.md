@@ -264,7 +264,9 @@ model or reasoning effort is used.
   whatever the agent left running; a shell of its own still going (a dev
   server, a test run, a `sleep` it set itself) is said beside it, in
   `waiting_on` (`own_run`) and `background_shells` (each with `pid`,
-  `cmd` the agent's own command, `kind`, and for Claude Code `output`,
+  `cmd` the agent's own command, whole (its tail is what tells a test
+  run from a server; `cmd_cut: true` only past 32,000 characters),
+  `kind`, and for Claude Code `output`,
   the file its output goes to, and `last_wrote_ms`, when that was last
   written), and whether that will wake the agent is yours to judge
   from its command. **`pid` is the `env` wrapper's for a moment

@@ -31706,7 +31706,10 @@ agents through the night, could not move to it.
   && eval 'COMMAND' < /dev/null && pwd -P >| …"`, its output to a file
   (`…/tasks/ID.output`): each such child is one entry, `cmd` the
   agent's own command as it gave it (`own_shell_command`: the word after
-  the script's `eval`, its quoted pieces put together), `output` that
+  the script's `eval`, its quoted pieces put together), whole (it was
+  cut at 240 characters, and "a long command's tail is what tells a
+  test run from a server": the ShiftUp lead's item 41, 2026-11-27;
+  `cmd_cut` says where it is cut all the same, past 32,000), `output` that
   file and `last_wrote_ms` when it was last written (how long a run has
   said nothing), `kind` as before (`task`, which makes `waiting_on`
   `own_run`; `dev_server`, which doesn't: whether that will wake the
