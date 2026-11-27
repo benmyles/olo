@@ -31352,6 +31352,24 @@ connected to, is off). The port a pane's program listens on and
   frames the exact `cols × rows` remote grid inside a BeOS sunken well
   (`style::sunken`) with a neutral grey unfocused cursor, centred in the
   canvas when it fits and pinned 12 pt top-left with scrollbars when larger.
+- **An Activity row's menu** (right-click): `Show Transcript`, `Show
+  Terminal` (the one shown ticked), then **`Keep It Going` and `Auto
+  Approve` for that row's own pane**, each ticked while it is on, then
+  what the row has of its own: what folds (a tab's agent: `Collapse`/
+  `Expand Subagents`; a child with children: `Collapse`/`Expand
+  Children`), then, apart by a separator, what stops (`Stop N
+  Subagents…`; a child: `Stop Subagent`, `Stop Subagent & Children`,
+  `Force Close Tab`: a child's act at once, so a slip of one row from
+  a view item must not be one of them). The two are the tab menu's along the
+  top (`RexHub::set_help`, `toggle_auto_approve`: asked for through the
+  commands socket, Auto Approve asks the person first), on every row:
+  a child's row had them, a tab's own agent's row did not (Ben,
+  2026-11-27: "i should be able to right click any agent in the
+  activity list to toggle keep going and auto approve"), and the
+  child's menu had its first two items the other way round and its
+  fold item between two Stops.
+  `tools/dev/rex-slow/tree.py` chooses each from both rows as a person
+  does and reads the tick from the menu opened again.
 - **Live streaming Transcript view**: Available for any top-level agent
   (right-click tab or Activity row → `Show Transcript`) and every subagent
   (read-only when no tmux terminal exists). `olo-rex-link activity tail`

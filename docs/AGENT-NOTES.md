@@ -1750,6 +1750,16 @@ turn for two minutes. Told to their lead as it was.
   in the suite's rig (its own Rex server and folders). That is how
   "one step against update 6's service" was tried before it was done
   to the live one.
+- **Read the clock before writing a time.** I announced a handover
+  "at 07:25" in a note I wrote at 07:17, having promised twenty
+  minutes' notice: I had taken the time from memory of an earlier
+  command. Corrected in their file six minutes later and moved. A note
+  that names a time is written by a command that prints `date -u`
+  first, and the time is that plus the notice, worked out, not felt.
+- **A test desktop from a scratch checkout needs `olo-bus` built
+  there** (`jato build -p olo-bus` beside `app_server`, `olo-session`,
+  `olo-preview`, `olo-fakesound` and the app): without it `tsession
+  start` goes on to build busd, fails, and says only that.
 - **A scratch checkout for tests while builders are in the tree**: a
   builder's half-written crate (a `Cargo.toml` with no `src/lib.rs`)
   makes the whole workspace unreadable to cargo, for everyone. `git

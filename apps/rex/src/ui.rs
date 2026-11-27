@@ -4696,6 +4696,7 @@ impl RexWindow {
                 let bk_fold = row.bk.clone();
                 let bk_menu = row.bk.clone();
                 let row_title = row.title.clone();
+                let row_help = row.help.clone();
                 let viewing_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &row.bk);
                 let active_in_collapsed = has_children && !expanded && subs.iter().any(|c| shown.as_ref() == Some(&c.bk));
                 let selected = !ancestor_only && (shown.as_ref() == Some(&row.bk) || active_in_collapsed);
@@ -4724,12 +4725,28 @@ impl RexWindow {
                     let bk = bk_menu.clone();
                     let title = row_title.clone();
                     let running_for_menu = running_kids.clone();
-                    let mut menu = Menu::new("").item("Show Transcript", "row.transcript").checked(viewing_tr).item("Show Terminal", "row.terminal").checked(!viewing_tr);
+                    // Keep It Going and Auto Approve for the row's own pane, as
+                    // its tab's menu along the top has them and a child's row
+                    // here did already (Ben, 2026-11-27: "i should be able to
+                    // right click any agent in the activity list to toggle
+                    // keep going and auto approve").
+                    let mut menu = Menu::new("")
+                        .item("Show Transcript", "row.transcript")
+                        .checked(viewing_tr)
+                        .item("Show Terminal", "row.terminal")
+                        .checked(!viewing_tr)
+                        .separator()
+                        .item("Keep It Going", "row.keep_going")
+                        .checked(row_help.keep_going)
+                        .item("Auto Approve", "row.auto_approve")
+                        .checked(row_help.auto_approve);
                     if has_children {
                         let stop_label = stop_children_label(&running_for_menu);
                         menu = menu
                             .separator()
                             .item(if expanded { "Collapse Subagents" } else { "Expand Subagents" }, "row.toggle_fold")
+                            // (What folds apart from what stops: a slip of a row from the one is not the other.)
+                            .separator()
                             .item(stop_label, "row.stop_all")
                             .enabled(!running_for_menu.is_empty());
                     }
@@ -4744,6 +4761,12 @@ impl RexWindow {
                             if let Some(slot) = wins().map.get(&win_id) {
                                 slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
                             }
+                        }
+                        "row.keep_going" => {
+                            the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
+                        }
+                        "row.auto_approve" => {
+                            toggle_auto_approve(the_hub(), &bk, &title);
                         }
                         "row.toggle_fold" => {
                             if let Some(slot) = wins().map.get(&win_id) {
@@ -4812,20 +4835,26 @@ impl RexWindow {
                                 let bk = child_bk_menu.clone();
                                 let wid = child_wid_menu.clone();
                                 let title = child_title.clone();
+                                // (In the order its parent's row and a tab's menu have them.)
                                 let mut menu = Menu::new("")
-                                    .item("Show Terminal", "sub.terminal")
-                                    .checked(!viewing_child_tr)
                                     .item("Show Transcript", "sub.transcript")
                                     .checked(viewing_child_tr)
+                                    .item("Show Terminal", "sub.terminal")
+                                    .checked(!viewing_child_tr)
                                     .separator()
                                     .item("Keep It Going", "sub.keep_going")
                                     .checked(child_help.keep_going)
                                     .item("Auto Approve", "sub.auto_approve")
                                     .checked(child_help.auto_approve)
-                                    .separator()
-                                    .item("Stop Subagent", "sub.stop");
+                                    .separator();
+                                // (What folds first and apart, then what stops, as its parent's row has them: it stood between the
+                                // two Stops, which act at once.)
                                 if child_has_kids {
-                                    menu = menu.item(if child_expanded { "Collapse Children" } else { "Expand Children" }, "sub.toggle_fold").item("Stop Subagent & Children", "sub.stop_tree");
+                                    menu = menu.item(if child_expanded { "Collapse Children" } else { "Expand Children" }, "sub.toggle_fold").separator();
+                                }
+                                menu = menu.item("Stop Subagent", "sub.stop");
+                                if child_has_kids {
+                                    menu = menu.item("Stop Subagent & Children", "sub.stop_tree");
                                 }
                                 menu = menu.item("Force Close Tab", "sub.force_stop");
                                 menu::resolve(std::slice::from_mut(&mut menu), true);

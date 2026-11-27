@@ -6,6 +6,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### Rex: Keep It Going and Auto Approve on every agent's row in Activity
+
+*07:58* — Right-clicking any agent in the Activity list now offers Keep It Going and Auto Approve for that row's own pane (a tab's own agent's row had neither; a child's did). Both rows' menus read in one order: what shows, the two switches, what folds, and, apart, what stops.
+
+![Rex: Keep It Going and Auto Approve on every agent's row in Activity](2026-11-27/075826-rex-keep-it-going-and-auto-approve-on-every-agen.png)
+
 ### Every app's first menu: settings above Keyboard Shortcuts
 
 *06:09* — Under About, the app's settings item now comes first and Keyboard Shortcuts after it (they were the other way round), in every app: Menu::app_items in the kit. Ben: "settings above kb shortcuts in every app's first menu makes sense to me".

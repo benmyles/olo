@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 """Rex's demo, driven as a person drives it, through every way to act on a child tab that asks the hub
 something from the window's own thread: a child chosen from a tab's tree menu, the path above a child
-clicked, and Keep It Going and Auto Approve chosen from a child's menu in Activity. After each, the window
+clicked, and Keep It Going and Auto Approve chosen from a row's menu in Activity: a child's, and the row of
+a tab's own agent above it (Ben, 2026-11-27: "i should be able to right click any agent in the activity list
+to toggle keep going and auto approve"; until then only a child's row had them). After each, the window
 must show what was asked for: the child, its parent again, the item ticked in a menu opened anew. (Each is
 drawn by the window's own thread. That its tree can still be read says nothing: a window that has stopped
 is read as it last was.)
@@ -139,30 +141,53 @@ def main():
         if back is None:
             return
 
-        # 3, 4. Keep It Going and Auto Approve, from a child's own menu in Activity.
+        # 3 to 6. Keep It Going and Auto Approve, from a row's own menu in Activity: a child's, then the row of
+        # the tab's own agent (the demo's first tab).
         click(*centre(named(nodes(pid), None, "Activity")))
-        row = wait(lambda: named(nodes(pid), "ListItem", "API Audit"), 6)
-        if not row:
+        if not wait(lambda: named(nodes(pid), "ListItem", "API Audit"), 6):
             return check("Activity lists the children", False, [n.get("name") for n in nodes(pid) or [] if n.get("role") == "ListItem"][:12])
-        def ticked(item):
-            """The child's menu opened again (the window's own thread draws it): whether `item` is ticked there."""
-            spot = centre(row)
-            click(*spot, "right")
-            it = wait(lambda: named(nodes(pid), "MenuItem", item), 5)
-            ts("key", NAME, "1")  # (Escape, by its key code)
-            wait(lambda: (lambda f: f is not None and not named(f, "MenuItem", item))(nodes(pid)), 3)
-            return it and bool(it.get("checked"))
+        for who, name in (("a child", "API Audit"), ("a tab's own agent", "olo-rex")):
+            row = named(nodes(pid), "ListItem", name)
+            if not row:
+                return check(f"Activity lists {who} ({name})", False, [n.get("name") for n in nodes(pid) or [] if n.get("role") == "ListItem"][:12])
 
-        for item in ("Keep It Going", "Auto Approve"):
-            was = ticked(item)
+            def ticked(item):
+                """The row's menu opened again (the window's own thread draws it): whether `item` is ticked there."""
+                spot = centre(row)
+                click(*spot, "right")
+                it = wait(lambda: named(nodes(pid), "MenuItem", item), 5)
+                ts("key", NAME, "1")  # (Escape, by its key code)
+                wait(lambda: (lambda f: f is not None and not named(f, "MenuItem", item))(nodes(pid)), 3)
+                return it and bool(it.get("checked"))
+
+            for item in ("Keep It Going", "Auto Approve"):
+                was = ticked(item)
+                spot = centre(row)
+                click(*spot, "right")
+                missing = chosen(spot, item)
+                time.sleep(0.4)
+                now = ticked(item)
+                check(f"{item} chosen for {who} in Activity: its menu, opened again, has it ticked", was is False and now is True and not missing, {"ticked before": was, "after": now, "menu lacked": missing})
+                if now is None:
+                    return
+            # Chosen again: off again (each row's own, and the other row's untouched).
             spot = centre(row)
             click(*spot, "right")
-            missing = chosen(spot, item)
+            chosen(spot, "Keep It Going")
             time.sleep(0.4)
-            now = ticked(item)
-            check(f"{item} chosen for a child in Activity: its menu, opened again, has it ticked", was is False and now is True and not missing, {"ticked before": was, "after": now, "menu lacked": missing})
-            if now is None:
-                return
+            check(f"Keep It Going chosen again for {who}: off again", ticked("Keep It Going") is False, None)
+        # (The child's Auto Approve is still on, the parent's too; the parent's Keep It Going did not turn the child's on.)
+        row = named(nodes(pid), "ListItem", "API Audit")
+        spot = centre(row)
+        click(*spot, "right")
+        items = wait(lambda: (lambda f: f if named(f, "MenuItem", "Keep It Going") else None)(nodes(pid)), 5)
+        ts("key", NAME, "1")
+        had = [str(n.get("name")) for n in items or [] if n.get("role") == "MenuItem"]
+        check(
+            "a child's menu in Activity, in its parent's order: what shows, the two, what folds, what stops",
+            had == ["Show Transcript", "Show Terminal", "Keep It Going", "Auto Approve", "Collapse Children", "Stop Subagent", "Stop Subagent & Children", "Force Close Tab"],
+            had,
+        )
     finally:
         log = f"/var/tmp/olo-dev/{NAME}/olo-rex.log"
         if not ok and os.path.exists(log):

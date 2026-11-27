@@ -308,6 +308,63 @@ something nobody here has is in "Blocked", with what it waits for.
   in Olo's code and in Rex's was ruled out on scratch (the
   investigator's answer), nothing of the lead's ran then, and the
   signal's own record had been thrown away.
+- **The menus of Rex's Activity rows, what the reviewers said of what
+  was there before** (2026-11-27, at the change that gave every
+  agent's row Keep It Going and Auto Approve; none of it changed
+  then, each to weigh):
+  - Opus, of the two ticked groups one under the other: "'Show
+    Transcript / ✓ Show Terminal' is a choice of one … '✓ Keep It
+    Going / Auto Approve' are two independent switches. The two groups
+    look identical … name the pair as views, the way Tracker names
+    Icon View and List View: 'Transcript View' / 'Terminal View', in
+    all three menus (tab, parent row, child row)."
+  - Opus, of the name (Ben's own, his to keep or change): "'Keep It
+    Going' doesn't say what it does, and doesn't match its partner …
+    call it 'Auto Continue' in all three menus, so the group reads as
+    two 'Auto …' switches."
+  - Opus, of a child's last group: "The parent calls its children
+    'Subagents'. The child calls its children 'Children' and calls
+    itself 'Subagent'"; "Any Stop that hits more than one agent shows
+    a count"; "'Force Close Tab…' gets its own group at the very
+    bottom and asks for confirmation. If it closes the olo-rex tab,
+    move it to the bottom of the parent's menu and remove it from the
+    child's." (A child's Stop items act at once today, so they carry
+    no ellipsis; what folds now comes before what stops, and apart
+    from it by a separator, in both menus.)
+  - Opus, of the marks a row and a tab show for the two switches
+    (there before, in Terminal too): "▶ already means three things in
+    this window. It is the collapsed form of the tree's own grey ▼ …
+    the submenu arrow … 'play' … A green check in a ring means
+    'passed' in this window … Replace ▶ on rows and tabs with a glyph
+    that isn't a triangle: a repeat loop (a closed loop with one
+    arrowhead) … If hovering a mark doesn't already name it, make it
+    show 'Keep It Going is on' and 'Auto Approve is on'."
+  - Opus, of the rows' right edge: "'Working' (API Audit), 'Waiting'
+    (Schema Diff) and 'Done' (Unit Tests) all end on one right edge.
+    olo-rex is the exception: its marks take that edge and push its
+    'Working' 29 pt to the left … Right-align every status word in a
+    fixed slot as wide as the widest status word … Put the marks in a
+    slot of their own that ends 8 pt left of the status slot."
+  - Opus, of a finished child's menu: "the row says **Done**, and its
+    menu offers **Stop Subagent**. The menu offers to stop something
+    the row says has already finished."
+  - Opus: "The right-clicked row isn't marked … On right-click,
+    select the row (as Tracker selects an icon on right-click), or
+    draw it in the selected-row colour until the menu closes."
+  - Gemini, of the kit's menu itself (every app's): "Checkmarks hang
+    below the label baselines … its bottom vertex drops about 1.5–2
+    logical px below the text baseline" (measured at 2×: 1.25 pt
+    under it, its top at the cap height); "Horizontal separators cut
+    across the menu frame's 3D inner bevels … Inset the separators
+    horizontally so they stop inside the inner bevel"; and "Every
+    label sits low within its item slot", which the picture doesn't
+    bear out (at 2×, a label's baseline is 10.4 pt above a separator
+    and the next label's cap top 9.6 pt under it).
+  - Gemini, of the rows: "Activity tree connector pierces directly
+    through `API Audit`'s disclosure arrow"; "The blue 'Keep It
+    Going' mark sits slightly high against `Working`: its top vertex
+    rises about 1–2 logical px above the cap height"; "Dark-mode
+    filter placeholder is slightly low-contrast".
 - **A floating pane in Rex, what is left** (remade 2026-11-27 after
   Ben's "i can't select it or click on it or get rid of it"; HACKING,
   "*A floating pane*"). From the two reviews of its pictures, not
