@@ -805,8 +805,12 @@ fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
     std::fs::copy(HELPER, &first_build).unwrap();
     let ask = |helper: &Path, args: &[&str]| -> Value {
         let mut cmd = Command::new(helper);
-        cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work")).env("REX_BLOCK", &rig.lead_block);
+        cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work"));
         Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
+        // (From the lead's pane: named after the scratch environment, which takes away whatever pane the test
+        // itself runs in. Named before it, this asked from no pane at all, and the child went under the lead's
+        // tab only because that was the tab in front in the one session there.)
+        cmd.env("REX_BLOCK", &rig.lead_block);
         let out = run_just_written(cmd.arg("agent").args(args));
         serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}: {}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
     };
@@ -1979,6 +1983,48 @@ fn one_agent_for_one_prompt_from_start_to_finish() {
         assert_eq!(rig.status("slow")["running"], true);
         rig.json(&["stop", "slow", "--force", "--json"]);
     });
+}
+
+/// A child started from a shell that isn't in Rex (a cron job, a plain SSH shell: no `REX_BLOCK`) goes under the
+/// tab that is named, by a pane's block, a tab's window or a child's name, in whichever session that tab is; with
+/// none named, nothing is started. (The ShiftUp lead's item 45. It went under the tab in front in the first
+/// session the server listed, whoever's that was.)
+#[test]
+fn a_child_from_outside_rex_goes_under_the_tab_that_is_named() {
+    let Some(rig) = Rig::start("outside") else { return };
+    rig.stand_in("claude");
+    let (code, _, err) = rig.olo_from(None, &["start", "claude", "--model", "stand-in", "--effort", "none", "--name", "stray", "--json"]);
+    assert!(code != 0 && err.contains("--parent BLOCK"), "{code}: {err}");
+    assert!(rig.json(&["list", "--all", "--json"])["subagents"].as_array().unwrap().is_empty(), "nothing was started");
+
+    // Under the lead's tab, by its pane's block; and it is the lead's child as any other.
+    let cron = rig.start_child_from(None, "claude", "cron", &["--parent", &rig.lead_block]);
+    assert_eq!(cron["parent_window_id"], rig.lead_window.as_str(), "{cron}");
+    let mine = rig.json(&["list", "--json"]);
+    assert!(mine["subagents"].as_array().unwrap().iter().any(|a| a["name"] == "cron"), "{mine}");
+    // Under that child, by its name.
+    let under = rig.start_child_from(None, "claude", "nested", &["--parent", "cron"]);
+    assert_eq!(under["parent_window_id"], cron["window_id"], "{under}");
+
+    // A tab of another session, by its block and by its window.
+    let other = rig.rex("session.create", json!({ "label": "other" }));
+    let tab = rig.rex(
+        "session.new_window",
+        json!({ "session_id": other["session_id"], "window_label": "other", "layout": { "block": { "flavor": "com.superlogical.terminal.shell", "options": { "size": { "columns": 110, "rows": 40 } } } } }),
+    );
+    let (window, block) = (tab["window_id"].as_str().unwrap().to_owned(), tab["block_ids"][0].as_str().unwrap().to_owned());
+    let far = rig.start_child_from(None, "claude", "far", &["--parent", &block]);
+    assert_eq!(far["parent_window_id"], window.as_str(), "{far}");
+    // (Followed from the shell that started it, as it was started: by its name, from outside Rex.)
+    let (code, out, err) = rig.olo_from(None, &["status", "far", "--json"]);
+    let status: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{code}: {e}: {out}{err}"));
+    assert!(code == 0 && status["parent_window_id"] == window.as_str() && status["running"] == true, "in that tab's session, not the first one listed: {status}");
+    let farther = rig.start_child_from(None, "claude", "farther", &["--parent", &window]);
+    assert_eq!(farther["parent_window_id"], window.as_str(), "{farther}");
+
+    // A tab that is nowhere: said, nothing started.
+    let (code, _, err) = rig.olo_from(None, &["start", "claude", "--model", "stand-in", "--effort", "none", "--name", "lost", "--parent", "block:nowhere", "--json"]);
+    assert!(code != 0 && err.contains("isn't in any Rex session"), "{code}: {err}");
 }
 
 /// `olo agent resume NAME`: an ended child is started again as the same conversation, with what it was started

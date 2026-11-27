@@ -31850,6 +31850,16 @@ agents through the night, could not move to it.
     set to answer (its tab kept, the words say how to answer it); 124,
     `--timeout` passed (kept). From a parent's shell it is a background
     command that ends when the reading is in.
+  - *From a shell that isn't in Rex* (`ops.rs`, `place`,
+    `session_of_tab`; 2026-11-27, the ShiftUp lead's item 45: "a child
+    started from a shell that is not in Rex (a cron job, a plain ssh
+    shell), under a parent tab named by its block"). With no pane to ask
+    from (`REX_BLOCK` unset), a start names its tab, `--parent`: a
+    pane's block, a tab's window id, or a child's name or id; the child
+    goes under it in whichever session that tab is. With none named,
+    nothing is started and it says how to name one: it went under the
+    tab in front in the first session the server listed, whoever's that
+    was.
   - `olo agent resume NAME [--prompt TEXT] [--json]` (2026-11-27; the
     ShiftUp lead's item 44: "starts an exited child again as the same
     conversation, with the flags it was started with (model, effort,

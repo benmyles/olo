@@ -207,9 +207,25 @@ impl Service {
     /// The session asked from and the tab asked about (`--parent`, else
     /// the asker's own).
     async fn place(&self, caller: &Caller, explicit_parent: Option<&str>) -> Result<(String, String), String> {
-        let sid = match &caller.session {
-            Some(sid) => sid.clone(),
-            None => self.session_ids().await.map_err(|e| e.to_string())?.into_iter().next().ok_or_else(|| "no Rex session found on this host".to_owned())?,
+        // Asked from a shell that isn't in Rex (a cron job, a plain SSH
+        // shell: no `REX_BLOCK`), the child goes under the tab that is
+        // named, in whichever session that tab is; with none named it
+        // goes nowhere. (It went under the tab in front in the first
+        // session the server listed: whoever's that was. The ShiftUp
+        // lead's item 45, 2026-11-27: "a child started from a shell that
+        // is not in Rex … under a parent tab named by its block".)
+        let sid = match (&caller.session, explicit_parent.filter(|s| !s.is_empty())) {
+            (Some(sid), _) => sid.clone(),
+            (None, Some(named)) => self
+                .session_of_tab(named)
+                .await
+                .ok_or_else(|| format!("parent tab `{named}` isn't in any Rex session on this host: name a pane's block (its `REX_BLOCK`), a tab's window id, or a child's name or id"))?,
+            (None, None) => {
+                return Err(
+                    "this isn't asked from a Rex pane (no `REX_BLOCK`), so say which tab the child goes under: `--parent BLOCK` (a pane's `REX_BLOCK`), a tab's window id, or a child's name or id"
+                        .to_owned(),
+                );
+            }
         };
         self.seen(&sid).await.map_err(|e| format!("Rex session `{sid}` couldn't be read: {e}"))?;
         let st = self.lock();
@@ -240,6 +256,22 @@ impl Service {
             sess.active.clone().or_else(|| sess.windows.iter().next().cloned()).ok_or_else(|| "session has no open tabs".to_owned())?
         };
         Ok((sid, parent))
+    }
+
+    /// The session a tab is in, named by one of its panes' blocks, by its
+    /// own window id, or by a child's name or id: looked for in every
+    /// session of this host.
+    async fn session_of_tab(&self, named: &str) -> Option<String> {
+        if let Some(sid) = self.session_of_block(named).await {
+            return Some(sid);
+        }
+        for sid in self.session_ids().await.ok()? {
+            if self.seen(&sid).await.is_ok() && self.lock().sessions.get(&sid).is_some_and(|s| s.windows.contains(named)) {
+                return Some(sid);
+            }
+        }
+        let child = self.lock().reg.resolve_target(HOST, None, named).map(|sub| sub.session_id);
+        child
     }
 
     fn live_windows(&self, sid: &str) -> HashSet<String> {
