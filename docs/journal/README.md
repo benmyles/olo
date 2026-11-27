@@ -2,6 +2,21 @@
 
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
+`tools/journal_html.py` builds the whole of it as one page to share.
+
+## 2026-11-27
+
+### Rex: what a tweak changes, before it is changed
+
+*03:12* — A tweak's question is the tab's page itself, as an alert: what it does, and a table of each thing from what it is now to what it will be. Brush's has a box for the accounts already on the host, each named with the shell it has. It was text in columns in the fixed-width face, in a framed box set on the page (both reviewers' first look).
+
+![Rex: what a tweak changes, before it is changed](2026-11-27/031220-rex-what-a-tweak-changes-before-it-is-changed.png)
+
+### Rex: a host's Tweaks
+
+*03:12* — The Host window has a fifth tab, Tweaks: the machine's own settings, changed as root. The limits that were a page of the Server window moved here (Ben: "they really belong in manage host"), each a line of the window's own grammar with its reason under it and Apply… or Put Back…, with two more: temporary files kept on disk where /tmp is the machine's memory, and brush as the sign-in shell of new accounts.
+
+![Rex: a host's Tweaks](2026-11-27/031219-rex-a-host-s-tweaks.png)
 
 ## 2026-11-21
 

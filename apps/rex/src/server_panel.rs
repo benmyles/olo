@@ -326,7 +326,6 @@ pub fn render_server_panel(
     on_range: impl Fn(&usize, &mut WindowCx) + 'static,
     on_chosen: impl Fn(&(), &mut WindowCx) + 'static,
 ) -> Element {
-    let p = theme::palette();
     let on_do: Rc<dyn Fn(&ServerDo, &mut WindowCx)> = Rc::new(on_do);
     let button = |label: &'static str, what: ServerDo| {
         let on_do = on_do.clone();
@@ -334,30 +333,109 @@ pub fn render_server_panel(
         // the literal was shown as it is, in English.)
         Button::new(olo_kit::words::tr(label).to_owned()).min_width(m::BUTTON_MIN_WIDTH).on_click(move |_, cx| on_do(&what, cx))
     };
+    if let Some(stage) = render_stage(managed, phase, SERVER_WIDTH, false, None, &sheet, &button, on_key, on_person) {
+        return stage;
+    }
+    let Some(server) = managed.server.as_ref() else { return div() };
+    let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
+    let people = if managed.shared() { "Members" } else { "Accounts" };
+    let tabs: Vec<SharedString> = ["Server", people, "Log"].into_iter().map(SharedString::from).collect();
+    let at = Page::ALL.iter().position(|p| *p == managed.page).unwrap_or(0);
+    let page: Vec<Element> = match managed.page {
+        Page::Server => server_page(managed, server, &button, &small),
+        Page::People => people_page(cx, managed, server, list, rows, chosen, &button, &small, on_chosen),
+        Page::Log => log_page(cx.scale_factor(), managed, log, &button, on_range),
+    };
+    div().w_full().flex().flex_col().p(px(m::WINDOW_INSET)).child(
+        TabView::new("rex-server-tabs", tabs, at).grows().on_select(on_page).child(div().flex_1().min_h(px(page_height())).flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(page)),
+    )
+}
+
+/// What the window shows at a stage that isn't its pages: a host being
+/// looked at, a key to choose for root, a question before a change, the
+/// change under way, and what didn't go; each an alert's icon, what it
+/// says and its buttons, which `wrap` makes an element of. None where
+/// the pages show. Shared with the Host window's Tweaks tab, whose
+/// record of the host goes through the same stages
+/// (`server::for_tweaks`): `width`, the alert's; `in_tab`, it is a
+/// page of a window that stays (what leaves a stage there is Cancel,
+/// not Close); `extra`, something of the asker's own in a question.
+#[allow(clippy::too_many_arguments)]
+pub fn render_stage(
+    managed: &Managed,
+    phase: f32,
+    width: f32,
+    in_tab: bool,
+    extra: Option<Element>,
+    wrap: &dyn Fn(&str, Vec<Element>, Element) -> Element,
+    button: &dyn Fn(&'static str, ServerDo) -> Button,
+    on_key: impl Fn(&usize, &mut WindowCx) + 'static,
+    on_person: impl Fn(&usize, &mut WindowCx) + 'static,
+) -> Option<Element> {
+    let mut extra = extra;
+    let close = if in_tab { "Cancel" } else { "Close" };
     let body = |text: String| StringView::new(text).wrap(true).into_element();
     let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
-    let amber = |text: String| StringView::new(text).color(style::c(p.warning)).wrap(true).into_element();
+    // (What a change costs: the first thing said under the title, in
+    // the alert's own text, beside the warning's icon. It was in the
+    // warning's colour: brown on the panel in the light look, at less
+    // contrast than text of its size wants, and in the dark look the
+    // loudest line of the alert, over its title: Opus's look,
+    // 2026-11-27.)
+    let cost = |text: String| StringView::new(text).wrap(true).into_element();
     let gap = |h: f32| div().h(px(h)).flex_shrink_0().into_element();
     // (The alert's column: from past its icon to the window's inset.)
-    let column = SERVER_WIDTH - olo_kit::widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+    let column = width - olo_kit::widgets::ALERT_TEXT_X - m::WINDOW_INSET;
     // Waiting, and working: a heading, the bar with its words, a line.
-    let waiting = |heading: String, bar: StatusBar, under: StringView, note: Option<String>, foot: Element| {
-        let mut body =
-            vec![alert_title(heading).into_element(), gap(m::TIGHT), bar.into_element(), gap(m::TIGHT), under.size(style::SMALL_SIZE).dim(true).cut(true).height(m::LABEL_ROW).into_element()];
-        if let Some(note) = note {
-            body.extend([gap(m::SPACING), small(note).into_element()]);
+    // Waiting, and working: a heading, the bar with its words, a line.
+    // (`label`: what is being done, over the bar. `under`: the line
+    // the host wrote last, where there is one. `note`: the window's
+    // own word of it. In the Server window the note is under the bar,
+    // in its grey. On a tab it is the second sentence over the bar,
+    // and only the host's line is under it, in the alert's own ink:
+    // the host's line and the note in one grey a few points apart read
+    // as two lines of the host's, both looks, 2026-11-27.)
+    let waiting = |heading: String, label: String, under: Option<String>, note: String, foot: Element| {
+        let hosts_line = under.is_some();
+        let mut body = vec![alert_title(heading).into_element(), gap(m::TIGHT)];
+        if in_tab {
+            body.extend([StringView::new(format!("{label}. {note}")).wrap(true).into_element(), gap(m::TIGHT), StatusBar::busy(phase).into_element()]);
+            if let Some(under) = under {
+                body.extend([gap(m::TIGHT), StringView::new(if under.is_empty() { " ".to_owned() } else { under }).mono(true).size(style::SMALL_SIZE).cut(true).height(m::LABEL_ROW).into_element()]);
+            }
+        } else {
+            let line = match under {
+                Some(under) => StringView::new(if under.is_empty() { " ".to_owned() } else { under }).mono(true),
+                None => StringView::new(note.clone()),
+            };
+            body.extend([StatusBar::busy(phase).label(label).into_element(), gap(m::TIGHT), line.size(style::SMALL_SIZE).dim(true).cut(true).height(m::LABEL_ROW).into_element()]);
+            // (Under the host's line, the note of it; where there is no
+            // such line the note is the line.)
+            if hosts_line {
+                body.extend([gap(m::SPACING), small(note).into_element()]);
+            }
         }
-        sheet("rex", body, foot)
+        wrap("rex", body, foot)
     };
     let Some(server) = managed.server.as_ref().filter(|_| !matches!(managed.stage, Stage::Looking | Stage::RootKey { .. })) else {
         // No server read yet (or root's key to be chosen first).
-        return match &managed.stage {
-            Stage::RootKey { keys, .. } if keys.is_empty() => sheet(
+        return Some(match &managed.stage {
+            Stage::RootKey { keys, .. } if keys.is_empty() => wrap(
                 "key",
                 vec![
                     alert_title("Olo Passwords has no SSH keys to offer").into_element(),
                     gap(m::TIGHT),
-                    body(olo_kit::tr!("{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.", managed.target.user.as_deref().unwrap_or_default(), managed.name).into()),
+                    body(if in_tab {
+                        olo_kit::tr!(
+                            "Changing {}’s settings needs root, and {} can’t use sudo there without a password. Unlock Olo Passwords, or add a key to it that root on {} accepts.",
+                            managed.name,
+                            managed.target.user.as_deref().unwrap_or_default(),
+                            managed.name
+                        )
+                        .into()
+                    } else {
+                        olo_kit::tr!("{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.", managed.target.user.as_deref().unwrap_or_default(), managed.name).into()
+                    }),
                 ],
                 // (A side trip, not a third answer: at the left, under the words.)
                 div()
@@ -370,46 +448,59 @@ pub fn render_server_panel(
                     .child(button_row().child(button("Cancel", ServerDo::Close)).child(button("Try Again", ServerDo::Again).default(true)))
                     .into_element(),
             ),
-            Stage::RootKey { keys, chosen, .. } => sheet(
+            Stage::RootKey { keys, chosen, .. } => wrap(
                 "key",
                 vec![
                     alert_title(olo_kit::tr!("Root on {} didn’t accept your keys", managed.name)).into_element(),
                     gap(m::TIGHT),
                     // (What would do instead, said: Ben, 2026-11-24.)
-                    body(
+                    body(if in_tab {
+                        olo_kit::tr!(
+                            "Changing {}’s settings needs root, and {} can’t use sudo there without a password. Choose a key that root on {} accepts. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.",
+                            managed.name,
+                            managed.target.user.as_deref().unwrap_or_default(),
+                            managed.name
+                        )
+                        .into()
+                    } else {
                         olo_kit::tr!(
                             "{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.",
                             managed.target.user.as_deref().unwrap_or_default(),
                             managed.name
                         )
-                        .into(),
-                    ),
+                        .into()
+                    }),
                     gap(m::SPACING),
                     MenuField::new("server-root-key", keys.iter().map(panels::key_called).collect(), *chosen).label("Key:").on_change(on_key).into_element(),
                 ],
                 button_row().child(button("Cancel", ServerDo::Close)).child(button("Try Again", ServerDo::Again).default(true)),
             ),
             Stage::Failed { what, why, said, icon, .. } => {
-                sheet(icon, failed(managed, what, why, said), button_row().child(button("Close", ServerDo::Close)).child(button("Try Again", ServerDo::Again).default(true)))
+                wrap(icon, failed(managed, what, why, said, width), button_row().child(button(close, ServerDo::Close)).child(button("Try Again", ServerDo::Again).default(true)))
             }
             // (The stage in the heading, what is done in the bar: asking
             // whether the account can use sudo first, as Add Host does.)
             _ => waiting(
-                if managed.root_by.is_none() { olo_kit::tr!("Checking sudo on {}…", managed.name).into() } else { olo_kit::tr!("Connecting to {}…", managed.name).into() },
+                match (managed.root_by.is_none(), in_tab) {
+                    (true, _) => olo_kit::tr!("Checking sudo on {}…", managed.name).into(),
+                    (false, true) => olo_kit::tr!("Reading {}’s settings…", managed.name).into(),
+                    (false, false) => olo_kit::tr!("Connecting to {}…", managed.name).into(),
+                },
                 // (Asking whether the account may use sudo, then root's
                 // look, with sudo or signed in as root.)
-                StatusBar::busy(phase).label(match managed.root_by {
+                match managed.root_by {
                     Some(olo_rex_client::provision::RootBy::Sudo) => olo_kit::tr!("Running sudo as {}", managed.target.user.as_deref().unwrap_or_default()),
                     Some(_) => olo_kit::tr!("Signing in as {} with a key from Olo Passwords", managed.root()),
                     None => olo_kit::tr!("Asking whether {} can use sudo", managed.target.user.as_deref().unwrap_or_default()),
-                }),
-                StringView::new(olo_kit::words::tr("Nothing is changed until you choose something to do.").to_string()),
+                }
+                .into(),
                 None,
+                olo_kit::words::tr("Nothing is changed until you choose something to do.").to_string(),
                 button_row().child(button("Cancel", ServerDo::Close)),
             ),
-        };
+        });
     };
-    match &managed.stage {
+    Some(match &managed.stage {
         Stage::Confirm { action, choose } => {
             let warning = action.warning(server);
             let what = action.what(server);
@@ -423,7 +514,7 @@ pub fn render_server_panel(
             // (What it costs first, in the warning's colour and no other
             // words in it; then what it does.)
             if let Some(warning) = warning {
-                said.extend([gap(m::TIGHT), amber(olo_kit::words::of(warning).to_string())]);
+                said.extend([gap(m::TIGHT), cost(olo_kit::words::of(warning).to_string())]);
             }
             if !what.is_empty() {
                 said.extend([gap(m::TIGHT), body(olo_kit::words::of(what).to_string())]);
@@ -447,6 +538,11 @@ pub fn render_server_panel(
                         .into_element(),
                 ]);
             }
+            // (Something of the asker's own in the question, over what
+            // is run: a choice that changes it.)
+            if let Some(extra) = extra.take() {
+                said.extend([gap(m::SPACING), extra]);
+            }
             let shown = action.shown(server);
             // (A change of limits is shown as what changes, not as the
             // script that does it, which is a page long.)
@@ -455,64 +551,164 @@ pub fn render_server_panel(
             // (What is run, as it is run: through sudo, shown with it.)
             let shown = if command && managed.root_by == Some(olo_rex_client::provision::RootBy::Sudo) { olo_rex_client::provision::by_sudo(&shown) } else { shown };
             let lines = if command { panels::command_lines(&shown, panels::command_room(column)) } else { shown.lines().map(str::to_owned).collect() };
+            // (A change of the machine's settings: a table of each from
+            // what it is to what it will be, where the action has one.)
+            let changes = action.changes(server);
+            let changed = changes.as_ref().map_or(0, |lines| lines.iter().filter(|line| matches!(line, olo_rex_client::manage::Change::Value { .. })).count());
             let over: String = match (command, action) {
                 (true, _) => olo_kit::tr!("Rex runs this as {}:", managed.root()).into(),
+                // (One of them is "this".)
+                (false, Action::Tune(_)) if changed == 1 => olo_kit::tr!("Rex sets this as {}:", managed.root()).into(),
                 (false, Action::Tune(_)) => olo_kit::tr!("Rex sets these as {}:", managed.root()).into(),
+                (false, Action::Untune(_)) if changed == 1 => olo_kit::tr!("Rex sets this back as {}:", managed.root()).into(),
+                (false, Action::Untune(_)) if changes.is_some() => olo_kit::tr!("Rex sets these back as {}:", managed.root()).into(),
+                (false, Action::Untune(_)) if lines.len() == 1 => olo_kit::tr!("Rex removes this as {}:", managed.root()).into(),
                 (false, Action::Untune(_)) => olo_kit::tr!("Rex removes these as {}:", managed.root()).into(),
                 (false, Action::Allow(_)) => olo_kit::tr!("Rex adds these entries to {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()).into(),
                 (false, _) => olo_kit::tr!("Rex changes {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()).into(),
             };
-            said.extend([gap(m::SPACING), small(over).into_element(), gap(m::TIGHT - 2.0), panels::well(panels::mono_lines(lines))]);
+            let well = match &changes {
+                Some(changes) => panels::well(changes_table(changes)),
+                None => panels::well(panels::mono_lines(lines)),
+            };
+            said.extend([gap(m::SPACING), small(over).into_element(), gap(m::TIGHT - 2.0), well]);
             // (The safe button is the one Return presses where
-            // something ends by it.)
-            sheet(if costly { "warning" } else { "info" }, said, button_row().child(button("Cancel", ServerDo::Back).default(costly)).child(button(action.verb(), ServerDo::Go).default(!costly)))
+            // something ends by it: a server stopped under its
+            // sessions. A change of settings can be put back, its
+            // warning is said over it, and its own button, at the
+            // right, is the one: a ring that changed sides with the
+            // question made Cancel look like what was asked for,
+            // Opus's look, 2026-11-27.)
+            let safe = costly && !limits;
+            wrap(if costly { "warning" } else { "info" }, said, button_row().child(button("Cancel", ServerDo::Back).default(safe)).child(button(action.verb(), ServerDo::Go).default(!safe)))
         }
         Stage::Working { action, said } => waiting(
             olo_kit::tr!("{} on {}…", olo_kit::words::of(action.doing()), managed.name).into(),
-            StatusBar::busy(phase).label(match action {
+            match action {
                 Action::Update => olo_kit::tr!("Running Rex’s installer as {}", managed.root()),
                 Action::Start(_) | Action::Stop(_) | Action::Restart(_) => olo_kit::tr!("Running systemctl as {}", managed.root()),
                 Action::Allow(_) | Action::Remove(_) => olo_kit::tr!("Changing {} as {}", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()),
                 Action::Join(_) | Action::Leave(_) => olo_kit::tr!("Changing the rex group as {}", managed.root()),
                 Action::Tune(_) | Action::Untune(_) => olo_kit::tr!("Changing the machine’s settings as {}", managed.root()),
-            }),
-            StringView::new(if said.is_empty() { " ".to_owned() } else { said.clone() }).mono(true),
-            Some(olo_kit::words::tr("It can’t be stopped once it has started.").into()),
-            button_row().child(button("Cancel", ServerDo::Back).enabled(false)),
+            }
+            .into(),
+            Some(said.clone()),
+            olo_kit::words::tr("It can’t be stopped once it has started.").to_string(),
+            // (A Cancel that can't be pressed beside words that say it
+            // can't be stopped said one thing twice, once with a button
+            // that does nothing: Opus's look. The window keeps it, for
+            // its foot's place.)
+            if in_tab { div() } else { button_row().child(button("Cancel", ServerDo::Back).enabled(false)) },
         ),
         Stage::Failed { what, why, said, icon, log } => {
             let mut foot = button_row();
             if log.is_some() {
                 foot = foot.child(button("Show Log", ServerDo::ShowLog));
             }
-            sheet(icon, failed(managed, what, why, said), foot.child(button("OK", ServerDo::Back).default(true)))
+            wrap(icon, failed(managed, what, why, said, width), foot.child(button("OK", ServerDo::Back).default(true)))
         }
-        _ => {
-            let people = if managed.shared() { "Members" } else { "Accounts" };
-            let tabs: Vec<SharedString> = ["Server", people, "Limits", "Log"].into_iter().map(SharedString::from).collect();
-            let at = Page::ALL.iter().position(|p| *p == managed.page).unwrap_or(0);
-            let page: Vec<Element> = match managed.page {
-                Page::Server => server_page(managed, server, &button, &small),
-                Page::People => people_page(cx, managed, server, list, rows, chosen, &button, &small, on_chosen),
-                Page::Limits => limits_page(managed, server, &button, &small),
-                Page::Log => log_page(cx.scale_factor(), managed, log, &button, on_range),
-            };
-            div().w_full().flex().flex_col().p(px(m::WINDOW_INSET)).child(
-                TabView::new("rex-server-tabs", tabs, at)
-                    .grows()
-                    .on_select(on_page)
-                    .child(div().flex_1().min_h(px(page_height())).flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(page)),
-            )
+        _ => return None,
+    })
+}
+
+/// From the column of what a setting is now to the column of what it
+/// will be; and how tall a line of the table is.
+const NOW_TO_NEW: f32 = 24.0;
+const CHANGE_ROW: f32 = 14.0;
+
+/// What a change of the machine's settings changes, in its question's
+/// well: each setting from what it is to what it will be, under "Now"
+/// and "New", the two columns at the well's right edge. A tweak's own
+/// name and the head are words, in the window's face; a setting's name
+/// as the host has it and its values are in the fixed-width one, a
+/// step in under their tweak's name. Amounts end at their column's
+/// right edge; words and paths begin at its left (a table of one or of
+/// the other, never by the line).
+fn changes_table(changes: &[olo_rex_client::manage::Change]) -> Element {
+    use olo_rex_client::manage::Change;
+    let mono = style::mono_font(olo_kit::FontWeight::NORMAL);
+    // (What the host has, as it has it: a number, a path. Anything else
+    // in a value's place is Olo's own word of it, "not set", "no
+    // limit", "in memory", "removed", and is set as words are: in the
+    // fixed-width face it read as what the host literally holds,
+    // Opus's look.)
+    let literal = |text: &str| text.starts_with('/') || text.chars().any(|c| c.is_ascii_digit());
+    let ui = style::ui_font(olo_kit::FontWeight::NORMAL);
+    let wide = |text: &str| {
+        let (size, font) = if literal(text) { (panels::COMMAND_SIZE, mono.clone()) } else { (style::DETAIL_SIZE, ui.clone()) };
+        f32::from(style::text_width(olo_kit::words::of(text.to_owned()), size, font)).ceil() + 1.0
+    };
+    let head_wide = |text: &'static str| f32::from(style::text_width(olo_kit::words::tr(text).to_owned(), style::DETAIL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL))).ceil() + 1.0;
+    let values = || changes.iter().filter_map(|line| if let Change::Value { now, new, number, .. } = line { Some((now.as_str(), new.as_str(), *number)) } else { None });
+    let right = values().any(|(_, _, number)| number);
+    let now_wide = values().map(|(now, _, _)| wide(now)).fold(head_wide("Now"), f32::max);
+    let new_wide = values().map(|(_, new, _)| wide(new)).fold(head_wide("New"), f32::max);
+    let cell = move |text: StringView, wide: f32| {
+        let cell = div().w(px(wide)).flex_shrink_0().flex().flex_row();
+        if right { cell.justify_end().child(text) } else { cell.child(text) }
+    };
+    // (A table's lines stand nearer than a paragraph's: all that are
+    // short at once are nineteen of them, in a page that keeps its
+    // height.)
+    let row = CHANGE_ROW;
+    let line = |name: Element, now: StringView, new: StringView| {
+        div()
+            .w_full()
+            .h(px(row))
+            .flex()
+            .flex_row()
+            .items_center()
+            .child(div().flex_1().min_w_0().child(name))
+            .child(cell(now, now_wide))
+            .child(div().w(px(NOW_TO_NEW)).flex_shrink_0())
+            .child(cell(new, new_wide))
+            .into_element()
+    };
+    let words = |text: &str| StringView::new(olo_kit::words::of(text.to_owned())).size(style::DETAIL_SIZE);
+    let value = |text: &str| {
+        if literal(text) {
+            StringView::new(text.to_owned()).mono(true).size(panels::COMMAND_SIZE)
+        } else {
+            // ("not set": nothing is there, said quieter.)
+            words(text).dim(text == "not set")
+        }
+    };
+    let key = |text: &str| StringView::new(text.to_owned()).mono(true).size(panels::COMMAND_SIZE);
+    let apart = || div().h(px(4.0)).flex_shrink_0().into_element();
+    let mut rows = vec![line(div(), words("Now").dim(true), words("New").dim(true)), apart()];
+    for (i, change) in changes.iter().enumerate() {
+        match change {
+            Change::Group(name) => {
+                if i > 0 {
+                    rows.push(apart());
+                }
+                rows.push(div().w_full().h(px(row)).flex().flex_row().items_center().child(words(name)).into_element());
+            }
+            Change::Value { name, now, new, plain, inside, .. } => {
+                // (A tweak that is one line is a group of one: apart
+                // from the lines over it as a group's name is.)
+                if *plain && !*inside && i > 0 {
+                    rows.push(apart());
+                }
+                // (A setting's name the host has no one word for, "open
+                // files", is words too.)
+                let name = if *plain || name.contains(' ') { words(name) } else { key(name) }.cut(true);
+                rows.push(line(div().pl(px(if *inside { 12.0 } else { 0.0 })).child(name), value(now), value(new)));
+            }
+            Change::Note(said) => rows.push(div().w_full().h(px(row)).pl(px(12.0)).flex().flex_row().items_center().child(words(said).dim(true)).into_element()),
         }
     }
+    // (A well's own foot is nearer its last line's descenders than its
+    // head is to its first line: two points made up here.)
+    div().w_full().pb(px(2.0)).flex().flex_col().children(rows).into_element()
 }
 
 /// What didn't go: in a few words, how things stand, and what the host
 /// said, as it said it, in a well.
-fn failed(managed: &Managed, what: &str, why: &str, said: &str) -> Vec<Element> {
+fn failed(managed: &Managed, what: &str, why: &str, said: &str, width: f32) -> Vec<Element> {
     let gap = |h: f32| div().h(px(h)).flex_shrink_0().into_element();
     // (How many letters a line of the alert's well holds.)
-    let room = panels::command_room(SERVER_WIDTH - olo_kit::widgets::ALERT_TEXT_X - m::WINDOW_INSET);
+    let room = panels::command_room(width - olo_kit::widgets::ALERT_TEXT_X - m::WINDOW_INSET);
     let mut body = vec![alert_title(what.to_owned()).into_element()];
     if !why.is_empty() {
         body.extend([gap(m::TIGHT), StringView::new(why.to_owned()).wrap(true).into_element()]);
@@ -520,7 +716,15 @@ fn failed(managed: &Managed, what: &str, why: &str, said: &str) -> Vec<Element> 
     if !said.is_empty() {
         body.extend([
             gap(m::SPACING),
-            StringView::new(olo_kit::tr!("{} said:", managed.name)).size(style::SMALL_SIZE).dim(true).wrap(true).into_element(),
+            // (A host that couldn't be looked at said nothing: what
+            // is in the well is this computer's word of why it
+            // wasn't reached. "dev-box said: ssh: connect to host
+            // dev-box … timed out", Gemini's look.)
+            StringView::new(if managed.server.is_some() { SharedString::from(olo_kit::tr!("{} said:", managed.name)) } else { olo_kit::words::tr("What went wrong:").into() })
+                .size(style::SMALL_SIZE)
+                .dim(true)
+                .wrap(true)
+                .into_element(),
             gap(m::TIGHT - 2.0),
             // (A line a line, as a command's well, the rest of a long
             // one set in: one paragraph of them sat nearer the well's
@@ -646,74 +850,6 @@ fn server_page(managed: &Managed, server: &Server, button: &dyn Fn(&'static str,
     // (A section's step between them, as Add Host's groups of steps
     // have: each heading plainly over its own.)
     vec![div().w_full().flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(page).into_element()]
-}
-
-/// The Limits page: the limits a Linux machine comes with that long
-/// builds and many sessions run into (`olo_rex_client::tune`), each
-/// kind a line that says how the host stands (what it has, what Olo
-/// would set), with Apply… where it is short and Put Back… where
-/// Olo's file is there; and all that are short at once, at the foot.
-fn limits_page(managed: &Managed, server: &Server, button: &dyn Fn(&'static str, ServerDo) -> Button, small: &dyn Fn(String) -> StringView) -> Vec<Element> {
-    use olo_rex_client::tune::{Tune, said};
-    let Some(tuning) = &server.tuning else {
-        return vec![StringView::new(olo_kit::tr!("{} didn’t say how its limits stand.", managed.name)).wrap(true).into_element()];
-    };
-    // (What the page is, and all that are short at once, in one row at
-    // its head: with that button at its foot the page was taller than
-    // the others, and the window grew as its tab was chosen.)
-    let all = tuning.short();
-    // (One width for the page's buttons: their edges in two columns.)
-    let wide = ["Apply…", "Put Back…", "Apply All…"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
-    // (The page's head, with a rule under it: what follows is the
-    // list, and Apply All… isn't the first row's button.)
-    let head = div()
-        .w_full()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(m::SPACING))
-        .child(div().flex_1().min_w_0().child(small(olo_kit::words::tr("Limits a Linux machine comes with, raised for long builds and many sessions.").into())))
-        .child(button("Apply All…", if all.is_empty() { ServerDo::Back } else { ServerDo::Ask(Action::Tune(all.clone())) }).min_width(wide).enabled(!all.is_empty()));
-    let mut page = vec![div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(head).child(separator()).into_element()];
-    let mut rows = Vec::new();
-    for tune in Tune::ALL {
-        let stands = tuning.of(tune);
-        let short: Vec<_> = stands.values.iter().filter(|v| !v.met()).collect();
-        // How it stands: applied; as the host has it by itself; or
-        // what is short (one setting: from what to what; several: how
-        // many of them).
-        let (lamp, state): (Light, String) = match short.as_slice() {
-            [] if stands.kept => (Light::On, olo_kit::words::tr("applied").into()),
-            [] => (Light::On, olo_kit::words::tr("as the machine has it").into()),
-            [one] if stands.values.len() == 1 => (Light::Off, olo_kit::tr!("{} now, {} suggested", one.now.map_or("?".to_owned(), |now| said(one.name, now)), said(one.name, one.wanted)).into()),
-            more => (Light::Off, olo_kit::tr!("{} of {} to change", more.len(), stands.values.len()).into()),
-        };
-        let action = match (short.is_empty(), stands.kept) {
-            (false, _) => button("Apply…", ServerDo::Ask(Action::Tune(vec![tune]))),
-            (true, true) => button("Put Back…", ServerDo::Ask(Action::Untune(tune))),
-            (true, false) => button("Apply…", ServerDo::Back).enabled(false),
-        };
-        let words = div()
-            .flex_1()
-            .min_w_0()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::TIGHT))
-            .child(panels::light(lamp))
-            .child(StringView::new(olo_kit::words::tr(tune.title()).to_string()))
-            .child(StringView::new("·").dim(true))
-            .child(div().flex_1().min_w_0().child(StringView::new(state).dim(true).cut(true)));
-        let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(words).child(action.min_width(wide));
-        // (Its reason under it, begun where its name begins.)
-        // (And ended where the names' column ends, clear of the buttons'.)
-        let why = div().w_full().pl(px(panels::LIGHT + m::TIGHT)).pr(px(wide + m::SPACING)).child(small(olo_kit::words::tr(tune.why()).into()));
-        rows.push(div().w_full().flex().flex_col().child(line).child(why).into_element());
-    }
-    // (Close enough that the page is as tall as the others: five
-    // kinds, each a line and its reason.)
-    page.push(div().w_full().flex().flex_col().gap(px(4.0)).children(rows).into_element());
-    page
 }
 
 /// The Accounts page (a login server's) or the Members page (a shared

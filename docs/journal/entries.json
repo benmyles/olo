@@ -5404,5 +5404,17 @@
   "title": "Rex: its keys are Olo's",
   "caption": "Rex's command-key shortcuts had never worked (\u2318D was the end of the shell, not a split). Its commands now have their keys from the keyboard profile, as Terminal's, shown in its menus and changed in Preferences \u25b8 Keyboard; a Tabs menu lists the session's tabs with \u23181 to \u23189.",
   "image": "2026-11-21/231039-rex-its-keys-are-olo-s.png"
+ },
+ {
+  "time": "2026-11-27T03:12:19",
+  "title": "Rex: a host's Tweaks",
+  "caption": "The Host window has a fifth tab, Tweaks: the machine's own settings, changed as root. The limits that were a page of the Server window moved here (Ben: \"they really belong in manage host\"), each a line of the window's own grammar with its reason under it and Apply\u2026 or Put Back\u2026, with two more: temporary files kept on disk where /tmp is the machine's memory, and brush as the sign-in shell of new accounts.",
+  "image": "2026-11-27/031219-rex-a-host-s-tweaks.png"
+ },
+ {
+  "time": "2026-11-27T03:12:20",
+  "title": "Rex: what a tweak changes, before it is changed",
+  "caption": "A tweak's question is the tab's page itself, as an alert: what it does, and a table of each thing from what it is now to what it will be. Brush's has a box for the accounts already on the host, each named with the shell it has. It was text in columns in the fixed-width face, in a framed box set on the page (both reviewers' first look).",
+  "image": "2026-11-27/031220-rex-what-a-tweak-changes-before-it-is-changed.png"
  }
 ]

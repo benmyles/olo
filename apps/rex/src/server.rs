@@ -52,14 +52,11 @@ pub enum Page {
     /// Who may use it: the login server's accounts, or the `rex`
     /// group's members where the server is the shared one.
     People,
-    /// The machine's limits, raised for heavy work
-    /// (`olo_rex_client::tune`).
-    Limits,
     Log,
 }
 
 impl Page {
-    pub const ALL: [Page; 4] = [Page::Server, Page::People, Page::Limits, Page::Log];
+    pub const ALL: [Page; 3] = [Page::Server, Page::People, Page::Log];
 }
 
 /// A host whose server is being looked after.
@@ -134,8 +131,62 @@ struct Live {
     pending_update: bool,
 }
 
-static LIVE: Mutex<Option<Live>> = Mutex::new(None);
+/// Whose record of a host this is. There are two places a host is
+/// looked after as root: the Server window (its Rex server), and the
+/// Host window's Tweaks tab (the machine's own settings: Ben,
+/// 2026-11-26, of the limits that were a page of the Server window:
+/// "they really belong in manage host"). Each has a record of its own,
+/// so the two windows can be of different hosts, and one's work is
+/// never taken for the other's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Of {
+    Server,
+    Tweaks,
+}
+
+static LIVE: [Mutex<Option<Live>>; 2] = [Mutex::new(None), Mutex::new(None)];
 static TURNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    /// Whose record what is asked on this thread is of ([`for_tweaks`]).
+    static OF: std::cell::Cell<Of> = const { std::cell::Cell::new(Of::Server) };
+}
+
+/// Runs `f` for the Host window's Tweaks tab's record: everything this
+/// module is asked within it (`open`, `current`, `ask`, `go`, `back`,
+/// `close`…) is of that record, and the work it begins stays of it
+/// wherever it runs (work knows its record by its turn).
+pub fn for_tweaks<R>(f: impl FnOnce() -> R) -> R {
+    OF.with(|of| {
+        let was = of.replace(Of::Tweaks);
+        let done = f();
+        of.set(was);
+        done
+    })
+}
+
+/// The windows that show `of`'s record are told it changed.
+fn told(of: Of) {
+    match of {
+        Of::Server => crate::ui::server_changed(),
+        Of::Tweaks => crate::ui::tweaks_changed(),
+    }
+}
+
+/// Whose record is meant here, now.
+fn which() -> Of {
+    OF.with(std::cell::Cell::get)
+}
+
+fn live_of(of: Of) -> olo_sync::MutexGuard<'static, Option<Live>> {
+    LIVE[of as usize].lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The record the work of turn `turn` is of (the Server window's where
+/// it is nobody's any more).
+fn of_turn(turn: u64) -> Of {
+    if live_of(Of::Tweaks).as_ref().is_some_and(|l| l.turn == turn) { Of::Tweaks } else { Of::Server }
+}
 
 /// The next piece of work's number.
 fn next_turn() -> u64 {
@@ -144,11 +195,11 @@ fn next_turn() -> u64 {
 
 /// Whether the work of turn `turn` is still what the window is at.
 fn ours(turn: u64) -> bool {
-    live().as_ref().is_some_and(|l| l.turn == turn)
+    live_of(of_turn(turn)).as_ref().is_some_and(|l| l.turn == turn)
 }
 
 fn live() -> olo_sync::MutexGuard<'static, Option<Live>> {
-    LIVE.lock().unwrap_or_else(|e| e.into_inner())
+    live_of(which())
 }
 
 /// The host being looked after, if one is.
@@ -159,12 +210,13 @@ pub fn current() -> Option<Managed> {
 /// Changes what the work of turn `turn` found (nothing if another has
 /// begun since); the windows are told.
 fn set(turn: u64, change: impl FnOnce(&mut Managed)) {
+    let of = of_turn(turn);
     {
-        let mut live = live();
+        let mut live = live_of(of);
         let Some(live) = live.as_mut().filter(|l| l.turn == turn) else { return };
         change(&mut live.managed);
     }
-    crate::ui::server_changed();
+    told(of);
 }
 
 /// Begins a piece of work for the host, on the hub's threads; the stage
@@ -188,7 +240,7 @@ where
     if let Some(live) = live().as_mut().filter(|l| l.turn == begun.1) {
         live.task = Some(task);
     }
-    crate::ui::server_changed();
+    told(which());
 }
 
 /// Rex's demo (`OLO_REX_DEMO=1`): nothing is connected to, and the
@@ -204,7 +256,7 @@ pub fn demo_mode() -> bool {
 pub fn open(hub: &Arc<RexHub>, name: String, target: SshTarget) {
     if demo_mode() {
         show_demo("login");
-        crate::ui::server_changed();
+        told(which());
         return;
     }
     // (Signed in to with the agent Rex is set to use.)
@@ -212,7 +264,7 @@ pub fn open(hub: &Arc<RexHub>, name: String, target: SshTarget) {
     // (Asked for again while it shows: the window comes to the front,
     // and root isn't signed in a second time.)
     if current().is_some_and(|now| now.target == target && !matches!(now.stage, Stage::Failed { .. } | Stage::RootKey { .. })) {
-        crate::ui::server_changed();
+        told(which());
         return;
     }
     close(hub);
@@ -274,7 +326,7 @@ fn look(hub: &Arc<RexHub>) {
             Ok(server) => {
                 hub.set_server_newer(&managed.target, server.newer.clone());
                 {
-                    let mut guard = live();
+                    let mut guard = live_of(of_turn(turn));
                     if let Some(live) = guard.as_mut().filter(|l| l.turn == turn) {
                         let wants_update = std::mem::take(&mut live.pending_update);
                         let should_confirm = wants_update && (server.newer.is_some() || !server.checked);
@@ -284,10 +336,15 @@ fn look(hub: &Arc<RexHub>) {
                         }
                     }
                 }
-                crate::ui::server_changed();
+                told(of_turn(turn));
             }
             Err(failed) => {
-                let stage = could_not_look(&hub, &managed, failed).await;
+                let mut stage = could_not_look(&hub, &managed, failed).await;
+                // (On the Host window's tab it is the host's settings
+                // that were to be read, with Read Settings.)
+                if let (Of::Tweaks, Stage::Failed { what, .. }) = (of_turn(turn), &mut stage) {
+                    *what = olo_kit::tr!("Couldn’t read {}’s settings", managed.name).into();
+                }
                 set(turn, |m| m.stage = stage);
             }
         }
@@ -328,7 +385,7 @@ pub fn choose_key(i: usize) {
     {
         *chosen = i;
     }
-    crate::ui::server_changed();
+    told(which());
 }
 
 /// Looks again: with the key chosen for root, if one was being chosen.
@@ -353,7 +410,7 @@ pub fn ask(action: Action) {
     {
         live.managed.stage = Stage::Confirm { action, choose: false };
     }
-    crate::ui::server_changed();
+    told(which());
 }
 
 /// Puts letting somebody in to the person (Allow… or Add…, on the
@@ -366,7 +423,7 @@ pub fn ask_to_let_in() {
     {
         live.managed.stage = Stage::Confirm { action: live.managed.letting_in(first), choose: true };
     }
-    crate::ui::server_changed();
+    told(which());
 }
 
 /// Somebody else chosen to be let in, in the alert that asks.
@@ -377,7 +434,19 @@ pub fn choose_person(i: usize) {
     {
         live.managed.stage = Stage::Confirm { action: live.managed.letting_in(person), choose: true };
     }
-    crate::ui::server_changed();
+    told(which());
+}
+
+/// In the question that gives a host brush: whether the accounts there
+/// are get it too (`olo_rex_client::tune::Tuning::everyone`).
+pub fn everyone(on: bool) {
+    if let Some(live) = live().as_mut()
+        && matches!(live.managed.stage, Stage::Confirm { .. })
+        && let Some(tuning) = live.managed.server.as_mut().and_then(|server| server.tuning.as_mut())
+    {
+        tuning.everyone = on;
+    }
+    told(which());
 }
 
 /// Back to the page shown: from what was asked, or from what didn't go
@@ -388,8 +457,12 @@ pub fn back() {
         && matches!(live.managed.stage, Stage::Confirm { .. } | Stage::Failed { .. })
     {
         live.managed.stage = Stage::Shown;
+        // (A choice made in a question is that question's.)
+        if let Some(tuning) = live.managed.server.as_mut().and_then(|server| server.tuning.as_mut()) {
+            tuning.everyone = false;
+        }
     }
-    crate::ui::server_changed();
+    told(which());
 }
 
 /// From what didn't go to the log that may say why.
@@ -424,6 +497,10 @@ fn still(server: Option<&Server>, action: &Action) -> String {
             };
             format!("{stopped} {nothing_else}")
         }
+        // (Several tweaks at once are each applied by itself: one
+        // that couldn't be doesn't keep the others from it, and
+        // "nothing else was changed" would be untrue of them.)
+        (_, Action::Tune(kinds)) if kinds.len() > 1 => olo_kit::words::tr("What could be applied was: the list shows how each stands now.").to_string(),
         _ => nothing_else,
     }
 }
@@ -436,16 +513,17 @@ pub fn go(hub: &Arc<RexHub>) {
     }
     work(hub, Stage::Working { action: action.clone(), said: String::new() }, |hub, managed, turn| async move {
         let mut runner = hub.over_ssh(managed.target.clone(), managed.root_key.clone(), managed.root_by.unwrap_or_default());
-        let mut told = std::time::Instant::now();
+        let mut last_told = std::time::Instant::now();
         let done = manage::act(&mut runner, &server, &action, &mut |line| {
             {
-                let mut live = live();
+                let mut live = live_of(of_turn(turn));
                 let Some(live) = live.as_mut().filter(|l| l.turn == turn) else { return };
-                live.managed.stage = Stage::Working { action: action.clone(), said: line.trim().to_owned() };
+                // (What a script here says it is at, less its mark.)
+                live.managed.stage = Stage::Working { action: action.clone(), said: olo_rex_client::tune::shown_line(line).to_owned() };
             }
-            if told.elapsed() >= std::time::Duration::from_millis(100) {
-                told = std::time::Instant::now();
-                crate::ui::server_changed();
+            if last_told.elapsed() >= std::time::Duration::from_millis(100) {
+                last_told = std::time::Instant::now();
+                told(of_turn(turn));
             }
         })
         .await;
@@ -462,7 +540,17 @@ pub fn go(hub: &Arc<RexHub>) {
                 // service that didn't start is shown stopped.)
                 let now = manage::look(&mut runner, false).await.ok();
                 set(turn, |m| {
-                    let why = still(now.as_ref(), &action);
+                    // (What a script of Olo's said of why it stopped is the
+                    // alert's own words, before how things stand; what the
+                    // host's tools said stays as it was said, in the well.
+                    // "Brush couldn't be downloaded from GitHub." was set in
+                    // the well as if the host had printed it: Opus's look.)
+                    let (own, tools) = if matches!(action, Action::Tune(_) | Action::Untune(_)) { olo_rex_client::tune::parted(&failed.why) } else { (String::new(), failed.why.clone()) };
+                    // (Olo's own sentence says what became of it, "it was
+                    // taken out again", "nothing was installed": "nothing
+                    // else was changed" after it read as if something had
+                    // been, both looks.)
+                    let why = if own.is_empty() { still(now.as_ref(), &action) } else { own };
                     if let Some(now) = now {
                         m.server = Some(now);
                         m.read = Some(std::time::Instant::now());
@@ -472,7 +560,7 @@ pub fn go(hub: &Arc<RexHub>) {
                         Action::Start(service) | Action::Restart(service) | Action::Stop(service) => Some(*service),
                         _ => None,
                     };
-                    m.stage = Stage::Failed { what: olo_kit::tr!("Couldn’t {} on {}", after_couldnt(&olo_kit::words::of(action.title())), m.name).into(), why, said: failed.why, icon: "stop", log };
+                    m.stage = Stage::Failed { what: olo_kit::tr!("Couldn’t {} on {}", after_couldnt(&olo_kit::words::of(action.title())), m.name).into(), why, said: tools, icon: "stop", log };
                 });
             }
         }
@@ -490,7 +578,7 @@ pub fn page(hub: &Arc<RexHub>, page: Page) {
     if read {
         read_log(hub, None, None);
     }
-    crate::ui::server_changed();
+    told(which());
 }
 
 /// Reads the log again (`service`: another's than the one shown;
@@ -513,11 +601,13 @@ pub fn read_log(hub: &Arc<RexHub>, service: Option<Service>, range: Option<LogRa
     }) else {
         return;
     };
-    crate::ui::server_changed();
+    told(which());
     if demo_mode() {
         return;
     }
     let reader = hub.clone();
+    // (Whose record it was asked of: where it is read, nobody says.)
+    let whose = which();
     hub.spawn(async move {
         let mut runner = reader.over_ssh(managed.target.clone(), managed.root_key.clone(), managed.root_by.unwrap_or_default());
         let lines = match manage::journal(&mut runner, of, over).await {
@@ -525,7 +615,7 @@ pub fn read_log(hub: &Arc<RexHub>, service: Option<Service>, range: Option<LogRa
             Err(failed) => vec![failed.why],
         };
         {
-            let mut live = live();
+            let mut live = live_of(whose);
             // (Asked of another service or range meanwhile: that one's answer is the one shown.)
             if let Some(live) = live.as_mut().filter(|l| l.managed.target == managed.target && l.managed.log_of == of && l.managed.log_range == over) {
                 live.managed.log = Some(lines);
@@ -535,10 +625,10 @@ pub fn read_log(hub: &Arc<RexHub>, service: Option<Service>, range: Option<LogRa
         }
         // (The window closed while it was read: the connection the
         // reading made for root isn't left behind.)
-        if !current().is_some_and(|now| now.target == managed.target) {
+        if !live_of(whose).as_ref().is_some_and(|now| now.managed.target == managed.target) {
             reader.forget_ssh(&managed.target.as_root(managed.root_key.clone())).await;
         }
-        crate::ui::server_changed();
+        told(whose);
     });
 }
 
@@ -687,13 +777,55 @@ pub fn demo(named: &str) -> Option<Managed> {
         // (Nothing newer in the repository.)
         "current" => Managed { server: Some(Server { newer: None, installed: Some("0.1.0~alpha.2510".into()), ..login }), ..base },
         "people" => Managed { page: Page::People, ..base },
-        // (The limits: a machine as it comes; one with some applied;
-        // one made ready; and what is asked before all are applied.)
-        "limits" => Managed { page: Page::Limits, ..base },
-        "limits-some" => Managed { server: Some(Server { tuning: Some(limits(2)), ..login }), page: Page::Limits, ..base },
-        "limits-ready" => Managed { server: Some(Server { tuning: Some(limits(5)), ..login }), page: Page::Limits, ..base },
-        "confirm-limits" => Managed { stage: Stage::Confirm { action: Action::Tune(olo_rex_client::tune::Tune::ALL.to_vec()), choose: false }, page: Page::Limits, ..base },
-        "confirm-limit" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Kernel]), choose: false }, page: Page::Limits, ..base },
+        // (The Host window's Tweaks, `OLO_REX_DEMO_TWEAKS`: a machine as
+        // it comes; one with some applied; one made ready; what is
+        // asked before one is applied, before all are, before one is
+        // put back, and of brush, with the accounts there are or
+        // without; one being applied; and one that couldn't be.)
+        "limits" => base,
+        "limits-some" => Managed { server: Some(Server { tuning: Some(limits(2)), ..login }), ..base },
+        "limits-ready" => Managed { server: Some(Server { tuning: Some(limits(7)), ..login }), ..base },
+        "confirm-limits" => {
+            Managed { stage: Stage::Confirm { action: Action::Tune(olo_rex_client::tune::Tune::ALL.into_iter().filter(|t| *t != olo_rex_client::tune::Tune::Shell).collect()), choose: false }, ..base }
+        }
+        "confirm-limit" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Kernel]), choose: false }, ..base },
+        "confirm-writeback" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Writeback]), choose: false }, ..base },
+        "confirm-tmp" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::TempFiles]), choose: false }, ..base },
+        "confirm-shell" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Shell]), choose: false }, ..base },
+        "confirm-shell-everyone" => Managed {
+            stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Shell]), choose: false },
+            server: Some(Server { tuning: Some(olo_rex_client::tune::Tuning { everyone: true, ..limits(0) }), ..login }),
+            ..base
+        },
+        "confirm-put-back" => {
+            Managed { stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::TempFiles), choose: false }, server: Some(Server { tuning: Some(limits(7)), ..login }), ..base }
+        }
+        "confirm-put-back-shell" => {
+            Managed { stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::Shell), choose: false }, server: Some(Server { tuning: Some(limits(7)), ..login }), ..base }
+        }
+        "working-limits" => Managed { stage: Stage::Working { action: Action::Tune(vec![olo_rex_client::tune::Tune::Shell]), said: "Downloading brush 0.5.0 from GitHub".into() }, ..base },
+        // (And the host couldn't be looked at: nothing of it is known.)
+        "failed-look" => Managed {
+            stage: Stage::Failed {
+                what: olo_kit::tr!("Couldn’t read {}’s settings", base.name).into(),
+                why: olo_kit::tr!("Nothing was changed on {}.", base.name).into(),
+                said: "ssh: connect to host build.example port 22: Connection timed out".into(),
+                icon: "stop",
+                log: None,
+            },
+            server: None,
+            ..base
+        },
+        "failed-limits" => Managed {
+            stage: Stage::Failed {
+                what: olo_kit::tr!("Couldn’t apply “{}” on {}", olo_kit::words::tr("Brush shell"), base.name).into(),
+                why: olo_kit::words::tr("Brush couldn’t be downloaded from GitHub; nothing was installed.").into(),
+                said: "curl: (6) Could not resolve host: github.com".into(),
+                icon: "stop",
+                log: None,
+            },
+            ..base
+        },
         // (Nobody listed yet: as the package ships the file.)
         "people-empty" => Managed { server: Some(Server { accounts: Accounts::parse(olo_rex_client::accounts::EMPTY).ok(), sessions: Vec::new(), ..login }), page: Page::People, ..base },
         "members" => Managed { server: Some(shared), page: Page::People, log_of: Service::Shared, ..base },
@@ -721,18 +853,33 @@ pub fn demo(named: &str) -> Option<Managed> {
     })
 }
 
-/// The demo's machine (64 GB) with the first `applied` kinds of limits
-/// applied, the rest as a machine comes.
+/// The demo's machine (64 GB, its `/tmp` in memory, three people's
+/// accounts on bash) with the first `applied` kinds of tweaks applied,
+/// the rest as a machine comes.
 fn limits(applied: usize) -> olo_rex_client::tune::Tuning {
     use olo_rex_client::tune::{Tune, Tuning};
     let comes = "ram 67108864\nMaxSessions 10\nopen files 524288\nDefaultLimitNOFILE 524288\nDefaultTasksMax 76000\nfs.file-max 9223372036854775807\nfs.inotify.max_user_watches 524288\n\
         fs.inotify.max_user_instances 128\nfs.inotify.max_queued_events 16384\nfs.aio-max-nr 65536\nkernel.pid_max 4194304\nvm.max_map_count 1048576\nvm.dirty_background_bytes 0\nvm.dirty_bytes 0\n\
-        vm.dirty_expire_centisecs 3000\nvm.swappiness 60\nvm.vfs_cache_pressure 100\n";
+        vm.dirty_expire_centisecs 3000\nvm.swappiness 60\nvm.vfs_cache_pressure 100\ntemporary files 0\ndefault shell /bin/bash\nbrush 0\naccount alice /bin/bash\naccount bo /bin/bash\naccount carmen /usr/bin/zsh\n";
     let mut tuning = Tuning::read(comes);
     for stands in tuning.stands.iter_mut().filter(|s| Tune::ALL.iter().position(|t| *t == s.tune).is_some_and(|at| at < applied)) {
         stands.kept = true;
         for value in &mut stands.values {
             value.now = Some(value.wanted);
+        }
+    }
+    if tuning.of(Tune::Shell).kept {
+        tuning.default_shell = Some(olo_rex_client::tune::BRUSH.to_owned());
+        tuning.brush_there = true;
+        // (Applied with two of its three accounts: what Put Back… gives back.)
+        tuning.was_default = Some("/bin/bash".to_owned());
+        tuning.was_accounts = vec![("alice".to_owned(), "/bin/bash".to_owned()), ("carmen".to_owned(), "/usr/bin/zsh".to_owned())];
+        tuning.brush_users = vec!["alice".to_owned(), "carmen".to_owned()];
+        tuning.accounts.retain(|(name, _)| name == "bo");
+    }
+    if tuning.of(Tune::TempFiles).kept {
+        for (_, value) in &mut tuning.temp {
+            *value = Some(olo_rex_client::tune::TEMP_DIR.to_owned());
         }
     }
     tuning
@@ -742,6 +889,23 @@ fn limits(applied: usize) -> olo_rex_client::tune::Tuning {
 pub fn show_demo(named: &str) -> bool {
     let Some(managed) = demo(named) else { return false };
     *live() = Some(Live { managed, turn: next_turn(), task: None, pending_update: false });
+    true
+}
+
+/// The demo's stage `named` as the Tweaks of the host called `host`,
+/// reached as `target` (Rex's demo only: the Host window's pictures).
+pub fn show_demo_tweaks(named: &str, host: &str, target: SshTarget) -> bool {
+    let Some(mut managed) = demo(named) else { return false };
+    // (The demo's words name its own host: this one's, here.)
+    let was = managed.name.clone();
+    if let Stage::Failed { what, why, said, .. } = &mut managed.stage {
+        *what = what.replace(&was, host);
+        *why = why.replace(&was, host);
+        *said = said.replace(&format!("{was}.example"), &target.host);
+    }
+    managed.name = host.to_owned();
+    managed.target = target;
+    *live_of(Of::Tweaks) = Some(Live { managed, turn: next_turn(), task: None, pending_update: false });
     true
 }
 
@@ -773,8 +937,84 @@ mod tests {
         "nokeys",
     ];
 
+    /// The demo's stages of the Host window's Tweaks tab.
+    const TWEAK_STAGES: [&str; 14] = [
+        "limits",
+        "limits-some",
+        "limits-ready",
+        "confirm-limits",
+        "confirm-limit",
+        "confirm-writeback",
+        "confirm-tmp",
+        "confirm-shell",
+        "confirm-shell-everyone",
+        "confirm-put-back",
+        "confirm-put-back-shell",
+        "working-limits",
+        "failed-look",
+        "failed-limits",
+    ];
+
     /// (The window's state is one for the program: these go one at a time.)
     static ONE: Mutex<()> = Mutex::new(());
+
+    /// The Server window and the Host window's Tweaks tab each have a
+    /// record of a host of their own: what is asked of one isn't asked
+    /// of the other, a piece of work knows which is its own wherever it
+    /// runs, and one gone leaves the other.
+    #[test]
+    fn the_tweaks_tab_has_a_record_of_its_own() {
+        use olo_rex_client::tune::Tune;
+        let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(show_demo("login"));
+        assert!(show_demo_tweaks("limits", "dev-box", SshTarget::parse("ssh://you@dev-box.example").unwrap()));
+        assert_eq!((current().unwrap().name.as_str(), for_tweaks(current).unwrap().name.as_str()), ("build", "dev-box"));
+        // A tweak asked on the tab is the tab's question: the Server window shows its pages still.
+        let kernel = Action::Tune(vec![Tune::Kernel]);
+        for_tweaks(|| ask(kernel.clone()));
+        assert_eq!((current().unwrap().stage, for_tweaks(current).unwrap().stage), (Stage::Shown, Stage::Confirm { action: kernel, choose: false }));
+        // And the other way: the window's question, left on the tab, is the window's still.
+        ask(Action::Update);
+        for_tweaks(back);
+        assert_eq!((current().unwrap().stage, for_tweaks(current).unwrap().stage), (Stage::Confirm { action: Action::Update, choose: false }, Stage::Shown));
+        // (What is asked after `for_tweaks` is the Server window's again.)
+        assert_eq!(which(), Of::Server);
+        // A piece of work finds its record by its number: on a worker's thread nothing says whose it is.
+        let (of_server, of_tweaks) = (live_of(Of::Server).as_ref().unwrap().turn, live_of(Of::Tweaks).as_ref().unwrap().turn);
+        assert_eq!((of_turn(of_server), of_turn(of_tweaks)), (Of::Server, Of::Tweaks));
+        set(of_tweaks, |m| m.stage = Stage::Looking);
+        assert_eq!((current().unwrap().stage, for_tweaks(current).unwrap().stage), (Stage::Confirm { action: Action::Update, choose: false }, Stage::Looking));
+        assert!(ours(of_server) && ours(of_tweaks));
+        // One gone, the other stays; and work of the one gone changes nothing.
+        *live_of(Of::Tweaks) = None;
+        set(of_tweaks, |m| m.stage = Stage::Shown);
+        assert!(ours(of_server) && !ours(of_tweaks) && for_tweaks(current).is_none());
+        assert_eq!(current().unwrap().stage, Stage::Confirm { action: Action::Update, choose: false });
+        *live_of(Of::Server) = None;
+    }
+
+    /// Brush's question: the accounts there are, chosen in it; what is
+    /// shown and what is run follow the choice, which ends with the
+    /// question.
+    #[test]
+    fn the_accounts_there_are_are_chosen_in_brushs_question() {
+        use olo_rex_client::tune::Tune;
+        let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(show_demo_tweaks("limits", "dev-box", SshTarget::parse("ssh://you@dev-box.example").unwrap()));
+        let server = || for_tweaks(current).unwrap().server.unwrap();
+        let chosen = || server().tuning.unwrap().everyone;
+        // (Not outside a question.)
+        for_tweaks(|| everyone(true));
+        assert!(!chosen());
+        let brush = Action::Tune(vec![Tune::Shell]);
+        for_tweaks(|| ask(brush.clone()));
+        assert!(!brush.shown(&server()).contains("carmen") && brush.command(&server()).unwrap().contains("if [ 0 = 1 ]"));
+        for_tweaks(|| everyone(true));
+        assert!(chosen() && brush.shown(&server()).contains("carmen") && brush.command(&server()).unwrap().contains("if [ 1 = 1 ]"));
+        for_tweaks(back);
+        assert!(!chosen(), "a choice made in a question is that question's");
+        *live_of(Of::Tweaks) = None;
+    }
 
     /// Who runs root's work, said over what is run: root signed in, or
     /// the account with sudo where it may use it.
@@ -857,8 +1097,18 @@ mod tests {
         let running = demo("login").unwrap().server.unwrap();
         assert_eq!(still(Some(&running), &Action::Restart(Service::Login)), "Nothing else was changed.");
         assert_eq!(still(None, &Action::Update), "Nothing else was changed.");
-        for stage in DEMO_STAGES {
+        use olo_rex_client::tune::Tune;
+        assert_eq!(still(Some(&running), &Action::Tune(vec![Tune::Kernel])), "Nothing else was changed.");
+        assert_eq!(still(Some(&running), &Action::Tune(vec![Tune::Kernel, Tune::Memory])), "What could be applied was: the list shows how each stands now.");
+        for stage in DEMO_STAGES.into_iter().chain(TWEAK_STAGES) {
             assert!(demo(stage).is_some(), "{stage}");
         }
+        // (A tweak's stage names the host whose window shows it.)
+        let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(show_demo_tweaks("failed-look", "dev-box", SshTarget::parse("ssh://you@dev-box.example").unwrap()));
+        let Stage::Failed { what, why, said, .. } = for_tweaks(current).unwrap().stage else { panic!("it failed") };
+        assert_eq!((what.as_str(), why.as_str()), ("Couldn’t read dev-box’s settings", "Nothing was changed on dev-box."));
+        assert!(said.contains("dev-box.example") && !said.contains("build"), "{said}");
+        *live_of(Of::Tweaks) = None;
     }
 }

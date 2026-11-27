@@ -174,19 +174,130 @@ something nobody here has is in "Blocked", with what it waits for.
   shell's whole command line when it fails: read it at the next one.
   To meet it: the test's own binary, twenty-four at once, a dozen
   rounds (AGENT-NOTES, "A test that passed is run again").
-- **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
-  "currently we have under manager rex server a limits tab for applying
-  tweaks to the host but they really belong in manage host. please move
-  those into a new tab in the manage host window called 'Tweaks' and
-  also add an item in there that checks if /tmp is in ram and if it is
-  and the various tmp dir system envs are not set have it suggest
-  setting them and able to apply it there" ("the temp folder system
-  envs on the server aren't set today -- because /tmp is ram they
-  should all be set to be /var/tmp instead"); and "as another
-  suggestion under tweaks, add one for installing brush shell and
-  making it the default for all users with an option to also change
-  for all existing users". A new tab: to both reviewers early, before
-  it is built out, and again when done.
+- ~~**A "Tweaks" tab in Rex's Host window**~~ (Ben, 2026-11-26
+  evening; done 2026-11-27: HACKING, "A host made ready for heavy
+  work: the Host window's Tweaks"). Left of it:
+  - Brush is given at apply; a host where it is the default already
+    and whose accounts keep other shells has no way to change them
+    but Put Back… and Apply… again with the box ticked.
+  - The version of brush a host is given is the one named in
+    `tune.rs`: a host isn't told when a newer one is out (the desktop
+    is, Olo Suggestions' Update brush).
+  - The layout lint opens the Host window on its first tab: the
+    Tweaks tab is pictured and reviewed by hand
+    (`OLO_REX_DEMO_TWEAKS`, `host.manage:dev-box:tweaks`).
+  - Its words (and the Screens tab's) aren't in the catalogs yet
+    (`tools/dev/words gather --write`, then each language): shown in
+    English in every language.
+  - A tweak that couldn't be applied has no red light on its row once
+    its alert is answered (Opus, round 1: "The Brush row presumably
+    needs that red light, and a reason saying what failed"): the
+    window's other tabs keep a failure on its line with Try Again.
+  - From the two looks, not this change's (the kit's or the window's
+    own): "Place the default button by its ring, not its face … If
+    every Olo alert places default buttons this way, fix it once in
+    the desktop's button" (both reviewers: the ring stands about 3
+    points past the column's right edge); alert icons "measure 52–56px
+    [at 2x], which is ≈26–28pt … softer than the title's letters" at
+    1.25x; in the dark look the alert's stripe "is ≈1.1:1, a shadow
+    you have to look for"; a tab's red mark "is unlike every other
+    light in the window … at 1x the '!' is a one-pixel smudge"; the
+    Server window's own question "puts its buttons somewhere else"
+    (at the window's foot, "about 195pt below the command well": the
+    tab's rule is 16 points under its content) and keeps its note
+    under the progress bar; the Rex tab's reasons "sit 7pt lower under
+    their titles than the Tweaks reasons … Bring the Rex tab's reasons
+    up to 20pt"; a single line "sits about 2 px low" in a well; the
+    key menu "stops awkwardly short of the alert's right margin";
+    "Olo Passwords has no SSH keys to offer" where the body says to
+    unlock it ("the title should be 'Olo Passwords is locked'"); the
+    header's "inline blue web link where a button would be native".
+  - "Tweaks" as the tab's name: Opus suggested "Machine" ("undersells
+    root changes that reach every account"); it is Ben's word, kept.
+- **Every agent on a Rex host told where it is and what it can do
+  there** (Ben, 2026-11-27, of a screenshot of an agent's long search):
+  "look how much this agent had to do to figure out where it was
+  running and how to do something as simple as open a url in my
+  browser. can we have it so that all agents on a rex host get a
+  section added to their system instructions or the closest to that
+  each harness allows that explains where they're running and an
+  overview of the relevant skills and capabilities of each. should
+  work for all of claude, codex and agy and be extensively tested. use
+  a neon agent to build".
+- **A pane's owner, the rest of it** (the second investigator's
+  report on Ben's agy bug, 2026-11-27; fixed: the service gives its
+  children's panes up, Rex takes a tab's when it is chosen. AGENT-NOTES,
+  "A pane has an owner"). Left, its words: Rex "never reads `b.owner`"
+  as it takes a session in (`ingest_session`), so a pane's owner is
+  known only from an event or the data stream's first word; "a lagging
+  initial `InlineApc::Resize { owner: Some(service) }` can clobber a
+  newer `BlockOwnerChanged`" (two sockets, no order between them); a
+  pane another client owns and that is only *shown* here (in front
+  when Rex connects, never chosen) stays theirs until it is clicked:
+  it proposes asking for each visible pane (`own_block`, `"request"`)
+  and giving up what is no longer shown, which also lets a second
+  desktop have a pane the first no longer shows; and a pane larger
+  than its view is cut at its foot with no way to reach the rest
+  (drawn from its foot, the prompt would be what shows).
+- **The helpers' tooling, from the minders' reports** (2026-11-27):
+  a helper can start agents through `olo agent` (nothing but
+  `tools/dev/agents` looks at `OLO_SUBAGENT`, and `olo`,
+  `olo-rex-link` aren't among what a run refuses: a minder's reading of
+  a script was all that stood between a helper's own script and the
+  live service, though that script was fenced); a question about a
+  script names only its file, so a yes covers whatever the file and
+  what it imports hold when it runs (its hash in the question, or the
+  file pinned); `tools/dev/agents log NAME` prints the screen, not
+  "its whole transcript" as its help says.
+- **A Rex tab's red dot that stays** (Ben, 2026-11-27, of a
+  screenshot): "why does this tab have a red dot? and it doesn't go
+  away when i am on it either".
+- **Auto mode by default for `olo agent`'s agents** (Ben, 2026-11-27):
+  "enable auto mode by default for the olo rex agents but provide a
+  way for the parent/launching agent to disable it if they prefer".
+- **Settings above Keyboard Shortcuts in every app's first menu**
+  (Opus's suggestion of 2026-11-26; Ben, 2026-11-27: "makes sense to
+  me").
+- **A screenshot's thumbnail, to drag** (Ben, 2026-11-27, "for
+  later"): "after taking a screenshot please make it send a
+  notification that comes up in the bottom left with a thumbnail of
+  the screenshot and the thumbnail should support drag and drop so i
+  can drag it into an app i want to use the screenshot in (just like
+  in macos)".
+- **Agent Screens of Rex hosts, seen from the desktop and from Rex**
+  (Ben, 2026-11-27): "once you have built agent screens support for
+  rex hosts, also make it so that in the olo desktop agent screens app
+  you can see both the local screens and the screens for any of the
+  connected rex hosts. also, in the rex app itself you should see the
+  screens in the activity sidebar nested level under the agent that is
+  controlling them, and when selecting one it should show the same
+  pane we show in the agent screens app for the screen with the
+  history/stats/passwords and live view etc. this should work for both
+  when the agent is using a screen on the rex host and when it is
+  using one on the desktop. use an agy neon builder agent for this".
+- **The Host window of a host that isn't connected is taller than the
+  others, and of one that failed, taller than the smallest screen**
+  (found 2026-11-27 picturing the Tweaks tab; there before it: the
+  same with the build before). Its header has a line more ("What's
+  installed on nas isn't known until it's connected."), and a failed
+  host a well with why besides, over a panel as tall as the tallest
+  tab: 722 points for a disconnected host, and past the screen's room
+  for a failed one, whose Frame scrolls (614 × 736 with a scroll bar,
+  `OLO_REX_DEMO_HOSTS=states`, `host.manage:staging`). The window is
+  to keep one height: the header's extra lines given room that is
+  always there, or the panel less tall by as much.
+- **A helper's test that failed once under load** (2026-11-27, the
+  whole suite beside thirty test desktops and two container trials):
+  `leave_is_given_by_a_list_and_what_it_names_is_asked`, "the service
+  didn't answer it" within 4 s: 4.70 s. Alone, six of six pass in
+  7.6 s. With the stand-in suite's other meetings under load, above.
+- ~~**The agents service's log has no times on its lines**~~ (fixed
+  2026-11-27: every line begins with when, and the service says when
+  it begins to serve and as which build; found at
+  the 01:45 UTC handover, 2026-11-27: four askings in 18 seconds, and
+  no way to say from the log how long nobody answered between two):
+  `olo agents: ending (handed over)` and its neighbours each to begin
+  with the time.
 - ~~**An agent's working ring doesn't turn, and wakes its app 40 times
   a second**~~ Fixed 2026-11-26 (`agent_marks::ring_turn`: a clock from
   the program's start, in `f64`; it was the seconds since 1970 as an

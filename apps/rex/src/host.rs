@@ -36,7 +36,7 @@ pub struct Shown {
     pub checking: bool,
     /// Remove All… was pressed, and waits to be told yes or no.
     pub asking_all: bool,
-    /// The tab shown: Rex, Olo Integration, Files, Screens.
+    /// The tab shown: Rex, Olo Integration, Files, Screens, Tweaks.
     pub tab: usize,
     /// Where an agent's screen opens there is being changed (to the
     /// host's own, `true`): shown as chosen until the host has answered.
@@ -241,19 +241,24 @@ pub fn screen(hub: &Arc<RexHub>, name: &str, what: ScreenDo) {
 }
 
 /// Remove All… was pressed (`true`), or its question answered no.
-/// The window's tab `tab` shown.
+/// The Tweaks tab's place among the window's tabs: the machine's own
+/// settings, changed as root (`server::for_tweaks`).
+pub const TWEAKS: usize = 4;
+
 /// The Host window's tab called `name` (`rex`, `olo`, `files`,
-/// `screens`, or its words, any case): `host.manage:KEY:TAB`.
+/// `screens`, `tweaks`, or its words, any case): `host.manage:KEY:TAB`.
 pub fn tab_named(name: &str) -> Option<usize> {
     match name.trim().to_ascii_lowercase().as_str() {
         "rex" => Some(0),
         "olo" | "olo integration" | "integration" => Some(1),
         "files" => Some(2),
         "screens" | "agent screens" => Some(3),
+        "tweaks" => Some(TWEAKS),
         _ => None,
     }
 }
 
+/// The window's tab `tab` shown.
 pub fn show_tab(tab: usize) {
     if let Some(shown) = live().as_mut() {
         shown.tab = tab;
@@ -296,6 +301,7 @@ mod tests {
     fn a_tab_by_its_name() {
         assert_eq!((tab_named("rex"), tab_named("Olo"), tab_named("Olo Integration"), tab_named("FILES")), (Some(0), Some(1), Some(1), Some(2)));
         assert_eq!((tab_named("screens"), tab_named("Agent Screens")), (Some(3), Some(3)));
+        assert_eq!((tab_named("tweaks"), tab_named("Tweaks")), (Some(TWEAKS), Some(TWEAKS)));
         assert_eq!(tab_named("ports"), None);
     }
 

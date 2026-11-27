@@ -61,13 +61,23 @@ pub struct TabView {
     grows: bool,
     /// Its children are every tab's page (`pages`).
     paged: bool,
-    /// The page that fills the panel to its frame (`fill_page`).
-    fill: Option<usize>,
+    /// The pages that fill the panel to its frame (`fill_page`).
+    fill: SmallVec<[usize; 2]>,
 }
 
 impl TabView {
     pub fn new(id: impl Into<SharedString>, tabs: impl Into<Rc<[SharedString]>>, selected: usize) -> TabView {
-        TabView { id: id.into(), tabs: crate::words::of_all(tabs.into()), lights: Rc::from([]), selected, on_select: None, children: SmallVec::new(), grows: false, paged: false, fill: None }
+        TabView {
+            id: id.into(),
+            tabs: crate::words::of_all(tabs.into()),
+            lights: Rc::from([]),
+            selected,
+            on_select: None,
+            children: SmallVec::new(),
+            grows: false,
+            paged: false,
+            fill: SmallVec::new(),
+        }
     }
 
     /// Optional status dot placed 6 pt after each tab's label (e.g. amber for
@@ -104,8 +114,13 @@ impl TabView {
     /// other pages' content is, to line up with theirs. While it's chosen,
     /// what's in the panel must fit inside its frame, not its inset (the
     /// layout review's pane).
+    /// (More than one page may: asked for each. Rex's Host window's
+    /// Tweaks page is an alert of its own while a change is asked, its
+    /// stripe down the panel's own edge.)
     pub fn fill_page(mut self, i: usize) -> Self {
-        self.fill = Some(i);
+        if !self.fill.contains(&i) {
+            self.fill.push(i);
+        }
         self
     }
 
@@ -216,12 +231,12 @@ fn places(scale: f32, outer: Bounds<Pixels>, tabs: &[SharedString], lights: &[Op
 impl IntoElement for TabView {
     fn into_element(self) -> Element {
         let TabView { id, tabs, lights, selected, on_select, children, grows, paged, fill: fills } = self;
-        let filled = paged && fills == Some(selected);
+        let filled = paged && fills.contains(&selected);
         // (Every page in one grid cell, as tall as the tallest: the one
         // chosen shown.)
         let children: SmallVec<[Element; 2]> = if paged {
             let pages = children.into_iter().enumerate().map(|(i, page)| {
-                let page = if fills == Some(i) { fill(page) } else { page };
+                let page = if fills.contains(&i) { fill(page) } else { page };
                 let at = div().row_start(1).col_start(1).min_w_0().flex().flex_col().child(page);
                 if i == selected { at } else { at.invisible() }
             });

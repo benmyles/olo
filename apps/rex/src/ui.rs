@@ -618,6 +618,38 @@ pub fn host_changed() {
     broadcast_to_role(WinRole::Host, || WinMsg::HostChanged);
 }
 
+/// The Host window's Tweaks tab shows otherwise: the host being looked
+/// at as root, a question, a change under way (`server::for_tweaks`).
+pub fn tweaks_changed() {
+    broadcast_to_role(WinRole::Host, || WinMsg::TweaksChanged);
+}
+
+/// The Host window's Tweaks tab is the one shown: its host is asked, as
+/// root, how its settings stand, unless it has been (what it said is
+/// kept while the window is of that host). Nothing where the host isn't
+/// one reached over SSH, or isn't connected: the tab says so.
+fn begin_tweaks(hub: &Arc<RexHub>) {
+    let Some(shown) = crate::host::current().filter(|shown| shown.tab == crate::host::TWEAKS) else { return };
+    let Some((name, target)) = managed_host(hub, &shown.key) else { return };
+    if crate::server::for_tweaks(crate::server::current).is_some_and(|now| now.target == hub.with_agent(target.clone()) || crate::server::demo_mode()) {
+        return;
+    }
+    let connected = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(&shown.key).is_some_and(|host| host.conn == crate::hub::HostConnState::Connected);
+    if !connected {
+        return;
+    }
+    // (Rex's demo, for the tab's pictures and its lint: a made-up
+    // host's settings at a stage, `OLO_REX_DEMO_TWEAKS=STAGE`;
+    // `unread`, the host not asked.)
+    if crate::server::demo_mode() {
+        let stage = std::env::var("OLO_REX_DEMO_TWEAKS").unwrap_or_else(|_| "limits".to_owned());
+        crate::server::show_demo_tweaks(&stage, &name, target);
+        tweaks_changed();
+        return;
+    }
+    crate::server::for_tweaks(|| crate::server::open(hub, name, target));
+}
+
 /// Opens the Host window on the host `key`: what it has of Olo's, and
 /// its Rex server. (Not for this computer: what is Olo's here is the
 /// desktop's own.)
@@ -635,6 +667,11 @@ fn open_move(hub: &Arc<RexHub>, key: &str) {
 
 fn open_host(hub: &Arc<RexHub>, key: &str) {
     let Some(name) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| h.label.clone()) else { return };
+    // (Another host's in the window: what the one before said of its
+    // settings goes, and root's connection to it.)
+    if crate::host::current().is_some_and(|shown| shown.key != key) {
+        crate::server::for_tweaks(|| crate::server::close(hub));
+    }
     crate::host::open(key, &name);
     open_or_raise_panel(WinRole::Host);
     host_changed();
@@ -1002,6 +1039,8 @@ pub enum WinMsg {
     /// The Account window opened on a host (the skill's mark).
     AccountOpen(String),
     HostChanged,
+    /// The Host window's Tweaks tab stands otherwise.
+    TweaksChanged,
     HostDo(crate::host_panel::HostDo),
     AccountChanged,
     AccountDo(crate::account_panel::AccountDo),
@@ -2250,6 +2289,7 @@ impl RexWindow {
                 open_host(&hub, key);
                 if let Some(tab) = tab {
                     crate::host::show_tab(tab);
+                    begin_tweaks(&hub);
                 }
             }
             // (A host's account made ready: its window; and, for
@@ -5251,7 +5291,16 @@ impl RexWindow {
                 }
                 let (lines, list) = (self.host_screen_lines.clone(), self.host_screens_list.clone());
                 let screens = crate::host_panel::screens_section(cx, &list, &lines, &stands, &shown, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone())));
-                div().w_full().child(crate::host_panel::render_host_panel(&stands, &shown, managed, screens, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone()))))
+                let tweaks = crate::server::for_tweaks(crate::server::current);
+                div().w_full().child(crate::host_panel::render_host_panel(
+                    &stands,
+                    &shown,
+                    managed,
+                    screens,
+                    tweaks.as_ref(),
+                    self.setup_phase,
+                    cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone())),
+                ))
             }
             WinRole::Move => {
                 let Some(mv) = crate::moving::current() else {
@@ -6051,6 +6100,24 @@ impl View for RexWindow {
                 }
                 cx.invalidate();
             }
+            WinMsg::TweaksChanged => {
+                // (The busy bar's timer, as the Server window's: begun
+                // with a wait and ended with it.)
+                let stage = crate::server::for_tweaks(crate::server::current).map(|m| m.stage);
+                let waited_for = matches!(stage, Some(crate::server::Stage::Looking | crate::server::Stage::Working { .. }));
+                match (waited_for, self.setup_tick) {
+                    (true, None) => {
+                        self.setup_phase = 0.0;
+                        self.setup_tick = Some(cx.every(std::time::Duration::from_millis(100), || WinMsg::SetupTick));
+                    }
+                    (false, Some(timer)) => {
+                        cx.cancel(timer);
+                        self.setup_tick = None;
+                    }
+                    _ => {}
+                }
+                cx.invalidate();
+            }
             WinMsg::AccountChanged => {
                 if self.role == WinRole::Account {
                     cx.set_window_title(account_title());
@@ -6198,7 +6265,15 @@ impl View for RexWindow {
                     }
                     HostDo::Change(thing, op) => crate::host::change(&hub, thing, op),
                     HostDo::UpdateAll(things) => crate::host::update_all(&hub, &things),
-                    HostDo::Check => crate::host::check(&hub),
+                    HostDo::Check => {
+                        crate::host::check(&hub);
+                        // (On Tweaks, the host's settings are what is asked again.)
+                        if crate::host::current().is_some_and(|shown| shown.tab == crate::host::TWEAKS)
+                            && crate::server::for_tweaks(crate::server::current).is_some_and(|now| now.stage == crate::server::Stage::Shown)
+                        {
+                            crate::server::for_tweaks(|| crate::server::again(&hub));
+                        }
+                    }
                     HostDo::Connect => {
                         if let Some(shown) = crate::host::current() {
                             hub.connect_host(&shown.key);
@@ -6224,7 +6299,33 @@ impl View for RexWindow {
                     }
                     HostDo::AskAll(asking) => crate::host::ask_all(asking),
                     HostDo::RemoveAll(things) => crate::host::remove_all(&hub, &things),
-                    HostDo::Tab(tab) => crate::host::show_tab(tab),
+                    HostDo::Tab(tab) => {
+                        crate::host::show_tab(tab);
+                        begin_tweaks(&hub);
+                    }
+                    // (The Tweaks tab's: the Server window's own words,
+                    // of the Host window's record of the host.)
+                    HostDo::Tweak(what) => {
+                        use crate::server_panel::ServerDo;
+                        match what {
+                            ServerDo::Again if crate::server::for_tweaks(crate::server::current).is_none() => begin_tweaks(&hub),
+                            ServerDo::Again => crate::server::for_tweaks(|| crate::server::again(&hub)),
+                            ServerDo::Back => crate::server::for_tweaks(crate::server::back),
+                            ServerDo::Go => crate::server::for_tweaks(|| crate::server::go(&hub)),
+                            ServerDo::Ask(action) => crate::server::for_tweaks(|| crate::server::ask(action)),
+                            // (Left where it is: the tab says the settings aren't read.)
+                            ServerDo::Close => {
+                                crate::server::for_tweaks(|| crate::server::close(&hub));
+                                tweaks_changed();
+                            }
+                            ServerDo::OpenPasswords => {
+                                let _ = olo_xdg::spawn_detached("olo-passwords");
+                            }
+                            ServerDo::LetIn | ServerDo::ShowLog | ServerDo::LogOf(_) | ServerDo::Refresh | ServerDo::Copy => {}
+                        }
+                    }
+                    HostDo::TweakKey(i) => crate::server::for_tweaks(|| crate::server::choose_key(i)),
+                    HostDo::TweakEveryone(on) => crate::server::for_tweaks(|| crate::server::everyone(on)),
                     HostDo::ScreensDefault(on_host) => crate::host::screens_default(&hub, on_host),
                     HostDo::ScreensCancel => crate::host::cancel_screens(&hub),
                     HostDo::ScreenStop(name) => crate::host::screen(&hub, &name, crate::host::ScreenDo::Stop),
@@ -6718,6 +6819,7 @@ impl Drop for RexWindow {
         }
         if self.role == WinRole::Host {
             crate::host::close();
+            crate::server::for_tweaks(|| crate::server::close(the_hub()));
         }
         if self.role == WinRole::Account {
             crate::account::close();

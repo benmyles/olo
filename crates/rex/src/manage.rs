@@ -367,6 +367,32 @@ pub enum Action {
     Untune(crate::tune::Tune),
 }
 
+/// How many accounts a question names, of those brush would be given
+/// to: past them, how many more.
+const SHOWN_ACCOUNTS: usize = 6;
+
+/// A line of what a change of the machine's settings changes, as the
+/// question that asks it shows it: a table under "Now" and "New"
+/// ([`Action::changes`]). It was text in columns, set whole in the
+/// fixed-width face: a head that read as one more row, a tweak's name
+/// set as code, and the two values a pair of spaces apart at the well's
+/// left with a third of it empty beside them (both reviewers,
+/// 2026-11-27).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Change {
+    /// A name over the lines under it: a tweak's, where several are
+    /// applied at once; "Accounts here".
+    Group(String),
+    /// One thing that changes: what it is now and what it will be.
+    /// `plain`: its name is words (a tweak's own, "New accounts"), not
+    /// a setting's as the host has it; `inside`: under a group;
+    /// `number`: its values are amounts, set to the right edge of their
+    /// columns (words and paths begin at the left of theirs).
+    Value { name: String, now: String, new: String, plain: bool, inside: bool, number: bool },
+    /// Words under the lines: "and 12 more accounts".
+    Note(String),
+}
+
 impl Action {
     /// What it is, in a few words: its button, and after "Couldn't" if
     /// it fails.
@@ -381,7 +407,7 @@ impl Action {
             Action::Leave(name) => format!("Take {name} out of the rex group"),
             Action::Update => "Update Rex".to_owned(),
             Action::Tune(kinds) if kinds.len() == 1 => format!("Apply “{}”", kinds[0].title()),
-            Action::Tune(_) => "Apply the suggested limits".to_owned(),
+            Action::Tune(_) => "Apply the suggested settings".to_owned(),
             Action::Untune(kind) => format!("Put back “{}”", kind.title()),
         }
     }
@@ -398,7 +424,7 @@ impl Action {
             Action::Leave(name) => format!("Taking {name} out of the rex group"),
             Action::Update => "Updating Rex".to_owned(),
             Action::Tune(kinds) if kinds.len() == 1 => format!("Applying “{}”", kinds[0].title()),
-            Action::Tune(_) => "Applying the suggested limits".to_owned(),
+            Action::Tune(_) => "Applying the suggested settings".to_owned(),
             Action::Untune(kind) => format!("Putting back “{}”", kind.title()),
         }
     }
@@ -437,11 +463,45 @@ impl Action {
                 };
                 if server.state(Service::Shared).active { replaces } else { format!("{replaces} Open sessions keep running.") }
             }
-            Action::Tune(kinds) => {
-                let mut said: Vec<&str> = kinds.iter().filter_map(|k| k.note()).collect();
-                said.push("Each is kept across restarts and can be put back from this page. Nothing that is already higher there is lowered.");
-                said.join(" ")
+            // (One kind: what applying it does besides, then how it is
+            // kept. Several: said once for all of them; each kind's
+            // own note, one after another, was a wall of words over
+            // the list of what changes.)
+            Action::Tune(kinds) => match kinds.as_slice() {
+                [crate::tune::Tune::Shell] => {
+                    format!(
+                        "{} It can be put back here: new accounts get the shell they were given before, and each account Rex changed gets its own again.",
+                        crate::tune::Tune::Shell.note().unwrap_or_default()
+                    )
+                }
+                [kind] => format!("{} The new values are kept across restarts and can be put back here.", kind.note().unwrap_or_default()).trim().to_owned(),
+                kinds => {
+                    let mut said = Vec::new();
+                    if kinds.contains(&crate::tune::Tune::Sessions) {
+                        said.push("Connections already open aren’t touched.");
+                    }
+                    if kinds.iter().any(|kind| matches!(kind, crate::tune::Tune::Files | crate::tune::Tune::TempFiles)) {
+                        said.push("Open files and temporary files take effect from each program’s next sign-in or start.");
+                    }
+                    said.push("Each is kept across restarts and can be put back here. Nothing already set higher is lowered.");
+                    said.join(" ")
+                }
+            },
+            // (Of brush itself, what is true on this host: taken off, or
+            // kept for who still signs in to it. It said "stays
+            // installed while an account still signs in to it" over a
+            // well that removed it: Opus's look.)
+            Action::Untune(crate::tune::Tune::Shell) => {
+                let back = "New accounts get the shell they were given before, and each account Rex changed gets its own again.";
+                match server.tuning.as_ref() {
+                    Some(tuning) if !tuning.brush_goes() => {
+                        let users: Vec<&str> = tuning.brush_users.iter().filter(|user| !tuning.was_accounts.iter().any(|(name, _)| name == *user)).map(String::as_str).collect();
+                        format!("{back} Brush stays installed: {} still {} it.", users.join(", "), if users.len() == 1 { "uses" } else { "use" })
+                    }
+                    _ => format!("{back} Brush is then taken off."),
+                }
             }
+            Action::Untune(crate::tune::Tune::TempFiles) => "Programs use /tmp again, from their next sign-in or start.".to_owned(),
             Action::Untune(kind) => format!("Olo’s {} taken away, and the host’s own settings again.", if kind.files().len() == 1 { "file is" } else { "files are" }),
         }
     }
@@ -476,6 +536,15 @@ impl Action {
                 let short: Vec<(crate::tune::Tune, Vec<(&str, String, String)>)> = kinds
                     .iter()
                     .map(|kind| {
+                        // (Brush: who is given it, each with the shell
+                        // it has now; past a handful, how many more.)
+                        if *kind == crate::tune::Tune::Shell && !tuning.of(*kind).met() {
+                            let mut rows = vec![("new accounts", tuning.default_shell.clone().unwrap_or_else(|| "?".to_owned()), crate::tune::BRUSH.to_owned())];
+                            if tuning.everyone {
+                                rows.extend(tuning.accounts.iter().take(SHOWN_ACCOUNTS).map(|(name, shell)| (name.as_str(), shell.clone(), crate::tune::BRUSH.to_owned())));
+                            }
+                            return (*kind, rows);
+                        }
                         let rows = tuning
                             .of(*kind)
                             .values
@@ -486,21 +555,111 @@ impl Action {
                     })
                     .filter(|(_, rows): &(_, Vec<_>)| !rows.is_empty())
                     .collect();
-                let wide = |of: &dyn Fn(&(&str, String, String)) -> usize, least: usize| short.iter().flat_map(|(_, rows)| rows.iter().map(of)).fold(least, usize::max);
-                let (name, now, new) = (wide(&|r| r.0.chars().count(), 0), wide(&|r| r.1.chars().count(), 3), wide(&|r| r.2.chars().count(), 3));
-                // (Under a kind's name its settings stand a step in.)
-                let step = if short.len() > 1 { "  " } else { "" };
-                let mut lines = vec![format!("{step}{:name$}  {:>now$}  {:>new$}", "", "now", "new")];
+                // (Several kinds: a kind that is one setting is one
+                // line, by the kind's own name; a kind of several has
+                // its name over them, and they stand a step in.)
+                let several = short.len() > 1;
+                // (Temporary files' setting has no name of the host's:
+                // by the tweak's own, alone too.)
+                let one = |kind: &crate::tune::Tune| (several && tuning.of(*kind).values.len() == 1 && *kind != crate::tune::Tune::Shell) || *kind == crate::tune::Tune::TempFiles;
+                let short: Vec<(crate::tune::Tune, Vec<(&str, String, String)>)> =
+                    short.into_iter().map(|(kind, rows)| if one(&kind) { (kind, rows.into_iter().map(|(_, a, b)| (kind.title(), a, b)).collect()) } else { (kind, rows) }).collect();
+                let step = |kind: &crate::tune::Tune| if several && !one(kind) { 2 } else { 0 };
+                // (Shells are paths: begun at one edge, not ended at one. And the
+                // two columns a step further apart than a name is from them: two
+                // spaces between "524,288" and "1,048,576" read as one number.)
+                let paths = short.iter().all(|(kind, _)| *kind == crate::tune::Tune::Shell);
+                let cell = |text: &str, wide: usize| if paths { format!("{text:<wide$}") } else { format!("{text:>wide$}") };
+                let wide = |of: &dyn Fn(&crate::tune::Tune, &(&str, String, String)) -> usize, least: usize| {
+                    short.iter().flat_map(|(kind, rows)| rows.iter().map(move |row| of(kind, row))).fold(least, usize::max)
+                };
+                let (name, now, new) = (wide(&|kind, r| step(kind) + r.0.chars().count(), 0), wide(&|_, r| r.1.chars().count(), 3), wide(&|_, r| r.2.chars().count(), 3));
+                let mut lines = vec![format!("{:name$}  {}    {}", "", cell("now", now), cell("new", new))];
                 for (kind, rows) in &short {
-                    if short.len() > 1 {
+                    let step = step(kind);
+                    if step > 0 {
                         lines.push(kind.title().to_owned());
                     }
-                    lines.extend(rows.iter().map(|(n, a, b)| format!("{step}{n:name$}  {a:>now$}  {b:>new$}")));
+                    let room = name - step;
+                    lines.extend(rows.iter().map(|(n, a, b)| format!("{:step$}{n:room$}  {}    {}", "", cell(a, now), cell(b, new))));
+                    if *kind == crate::tune::Tune::Shell && tuning.everyone && tuning.accounts.len() > SHOWN_ACCOUNTS {
+                        lines.push(format!("{:step$}and {} more accounts", "", tuning.accounts.len() - SHOWN_ACCOUNTS));
+                    }
                 }
                 lines.join("\n")
             }
             Action::Untune(kind) => kind.files().join("\n"),
             other => other.command(server).unwrap_or_default(),
+        }
+    }
+
+    /// What it changes, line by line, for the kinds of action that
+    /// change the machine's settings: every setting from what the host
+    /// has to what it will have. None for the rest, which show what
+    /// they run ([`Action::shown`]).
+    pub fn changes(&self, server: &Server) -> Option<Vec<Change>> {
+        use crate::tune::{BRUSH, TEMP_DIR, Tune};
+        let tuning = server.tuning.as_ref()?;
+        let value = |name: &str, now: String, new: String, plain: bool, inside: bool, number: bool| Change::Value { name: name.to_owned(), now, new, plain, inside, number };
+        let unset = || "not set".to_owned();
+        match self {
+            Action::Tune(kinds) => {
+                let short: Vec<Tune> = kinds.iter().copied().filter(|kind| !tuning.of(*kind).met()).collect();
+                let several = short.len() > 1;
+                let mut lines = Vec::new();
+                for kind in short {
+                    let stands = tuning.of(kind);
+                    let amounts =
+                        || stands.values.iter().filter(|v| !v.met()).map(|v| (v.name, v.now.map_or("?".to_owned(), |now| crate::tune::said(v.name, now)), crate::tune::said(v.name, v.wanted)));
+                    match kind {
+                        // Brush: who is given it. New accounts; and, chosen, the
+                        // accounts there are, each with the shell it has.
+                        Tune::Shell => {
+                            lines.push(value("New accounts", tuning.default_shell.clone().unwrap_or_else(|| "?".to_owned()), BRUSH.to_owned(), true, false, false));
+                            if tuning.everyone && !tuning.accounts.is_empty() {
+                                lines.push(Change::Group("Accounts here".to_owned()));
+                                lines.extend(tuning.accounts.iter().take(SHOWN_ACCOUNTS).map(|(name, shell)| value(name, shell.clone(), BRUSH.to_owned(), false, true, false)));
+                                if tuning.accounts.len() > SHOWN_ACCOUNTS {
+                                    lines.push(Change::Note(format!("and {} more accounts", tuning.accounts.len() - SHOWN_ACCOUNTS)));
+                                }
+                            }
+                        }
+                        // Temporary files, by itself: each variable Rex sets. Among
+                        // others: one line of it, by its own name.
+                        Tune::TempFiles if !several => lines.extend(tuning.temp.iter().map(|(name, now)| value(name, now.clone().unwrap_or_else(unset), TEMP_DIR.to_owned(), false, false, false))),
+                        Tune::TempFiles => lines.extend(amounts().map(|(_, now, new)| value(kind.title(), now, new, true, false, true))),
+                        // A kind that is one setting, among others: one line, by the
+                        // kind's own name.
+                        _ if several && stands.values.len() == 1 => lines.extend(amounts().map(|(_, now, new)| value(kind.title(), now, new, true, false, true))),
+                        _ => {
+                            if several {
+                                lines.push(Change::Group(kind.title().to_owned()));
+                            }
+                            lines.extend(amounts().map(|(name, now, new)| value(name, now, new, false, several, true)));
+                        }
+                    }
+                }
+                Some(lines)
+            }
+            // Brush put back: what new accounts are given again, each
+            // account Rex changed that still has it, and whether brush
+            // itself goes.
+            Action::Untune(Tune::Shell) => {
+                let mut lines =
+                    vec![value("New accounts", tuning.default_shell.clone().unwrap_or_else(|| BRUSH.to_owned()), tuning.was_default.clone().unwrap_or_else(|| "?".to_owned()), true, false, false)];
+                let back: Vec<&(String, String)> = tuning.was_accounts.iter().filter(|(name, _)| tuning.brush_users.contains(name)).collect();
+                if !back.is_empty() {
+                    lines.push(Change::Group("Accounts Rex changed".to_owned()));
+                    lines.extend(back.iter().take(SHOWN_ACCOUNTS).map(|(name, had)| value(name, BRUSH.to_owned(), had.clone(), false, true, false)));
+                    if back.len() > SHOWN_ACCOUNTS {
+                        lines.push(Change::Note(format!("and {} more accounts", back.len() - SHOWN_ACCOUNTS)));
+                    }
+                }
+                lines.push(value("Brush", "installed".to_owned(), if tuning.brush_goes() { "removed".to_owned() } else { "stays".to_owned() }, true, false, false));
+                Some(lines)
+            }
+            Action::Untune(Tune::TempFiles) => Some(tuning.temp.iter().map(|(name, now)| value(name, now.clone().unwrap_or_else(unset), unset(), false, false, false)).collect()),
+            _ => None,
         }
     }
 
@@ -570,7 +729,10 @@ pub async fn act(runner: &mut impl Runner, server: &Server, action: &Action, sai
             let command = if matches!(other, Action::Tune(_) | Action::Untune(_)) { format!("sh -c {}", shell_word(&command)) } else { command };
             let ran = runner.run(true, &command, said).await?;
             if !ran.ok() {
-                let mut why = last_lines(&ran);
+                // (What the host said last, a line a line: three of
+                // them run into one read as one message cut in odd
+                // places, "command not found sh: line 25:".)
+                let mut why = last_lines(&ran, "\n");
                 if let Action::Start(s) | Action::Restart(s) = other
                     && let Ok(log) = journal(runner, *s, LogRange::Last(12)).await
                     && !log.is_empty()
@@ -593,9 +755,9 @@ pub async fn act(runner: &mut impl Runner, server: &Server, action: &Action, sai
     look(runner, *action == Action::Update).await
 }
 
-fn last_lines(ran: &Ran) -> String {
+fn last_lines(ran: &Ran, between: &str) -> String {
     let last: Vec<&str> = ran.output.lines().map(str::trim).filter(|l| !l.is_empty()).rev().take(3).collect();
-    let why = last.into_iter().rev().collect::<Vec<_>>().join(" ");
+    let why = last.into_iter().rev().collect::<Vec<_>>().join(between);
     match (ran.status, why.is_empty()) {
         (Some(status), true) => format!("it ended with status {status}"),
         (Some(_), false) => why,
@@ -646,7 +808,7 @@ pub async fn journal(runner: &mut impl Runner, service: Service, range: LogRange
     };
     let ran = runner.run(true, &command, &mut |_| {}).await?;
     if !ran.ok() {
-        return Err(format!("its log couldn't be read ({})", last_lines(&ran)).into());
+        return Err(format!("its log couldn't be read ({})", last_lines(&ran, " ")).into());
     }
     Ok(log_lines(&ran.output))
 }
@@ -709,7 +871,7 @@ mod tests {
         use crate::tune::{Tune, Tuning};
         let comes = "vm.dirty_background_ratio 10\nvm.dirty_ratio 20\nram 67108864\nMaxSessions 10\nopen files 1048576\nDefaultLimitNOFILE 1048576\nDefaultTasksMax infinity\nfs.file-max 9223372036854775807\n\
             fs.inotify.max_user_watches 524288\nfs.inotify.max_user_instances 8192\nfs.inotify.max_queued_events 65536\nfs.aio-max-nr 1048576\nkernel.pid_max 4194304\nvm.max_map_count 1048576\n\
-            vm.dirty_background_bytes 0\nvm.dirty_bytes 0\nvm.dirty_expire_centisecs 3000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\n";
+            vm.dirty_background_bytes 0\nvm.dirty_bytes 0\nvm.dirty_expire_centisecs 3000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\ntemporary files 1\ndefault shell /usr/local/bin/brush\nbrush there\nbrush 1\n";
         let server = Server { tuning: Some(Tuning::read(comes)), ..Server::default() };
         // (Its words, column by column; and the columns are columns:
         // every line of settings as long as the head's.)
@@ -727,8 +889,8 @@ mod tests {
             words(&all.shown(&server)),
             [
                 "now new",
-                "SSH sessions",
-                "MaxSessions 10 1,024",
+                // (A kind that is one setting: one line, by its own name.)
+                "SSH sessions 10 1,024",
                 "Kernel limits",
                 "fs.inotify.max_user_watches 524,288 1,048,576",
                 "Writing to disk",
@@ -739,11 +901,89 @@ mod tests {
         );
         assert!(in_columns(&all.shown(&server)), "{}", all.shown(&server));
         assert!(all.warning(&server).is_some_and(|w| w.contains("loses power")), "the one real cost, apart");
-        assert!(all.what(&server).contains("open connections stay") && !all.what(&server).contains("sign-in"), "what it does besides: of the kinds applied alone");
+        assert!(all.what(&server).contains("Connections already open aren’t touched") && !all.what(&server).contains("sign-in"), "what it does besides: of the kinds applied alone");
+        // One kind alone says its own note, whole.
+        assert!(Action::Tune(vec![Tune::Files]).what(&server).starts_with("The open files hold from the next sign-in"));
         // What is run is each kind's script, each by itself.
         let command = all.command(&server).unwrap();
         assert_eq!(command.matches("\n( set -e").count() + usize::from(command.starts_with("( set -e")), 3);
         assert_eq!(Action::Untune(Tune::Files).shown(&server).lines().count(), 4);
+        // Temporary files and brush, on a host short of both: one line of one; and of brush, who is given
+        // it, each with the shell it has, only where the person chose the accounts there are.
+        let short = format!(
+            "{}default shell /bin/bash\nbrush 0\naccount ana /bin/bash\naccount bo /usr/bin/zsh\n",
+            comes.replace("temporary files 1", "temporary files 0").replace("default shell /usr/local/bin/brush\nbrush there\nbrush 1\n", "")
+        );
+        let mut server = Server { tuning: Some(Tuning::read(&short)), ..Server::default() };
+        assert_eq!(words(&Action::Tune(vec![Tune::TempFiles]).shown(&server)), ["now new", "Temporary files in memory on disk"]);
+        let brush = Action::Tune(vec![Tune::Shell]);
+        assert_eq!(words(&brush.shown(&server)), ["now new", "new accounts /bin/bash /usr/local/bin/brush"]);
+        server.tuning.as_mut().unwrap().everyone = true;
+        assert_eq!(words(&brush.shown(&server)), ["now new", "new accounts /bin/bash /usr/local/bin/brush", "ana /bin/bash /usr/local/bin/brush", "bo /usr/bin/zsh /usr/local/bin/brush"]);
+        assert!(in_columns(&brush.shown(&server)), "{}", brush.shown(&server));
+        assert!(brush.command(&server).unwrap().contains("if [ 1 = 1 ]; then") && brush.what(&server).contains("checked against the build Olo knows"));
+        // (All of the work's kinds at once on that host: the one-setting kinds a line each among the others.)
+        let all = Action::Tune(vec![Tune::Sessions, Tune::Writeback, Tune::TempFiles]);
+        assert_eq!(
+            words(&all.shown(&server))[1..],
+            [
+                "SSH sessions 10 1,024",
+                "Writing to disk",
+                "vm.dirty_background_bytes not set 8 GB",
+                "vm.dirty_bytes not set 32 GB",
+                "vm.dirty_expire_centisecs 3,000 6,000",
+                "Temporary files in memory on disk"
+            ]
+        );
+        assert!(in_columns(&all.shown(&server)), "{}", all.shown(&server));
+        assert!(all.what(&server).contains("temporary files take effect from each program’s next sign-in"));
+        // The same as the question's table has it: line by line.
+        let line = |c: &Change| match c {
+            Change::Group(name) => format!("[{name}]"),
+            Change::Value { name, now, new, plain, inside, number } => {
+                format!("{}{name}: {now} -> {new}{}{}", if *inside { "  " } else { "" }, if *plain { " (plain)" } else { "" }, if *number { " #" } else { "" })
+            }
+            Change::Note(words) => format!("({words})"),
+        };
+        let table = |action: &Action, server: &Server| action.changes(server).unwrap().iter().map(line).collect::<Vec<_>>();
+        assert_eq!(
+            table(&all, &server),
+            [
+                "SSH sessions: 10 -> 1,024 (plain) #",
+                "[Writing to disk]",
+                "  vm.dirty_background_bytes: not set -> 8 GB #",
+                "  vm.dirty_bytes: not set -> 32 GB #",
+                "  vm.dirty_expire_centisecs: 3,000 -> 6,000 #",
+                "Temporary files: in memory -> on disk (plain) #",
+            ]
+        );
+        // One kind by itself: its settings, under no name; temporary files, each variable Rex sets.
+        assert_eq!(table(&Action::Tune(vec![Tune::Writeback]), &server).len(), 3);
+        assert_eq!(table(&Action::Tune(vec![Tune::TempFiles]), &server)[0], "TMPDIR: not set -> /var/tmp");
+        assert_eq!(table(&Action::Tune(vec![Tune::TempFiles]), &server).len(), 5);
+        // Brush: new accounts; and, chosen, the accounts there are under a name of their own.
+        assert_eq!(
+            table(&brush, &server),
+            ["New accounts: /bin/bash -> /usr/local/bin/brush (plain)", "[Accounts here]", "  ana: /bin/bash -> /usr/local/bin/brush", "  bo: /usr/bin/zsh -> /usr/local/bin/brush"]
+        );
+        server.tuning.as_mut().unwrap().everyone = false;
+        assert_eq!(table(&brush, &server), ["New accounts: /bin/bash -> /usr/local/bin/brush (plain)"]);
+        // Put back: what was noted is what comes back, and brush goes unless somebody else signs in to it.
+        let applied = format!(
+            "{comes}temp TMPDIR /var/tmp\ntemp TMP /var/tmp\ntemp TEMP /var/tmp\ntemp TEMPDIR /var/tmp\ntemp CLAUDE_CODE_TMPDIR /var/tmp\nkept tmpdir\nkept shell\nwas default /bin/bash\nwas user ana /bin/bash\nbrush user ana\n"
+        );
+        let mut server = Server { tuning: Some(Tuning::read(&applied)), ..Server::default() };
+        let back = Action::Untune(Tune::Shell);
+        assert_eq!(
+            table(&back, &server),
+            ["New accounts: /usr/local/bin/brush -> /bin/bash (plain)", "[Accounts Rex changed]", "  ana: /usr/local/bin/brush -> /bin/bash", "Brush: installed -> removed (plain)"]
+        );
+        assert!(back.what(&server).ends_with("Brush is then taken off."));
+        server.tuning.as_mut().unwrap().brush_users.push("carol".into());
+        assert_eq!(table(&back, &server).last().unwrap(), "Brush: installed -> stays (plain)");
+        assert!(back.what(&server).ends_with("Brush stays installed: carol still uses it."), "{}", back.what(&server));
+        assert_eq!(table(&Action::Untune(Tune::TempFiles), &server)[0], "TMPDIR: /var/tmp -> not set");
+        assert!(Action::Untune(Tune::Kernel).changes(&server).is_none() && Action::Update.changes(&server).is_none());
     }
 
     /// A host that answers as written: each command run is kept, and

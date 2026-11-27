@@ -952,6 +952,45 @@ the bug lives in the difference. And after any real trial, look for
 what is left (`ps`, by each process's own words: a search for a word
 your own shell's command line holds counts the shell).
 
+### Root on a host, tried without touching any host's root (2026-11-27)
+
+What Rex does as root on a host (the Host window's Tweaks, the Server
+window) is tried for real in two ways, and never against this
+computer's own root, where an Apply would change the person's server:
+
+- *The scripts*, as root in a container of your own:
+  `OLO_TUNE_EXEC="podman exec -i NAME"` with `tune::tests`' ignored
+  `the_scripts_do_what_they_say_on_a_real_machine` (`OLO_TUNE_KINDS`,
+  `OLO_TUNE_EVERYONE=1`). Started with `--tmpfs /tmp` (a container's
+  `/tmp` is its disk otherwise, and the temporary files' tweak has
+  nothing to do) and accounts of every kind (`useradd -s /bin/bash`,
+  `/bin/sh`, `/usr/bin/git-shell`, `-r … /sbin/nologin`). Fedora's
+  base image has no `su` (`dnf install util-linux`); Debian's has
+  `adduser.conf`.
+- *The window, end to end*: the rig's far host (an SSH server of the
+  rig's own on this computer, which runs as you) with a stand-in
+  `sudo` first on its PATH that runs what root is asked inside that
+  container (`sudo -n true`: yes; `sudo -n -H sh -c …`: `podman exec
+  -i NAME sh -c …`, with your real `HOME` and `XDG_RUNTIME_DIR` put
+  back, or rootless podman looks in the far host's scratch home and
+  finds no container). `FarHost` builds the far host's PATH from the
+  rig's own, less what is under your home: put the stand-in's folder
+  (under `/var/tmp`) first in `os.environ["PATH"]` before the rig
+  begins. **The trial checks, before anything is applied, that
+  `command -v sudo` there is the stand-in and that root there sees the
+  container's accounts, and stops if not**: the account here may use
+  sudo without a password, and without the stand-in "root on the far
+  host" is this server's. (Its first run stopped itself rightly: the
+  path was read from the last line ssh printed, which was ssh's notice
+  of a new host key.)
+- A container reaches the network through the host's proxy only on
+  the host's network (`--network host`): podman hands the proxy's
+  variables in, and `127.0.0.1` in a container of its own network is
+  the container.
+- Two runs of one trial share its container's name and the rig's
+  folder: start the second when the first has ended (`ps -eo
+  pid,etimes,args | grep '[n]ame'`), never by its log's last line.
+
 ### A host's own screens, tried without touching the host
 
 (2026-11-26.) An account of its own for the trial, as a test session
@@ -1500,6 +1539,57 @@ app().renaming.take();`), then use it. What told: the test's crash
 reports, in the scratch `XDG_STATE_HOME` it was started with
 (`…/olo/crashes/*.json`: `message`, `thread`, `backtrace`): look there
 whenever a headless test's key or click "does nothing".
+
+### A pane has an owner, and the owner's size is the one that holds (2026-11-27)
+
+Rex's server (rev 19) keeps an owner for each pane, and a pane is as
+large as its owner says. What the second investigator proved on a
+scratch server, and what it cost not to know:
+
+- **Whoever makes a pane while attached to its session owns it**
+  (`session.new_window`, `new_split`, `new_block`: "If the calling
+  client is attached to the session, it becomes the block's owner").
+  Made by a client that isn't attached (`session.attach_all` is not
+  attached), it is nobody's, and takes the first size anybody asks.
+  `options.size` has nothing to do with who owns it.
+- **Nothing a client does later makes it the owner but
+  `session.own_block`**: not asking its size, typing, reading its
+  screen, opening its data stream, nor focusing it. A
+  `com.superlogical.terminal.resize` from one who isn't the owner is
+  answered `{}` as if it were done, kept as that client's wish, and
+  applied only when that client becomes the owner.
+- `session.own_block` takes it (`mode: "take"`, the default) or
+  stands in line for it (`"request"`: at once only if nobody owns it);
+  `session.disown_block` gives it up and leaves the line, and the next
+  in line has it, at the size that one last asked for. A client that
+  made a pane and never gave it up is still in that line.
+- To see: `rex api call com.superlogical.terminal.size
+  '{"session_id":…,"block_id":…,"args":{}}'` says `owner` and
+  `desired` (who asked what). And Rex's status bar says the terminal's
+  own size, not the view's: a size there that isn't the view's is
+  this.
+
+Olo's agents service is attached to a session from its first child
+there on, so its second child and every one after, and every one after
+the service started again, was the service's: it stood at the size of
+the pane it was asked from, and a desktop that showed it in a shorter
+view lost its last rows, where an agent's prompt is (Ben: "some
+antigravity agy terminals … it doesn't show the full tui stuff like
+the typing line"; a 108 × 64 tab in a view of 56 rows, measured on his
+screenshot from the rows' pitch against the status bar's size). Not
+agy's rendering, and no setting of it: any agent's child. Now the
+service gives each child's pane up as it makes it and when it finds it
+again (`Service::never_its_size`; `tests/agents.rs`,
+`a_childs_tab_is_never_the_services_to_size`, which fails on the
+second child with the rule taken out), and Rex takes a tab's panes
+when the person chooses the tab or a pane of it (`RexHub::select`, a
+`HostInputOp::Own`), for hosts whose helper is older and for panes any
+other client made. Tried end to end both ways:
+`tools/dev/rex-slow/own.py [BIN]` (another attached client makes a
+108 × 64 tab; chosen in Rex it is Rex's and 117 × 40; with the build
+before, it stays the other's and 108 × 64). Never taken while
+painting: two desktops showing one pane would take it from each other
+for ever.
 
 ### Rex's hub is never reached through a lock (2026-11-26)
 

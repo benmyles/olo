@@ -290,8 +290,16 @@ pub enum HostDo {
     AskAll(bool),
     /// Its question answered yes: these taken off.
     RemoveAll(Vec<HostThing>),
-    /// A tab chosen: Rex, Olo Integration, Files, Screens.
+    /// A tab chosen: Rex, Olo Integration, Files, Screens, Tweaks.
     Tab(usize),
+    /// On Tweaks: what the Server window's buttons ask, of the Host
+    /// window's own record of the host (`server::for_tweaks`): a tweak
+    /// put to the person, agreed to, left; the host looked at again.
+    Tweak(crate::server_panel::ServerDo),
+    /// On Tweaks: a key chosen for root in the menu.
+    TweakKey(usize),
+    /// On Tweaks, in brush's question: the accounts there are too.
+    TweakEveryone(bool),
     /// Where an agent's screen opens there when it doesn't say: on the
     /// host itself (`true`), or on this computer.
     ScreensDefault(bool),
@@ -632,9 +640,218 @@ fn section(title: &'static str) -> Element {
     div().w_full().flex().flex_col().child(StringView::new(title).bold(true).height(m::LABEL_ROW)).child(div().h(px(2.0)).flex_shrink_0()).child(separator()).into_element()
 }
 
+/// On Tweaks: from a tweak's reason to the next tweak's line, and how
+/// tall a reason is at least (its one line, in whole points: at 14.5
+/// the rows stood 50 and 51 device pixels apart by turns at 1×). A
+/// reason is set right under its line (19 points from the name's
+/// baseline to its own, 28 on to the next name's), so each tweak reads
+/// as one thing: at three nearly equal steps the page was an even
+/// stack of lines (Opus's look, 2026-11-27).
+const ROW_GAP: f32 = 8.0;
+const ROW_REASON: f32 = 15.0;
+/// On Tweaks: from a section's foot (its button, or its last reason)
+/// to the next section's heading: 24 points to the heading's cap top,
+/// as on the window's other tabs, with the button or without (it was
+/// 19 with and 33 without). And from a section's last reason to its
+/// own button: hung close under it, the section's foot and no part of
+/// the next (it stood as far from the one as from the other: Opus's
+/// look).
+const SECTION_GAP: f32 = 20.0;
+const SECTION_FOOT: f32 = 5.0;
+/// On Tweaks: the most lines a question's table of changes has room for
+/// in the panel (with the question's words over it and its buttons
+/// under it).
+const LONGEST_TABLE: usize = 19;
+
+/// The Tweaks tab's page, and whether it fills the tab's panel to its
+/// frame: the machine's own settings, as root found them
+/// (`olo_rex_client::tune`): each kind a line that says how the host
+/// stands, with Apply… where something of it is short and Put Back…
+/// where Olo's file is there, and its reason under it. They were the
+/// Server window's Limits page (Ben, 2026-11-26: "they really belong in
+/// manage host. please move those into a new tab in the manage host
+/// window called 'Tweaks'"), with two more: temporary files kept on
+/// disk, and brush as the sign-in shell.
+///
+/// The host is asked as the tab is first shown (root signed in, or
+/// sudo: `server::for_tweaks`); while it is, while a change is put to
+/// the person, is under way or didn't go, the page itself is that
+/// stage's alert, as the Server window shows it: the alert's stripe
+/// down the panel's own edge, its words and buttons ending where the
+/// list's do. (It was a framed box in the page: a frame in a frame,
+/// its edges an inset off the list's, a card set on the window; Opus's
+/// look.) Where there is nothing to show, the page says why in a line
+/// of the window's own grammar, under a heading, as its other tabs say
+/// how a thing stands (it was an icon over centred words, the one
+/// thing in the window that was).
+fn tweaks_page(host: &HostStands, managed: bool, tweaks: Option<&crate::server::Managed>, phase: f32, wide: f32, on_do: &Rc<dyn Fn(&HostDo, &mut WindowCx)>) -> (Element, bool) {
+    use crate::server::Stage;
+    use crate::server_panel::ServerDo;
+    use olo_rex_client::manage::Action;
+    use olo_rex_client::tune::{Tune, said};
+    let ask = |what: ServerDo| HostDo::Tweak(what);
+    // (At least as wide as the window's column of buttons, whose right
+    // edge it ends at: "Apply Suggested…" and "Read Settings" are a
+    // little wider, each alone on its line. Counted into the column's
+    // width they widened every button of every tab, and a note beside
+    // them on another tab took a line more: the window grew 15 points.)
+    let button = |label: &'static str, id: &str, what: HostDo, enabled: bool| {
+        let on_do = on_do.clone();
+        Button::new(label).id(id.to_owned()).min_width(wide).enabled(enabled).on_click(move |_, cx| on_do(&what, cx))
+    };
+    let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
+    let gap = |h: f32| div().h(px(h)).flex_shrink_0().into_element();
+    let under = panels::LIGHT + m::TIGHT;
+    let short_of = wide + m::SECTION;
+    // A line of the page, in the window's own grammar: its light, its
+    // name, how it stands after a dot, its button in the window's
+    // column; and its reason right under it.
+    let line = |lamp: Light, name: String, state: Option<String>, action: Option<Button>, reason: String| {
+        let mut words = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(panels::light(lamp)).child(StringView::new(name));
+        if let Some(state) = state {
+            words = words.child(div().flex_1().min_w_0().child(StringView::new(format!("·  {state}")).dim(true).cut(true)));
+        }
+        // (As tall as a button, with one or without: one pitch down the page.)
+        let mut row = div().w_full().min_h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().gap(px(m::SPACING)).child(words);
+        let buttoned = action.is_some();
+        if let Some(action) = action {
+            row = row.child(action);
+        }
+        // (Short of the buttons' column where the line has a button; to
+        // the page's edge where it has none.)
+        let why = div().w_full().min_h(px(ROW_REASON)).pl(px(under)).pr(px(if buttoned { short_of } else { 0.0 })).child(small(reason));
+        div().w_full().flex().flex_col().child(row).child(why).into_element()
+    };
+    let titled = |title: &'static str, under: Vec<Element>| div().w_full().flex().flex_col().child(section(title)).child(gap(m::TIGHT)).children(under).into_element();
+    let page = |sections: Vec<Element>| div().w_full().p(px(m::SPACING)).flex().flex_col().children(sections).into_element();
+    let nothing =
+        |name: &'static str, reason: String, action: Option<Button>| (page(vec![titled("Settings", vec![line(Light::Off, olo_kit::words::tr(name).to_string(), None, action, reason)])]), false);
+    if !managed {
+        return nothing("Not reached over SSH", olo_kit::tr!("Rex changes a machine’s settings as root, over SSH. Olo reaches {} another way.", host.name).into(), None);
+    }
+    let Some(tweaks) = tweaks else {
+        if host.conn != HostConnState::Connected {
+            return nothing("Not connected", olo_kit::tr!("Connect to {} to see how it is set.", host.name).into(), None);
+        }
+        return nothing(
+            "Not read",
+            olo_kit::tr!("Rex reads {}’s settings as root. Nothing is changed until you choose something to do.", host.name).into(),
+            Some(button("Read Settings", "host-tweaks-read", ask(ServerDo::Again), true)),
+        );
+    };
+    // The alert a stage is: the panel to its frame (`TabView::fill_page`),
+    // so the alert's stripe runs down the panel's own edge. Its words
+    // and buttons end where the list's do: the list stands in from the
+    // panel's outside by the panel's inset and the page's own, an alert
+    // from the frame's inside by the window's inset.
+    let frame = m::WINDOW_INSET - olo_kit::widgets::tabs::fill_reach();
+    let more = (m::SPACING - frame).max(0.0);
+    let width = HOST_WIDTH - 2.0 * m::WINDOW_INSET - 2.0 * frame - more;
+    let stage_button = {
+        let on_do = on_do.clone();
+        move |label: &'static str, what: ServerDo| {
+            let on_do = on_do.clone();
+            let what = HostDo::Tweak(what);
+            Button::new(olo_kit::words::tr(label).to_owned()).min_width(m::BUTTON_MIN_WIDTH).on_click(move |_, cx| on_do(&what, cx))
+        }
+    };
+    // In brush's question: whether the accounts there are get it too
+    // (the table under it follows the choice).
+    let extra = match (&tweaks.stage, tweaks.server.as_ref().and_then(|server| server.tuning.as_ref())) {
+        (Stage::Confirm { action: Action::Tune(kinds), .. }, Some(tuning)) if kinds.contains(&Tune::Shell) && !tuning.of(Tune::Shell).met() && !tuning.accounts.is_empty() => {
+            let on_do = on_do.clone();
+            let label: SharedString = match tuning.accounts.as_slice() {
+                [(only, _)] => olo_kit::tr!("Also give Brush to {}, the account already on {}", only, host.name).into(),
+                accounts => olo_kit::tr!("Also give Brush to the {} accounts already on {}", accounts.len(), host.name).into(),
+            };
+            Some(olo_kit::widgets::CheckBox::new(label, tuning.everyone).id("host-tweaks-everyone").on_toggle(move |on: &bool, cx| on_do(&HostDo::TweakEveryone(*on), cx)).into_element())
+        }
+        _ => None,
+    };
+    let wrap = |icon: &str, body: Vec<Element>, foot: Element| {
+        let said = div().w_full().pr(px(more)).flex().flex_col().children(body).child(gap(m::SPACING + 4.0)).child(foot);
+        // (Begun where the list's first line is, as it ends where the
+        // list's lines do: the page's first line stood ten points
+        // higher as a question than as the list, and jumped.)
+        olo_kit::widgets::AlertFrame::new(icon.to_owned()).lower(more).child(said).into_element()
+    };
+    let on_key = {
+        let on_do = on_do.clone();
+        move |i: &usize, cx: &mut WindowCx| on_do(&HostDo::TweakKey(*i), cx)
+    };
+    // (A question whose table is longer than the panel has room for is a
+    // page like the list, which the window grows to: in the panel to
+    // its frame its buttons would be cut by the frame. All that the
+    // demo's machine is short of is nineteen lines, and fits.)
+    let long = match (&tweaks.stage, tweaks.server.as_ref()) {
+        (Stage::Confirm { action, .. }, Some(server)) => action.changes(server).is_some_and(|lines| lines.len() > LONGEST_TABLE),
+        _ => false,
+    };
+    if let Some(stage) = crate::server_panel::render_stage(tweaks, phase, width, true, extra, &wrap, &stage_button, on_key, |_: &usize, _: &mut WindowCx| {}) {
+        return if long { (div().w_full().flex().flex_col().child(stage).into_element(), false) } else { (stage, true) };
+    }
+    let Some(tuning) = tweaks.server.as_ref().and_then(|server| server.tuning.as_ref()) else {
+        return nothing("Not read", olo_kit::tr!("{} didn’t say how it is set.", host.name).into(), Some(button("Try Again", "host-tweaks-read", ask(ServerDo::Again), true)));
+    };
+    // One tweak: how it stands, and what its button asks.
+    let row = |tune: Tune| {
+        let stands = tuning.of(tune);
+        let short: Vec<_> = stands.values.iter().filter(|v| !v.met()).collect();
+        // How it stands: applied; as the host has it by itself; or what
+        // is short (one setting: from what to what; several: how many
+        // of them; brush: whether it is there at all).
+        let (lamp, state): (Light, String) = match (tune, short.as_slice()) {
+            (_, []) if stands.kept => (Light::On, olo_kit::words::tr("applied").into()),
+            (_, []) => (Light::On, olo_kit::words::tr("as the machine has it").into()),
+            (Tune::Shell, _) if tuning.brush_there => (Light::Off, olo_kit::words::tr("installed, not what new accounts are given").into()),
+            (Tune::Shell, _) => (Light::Off, olo_kit::words::tr("not installed").into()),
+            (_, [one]) if stands.values.len() == 1 => (Light::Off, olo_kit::tr!("{} now, {} suggested", one.now.map_or("?".to_owned(), |now| said(one.name, now)), said(one.name, one.wanted)).into()),
+            (_, all) if all.len() == stands.values.len() => (Light::Off, olo_kit::tr!("{} settings to change", all.len()).into()),
+            (_, some) => (Light::Off, olo_kit::tr!("{} of {} settings to change", some.len(), stands.values.len()).into()),
+        };
+        let id = format!("host-tweak-{}", tune.id());
+        let action = match (short.is_empty(), stands.kept) {
+            (false, _) => button("Apply…", &id, ask(ServerDo::Ask(Action::Tune(vec![tune]))), true),
+            (true, true) => button("Put Back…", &id, ask(ServerDo::Ask(Action::Untune(tune))), true),
+            (true, false) => button("Apply…", &id, ask(ServerDo::Back), false),
+        };
+        line(lamp, olo_kit::words::tr(tune.title()).to_string(), Some(state), Some(action), olo_kit::words::tr(tune.why()).into())
+    };
+    let rows = |kinds: &[Tune]| div().w_full().flex().flex_col().gap(px(ROW_GAP)).children(kinds.iter().map(|kind| row(*kind))).into_element();
+    // What the machine comes with, changed for heavy work: the section
+    // says so under its heading, and all that are short at once is the
+    // section's own button, at its foot in the buttons' column, there
+    // while something is short. (Beside the caption, over the first
+    // tweak's, it read as an eighth row that had lost its light and
+    // its name, and stayed, greyed, over seven Put Back…: both looks.
+    // Brush is a choice of its own, in a section of its own.)
+    let work = [Tune::Sessions, Tune::Files, Tune::Kernel, Tune::Writeback, Tune::Memory, Tune::TempFiles];
+    let suggested: Vec<Tune> = tuning.short().into_iter().filter(|kind| work.contains(kind)).collect();
+    // (The caption as far under the heading's rule as a tweak's words
+    // are: a line of text is three points nearer its top than a
+    // button's label is.)
+    let mut heavy = vec![gap(3.0), small(olo_kit::words::tr("Changes a Linux machine’s defaults for long builds and many sessions.").into()).into_element(), gap(m::SPACING), rows(&work)];
+    let quiet = suggested.is_empty();
+    if !quiet {
+        heavy.push(gap(SECTION_FOOT));
+        heavy.push(div().w_full().flex().flex_row().child(div().flex_1()).child(button("Apply Suggested…", "host-tweaks-all", ask(ServerDo::Ask(Action::Tune(suggested))), true)).into_element());
+    }
+    (page(vec![titled("Heavy work", heavy), gap(SECTION_GAP), titled("Sign-in shell", vec![rows(&[Tune::Shell])])]), false)
+}
+
 /// The window's content for `host`: `managed` whether its Rex server
 /// can be looked after from here.
-pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, screens_list: Option<Element>, on_do: impl Fn(&HostDo, &mut WindowCx) + 'static) -> Element {
+/// (`tweaks`: the host as root found it, for the Tweaks tab, where it
+/// has been asked; `phase`: where a busy bar's block is.)
+pub fn render_host_panel(
+    host: &HostStands,
+    shown: &Shown,
+    managed: bool,
+    screens_list: Option<Element>,
+    tweaks: Option<&crate::server::Managed>,
+    phase: f32,
+    on_do: impl Fn(&HostDo, &mut WindowCx) + 'static,
+) -> Element {
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
@@ -658,6 +875,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, screen
         "Copy",
         "Look",
         "Stop",
+        "Apply…",
+        "Put Back…",
     ]
     .iter()
     .map(|l| button_width(l, false))
@@ -1312,7 +1531,7 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, screen
     // and Olo's, so the window keeps its height and its foot its place
     // from tab to tab: both looks. The folders' list fills that room and
     // scrolls in it.)
-    let tab = shown.tab.min(3);
+    let tab = shown.tab.min(crate::host::TWEAKS);
     let on_tab = on_do.clone();
     let mut files_dot: Option<Light> = None;
     for k in &host.kept {
@@ -1321,17 +1540,24 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, screen
             bump_dot(&mut files_dot, ks.light);
         }
     }
-    let names: Vec<SharedString> = ["Rex", "Olo Integration", "Files", "Screens"].into_iter().map(SharedString::from).collect();
+    let names: Vec<SharedString> = ["Rex", "Olo Integration", "Files", "Screens", "Tweaks"].into_iter().map(SharedString::from).collect();
+    // The machine's own settings, last: what root found, each a line
+    // as the window's other things are; or the alert of the stage the
+    // work is at, in the page.
+    let tweaks_dot = tweaks.and_then(|t| matches!(t.stage, crate::server::Stage::Failed { .. }).then_some(Light::Down));
+    let (tweaks_page, tweaks_fills) = tweaks_page(host, managed, tweaks, phase, wide, &on_do);
     let page_of = |things: Vec<Element>| div().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(things).into_element();
-    page.push(
-        TabView::new("host-tabs", names, tab)
-            .lights([rex_dot, olo_dot, files_dot, screens_dot])
-            .grows()
-            .on_select(move |i: &usize, cx| on_tab(&HostDo::Tab(*i), cx))
-            .pages([page_of(rex), page_of(olo), files, page_of(screens)])
-            .fill_page(2)
-            .into_element(),
-    );
+    let mut tabs = TabView::new("host-tabs", names, tab)
+        .lights([rex_dot, olo_dot, files_dot, screens_dot, tweaks_dot])
+        .grows()
+        .on_select(move |i: &usize, cx| on_tab(&HostDo::Tab(*i), cx))
+        .pages([page_of(rex), page_of(olo), files, page_of(screens), tweaks_page])
+        .fill_page(2);
+    // (Tweaks, while it is an alert: the panel to its frame.)
+    if tweaks_fills {
+        tabs = tabs.fill_page(crate::host::TWEAKS);
+    }
+    page.push(tabs.into_element());
 
     // Everything of Olo's off the host at once: the one thing here
     // that asks first, in its own place at the window's foot.

@@ -45,10 +45,25 @@ pub enum Tune {
     Writeback,
     /// Memory kept for what builds read again and again.
     Memory,
+    /// Where programs put their scratch files: on disk, where `/tmp` is
+    /// the machine's memory. Ben, 2026-11-26: "add an item in there
+    /// that checks if /tmp is in ram and if it is and the various tmp
+    /// dir system envs are not set have it suggest setting them and
+    /// able to apply it there" ("the temp folder system envs on the
+    /// server aren't set today -- because /tmp is ram they should all
+    /// be set to be /var/tmp instead").
+    TempFiles,
+    /// brush (github.com/reubeno/brush, the bash-compatible shell in
+    /// Rust that Olo's own desktop signs in to) put on the host and
+    /// made the shell new accounts are given. Ben, 2026-11-26: "as
+    /// another suggestion under tweaks, add one for installing brush
+    /// shell and making it the default for all users with an option to
+    /// also change for all existing users" ([`Tuning::everyone`]).
+    Shell,
 }
 
 impl Tune {
-    pub const ALL: [Tune; 5] = [Tune::Sessions, Tune::Files, Tune::Kernel, Tune::Writeback, Tune::Memory];
+    pub const ALL: [Tune; 7] = [Tune::Sessions, Tune::Files, Tune::Kernel, Tune::Writeback, Tune::Memory, Tune::TempFiles, Tune::Shell];
 
     /// Its name in commands and in the files' names.
     pub fn id(self) -> &'static str {
@@ -58,6 +73,8 @@ impl Tune {
             Tune::Kernel => "kernel",
             Tune::Writeback => "writeback",
             Tune::Memory => "memory",
+            Tune::TempFiles => "tmpdir",
+            Tune::Shell => "shell",
         }
     }
 
@@ -68,17 +85,21 @@ impl Tune {
             Tune::Kernel => "Kernel limits",
             Tune::Writeback => "Writing to disk",
             Tune::Memory => "Memory for builds",
+            Tune::TempFiles => "Temporary files",
+            Tune::Shell => "Brush shell",
         }
     }
 
     /// Why, in a sentence.
     pub fn why(self) -> &'static str {
         match self {
-            Tune::Sessions => "SSH allows ten sessions on a connection by default; each pane uses one.",
-            Tune::Files => "Builds and agents open many files and start many tasks at once.",
-            Tune::Kernel => "File watchers, linkers and large programs run into the kernel’s own ceilings.",
+            Tune::Sessions => "Lets each pane have its own session; SSH’s default is ten per connection.",
+            Tune::Files => "Lets builds and agents open many files and start many tasks at once.",
+            Tune::Kernel => "Raises the kernel’s ceilings that file watchers and large programs hit.",
             Tune::Writeback => "Lets a build’s many small writes reach the disk together.",
             Tune::Memory => "Keeps a build’s files in memory and running programs out of swap.",
+            Tune::TempFiles => "Keeps programs’ scratch files on disk where /tmp is in memory.",
+            Tune::Shell => "Installs a fast, bash-compatible shell as new accounts’ sign-in shell.",
         }
     }
 
@@ -88,6 +109,8 @@ impl Tune {
             Tune::Sessions => Some("The SSH server reads its settings again; open connections stay."),
             Tune::Files => Some("The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start."),
             Tune::Kernel | Tune::Writeback | Tune::Memory => None,
+            Tune::TempFiles => Some("Programs are told to use /var/tmp, from their next sign-in or start. Unlike /tmp, /var/tmp isn’t emptied when the machine restarts."),
+            Tune::Shell => Some("Brush is downloaded from its project on GitHub, checked against the build Olo knows, and tried before any account is given it."),
         }
     }
 
@@ -107,6 +130,15 @@ impl Tune {
             Tune::Kernel => &["/etc/sysctl.d/90-olo-kernel.conf"],
             Tune::Writeback => &["/etc/sysctl.d/90-olo-writeback.conf"],
             Tune::Memory => &["/etc/sysctl.d/90-olo-memory.conf"],
+            Tune::TempFiles => &[
+                "/etc/profile.d/90-olo-tmpdir.sh",
+                "/etc/profile.d/90-olo-tmpdir.csh",
+                "/etc/environment.d/90-olo-tmpdir.conf",
+                "/etc/systemd/system.conf.d/90-olo-tmpdir.conf",
+                "/etc/ssh/sshd_config.d/00-olo-tmpdir.conf",
+                "/etc/sudoers.d/90-olo-tmpdir",
+            ],
+            Tune::Shell => &[BRUSH, BRUSH_WAS],
         }
     }
 
@@ -135,6 +167,12 @@ impl Tune {
                 vec![("vm.dirty_background_bytes", (8 * GB).min(dirty / 4) >> 20 << 20, false), ("vm.dirty_bytes", dirty, false), ("vm.dirty_expire_centisecs", 6000, false)]
             }
             Tune::Memory => vec![("vm.swappiness", 10, true), ("vm.vfs_cache_pressure", 50, true)],
+            // (One thing, yes or no: whether what a sign-in is told to
+            // put its scratch files in is on disk. [`TEMP_ON_DISK`].)
+            Tune::TempFiles => vec![(TEMP_ON_DISK, 1, false)],
+            // (And one: whether brush is there and is what a new
+            // account is given. [`BRUSH_DEFAULT`].)
+            Tune::Shell => vec![(BRUSH_DEFAULT, 1, false)],
         }
     }
 
@@ -147,14 +185,14 @@ impl Tune {
         if short.is_empty() {
             return None;
         }
-        let head = "# Olo's Rex put this here (the host's window, Limits). Remove it there, or delete this file.";
+        let head = "# Olo's Rex put this here (the Host window, Tweaks). Put it back there, or delete this file.";
         Some(match self {
             Tune::Sessions => format!(
                 "set -e\nf=/etc/ssh/sshd_config.d/00-olo.conf\n\
-                 grep -qiE '^[[:space:]]*Include[[:space:]].*sshd_config\\.d' /etc/ssh/sshd_config || {{ echo 'This host’s sshd_config reads no sshd_config.d folder.'; exit 1; }}\n\
+                 grep -qiE '^[[:space:]]*Include[[:space:]].*sshd_config\\.d' /etc/ssh/sshd_config || {{ echo 'Rex: This host’s sshd_config reads no sshd_config.d folder.'; exit 1; }}\n\
                  mkdir -p /etc/ssh/sshd_config.d\n\
                  printf '%s\\n' {} 'MaxSessions {SESSIONS}' > \"$f\"\n\
-                 if ! sshd -t; then rm -f \"$f\"; echo 'The SSH server refused the setting; it was taken out again.'; exit 1; fi\n\
+                 if ! sshd -t; then rm -f \"$f\"; echo 'Rex: The SSH server refused the setting; it was taken out again.'; exit 1; fi\n\
                  systemctl reload sshd 2> /dev/null || systemctl reload ssh\n",
                 shell_word(head)
             ),
@@ -175,9 +213,32 @@ impl Tune {
                  printf '%s\\n' {head} '[Manager]' \"DefaultLimitNOFILE=$n:$n\" > /etc/systemd/user.conf.d/90-olo.conf\n\
                  printf '%s\\n' {head} '[Login]' 'UserTasksMax=infinity' > /etc/systemd/logind.conf.d/90-olo.conf\n\
                  systemctl daemon-reexec\n\
-                 if command -v su > /dev/null 2>&1 && ! su - root -c true > /dev/null 2>&1; then rm -f /etc/security/limits.d/90-olo.conf; echo 'A sign-in was refused with the new limits; they were taken out again.'; exit 1; fi\n",
+                 if command -v su > /dev/null 2>&1 && ! su - root -c true > /dev/null 2>&1; then rm -f /etc/security/limits.d/90-olo.conf; echo 'Rex: A sign-in was refused with the new limits; they were taken out again.'; exit 1; fi\n",
                 head = shell_word(head)
             ),
+            Tune::TempFiles => {
+                let each = |f: &dyn Fn(&str) -> String, between: &str| TEMP_NAMES.iter().map(|n| f(n)).collect::<Vec<_>>().join(between);
+                TEMP_APPLY
+                    .replace("@HEAD@", &shell_word(head))
+                    .replace("@EXPORT@", &shell_word(&format!("export {}", each(&|n| format!("{n}={TEMP_DIR}"), " "))))
+                    .replace("@SETENV@", &each(&|n| shell_word(&format!("setenv {n} {TEMP_DIR}")), " "))
+                    .replace("@LINES@", &each(&|n| shell_word(&format!("{n}={TEMP_DIR}")), " "))
+                    .replace("@DEFAULT@", &shell_word(&format!("DefaultEnvironment={}", each(&|n| format!("{n}={TEMP_DIR}"), " "))))
+                    .replace("@SSH@", &shell_word(&format!("SetEnv {}", each(&|n| format!("{n}={TEMP_DIR}"), " "))))
+                    .replace("@KEEP@", &shell_word(&format!("Defaults env_keep += \"{}\"", TEMP_NAMES.join(" "))))
+                    .replace("@DIR@", TEMP_DIR)
+            }
+            Tune::Shell => {
+                let sums = BRUSH_BUILDS.iter().map(|(arch, sum)| format!("{arch}) sum={sum} ;;")).collect::<Vec<_>>().join(" ");
+                SHELL_APPLY
+                    .replace("@HEAD@", &shell_word(head))
+                    .replace("@SUMS@", &sums)
+                    .replace("@VERSION@", BRUSH_VERSION)
+                    .replace("@EVERYONE@", if tuning.everyone { "1" } else { "0" })
+                    .replace("@ACCOUNTS@", ACCOUNTS)
+                    .replace("@WAS@", BRUSH_WAS)
+                    .replace("@B@", BRUSH)
+            }
             Tune::Kernel | Tune::Writeback | Tune::Memory => {
                 let file = self.files()[0];
                 // (What each was, noted in the file: what taking it
@@ -205,6 +266,12 @@ impl Tune {
         match self {
             Tune::Sessions => "rm -f /etc/ssh/sshd_config.d/00-olo.conf\nsystemctl reload sshd 2> /dev/null || systemctl reload ssh\n".to_owned(),
             Tune::Files => format!("rm -f {}\nsystemctl daemon-reexec\n", self.files().join(" ")),
+            Tune::TempFiles => format!(
+                "ssh=0; [ -f /etc/ssh/sshd_config.d/00-olo-tmpdir.conf ] && ssh=1\nsys=0; [ -f /etc/systemd/system.conf.d/90-olo-tmpdir.conf ] && sys=1\nrm -f {}\n\
+                 [ $ssh = 1 ] && {{ systemctl reload sshd 2> /dev/null || systemctl reload ssh 2> /dev/null || true; }}\n[ $sys = 1 ] && {{ systemctl daemon-reexec 2> /dev/null || true; }}\ntrue\n",
+                self.files().join(" ")
+            ),
+            Tune::Shell => SHELL_UNDO.replace("@WAS@", BRUSH_WAS).replace("@B@", BRUSH),
             Tune::Kernel | Tune::Writeback | Tune::Memory => {
                 let file = self.files()[0];
                 // (A ratio's bytes put back to nothing gives the say
@@ -213,6 +280,181 @@ impl Tune {
             }
         }
     }
+}
+
+/// Where Olo would have programs put their scratch files: on disk on
+/// every Linux, there across restarts, writable by all as `/tmp` is.
+pub const TEMP_DIR: &str = "/var/tmp";
+
+/// The one setting of [`Tune::TempFiles`], as [`LOOK`] says it: 1 where
+/// the folder a sign-in's programs are told to use for scratch files
+/// (`TMPDIR`, else `/tmp`) is on disk, 0 where it is the machine's
+/// memory.
+pub const TEMP_ON_DISK: &str = "temporary files";
+
+/// Every name a program may ask where its scratch files go: POSIX's
+/// `TMPDIR`; `TMP`, `TEMP` and `TEMPDIR`, which Python, Node, Ruby and
+/// others read too; and Claude Code's own (an agent's commands and
+/// their output: most of what agents on a host leave behind).
+pub const TEMP_NAMES: [&str; 5] = ["TMPDIR", "TMP", "TEMP", "TEMPDIR", "CLAUDE_CODE_TMPDIR"];
+
+/// [`Tune::TempFiles`] applied: a file of Olo's own for each way a
+/// program comes by its environment. A sign-in's shell (`profile.d`,
+/// for sh's kind and for csh's); what the account's own systemd starts
+/// (`environment.d`: a Rex server kept as a service, and all under it);
+/// the machine's services (`system.conf.d`, read at once); a command
+/// run over SSH with no sign-in shell (`SetEnv`, which the SSH server
+/// is asked to check before it is kept, as its sessions are); and sudo,
+/// which otherwise drops them (`env_keep`, checked by `visudo` before
+/// it is put where sudo reads it: a file sudo can't read stops sudo).
+/// The last two only where the host reads such a folder, and neither
+/// keeps the rest from being applied.
+const TEMP_APPLY: &str = r#"set -e
+[ -d @DIR@ ] && [ -w @DIR@ ] || { echo 'Rex: This host has no @DIR@ to write to.'; exit 1; }
+mkdir -p /etc/profile.d /etc/environment.d /etc/systemd/system.conf.d
+printf '%s\n' @HEAD@ @EXPORT@ > /etc/profile.d/90-olo-tmpdir.sh
+printf '%s\n' @HEAD@ @SETENV@ > /etc/profile.d/90-olo-tmpdir.csh
+printf '%s\n' @HEAD@ @LINES@ > /etc/environment.d/90-olo-tmpdir.conf
+printf '%s\n' @HEAD@ '[Manager]' @DEFAULT@ > /etc/systemd/system.conf.d/90-olo-tmpdir.conf
+systemctl daemon-reexec 2> /dev/null || true
+f=/etc/ssh/sshd_config.d/00-olo-tmpdir.conf
+if grep -qiE '^[[:space:]]*Include[[:space:]].*sshd_config\.d' /etc/ssh/sshd_config 2> /dev/null; then
+  mkdir -p /etc/ssh/sshd_config.d
+  printf '%s\n' @HEAD@ @SSH@ > "$f"
+  if sshd -t 2> /dev/null; then systemctl reload sshd 2> /dev/null || systemctl reload ssh 2> /dev/null || true; else rm -f "$f"; echo 'Rex: The SSH server took no SetEnv: a command run over SSH with no sign-in keeps /tmp.'; fi
+fi
+f=/etc/sudoers.d/90-olo-tmpdir
+if [ -d /etc/sudoers.d ] && grep -qE '^[#@]includedir[[:space:]]+/etc/sudoers\.d' /etc/sudoers 2> /dev/null && command -v visudo > /dev/null 2>&1; then
+  printf '%s\n' @HEAD@ @KEEP@ > "$f.new"
+  chmod 0440 "$f.new"
+  if visudo -cf "$f.new" > /dev/null 2>&1; then mv -f "$f.new" "$f"; else rm -f "$f.new"; echo 'Rex: sudo took no env_keep: what is run with sudo keeps /tmp.'; fi
+fi
+"#;
+
+/// Where brush is put on a host: where Olo's own desktop has it.
+pub const BRUSH: &str = "/usr/local/bin/brush";
+
+/// What [`Tune::Shell`] found before it changed anything, for the way
+/// back: the shell new accounts were given, `adduser`'s own line where
+/// the host has one, and each account changed with the shell it had.
+const BRUSH_WAS: &str = "/etc/olo-brush.was";
+
+/// The release of brush a host is given, and what each of its builds
+/// is (SHA-256 of the project's own archive, as GitHub gave it when
+/// this was written): its static builds, which run on any Linux. A
+/// download that isn't the build known here is not installed.
+pub const BRUSH_VERSION: &str = "0.5.0";
+const BRUSH_BUILDS: [(&str, &str); 2] =
+    [("x86_64", "541a5d12c7e6a62e341bd7705ac018993b6ba36261e126d77682d6bb052b2103"), ("aarch64", "8bb25aab542eb6fcd6c6885c289fd4ae6f4833c4cc627e32768e71ee4220490b")];
+
+/// The one setting of [`Tune::Shell`], as [`LOOK`] says it: 1 where
+/// brush is on the host and is the shell a new account is given.
+pub const BRUSH_DEFAULT: &str = "brush";
+
+/// The machine's own accounts that people sign in to with a shell of
+/// the usual kind, and not brush yet, a name a line (awk, over
+/// `/etc/passwd`, given `min`, `max` and `b`): who [`Tuning::everyone`]
+/// changes. Never an account of a directory's (the machine can't
+/// change those), a service's, nor one kept to a program that isn't a
+/// shell (`git-shell`, `rbash`, `nologin`: to give such an account a
+/// shell is to let it in).
+const ACCOUNTS: &str = r#"$3 >= min && $3 <= max && $7 != b && $7 ~ /\/(sh|bash|dash|ash|zsh|ksh|mksh|fish|csh|tcsh)$/"#;
+
+/// [`Tune::Shell`] applied (it says what it is at, a line each: the
+/// window shows the last line a change wrote while it is under way,
+/// and this one takes as long as the download). Brush's own static build for the machine,
+/// downloaded to a folder of its own on disk, checked, run once by
+/// itself and once as a sign-in's shell, and only then put in place,
+/// listed in `/etc/shells` and made what new accounts are given
+/// (`useradd -D`, and `adduser`'s own `DSHELL` where the host has
+/// that). `@EVERYONE@`: the accounts there are too ([`ACCOUNTS`]),
+/// each noted with the shell it had.
+const SHELL_APPLY: &str = r#"set -e
+b=@B@; was=@WAS@
+case "$(uname -m)" in x86_64 | amd64) arch=x86_64 ;; aarch64 | arm64) arch=aarch64 ;; *) echo "Rex: Brush has no build for this machine ($(uname -m))."; exit 1 ;; esac
+case $arch in @SUMS@ esac
+n=brush-$arch-unknown-linux-musl.tar.gz
+d=$(mktemp -d /var/tmp/olo-brush.XXXXXX); trap 'rm -rf "$d"' EXIT
+url=https://github.com/reubeno/brush/releases/download/brush-shell-v@VERSION@/$n
+echo "Rex> Downloading brush @VERSION@ from GitHub"
+if command -v curl > /dev/null 2>&1; then curl -fsSL --retry 2 -o "$d/$n" "$url" || { echo 'Rex: Brush couldn’t be downloaded from GitHub; nothing was installed.'; exit 1; }
+elif command -v wget > /dev/null 2>&1; then wget -q -O "$d/$n" "$url" || { echo 'Rex: Brush couldn’t be downloaded from GitHub; nothing was installed.'; exit 1; }
+else echo 'Rex: This host has neither curl nor wget to download brush with.'; exit 1; fi
+[ "$(sha256sum "$d/$n" | cut -d ' ' -f 1)" = "$sum" ] || { echo 'Rex: What was downloaded isn’t the brush @VERSION@ that Olo knows; nothing was installed.'; exit 1; }
+echo "Rex> Checked: it is the build Olo knows. Trying it"
+tar -xzf "$d/$n" -C "$d" brush
+"$d/brush" -c 'exit 0' || { echo 'Rex: Brush doesn’t run on this host; nothing was installed.'; exit 1; }
+install -m 0755 "$d/brush" "$b.new"
+mv -f "$b.new" "$b"
+if command -v su > /dev/null 2>&1 && ! su -s "$b" - root -c 'exit 0' > /dev/null 2>&1; then rm -f "$b"; echo 'Rex: A sign-in with brush as its shell didn’t work here; it was taken out again.'; exit 1; fi
+grep -qxF "$b" /etc/shells 2> /dev/null || echo "$b" >> /etc/shells
+if [ ! -f "$was" ]; then
+  printf '%s\n' @HEAD@ "default $(useradd -D | sed -n 's/^SHELL=//p')" > "$was"
+  [ -f /etc/adduser.conf ] && echo "adduser $(grep -m 1 -E '^#?[[:space:]]*DSHELL=' /etc/adduser.conf)" >> "$was"
+fi
+echo "Rex> Making it the shell new accounts are given"
+useradd -D -s "$b"
+if [ -f /etc/adduser.conf ]; then
+  if grep -qE '^#?[[:space:]]*DSHELL=' /etc/adduser.conf; then sed -i -E "0,/^#?[[:space:]]*DSHELL=.*/s||DSHELL=$b|" /etc/adduser.conf; else echo "DSHELL=$b" >> /etc/adduser.conf; fi
+fi
+if [ @EVERYONE@ = 1 ]; then
+  min=$(awk '$1 == "UID_MIN" {print $2}' /etc/login.defs 2> /dev/null); max=$(awk '$1 == "UID_MAX" {print $2}' /etc/login.defs 2> /dev/null)
+  awk -F: -v min="${min:-1000}" -v max="${max:-60000}" -v b="$b" '@ACCOUNTS@ {print $1, $7}' /etc/passwd | while read -r who had; do
+    echo "user $who $had" >> "$was"
+    echo "Rex> Changing $who’s shell"
+    usermod -s "$b" "$who"
+  done
+fi
+"#;
+
+/// [`Tune::Shell`] taken back, from what it noted: each account it
+/// changed given the shell it had (one that has chosen another since
+/// keeps its choice), new accounts given what they were, and brush
+/// itself taken off, unless an account still signs in to it (one that
+/// chose it by itself: to take its shell away is to lock it out).
+const SHELL_UNDO: &str = r#"b=@B@; was=@WAS@
+[ -f "$was" ] || exit 0
+sed -n 's/^user \([^ ]*\) \(.*\)$/\1 \2/p' "$was" | while read -r who had; do
+  [ "$(awk -F: -v who="$who" '$1 == who {print $7}' /etc/passwd)" = "$b" ] && usermod -s "$had" "$who"
+done
+had=$(sed -n 's/^default //p' "$was" | head -n 1)
+useradd -D -s "${had:-/bin/sh}"
+if [ -f /etc/adduser.conf ] && grep -q '^adduser' "$was"; then
+  line=$(sed -n 's/^adduser \{0,1\}//p' "$was" | head -n 1)
+  if [ -n "$line" ]; then sed -i "s|^DSHELL=$b\$|$line|" /etc/adduser.conf; else sed -i "\|^DSHELL=$b\$|d" /etc/adduser.conf; fi
+fi
+rm -f "$was"
+if awk -F: -v b="$b" '$7 == b {found = 1} END {exit !found}' /etc/passwd; then
+  echo "Rex: Brush stays installed: $(awk -F: -v b="$b" '$7 == b {print $1}' /etc/passwd | tr '\n' ' ')still signs in to it."
+else
+  sed -i "\|^$b\$|d" /etc/shells
+  rm -f "$b"
+fi
+"#;
+
+/// What begins a line a script here says of its own accord: why it
+/// stops ([`SAYS`]: a sentence of Olo's, for the alert's own words),
+/// and what it is at ([`DOING`]: shown while it runs). Every other
+/// line is the host's tools' (`curl: (6) Could not resolve host`), and
+/// is shown as it was said, in a well.
+pub const SAYS: &str = "Rex: ";
+pub const DOING: &str = "Rex> ";
+
+/// What a script that stopped left as its last lines, parted: Olo's own
+/// sentences (in a row, as words), and the host's tools' lines (as they
+/// were said). What it was at is left out: it stopped.
+pub fn parted(said: &str) -> (String, String) {
+    let lines = || said.lines().map(str::trim).filter(|line| !line.is_empty());
+    let own: Vec<&str> = lines().filter_map(|line| line.strip_prefix(SAYS)).collect();
+    let tools: Vec<&str> = lines().filter(|line| !line.starts_with(SAYS) && !line.starts_with(DOING)).collect();
+    (own.join(" "), tools.join("\n"))
+}
+
+/// A line a script wrote, as the window shows it while the script runs:
+/// less the mark that says whose it is.
+pub fn shown_line(line: &str) -> &str {
+    let line = line.trim();
+    line.strip_prefix(DOING).or_else(|| line.strip_prefix(SAYS)).unwrap_or(line)
 }
 
 /// One setting, as the host has it and as Olo would set it.
@@ -240,6 +482,12 @@ impl Value {
 pub fn said(name: &str, value: u64) -> String {
     if value == u64::MAX {
         return "no limit".to_owned();
+    }
+    if name == TEMP_ON_DISK {
+        return if value == 0 { "in memory" } else { "on disk" }.to_owned();
+    }
+    if name == BRUSH_DEFAULT {
+        return if value == 0 { "not the default" } else { "the default" }.to_owned();
     }
     if name.ends_with("_bytes") {
         // (Nothing: the kernel goes by a share of memory instead.)
@@ -284,6 +532,40 @@ pub struct Tuning {
     /// set (`vm.dirty_background_ratio`, `vm.dirty_ratio`): what
     /// putting the writeback back restores.
     pub ratios: (Option<u64>, Option<u64>),
+    /// The shell a new account is given now (`useradd -D`), where the
+    /// host said.
+    pub default_shell: Option<String>,
+    /// Whether brush is on the host (whatever accounts are given).
+    pub brush_there: bool,
+    /// The machine's own accounts that sign in to another shell than
+    /// brush ([`ACCOUNTS`]), each with that shell: who `everyone` would
+    /// change.
+    pub accounts: Vec<(String, String)>,
+    /// The person's choice, in the question [`Tune::Shell`] asks:
+    /// those accounts given brush too, not only the new ones.
+    pub everyone: bool,
+    /// Each of [`TEMP_NAMES`] as a sign-in's programs have it now
+    /// (None: not set), in their order.
+    pub temp: Vec<(String, Option<String>)>,
+    /// What applying [`Tune::Shell`] noted before it changed anything
+    /// (`/etc/olo-brush.was`): the shell new accounts were given, and
+    /// each account it changed with the shell it had. What Put Back…
+    /// gives back.
+    pub was_default: Option<String>,
+    pub was_accounts: Vec<(String, String)>,
+    /// The accounts that sign in to brush now (any account's, a
+    /// service's too): while there is one that Put Back… doesn't give
+    /// its shell back to, brush stays installed.
+    pub brush_users: Vec<String>,
+}
+
+impl Tuning {
+    /// Whether putting [`Tune::Shell`] back takes brush off the host:
+    /// nobody signs in to it but the accounts that get their own shell
+    /// back.
+    pub fn brush_goes(&self) -> bool {
+        self.brush_users.iter().all(|user| self.was_accounts.iter().any(|(name, _)| name == user))
+    }
 }
 
 impl Tuning {
@@ -318,7 +600,37 @@ impl Tuning {
                 kept: output.lines().any(|line| line.trim() == format!("kept {}", tune.id())),
             })
             .collect();
-        Tuning { ram, stands, ratios: (said("vm.dirty_background_ratio"), said("vm.dirty_ratio")) }
+        let word = |name: &str| output.lines().find_map(|line| line.strip_prefix(name).and_then(|rest| rest.strip_prefix(' '))).map(str::trim).filter(|w| !w.is_empty()).map(str::to_owned);
+        Tuning {
+            ram,
+            stands,
+            ratios: (said("vm.dirty_background_ratio"), said("vm.dirty_ratio")),
+            default_shell: word("default shell"),
+            brush_there: output.lines().any(|line| line.trim() == "brush there"),
+            accounts: output
+                .lines()
+                .filter_map(|line| line.strip_prefix("account "))
+                .filter_map(|rest| rest.trim().split_once(' '))
+                .map(|(name, shell)| (name.to_owned(), shell.trim().to_owned()))
+                .collect(),
+            everyone: false,
+            temp: TEMP_NAMES
+                .iter()
+                // (By its whole name: "TMP" begins "TMPDIR" too.)
+                .map(|name| {
+                    let said = output.lines().filter_map(|line| line.strip_prefix("temp ")).map(|rest| rest.split_once(' ').unwrap_or((rest, ""))).find(|(said, _)| said.trim() == *name);
+                    ((*name).to_owned(), said.map(|(_, value)| value.trim()).filter(|value| !value.is_empty()).map(str::to_owned))
+                })
+                .collect(),
+            was_default: word("was default"),
+            was_accounts: output
+                .lines()
+                .filter_map(|line| line.strip_prefix("was user "))
+                .filter_map(|rest| rest.trim().split_once(' '))
+                .map(|(name, shell)| (name.to_owned(), shell.trim().to_owned()))
+                .collect(),
+            brush_users: output.lines().filter_map(|line| line.strip_prefix("brush user ")).map(|name| name.trim().to_owned()).filter(|name| !name.is_empty()).collect(),
+        }
     }
 }
 
@@ -333,6 +645,17 @@ echo "DefaultTasksMax $(systemctl show --property DefaultTasksMax --value 2> /de
 for k in vm.dirty_background_ratio vm.dirty_ratio fs.file-max fs.inotify.max_user_watches fs.inotify.max_user_instances fs.inotify.max_queued_events fs.aio-max-nr kernel.pid_max vm.max_map_count vm.dirty_background_bytes vm.dirty_bytes vm.dirty_expire_centisecs vm.swappiness vm.vfs_cache_pressure; do
   echo "$k $(sysctl -n $k 2> /dev/null)"
 done
+env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin sh -lc 'for n in TMPDIR TMP TEMP TEMPDIR CLAUDE_CODE_TMPDIR; do eval "v=\${$n:-}"; echo "temp $n $v"; done' 2> /dev/null
+t=$(env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin sh -lc 'printf %s "${TMPDIR:-/tmp}"' 2> /dev/null); [ -d "$t" ] || t=/tmp
+case "$(stat -f -c %T "$t" 2> /dev/null)" in tmpfs | ramfs) echo "temporary files 0" ;; ?*) echo "temporary files 1" ;; esac
+[ -f /etc/profile.d/90-olo-tmpdir.sh ] && echo "kept tmpdir"
+b=/usr/local/bin/brush; d=$(useradd -D 2> /dev/null | sed -n 's/^SHELL=//p'); echo "default shell $d"
+[ -x "$b" ] && echo "brush there"
+if [ -x "$b" ] && [ "$d" = "$b" ]; then echo "brush 1"; else echo "brush 0"; fi
+min=$(awk '$1 == "UID_MIN" {print $2}' /etc/login.defs 2> /dev/null); max=$(awk '$1 == "UID_MAX" {print $2}' /etc/login.defs 2> /dev/null)
+awk -F: -v min="${min:-1000}" -v max="${max:-60000}" -v b="$b" '$3 >= min && $3 <= max && $7 != b && $7 ~ /\/(sh|bash|dash|ash|zsh|ksh|mksh|fish|csh|tcsh)$/ {print "account " $1 " " $7}' /etc/passwd 2> /dev/null
+awk -F: -v b="$b" '$7 == b {print "brush user " $1}' /etc/passwd 2> /dev/null
+[ -f /etc/olo-brush.was ] && { echo "kept shell"; sed -n 's/^default /was default /p; s/^user /was user /p' /etc/olo-brush.was; }
 [ -f /etc/ssh/sshd_config.d/00-olo.conf ] && echo "kept sessions"
 [ -f /etc/security/limits.d/90-olo.conf ] && echo "kept files"
 for g in kernel writeback memory; do [ -f /etc/sysctl.d/90-olo-$g.conf ] && echo "kept $g"; done
@@ -400,7 +723,7 @@ mod tests {
     fn a_host_made_ready_has_nothing_to_apply_and_says_what_is_kept() {
         let ready = "ram 65536000\nMaxSessions 1024\nopen files 1048576\nDefaultLimitNOFILE 1048576\nDefaultTasksMax infinity\nfs.file-max 9223372036854775807\nfs.inotify.max_user_watches 1048576\n\
             fs.inotify.max_user_instances 8192\nfs.inotify.max_queued_events 65536\nfs.aio-max-nr 1048576\nkernel.pid_max 4194304\nvm.max_map_count 1048576\nvm.dirty_background_bytes 8589934592\n\
-            vm.dirty_bytes 33554432000\nvm.dirty_expire_centisecs 6000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\nkept sessions\nkept files\nkept kernel\nkept writeback\nkept memory\n";
+            vm.dirty_bytes 33554432000\nvm.dirty_expire_centisecs 6000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\ntemporary files 1\ndefault shell /usr/local/bin/brush\nbrush there\nbrush 1\nkept sessions\nkept files\nkept kernel\nkept writeback\nkept memory\nkept tmpdir\nkept shell\n";
         let t = Tuning::read(ready);
         assert_eq!(t.short(), Vec::<Tune>::new(), "{:?}", t.stands.iter().flat_map(|s| s.values.iter().filter(|v| !v.met())).collect::<Vec<_>>());
         assert!(t.stands.iter().all(|s| s.kept) && Tune::ALL.iter().all(|tune| tune.apply(&t).is_none()));
@@ -446,6 +769,148 @@ mod tests {
         assert_eq!(said("open files", 1_048_576), "1,048,576");
         assert_eq!(said("DefaultTasksMax", u64::MAX), "no limit");
         assert_eq!(said("vm.swappiness", 60), "60");
+        assert_eq!((said(TEMP_ON_DISK, 0), said(TEMP_ON_DISK, 1)), ("in memory".to_owned(), "on disk".to_owned()));
+    }
+
+    /// No `@NAME@` of a script's own is left in it.
+    fn none_left(script: &str) -> bool {
+        !script.split('@').skip(1).step_by(2).any(|name| !name.is_empty() && name.chars().all(|c| c.is_ascii_uppercase()))
+    }
+
+    /// Temporary files: a host whose `/tmp` is its memory and that tells
+    /// its sign-ins nothing is short of it; one whose `/tmp` is on disk,
+    /// or that already says where, is not; and what is written says
+    /// every name, in each place a program comes by them.
+    #[test]
+    fn temporary_files_are_moved_to_disk_where_tmp_is_memory() {
+        let in_memory = Tuning::read(&format!("{AS_IT_COMES}temporary files 0\n"));
+        let stands = in_memory.of(Tune::TempFiles);
+        assert_eq!((stands.values[0].now, stands.met(), stands.kept), (Some(0), false, false));
+        assert!(in_memory.short().contains(&Tune::TempFiles));
+        let script = Tune::TempFiles.apply(&in_memory).unwrap();
+        let all = "TMPDIR=/var/tmp TMP=/var/tmp TEMP=/var/tmp TEMPDIR=/var/tmp CLAUDE_CODE_TMPDIR=/var/tmp";
+        for must in [
+            format!("'export {all}' > /etc/profile.d/90-olo-tmpdir.sh"),
+            "'setenv TMPDIR /var/tmp' 'setenv TMP /var/tmp'".to_owned(),
+            "'TMPDIR=/var/tmp' 'TMP=/var/tmp' 'TEMP=/var/tmp' 'TEMPDIR=/var/tmp' 'CLAUDE_CODE_TMPDIR=/var/tmp' > /etc/environment.d/90-olo-tmpdir.conf".to_owned(),
+            format!("'[Manager]' 'DefaultEnvironment={all}' > /etc/systemd/system.conf.d/90-olo-tmpdir.conf"),
+            format!("'SetEnv {all}' > \"$f\""),
+            "sshd -t".to_owned(),
+            "'Defaults env_keep += \"TMPDIR TMP TEMP TEMPDIR CLAUDE_CODE_TMPDIR\"' > \"$f.new\"".to_owned(),
+            "visudo -cf \"$f.new\"".to_owned(),
+        ] {
+            assert!(script.contains(&must), "{must}\n{script}");
+        }
+        assert!(none_left(&script), "every name put in: {script}");
+        // On disk already (its `/tmp` is a disk's, or it says where): nothing to do.
+        let on_disk = Tuning::read(&format!("{AS_IT_COMES}temporary files 1\n"));
+        assert!(on_disk.of(Tune::TempFiles).met() && Tune::TempFiles.apply(&on_disk).is_none());
+        // A host that didn't say isn't taken to be right.
+        assert!(!Tuning::read(AS_IT_COMES).of(Tune::TempFiles).met());
+        // Applied for real, to a root of the test's own: the files as a shell and systemd read them.
+        let root = std::path::PathBuf::from(format!("/var/tmp/olo-rex-tune-tmp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("etc/ssh")).unwrap();
+        std::fs::write(root.join("etc/ssh/sshd_config"), "Port 22\n").unwrap();
+        let there = |script: &str| script.replace("/etc/", &format!("{}/etc/", root.display())).replace("systemctl ", "true ");
+        let out = std::process::Command::new("sh").args(["-c", &there(&script)]).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let read = |file: &str| std::fs::read_to_string(root.join(file)).unwrap();
+        let profile = read("etc/profile.d/90-olo-tmpdir.sh");
+        assert!(profile.starts_with("# Olo") && profile.ends_with(&format!("export {all}\n")), "{profile}");
+        let sourced = std::process::Command::new("sh")
+            .args(["-c", &format!(". {}/etc/profile.d/90-olo-tmpdir.sh; printf '%s %s %s %s %s' \"$TMPDIR\" \"$TMP\" \"$TEMP\" \"$TEMPDIR\" \"$CLAUDE_CODE_TMPDIR\"", root.display())])
+            .env_remove("TMPDIR")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&sourced.stdout), "/var/tmp /var/tmp /var/tmp /var/tmp /var/tmp");
+        assert_eq!(read("etc/profile.d/90-olo-tmpdir.csh").lines().skip(1).collect::<Vec<_>>(), TEMP_NAMES.map(|n| format!("setenv {n} /var/tmp")));
+        assert_eq!(read("etc/environment.d/90-olo-tmpdir.conf").lines().skip(1).collect::<Vec<_>>(), TEMP_NAMES.map(|n| format!("{n}=/var/tmp")));
+        assert_eq!(read("etc/systemd/system.conf.d/90-olo-tmpdir.conf").lines().skip(1).collect::<Vec<_>>(), ["[Manager]".to_owned(), format!("DefaultEnvironment={all}")]);
+        // (This root's sshd_config reads no sshd_config.d folder and it has no sudoers: nothing is written for either, and nothing fails.)
+        assert!(!root.join("etc/ssh/sshd_config.d/00-olo-tmpdir.conf").exists() && !root.join("etc/sudoers.d").exists());
+        // Put back: the files gone.
+        assert!(std::process::Command::new("sh").args(["-c", &there(&Tune::TempFiles.undo())]).status().unwrap().success());
+        for file in Tune::TempFiles.files() {
+            assert!(!root.join(file.trim_start_matches('/')).exists(), "{file}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Brush: short where it isn't there or isn't what a new account is
+    /// given; the accounts that would change are the machine's own
+    /// people with a shell of the usual kind, and only when the person
+    /// chose them; the build is pinned, and checked before anything is
+    /// put in place.
+    #[test]
+    fn brush_is_for_new_accounts_and_for_those_there_only_when_chosen() {
+        let host = format!("{AS_IT_COMES}default shell /bin/bash\nbrush 0\naccount ana /bin/bash\naccount ben /usr/bin/zsh\n");
+        let t = Tuning::read(&host);
+        assert_eq!(
+            (t.default_shell.as_deref(), t.brush_there, t.accounts.clone(), t.everyone),
+            (Some("/bin/bash"), false, vec![("ana".to_owned(), "/bin/bash".to_owned()), ("ben".to_owned(), "/usr/bin/zsh".to_owned())], false)
+        );
+        assert!(!t.of(Tune::Shell).met() && t.short().contains(&Tune::Shell));
+        let script = Tune::Shell.apply(&t).unwrap();
+        assert!(none_left(&script), "every name put in: {script}");
+        for must in [
+            "x86_64) sum=541a5d12c7e6a62e341bd7705ac018993b6ba36261e126d77682d6bb052b2103 ;;",
+            "aarch64) sum=8bb25aab542eb6fcd6c6885c289fd4ae6f4833c4cc627e32768e71ee4220490b ;;",
+            "https://github.com/reubeno/brush/releases/download/brush-shell-v0.5.0/$n",
+            "useradd -D -s \"$b\"",
+            "if [ 0 = 1 ]; then",
+        ] {
+            assert!(script.contains(must), "{must}\n{script}");
+        }
+        // (Checked, run and tried as a sign-in's shell before it is listed or given to anybody.)
+        let at = |what: &str| script.find(what).unwrap_or_else(|| panic!("{what}"));
+        assert!(at("sha256sum") < at("tar -xzf") && at("tar -xzf") < at("-c 'exit 0'") && at("su -s") < at(">> /etc/shells") && at(">> /etc/shells") < at("useradd -D -s"));
+        // The accounts there are too, when chosen.
+        let everyone = Tuning { everyone: true, ..t.clone() };
+        assert!(Tune::Shell.apply(&everyone).unwrap().contains("if [ 1 = 1 ]; then"));
+        // What the look says besides: each variable as a sign-in has it, what was noted, who signs in to brush.
+        let noted = Tuning::read(&format!(
+            "{AS_IT_COMES}temp TMPDIR /var/tmp\ntemp TMP \ntemp TEMP\ntemp TEMPDIR /scratch\ntemp CLAUDE_CODE_TMPDIR \nbrush there\nbrush 1\nkept shell\nwas default /bin/bash\nwas user ana /bin/bash\nwas user ben /usr/bin/zsh\nbrush user ana\nbrush user ben\n"
+        ));
+        assert_eq!(
+            noted.temp,
+            [("TMPDIR", Some("/var/tmp")), ("TMP", None), ("TEMP", None), ("TEMPDIR", Some("/scratch")), ("CLAUDE_CODE_TMPDIR", None)].map(|(n, v)| (n.to_owned(), v.map(str::to_owned)))
+        );
+        assert_eq!((noted.was_default.as_deref(), noted.was_accounts.len(), noted.brush_users.clone()), (Some("/bin/bash"), 2, vec!["ana".to_owned(), "ben".to_owned()]));
+        assert!(noted.brush_goes(), "only the accounts that get their shell back sign in to it");
+        let chosen = Tuning { brush_users: vec!["ana".into(), "carol".into()], ..noted.clone() };
+        assert!(!chosen.brush_goes(), "carol chose it herself: it stays");
+        // There and the default: met, kept, nothing to apply.
+        let done = Tuning::read(&format!("{AS_IT_COMES}default shell /usr/local/bin/brush\nbrush there\nbrush 1\nkept shell\n"));
+        assert!(done.of(Tune::Shell).met() && done.of(Tune::Shell).kept && done.brush_there && Tune::Shell.apply(&done).is_none());
+        assert_eq!((said(BRUSH_DEFAULT, 0), said(BRUSH_DEFAULT, 1)), ("not the default".to_owned(), "the default".to_owned()));
+        // What a script says of its own accord is told from the host's tools' lines.
+        let stopped = "Rex> Downloading brush 0.5.0 from GitHub\ncurl: (6) Could not resolve host: github.com\nRex: Brush couldn’t be downloaded from GitHub; nothing was installed.\n";
+        assert_eq!(parted(stopped), ("Brush couldn’t be downloaded from GitHub; nothing was installed.".to_owned(), "curl: (6) Could not resolve host: github.com".to_owned()));
+        assert_eq!(
+            parted("sh: line 21: sysctl: command not found\nsh: line 25: sysctl: command not found"),
+            (String::new(), "sh: line 21: sysctl: command not found\nsh: line 25: sysctl: command not found".to_owned())
+        );
+        assert_eq!(
+            (shown_line("Rex> Downloading brush 0.5.0 from GitHub"), shown_line("  Rex: It stopped."), shown_line("curl: (6)")),
+            ("Downloading brush 0.5.0 from GitHub", "It stopped.", "curl: (6)")
+        );
+        assert!(script.contains("echo 'Rex: Brush couldn’t be downloaded from GitHub; nothing was installed.'") && script.contains("echo \"Rex> Downloading brush 0.5.0 from GitHub\""));
+        // Who is changed: people's accounts with a usual shell, never a service's, a kept-in one's, nor one that has brush.
+        let passwd = "root:x:0:0::/root:/bin/bash\ndaemon:x:2:2::/sbin:/usr/sbin/nologin\nana:x:1000:1000::/home/ana:/bin/bash\nben:x:1001:1001::/home/ben:/usr/bin/zsh\n\
+            git:x:1002:1002::/home/git:/usr/bin/git-shell\nkept:x:1003:1003::/home/kept:/bin/rbash\nhas:x:1004:1004::/home/has:/usr/local/bin/brush\nnobody:x:65534:65534::/:/usr/sbin/nologin\n";
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-tune-shell-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("passwd"), passwd).unwrap();
+        let awk = std::process::Command::new("awk")
+            .args(["-F:", "-v", "min=1000", "-v", "max=60000", "-v", "b=/usr/local/bin/brush", &format!("{ACCOUNTS} {{print $1, $7}}")])
+            .arg(dir.join("passwd"))
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&awk.stdout), "ana /bin/bash\nben /usr/bin/zsh\n", "{}", String::from_utf8_lossy(&awk.stderr));
+        // (What LOOK asks is the same test.)
+        assert!(LOOK.contains(ACCOUNTS), "the look and the change name the same accounts");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The scripts on a real machine as root: each kind applied makes
@@ -454,12 +919,16 @@ mod tests {
     /// said before. `OLO_TUNE_EXEC`: the words that run a command as
     /// root there (a container's `podman … exec -i NAME`, or `ssh
     /// root@host`); `OLO_TUNE_KINDS`: the kinds to try (a container
-    /// can't write the kernel's settings: "sessions,files" there).
+    /// can't write the kernel's settings: "sessions,files" there; its
+    /// `/tmp` is memory only if it was started so, `--tmpfs /tmp`; and
+    /// "shell" downloads brush, and with `OLO_TUNE_EVERYONE=1` gives it
+    /// to the accounts there are, each of which must have it after and
+    /// its own shell again once put back).
     #[test]
     #[ignore = "needs OLO_TUNE_EXEC, a machine to change as root"]
     fn the_scripts_do_what_they_say_on_a_real_machine() {
         let Ok(exec) = std::env::var("OLO_TUNE_EXEC") else { return };
-        let kinds = std::env::var("OLO_TUNE_KINDS").unwrap_or_else(|_| "sessions,files,kernel,writeback,memory".into());
+        let kinds = std::env::var("OLO_TUNE_KINDS").unwrap_or_else(|_| "sessions,files,kernel,writeback,memory,tmpdir".into());
         // (Over SSH a shell there reads the words again: the script as one quoted word.)
         let over_ssh = exec.split_whitespace().any(|w| w == "ssh");
         let run = |script: &str| {
@@ -467,8 +936,12 @@ mod tests {
             let out = std::process::Command::new(words.next().unwrap()).args(words).args(["sh", "-c", &if over_ssh { shell_word(script) } else { script.to_owned() }]).output().unwrap();
             (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr))
         };
-        let look = || Tuning::read(&run(LOOK).1);
+        let everyone = std::env::var("OLO_TUNE_EVERYONE").ok().as_deref() == Some("1");
+        let look = || Tuning { everyone, ..Tuning::read(&run(LOOK).1) };
+        let shells =
+            || run("cat /etc/passwd").1.lines().filter_map(|l| l.split(':').next().zip(l.rsplit(':').next()).map(|(a, b)| (a.to_owned(), b.to_owned()))).collect::<std::collections::BTreeMap<_, _>>();
         let before = look();
+        let shells_before = shells();
         println!("as it stands: {:?}", before.stands.iter().map(|s| (s.tune.id(), s.met(), s.kept)).collect::<Vec<_>>());
         for tune in Tune::ALL.into_iter().filter(|t| kinds.split(',').any(|k| k == t.id())) {
             let Some(script) = tune.apply(&before) else {
@@ -486,6 +959,28 @@ mod tests {
             // (A container's root may not raise its limits: there the
             // files are written with what it has, and nothing is met.)
             assert!(stands.kept && (stands.met() || (!over_ssh && tune == Tune::Files)), "{}: {:?}", tune.id(), stands);
+            if tune == Tune::TempFiles {
+                // (What a sign-in's programs are told, and what a file made by one of them is on.)
+                let (ok, said) = run("su - root -c 'echo $TMPDIR $TMP $TEMP $TEMPDIR $CLAUDE_CODE_TMPDIR; stat -f -c %T \"$(mktemp)\"'");
+                println!("a sign-in after: {}", said.trim().replace('\n', " | "));
+                assert!(ok && said.starts_with("/var/tmp /var/tmp /var/tmp /var/tmp /var/tmp\n") && !said.contains("tmpfs"), "{said}");
+            }
+            if tune == Tune::Shell {
+                let now = shells();
+                println!("shell applied: new accounts {:?}; {:?}", after.default_shell, before.accounts.iter().map(|(a, _)| (a, now.get(a))).collect::<Vec<_>>());
+                assert_eq!(after.default_shell.as_deref(), Some(BRUSH));
+                for (account, had) in &before.accounts {
+                    assert_eq!(&shells_before[account], had, "{account}: the look said the shell it has");
+                    assert_eq!(now.get(account).map(String::as_str), Some(if everyone { BRUSH } else { had.as_str() }), "{account}");
+                }
+                // (Nobody else's: a service's account, one kept to a program, root.)
+                for (account, shell) in &shells_before {
+                    assert!(before.accounts.iter().any(|(a, _)| a == account) || now.get(account) == Some(shell), "{account} was {shell}, is {:?}", now.get(account));
+                }
+                // (And it is a shell a sign-in works with.)
+                let (ok, said) = run(&format!("su -s {BRUSH} - root -c 'echo signed in with $0'"));
+                assert!(ok && said.contains("signed in"), "{said}");
+            }
             // (A sign-in still works, with its limits set: PAM's.)
             let (ok, said) = run("su - root -c 'ulimit -Hn'");
             assert!(ok, "a sign-in after {}: {said}", tune.id());
@@ -499,6 +994,11 @@ mod tests {
             // (A kernel setting is put back at once; the others hold
             // from the next sign-in or start, which a new look is.)
             assert_eq!(back.of(tune).values, before.of(tune).values, "{} put back", tune.id());
+            if tune == Tune::Shell {
+                assert_eq!((shells(), back.default_shell.clone(), back.brush_there), (shells_before.clone(), before.default_shell.clone(), false), "every account's shell as it was, and brush gone");
+                let (_, listed) = run("grep -c brush /etc/shells; ls /etc/olo-brush.was 2>&1");
+                println!("shell put back: {}", listed.trim().replace('\n', " | "));
+            }
         }
     }
 }

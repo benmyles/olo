@@ -4779,7 +4779,7 @@ it.
   UI thread, 60 switches, release: 1.23 M instructions a switch against
   6.08 M with the chosen page alone, 0.47–0.55 ms against 1.29–1.60 ms,
   the slowest 1.7–2.8 ms against 5.3–7.7 ms; a redraw that changes
-  nothing, 1.06 M against 0.80 M). `TabView::fill_page(i)`: that page
+  nothing, 1.06 M against 0.80 M). `TabView::fill_page(i)` (asked for each page that should): that page
   fills the panel to its frame instead of setting its height, for a
   list that may run long: a borderless `ScrollView` there has its bar
   against the frame and its content cut by it, as a BScrollView in a tab
@@ -30094,7 +30094,7 @@ in anew. The same holds for the person's own panes: its note says the
 open files hold "for the panes you have open, after Disconnect and
 Connect".
 
-**A host made ready for heavy work: the Server window's Limits**
+**A host made ready for heavy work: the Host window's Tweaks**
 (2026-11-23, `crates/rex/src/tune.rs`; Ben, when a host's SSH server
 refused an eleventh session: "why is there a 10 session limit? that
 should be like 1024 or something. the host setup in rex app should
@@ -30103,7 +30103,11 @@ that can be applied: it should also increase / max out the open file
 limits in linux and any other artificial limits like that, and make
 it persist across restarts, also Raise dirty page writeback thresholds
 … and any other settings that optimize it for intensive work like
-rust builds etc"). Five kinds (`Tune`), each a few settings:
+rust builds etc"). They were a page of the Server window, Limits, and
+are a tab of the Host window since 2026-11-27 (Ben: "they really
+belong in manage host. please move those into a new tab in the manage
+host window called 'Tweaks'"), with two more. Seven kinds (`Tune`),
+each a few settings:
 - *SSH sessions*: `MaxSessions 1024`
   (`/etc/ssh/sshd_config.d/00-olo.conf`; tried with `sshd -t` before
   the server is told to read its settings again, and taken out if it
@@ -30128,14 +30132,58 @@ rust builds etc"). Five kinds (`Tune`), each a few settings:
   before writing begins (16 GB: 8 and 2).
 - *Memory for builds* (`90-olo-memory.conf`): `vm.swappiness` 10,
   `vm.vfs_cache_pressure` 50.
+- *Temporary files* (Ben: "add an item in there that checks if /tmp is
+  in ram and if it is and the various tmp dir system envs are not set
+  have it suggest setting them and able to apply it there"): short
+  where the folder a sign-in's programs are told to use (`TMPDIR`,
+  else `/tmp`) is the machine's memory (tmpfs: the look runs a sign-in
+  shell with nothing in its environment and asks the folder's file
+  system). Applied, `TMPDIR`, `TMP`, `TEMP`, `TEMPDIR` and
+  `CLAUDE_CODE_TMPDIR` are `/var/tmp` in every place a program comes
+  by its environment, each a file of Olo's own: a sign-in's shell
+  (`profile.d/90-olo-tmpdir.sh` and `.csh`), the account's own
+  systemd and what it starts (`environment.d`), the machine's services
+  (`system.conf.d`: `DefaultEnvironment`), a command over SSH with no
+  sign-in shell (`sshd_config.d`: `SetEnv`, tried with `sshd -t` and
+  taken out if refused), and sudo, which drops them otherwise
+  (`sudoers.d`: `env_keep`, tried with `visudo -c` before it is put
+  where sudo reads it, since a file sudo can't read stops sudo). The
+  last two only where the host reads such a folder, and neither keeps
+  the rest from being applied. A host whose `/tmp` is on disk, or that
+  says where already, is as the machine has it.
+- *Brush shell* (Ben: "add one for installing brush shell and making
+  it the default for all users with an option to also change for all
+  existing users"): brush's own static build for the machine
+  (`BRUSH_VERSION`, each build's SHA-256 here: a download that isn't
+  the build Olo knows is not installed), downloaded from its project
+  on GitHub to a folder of its own under `/var/tmp`, checked, run once
+  by itself and once as a sign-in's shell (`su -s`), and only then put
+  at `/usr/local/bin/brush`, listed in `/etc/shells` and made what new
+  accounts are given (`useradd -D -s`, and `adduser`'s `DSHELL` where
+  the host has that file). Its question has a box, "Also change the N
+  accounts here now" (`Tuning::everyone`, `server::everyone`): the
+  machine's own people's accounts that sign in to a shell of the usual
+  kind (`tune::ACCOUNTS`: by `UID_MIN` to `UID_MAX`; never a
+  service's, a directory's, nor one kept to a program that isn't a
+  shell, `git-shell`, `rbash`, `nologin`: to give such an account a
+  shell is to let it in), each named in the question with the shell it
+  has. What it found is noted (`/etc/olo-brush.was`), and Put Back…
+  reads it: each account it changed has its own shell again (one that
+  chose another since keeps its choice), new accounts what they were
+  given, `adduser`'s line as it was, and brush taken off, unless an
+  account still signs in to it. To move to a newer brush: its version
+  and the two sums in `tune.rs`
+  (`gh api repos/reubeno/brush/releases/latest`, the `-musl` archives'
+  `digest`).
 The host is asked how each stands (`tune::LOOK`, one command as root
-with the server's own look: `Server::tuning`), so the page shows what
+with the server's own look: `Server::tuning`), so the tab shows what
 it has beside what Olo would set. A setting it already has as high is
 met, never lowered, and not written. Applying is an `Action`
-(`Tune(kinds)`, `Untune(kind)`) like every other of the window: asked
+(`Tune(kinds)`, `Untune(kind)`) like every other that root does: asked
 first, with what changes (each setting from its value to the new one;
-a line for each kind where several are applied at once) and what it
-costs, then run as root, and the host looked at again. Each file says
+where several kinds are applied at once, a kind's name over its
+settings, and a kind that is one setting on one line by its own name)
+and what it costs, then run as root, and the host looked at again. Each file says
 it is Olo's and how to remove it; a kernel setting's file notes what
 the value was, which Put Back… puts there again at once. Tried
 (`tune::tests`, the ignored `the_scripts_do_what_they_say_on_a_real_machine`,
@@ -30143,7 +30191,97 @@ with `OLO_TUNE_EXEC`): in a container with systemd and an SSH server
 (sessions, files; a container can't write the kernel's settings), and
 as root on a real host (all five: applied, the host says it has them,
 a new sign-in works and has the open files, put back, the host says
-what it said before).
+what it said before). Temporary files and brush: as root in a Fedora
+44 and a Debian container whose `/tmp` is memory, with accounts of
+every kind (`OLO_TUNE_KINDS=tmpdir,shell`, `OLO_TUNE_EVERYONE=1`): a
+sign-in after is told `/var/tmp` by all five names and its `mktemp`
+is on disk; brush is the default and, chosen, the people's accounts'
+shell, no other account's; put back, every shell, `adduser`'s line
+and `/etc/shells` are as they were.
+
+*The tab* (`apps/rex/src/host_panel.rs`, `tweaks_page`): two
+sections, "Heavy work" (the six, under a caption; "Apply Suggested…"
+at the section's foot in the buttons' column, there only while
+something is short) and "Sign-in shell" (brush, which is a choice of
+its own and never one of the suggested). Each tweak is a line in the
+window's own grammar (its light, its name, how it stands after a dot,
+one button in the window's column: Apply…, or Put Back… where Olo's
+file is there) with its reason right under it, 19 points from the
+name's baseline, 28 on to the next name's: each tweak one thing, not
+a stack of even lines. The page is no taller than the window's other
+tabs' (the window keeps its height): a reason is one line in English
+(`min_h` a whole 15 points, or the rows stood 50 and 51 pixels apart
+by turns), and the two wider buttons ("Apply Suggested…", "Read
+Settings") are not counted into the window's common button width,
+which every tab's notes are set against (counted in, a note on another
+tab took a line more and the whole window grew 15 points).
+
+Root is what the Server window uses (`apps/rex/src/server.rs`): the
+engine keeps two records of a host now, `Of::Server` and
+`Of::Tweaks`, so the two windows can be of different hosts and one's
+work is never taken for the other's. `server::for_tweaks(|| …)` runs
+anything of the module for the tab's record; work begun finds its
+record by its turn (`of_turn`), since on a worker's thread nothing
+says whose it is, and `told(of)` tells the window that shows it
+(`ui::tweaks_changed`, which also keeps the busy bar's timer). The
+host is asked as the tab is first shown (`ui::begin_tweaks`: sudo
+asked about, then root's look), and what it said is kept while the
+window is of that host; Check Again on the tab asks again.
+
+While the host is looked at, a change is asked, is under way or
+didn't go, **the page itself is that stage's alert**, the Server
+window's own (`server_panel::render_stage`, shared: `in_tab` for its
+words and for a foot with no dead Cancel): the panel to its frame
+(`TabView::fill_page`, which more than one page may ask for now), so
+the alert's stripe runs down the panel's own edge, its words and
+buttons ending where the list's do. (It was a framed box in the page
+at first: a frame in a frame, a card set on the window, its edges an
+inset off the list's; Opus's look.) A question whose table is longer
+than the panel has room for (`LONGEST_TABLE`) is a page the window
+grows to instead: in the panel to its frame its buttons would be cut.
+A settings question's own button, at the right, is the default one
+(they can be put back; a server's stop, which ends sessions, keeps
+Cancel), and what a change costs is said first, in the alert's own
+text.
+
+*What changes, as a table* (`manage::Change`, `Action::changes`,
+`server_panel::changes_table`): each setting from what it is to what
+it will be under "Now" and "New", the two columns at the well's right
+edge; a tweak's own name and the head in the window's face, a
+setting's name as the host has it and its values in the fixed-width
+one, a step in under their tweak; amounts ended at their column's
+right, words and paths begun at its left. Temporary files alone shows
+each variable (the look says each as a sign-in has it, `temp NAME
+VALUE`); brush shows new accounts and, under "Accounts here", each
+account the box adds; Put Back… of those two shows the same table the
+other way (the look says what brush's note kept, `was default`, `was
+user`, and who signs in to brush, `brush user`: brush goes only if
+nobody else does, `Tuning::brush_goes`, and the question says which).
+It was text in columns in the fixed-width face: a head that read as
+one more row, names set as code, a third of the well empty.
+
+*What a script says of its own accord* is marked (`tune::SAYS`, "Rex:
+", why it stops; `tune::DOING`, "Rex> ", what it is at): what it is
+at shows under the bar while it runs; of what it left when it
+stopped, Olo's own sentence is the alert's words and only the host's
+tools' lines are in its well (`tune::parted`; "Brush couldn't be
+downloaded from GitHub." had stood in the well as if the host had
+printed it). After several tweaks at once where one failed, the alert
+says that what could be applied was (each runs by itself), not that
+nothing else changed.
+
+Where there is nothing to show, the page says why in a line of the
+window's own grammar under "Settings" (not reached over SSH; not
+connected; not read, with Read Settings): it was an icon over centred
+words, the one thing in the window that was. For pictures and the
+lint: `OLO_REX_DEMO_TWEAKS=STAGE` with `host.manage:dev-box:tweaks`
+(`limits`, `limits-some`, `limits-ready`, `confirm-limits`,
+`confirm-limit`, `confirm-writeback`, `confirm-tmp`, `confirm-shell`,
+`confirm-shell-everyone`, `confirm-put-back`,
+`confirm-put-back-shell`, `working-limits`, `failed-limits`,
+`failed-look`, `looking`, `key`, `nokeys`, `unread`). Tried end to end
+with the real window: AGENT-NOTES, "Root on a host, tried without
+touching any host's root".
 
 **The bridge: the Olo desktop, through Rex** (2026-11-23,
 `apps/rex/src/bridge.rs`; Ben: "we should leverage rex as much as we

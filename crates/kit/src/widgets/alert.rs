@@ -40,11 +40,23 @@ pub const ALERT_TEXT_X: f32 = ALERT_STRIPE + ALERT_ICON / 2.0 + m::WINDOW_INSET;
 pub struct AlertFrame {
     icon: SharedString,
     children: SmallVec<[Element; 8]>,
+    lower: f32,
 }
 
 impl AlertFrame {
     pub fn new(icon: impl Into<SharedString>) -> AlertFrame {
-        AlertFrame { icon: icon.into(), children: SmallVec::new() }
+        AlertFrame { icon: icon.into(), children: SmallVec::new(), lower: 0.0 }
+    }
+
+    /// Its icon and what it holds begun `points` lower than an alert's
+    /// own margin; the stripe still runs from its top. For an alert
+    /// that is a page of something (a tab's panel) whose other pages
+    /// begin lower than a window's margin: its first line where theirs
+    /// is, so nothing jumps as the page becomes a question and back
+    /// (Rex's Host window's Tweaks, Opus's look, 2026-11-27).
+    pub fn lower(mut self, points: f32) -> Self {
+        self.lower = points;
+        self
     }
 }
 
@@ -57,16 +69,17 @@ impl ParentElement for AlertFrame {
 impl IntoElement for AlertFrame {
     fn into_element(self) -> Element {
         let icon = self.icon.clone();
+        let lower = self.lower;
         let backdrop = canvas(move |g, b| {
             let p = theme::palette();
             let stripe = Bounds::from_corners(b.origin, point(b.left() + px(ALERT_STRIPE), b.bottom()));
             style::fill_rect(g, stripe, style::shade(&p, p.panel_background, 1.1));
             if !icon.is_empty() {
-                let at = Bounds { origin: point(b.left() + px(ALERT_STRIPE - ALERT_ICON / 2.0), b.top() + px(m::WINDOW_INSET)), size: size(px(ALERT_ICON), px(ALERT_ICON)) };
+                let at = Bounds { origin: point(b.left() + px(ALERT_STRIPE - ALERT_ICON / 2.0), b.top() + px(m::WINDOW_INSET + lower)), size: size(px(ALERT_ICON), px(ALERT_ICON)) };
                 icons::paint(g, at, &icon);
             }
         })
-        .paint_key(style::key(&self.icon))
+        .paint_key(style::key((&self.icon, lower.to_bits())))
         .absolute()
         .inset_0();
         // (What it holds is laid out in the frame, not over it, so the
@@ -76,7 +89,7 @@ impl IntoElement for AlertFrame {
         // (Its margins are boxes of their own, not padding: taffy counts
         // a flex item's padding twice in the least it may be.)
         let gap = |w: f32, h: f32| div().w(px(w)).h(px(h)).flex_shrink_0();
-        let column = div().flex_1().min_w_0().flex().flex_col().child(gap(0.0, m::WINDOW_INSET)).children(self.children).child(gap(0.0, m::WINDOW_INSET));
+        let column = div().flex_1().min_w_0().flex().flex_col().child(gap(0.0, m::WINDOW_INSET + lower)).children(self.children).child(gap(0.0, m::WINDOW_INSET));
         div().relative().size_full().flex().child(backdrop).child(gap(ALERT_TEXT_X, 0.0)).child(column).child(gap(m::WINDOW_INSET, 0.0))
     }
 }
