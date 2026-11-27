@@ -7729,6 +7729,9 @@ fn render_single_pane(
     })
     .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, cx| {
         let hub = the_hub().clone();
+        // (Before it is brought forward: a click in the pane already in
+        // front is the person's doing something there, `send_pointer_press`.)
+        let in_front = hub.has_focus(&bk_mouse);
         hub.focus_block(&bk_mouse.host_key, &bk_mouse.session_id, &bk_mouse.block_id);
         let rect = vis_mouse.bounds.get();
         let (col, row) = metrics_mouse.cell_at(rect, pad, e.position, vis_mouse.shift.get());
@@ -7758,7 +7761,7 @@ fn render_single_pane(
             if let Some(bytes) = sent {
                 vis_mouse.drag_anchor.set(None);
                 vis_mouse.reported_at.set(Some((col, row)));
-                hub.send_pointer_press(&bk_mouse, bytes);
+                hub.send_pointer_press(&bk_mouse, bytes, in_front);
                 cx.stop_propagation();
                 return;
             }
@@ -7812,7 +7815,8 @@ fn render_single_pane(
             let sent = br_right.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Press, Some(VtButton::Right), key_mods(&e.modifiers), cell);
             if let Some(bytes) = sent {
                 vis_right.reported_at.set(Some(cell));
-                the_hub().send_pointer_press(&bk_rclick, bytes);
+                let in_front = the_hub().has_focus(&bk_rclick);
+                the_hub().send_pointer_press(&bk_rclick, bytes, in_front);
                 cx.stop_propagation();
                 return;
             }
@@ -7888,10 +7892,10 @@ fn render_single_pane(
         drop(g);
         if !bytes.is_empty() {
             // (A step of the wheel told to a program that hears the mouse scrolls
-            // what it shows; the wheel's arrows are arrow keys to it, and move a
-            // chooser's mark.)
+            // what it shows; the wheel's arrows are arrow keys to it, move a
+            // chooser's mark, and are typing like any key.)
             if goes == crate::hub::Wheel::Arrows {
-                the_hub().send_pointer_press(&bk_scroll, bytes);
+                the_hub().send_input(&bk_scroll, bytes);
             } else {
                 the_hub().send_pointer(&bk_scroll, bytes);
             }
@@ -7906,7 +7910,8 @@ fn render_single_pane(
         match sent {
             Some(bytes) => {
                 vis_middle.reported_at.set(Some(cell));
-                the_hub().send_pointer_press(&bk_middle, bytes);
+                let in_front = the_hub().has_focus(&bk_middle);
+                the_hub().send_pointer_press(&bk_middle, bytes, in_front);
             }
             None => {
                 if let Some(slot) = wins().map.get(&win_id) {
@@ -7943,7 +7948,9 @@ fn render_single_pane(
                 };
                 vis_up.reported_at.set(None);
                 if let Some(bytes) = sent {
-                    the_hub().send_pointer_press(&bk_up, bytes);
+                    // (Never more than its press was: the release of a click that
+                    // brought the pane forward finds it in front.)
+                    the_hub().send_pointer_press(&bk_up, bytes, false);
                 }
             };
             screen_canvas = if out { screen_canvas.on_mouse_up_out(button, release) } else { screen_canvas.on_mouse_up(button, release) };

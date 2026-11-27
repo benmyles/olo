@@ -4177,16 +4177,34 @@ impl RexHub {
         self.write(key, data, None);
     }
 
-    /// The same for what a chooser may answer to: a button pressed or
-    /// let go, the wheel's arrow keys. Still not typing; but a question
-    /// counting down there is not answered until the screen can have
-    /// caught up with what the program made of it (`Watch::touched`).
-    pub fn send_pointer_press(&self, key: &BlockKey, data: Vec<u8>) {
-        {
+    /// The same for a button pressed or let go, which a chooser may
+    /// answer to. `in_front`: the pane had the keyboard already when the
+    /// button went down. Then the click is the person's doing something
+    /// in the program, as a key is, and a question waiting there is
+    /// theirs: what the program makes of the click is drawn here only
+    /// after it, and Return pressed meanwhile would land on whatever the
+    /// click moved the mark to. A click that brought the pane forward
+    /// (and its release) is not that: the question stays Auto Approve's,
+    /// but is not answered until the screen can have caught up with what
+    /// the program made of it (`Watch::touched`). (The wheel's arrows are
+    /// keys, and go by `send_input`.)
+    pub fn send_pointer_press(&self, key: &BlockKey, data: Vec<u8>, in_front: bool) {
+        if in_front {
+            self.typed(key);
+        } else {
             let _in = self.rt.enter();
             self.inner.agent_touched(key);
         }
         self.write(key, data, None);
+    }
+
+    /// Whether a pane is the one typed into, in the tab in front of its
+    /// session.
+    pub fn has_focus(&self, key: &BlockKey) -> bool {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.hosts.get(&key.host_key).and_then(|h| h.sessions.get(&key.session_id)).is_some_and(|view| {
+            view.find_block(&key.block_id).is_some_and(|(window, _, _)| view.active_window_id.as_ref() == Some(&window.window_id) && window.focused_block_id.as_deref() == Some(key.block_id.as_str()))
+        })
     }
 
     /// What a pane has on: Keep It Going, Auto Approve.

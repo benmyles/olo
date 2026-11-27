@@ -308,30 +308,41 @@ elif what in ("claude", "codex", "agy") and args[:1] == ["agents-one"]:
         first = r.wait(counting, 12)
         check(f"{agent}: the question counts down", first, (first or {}).get("name"))
         # The pointer over the pane while its question waits, as a person's is who looks at it: moved across it,
-        # the pane clicked (to bring it forward), the wheel turned (to read a long command). Claude Code and Codex
-        # ask to be told of all of it, every move; none of it is typing, and the question is still answered. (Each
-        # took the question for the person, for good, until 2026-11-27: Ben saw no countdown on a question that
-        # had waited minutes. The stand-ins asked for no mouse then, and this passed.)
+        # and the wheel turned to read a long command, where the program hears the wheel (Claude Code and Codex
+        # ask to be told of the mouse, every move of it). None of that is typing, and the question is still
+        # answered. (Each took the question for the person, for good, until 2026-11-27: Ben saw no countdown on a
+        # question that had waited minutes. The stand-ins asked for no mouse then, and this passed.)
         c = r.win["content"]
         at = lambda dx, dy: (str(int(c["x"] + c["width"] * dx)), str(int(c["y"] + c["height"] * dy)))
         was = reports()
         for dx, dy in ((0.45, 0.5), (0.6, 0.55), (0.5, 0.6)):
             r.ts("move", r.name, *at(dx, dy))
-        r.ts("click", r.name, *at(0.5, 0.6))
-        r.ts("wheel", r.name, "-1")
+        if agent != "agy":
+            r.ts("wheel", r.name, "-1")
         answered = r.wait(lambda: "answer:[]" in read(), 15)
-        check(f"{agent}: answered Yes (Return) once its time came, the pointer moved, clicked and the wheel turned over it meanwhile", answered, read())
+        check(f"{agent}: answered Yes (Return) once its time came, the pointer moved" + (" and the wheel turned" if agent != "agy" else "") + " over it meanwhile", answered, read())
         told_of_the_mouse = r.wait(lambda: reports() > was, 3) if agent != "agy" else reports() == 0
         check(f"{agent}: " + ("its program was told of the pointer (so the above is of a pane that hears it)" if agent != "agy" else "which asks for no mouse, was told of none"), told_of_the_mouse, reports())
-        # Its second question: a key pressed there (Ctrl+E, which answers nothing: the question stays) makes it
-        # the person's. The countdown goes, and Return is not pressed for them, however long it waits. (Keys with
-        # Control, and every key of a program that asked for the kitty protocol's, go by the server's own encoder:
-        # those were not counted as typing until 2026-11-27, and Return followed four seconds after an Escape.)
+        # Its second question is made the person's, each agent's another way, by something that answers nothing
+        # (the question stays). The countdown goes, and Return is not pressed for them, however long it waits.
+        # Codex: a key (Ctrl+E; keys with Control, and every key of a program that asked for the kitty protocol's,
+        # go by the server's own encoder: those were not counted as typing until 2026-11-27, and Return followed
+        # four seconds after an Escape). Claude Code: a click in its pane, which is the one in front (what the
+        # program makes of a click is drawn here only after it, and Return meanwhile would land on whatever the
+        # click moved the mark to). Antigravity: the wheel, which it is sent as arrow keys.
         second = r.wait(lambda: answers() == 1 and counting(), 12)
         check(f"{agent}: its second question counts down too", second, (second or {}).get("name") if isinstance(second, dict) else second)
-        r.ts("key", r.name, "29", "18")
+        was = reports()
+        how = {"codex": "a key pressed at it", "claude": "a click in its pane, the one in front", "agy": "the wheel turned over it, arrow keys to it"}[agent]
+        if agent == "codex":
+            r.ts("key", r.name, "29", "18")
+        elif agent == "claude":
+            r.ts("click", r.name, *at(0.5, 0.6))
+        else:
+            r.ts("wheel", r.name, "-1")
         gone = r.wait(lambda: not counting(), 3, every=0.2)
-        check(f"{agent}: a key pressed at it: no longer counting down", gone and "key:[" in read(), read())
+        reached = r.wait(lambda: reports() > was, 3) if agent == "claude" else "key:[" in read()
+        check(f"{agent}: {how}: no longer counting down", gone and reached, read())
         time.sleep(6)
         check(f"{agent}: and not answered for the person, well past its time", answers() == 1 and not counting(), read())
         r.ts("key", r.name, "28")
