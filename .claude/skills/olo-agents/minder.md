@@ -20,7 +20,7 @@ Your job is to manage all subagents nested under you — builders, investigators
 
 ## Core Operating Loop
 
-1. **Start or resume** the builders/reviewers the lead assigns to you using `tools/dev/agents` (because you run inside your own Rex child tab, every child you launch automatically nests under you in Rex).
+1. **Start or resume** the builders/reviewers the lead assigns to you using `tools/dev/agents` (because you run inside your own Rex child tab, every child you launch automatically nests under you in Rex). Run single allowed `tools/dev/agents …` or `olo agent …` commands directly rather than wrapping them in `set -e` or multiline shell scripts so they execute unasked under your allowlist without blocking on approval prompts.
 2. **Keep an active watch at all times** on your children using:
    ```sh
    olo agent watch --all --since CURSOR --on question,approval,escalation,idle,done,error,exit --timeout 90 --json

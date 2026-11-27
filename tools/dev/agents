@@ -911,8 +911,8 @@ The change is {diff}: git's unified diff. What each commit said of
 itself, where it is committed, is {commits}. {at} The tree it is in is
 {tree}: read whatever you need there, the changed files whole, their
 callers, the tests, `docs/HACKING.md` for how a thing is meant to work
-(it is very long: search it), with `rg`, `sed -n`, `git -C {tree} show`
-and `git -C {tree} log`. Read only: build nothing, run no test, start
+(it is very long: search it), with `rg`, `sed -n`, `cd {tree} && git show`
+and `cd {tree} && git log`. Read only: build nothing, run no test, start
 no agent or subagent of any kind, change no file but your review, and
 nothing outside your own folder.
 
@@ -1450,7 +1450,7 @@ def review(args):
         commits = git("log", "--reverse", "--format=commit %h%n%n%s%n%n%b%n", f"{first}..{last}", "--", *paths)
         of = f"{first[:12]}..{last[:12]}"
         at = (f"The change ends at commit {last}: the tree may have moved on since, so read a file as it was reviewed with "
-              f"`git -C {tree} show {last}:PATH`, and where the tree's copy differs from that, go by the commit.")
+              f"`cd {tree} && git show {last}:PATH`, and where the tree's copy differs from that, go by the commit.")
     if not diff.strip():
         sys.exit(f"agents: nothing to review ({of}" + (f", {' '.join(paths)}" if paths else "") + f" in {tree}: no difference)")
     if len(diff) > REVIEW_MOST:

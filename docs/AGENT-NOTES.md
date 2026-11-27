@@ -4519,4 +4519,13 @@ get tidied. Under the Lead ▸ Minder (`agy` Neon 4 `high`,
 `agy-review` Agy Neon 4 `xhigh`, and `opus-look` Claude Opus 5.5 `xhigh`
 for visual changes) flow, all child tabs launched by the minder nest
 cleanly beneath the minder in Rex, and `tools/dev/agents` no longer
-spawns legacy Claude Opus `max` auto-minders.
+spawns legacy Claude Opus `max` auto-minders. **Lead monitors the minder
+continuously:** keep a background `olo agent watch` on the minder itself
+at all times so routine minder approvals (e.g. if the minder wraps a
+batch in `set -e` outside `minder_allow()`) are answered immediately by
+the lead rather than left for the person, and check on timeouts/idle
+turns that the minder's own watch has not stalled or dropped. In
+`tools/dev/agents`, `REVIEW_RULES` tells reviewers to use `cd {tree} &&
+git show/log` rather than `git -C {tree}` so `agy-review` hits `READING
++ GIT` (`cd` + `git show`/`git log`) without hitting repeated approval
+prompts while staying sandboxed to its scratch cwd.

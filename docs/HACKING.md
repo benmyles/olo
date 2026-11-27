@@ -22697,6 +22697,11 @@ helper runs interactively as a native Rex child tab through `olo agent`
   outstanding issues remain after 2 review rounds (so the lead can
   decide on alignment, design rethink, steering, or granting extra
   review rounds), or when any risky approval/blocker needs the lead.
+  The lead in turn continuously monitors the minder itself via `olo
+  agent watch` (handling any approvals the minder prompts for and
+  verifying on timeouts/idle turns that the minder's own watch is still
+  alive, unsticking or restarting it if wedged so the person never has
+  to approve or unstick the minder).
 - **Builders** (`tools/dev/agents start [--tree DIR] NAME CRATE
   BRIEF.md`, `agents resume`): Antigravity (`agy`) **Gemini 4 Neon on
   `xhigh`** (`gemini-4-neon-xhigh`), up to five at once per checkout,

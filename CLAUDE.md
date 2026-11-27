@@ -346,11 +346,23 @@ are universal and non-negotiable:
     rounds, or whenever architectural alignment, risky approvals, or
     blockers need the lead's call. The minder does none of the coding
     or committing itself.
-  - **A watch is always going whenever a child runs.** The lead keeps an
-    active background `olo agent watch` on the minder from its start to
-    its end (and starts it again each time it returns); the minder keeps
-    a watch on all subagents under it. Never run children without an
-    active watch, and never double-watch the same child.
+  - **Monitor the minder continuously (never leave approvals or stalls
+    to the person).** (Ben, 2026-11-27: "make sure you also monitor the
+    minder in case it needs approvals or gets stuck (make this a rule
+    too)".) The lead keeps an active background `olo agent watch` on the
+    minder from its start to its end (with `--on
+    approval,question,escalation,idle,done,error,exit`), restarting it
+    immediately after every return. When the minder asks for an
+    approval, inspect and answer it at once (approve safe routine minder
+    actions; deny anything dangerous or out of scope) so the person
+    never has to approve the minder. When a watch times out (`124`) or
+    the minder sits `idle`/`done` while children are still active, check
+    its status and scrollback (`olo agent status` / `olo agent read`) to
+    verify its own background `olo agent watch` is running and unstick,
+    re-prompt, or restart it immediately if it stalled or wedged. The
+    minder in turn keeps an active watch on all subagents under it at
+    all times. Never run children (or a minder) without an active watch,
+    and never double-watch the same child.
 - **Builders, investigators, and reviewers: exact models and efforts.**
   Every helper uses one of these exact models and efforts — nothing
   else (no Fable, no Claude Opus minders, no `max` effort for

@@ -33,11 +33,13 @@ Lead (autonomous coordinator)
   3. **Claude Opus 5.5 on `xhigh`**: `tools/dev/opus-look` (product/visual design review of screenshots)
 - **Escalation after 2 rounds:** Each builder gets at most 2 review rounds per reviewer by default. If critical outstanding issues remain after 2 rounds, the minder escalates to the lead (`olo agent escalate "..."`) so the lead can decide whether the builder misaligned, whether the design needs rethinking, how to steer it, and whether to authorize additional review rounds.
 
-## Active Watches (Mandatory)
+## Monitoring the Minder & Active Watches (Mandatory)
 
-- **Lead:** keeps a background `olo agent watch minder --since CURSOR --on escalation,question,approval,idle,done,error,exit --timeout 90 --json` running from the moment the minder starts until it stops, restarting it after every return.
+- **Lead (monitor the minder for approvals AND stalls):** Keep a background `olo agent watch <minder-id> --since CURSOR --on approval,question,escalation,idle,done,error,exit --timeout 90 --json` running from the moment the minder starts until it stops, restarting it immediately after every return (advancing `--since` on exit `0`, reusing `CURSOR` on exit `124`).
+  - If the minder hits `waiting_approval`, inspect and answer it immediately so the person never has to approve the minder.
+  - On watch timeout (`124`) or if the minder sits `idle`/`done` while children are still running, inspect `olo agent status <minder-id> --json` and `olo agent read <minder-id> --lines 40` to verify the minder's own background `olo agent watch` is alive; if the minder stalled, dropped its watch, or wedged, steer or restart it immediately.
 - **Minder:** keeps an active watch (`olo agent watch --all --since CURSOR --on question,approval,escalation,idle,done,error,exit --timeout 90 --json`) on all subagents nested under it at all times.
-- Never run children without a watch, and never double-watch the same child.
+- Never run children (or a minder) without an active watch, and never double-watch the same child.
 
 ## Commands (`tools/dev/agents`)
 
