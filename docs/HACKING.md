@@ -32076,26 +32076,109 @@ agents through the night, could not move to it.
   its own after its first turn (the one its process holds the lock of),
   never the first's. It failed before (the second was given the
   first's, and the first's transcript as its own).
-- *A working Codex, whatever its field holds* (`olo_agent_screen::
-  classify`, `codex_at_work`; the ShiftUp lead's items 50 and 51,
-  2026-11-27: "`olo agent run codex` returns at Codex's first message
-  as if the turn had ended"; "a Codex tab that is working is listed as
-  `idle` … while its screen says 'Working (1m 43s • esc to interrupt)':
-  seen on ten reviewers at once"). Codex's word that it works is its
-  status line, which stands over its field; the classifier looked for
-  "esc to interrupt" in the screen's last six lines, and the field
-  grows with what is typed or queued in it: a lead's long message
-  waiting there pushed the line out, and a Codex at work read as at
-  rest at its prompt, its last words given as its turn's end. The line
-  is now also looked for over the field, by its own shape (a bullet or
-  a spinner, words ending "esc to interrupt)"), among the dozen lines
-  above it; words of a transcript that only mention it are not it
-  (`states`: a nine-line message in the field; fails before). 2 µs more
-  for a Codex screen at rest (`the_cost_of_telling_a_codex_at_rest`:
-  20.6 µs a reading, 18.4 without the look). Rex's own reading of its
-  panes uses the same classifier. Not yet tried against the real
-  Codex with a long message queued (its field's lines are drawn here
-  as the one seen at work was): to do with the next live test of it.
+- *A Codex in a turn is not at rest, whatever its screen reads*
+  (`agents::state::classify_screen_rich`, `turn_on`,
+  `agentd::service::standing`; `olo_agent_screen::codex_status`,
+  `codex_at_work`; the ShiftUp lead's items 50 and 51, 2026-11-27:
+  "`olo agent run codex` returns at Codex's first message as if the
+  turn had ended"; "a Codex tab that is working is listed as `idle`
+  (`quiet_secs: 0`) while its screen says 'Working (1m 43s • esc to
+  interrupt)': seen on ten reviewers at once"). Found with the real
+  Codex (0.172) against the live suite's made-up model by a second
+  investigator, every phase of a turn captured:
+  **while an answer of its own comes, Codex draws no status line at
+  all** (nor when a long heading of its thinking pushes its clock off
+  the line's end): its words stream above its field, and its field is
+  drawn all through a turn, so its screen is that of a Codex at its
+  prompt. And **Codex says itself that its turn is on**: OSC 7501,
+  "working" from a turn's start to its end, "done" at its end (with a
+  terminal of its own still running too), "idle" at an interrupt and
+  when it is started again after it was killed. The service had that
+  word and threw it away wherever the screen showed a prompt (a rule
+  made for Claude Code, whose pane is "at work" while a shell of its
+  own runs on after its turn); then a rest that held a quarter of a
+  second (`CONFIRM`) was told, with `answers` and the last message
+  there was: the first words of a turn that went on for twenty
+  minutes, or none ("silent", exit 1). Now:
+  - Codex's own word is believed, at work and at rest
+    (`classify_screen_rich`: the screen's prompt overrules "working"
+    for the others only). It does not *take up* what the child was
+    given (`in_turn` stays the screen's): Codex says "working" for a
+    few milliseconds as it starts with nothing to do.
+  - A Codex that gives no word of its own (an older one; a service not
+    told yet) is asked of by its rollout: a task started and not
+    complete (`transcript_state` "working") is a turn on, to `list`,
+    `status`, `watch` and the events alike (`standing`, the one place
+    the screen and the file are settled), for as long as it shows
+    life: its screen or its file written within `TURN_ON_MS` (ten
+    seconds). While that holds no rest is told and both are read again
+    every half second (`TURN_ON_LOOK_MS`). Never by the file alone:
+    one left at "working" by a turn that was killed says so for ever
+    of a Codex that is at rest.
+  - A turn that failed ends in the rollout with `task_complete` and its
+    error (a refused request, a stream cut short past its retries):
+    read as an error, where it was "done".
+  - *What its screen can say* is read by its real shape, for those
+    who have only the screen (Rex's own reading of a pane; an older
+    Codex): the status line is a bullet or a spinner, words of its
+    own, and **its clock with the hint in brackets**, whatever it
+    writes after ("• Checking the diff first… (6s • esc to interrupt)
+    · 1 background terminal runni…": `codex_status`), not any line
+    with the hint's words (an answer that spoke of the hint, or the
+    words typed into the field, kept a finished Codex "working" for
+    ever: a code review of a first try, made a day before the cause
+    was known); the field is the last line that begins with Codex's
+    mark at the screen's edge, a message that begins "2. Verify" too
+    (only a list of choices with the mark on one is not); the look
+    goes sixteen lines up (what is queued stands between: "• Queued
+    follow-up inputs"), no further than the line a turn ends with
+    ("Worked for 16s • 1:04 PM"); and "tab to queue message" under
+    the field, or "shift+← edit last queued message" over it, are
+    drawn only while a turn is on. A working Codex's `summary` is the
+    line over its field, never its footer (`doing_line`); done at its
+    prompt it is "at prompt".
+  Tried: the investigator's three tests with the real Codex
+  (`agents_live.rs`, `live_codex_*`: `run` waits past a streamed
+  first message for the last; a watch past a long thinking heading
+  and a stream; a running command with a draft or a queued message
+  stays at work, and one left with a terminal of its own, or started
+  again after it was killed, rests): none passed before, all do. Its
+  real screens are the classifier's tests (`olo_agent_screen`,
+  `states`). And for a Codex that gives no word of its own,
+  `a_codex_in_a_turn_by_its_file_is_not_at_rest` (the suite: a
+  stand-in whose first words are on its screen for two seconds and
+  more with its turn on in its file; `run` returned them before:
+  "`run` returned at Codex's first words, its turn still on"). The
+  classifier's cost on a Codex screen of thirty lines: 20 µs a
+  reading, as before. Rex's own reading of a pane (Activity, Auto
+  Approve) has Codex's word too but still lets the screen overrule
+  it, on the pane's last sixteen rows: TODO.
+- *A turn's end is told by when the turn began* (`state::rest_now`,
+  `Written::turn_ms`, `Expected::turn_from_ms`; `agent.rs`,
+  `turn_started_ms`; 2026-11-27, met in the live suite under a load of
+  seventy and more). Where a child was given work and no reading of
+  its screen caught its turn on, its conversation's file says whether
+  that turn came and went: the file's last turn is over **and began no
+  earlier than the work was given** (Claude Code: the time on the
+  person's last message, not on what a tool gave back; Codex: on its
+  last `task_started`). It went by the file's length or its time of
+  writing, and still does where a file doesn't say when (Antigravity):
+  a conversation taken up again with a prompt, whose program wrote to
+  the file as it started, was told done with the *last* conversation's
+  closing words a second after its start
+  (`a_conversation_taken_up_again_is_not_done_by_its_old_last_words`);
+  and a turn so quick that it was over before the service had noted
+  its prompt as given had "not been written since", and its end was
+  kept back two minutes (a start's turn can have begun from the
+  moment its tab was made, not from when the service came to note it).
+- *A reading takes up what stood when it began* (`state::takes_up`,
+  `Looked::expected`; a code review, 2026-11-27). A reading of a
+  screen that sees a turn on takes up what the child had been given
+  (`Live::expects`), so that the turn's end answers it. A reading
+  begun while turn A was on, overtaken by A's end and by a message B
+  sent at that rest, took B for begun, and A's rest with A's last
+  words was then B's answer. A reading now carries what the child
+  had been given when it began, and takes up only that.
 - *An agent's own shells* (`background_shells`, `waiting_on`;
   `agent.rs`, `find_background_shells`; the ShiftUp lead's item 26,
   2026-11-26: "A Claude Code agent whose turn ended with its own
@@ -32139,9 +32222,12 @@ agents through the night, could not move to it.
   conversation file after: an agent that started its shell and ended
   its turn in that time was "done, no shell, `waiting_on: someone`"
   for a moment, the old list of processes beside the new file. A live
-  test met it two times in five under the suite's own load, and a
-  `watch` or a `run` that asks at that moment takes a working agent
-  for a finished one. Found by a second investigator, on six failures
+  test met it two times in five under the suite's own load, and
+  whoever goes by `waiting_on` to tell a turn's end from a wait on
+  the agent's own run (the leads' own watchers: `tools/dev/agents`)
+  took a working agent for a finished one at that moment. (`olo agent
+  run` itself ends at the turn's end whatever still runs under the
+  agent, and closes its tab: TODO.) Found by a second investigator, on six failures
   of six with the times of each step. Now the conversation file is
   read first and the agent's process tree after it, and the tree is
   the agent's own alone (`procs::subtree_procs`:
@@ -32154,7 +32240,14 @@ agents through the night, could not move to it.
   starts the shell and ends the turn between the two readings: fails
   every time before. (With a status that fast, `look` itself takes up
   what a child was given when it sees its turn on: the 120 ms a
-  status used to take had let `transition` do it first.)
+  status used to take had let `transition` do it first.) The kernel's
+  list of a thread's children is exact only while none of them ends
+  (proc_pid_task(5)): it is read twice and both readings kept, so a
+  short-lived sibling's end doesn't hide the shell that lives; and
+  the agent's own process is stepped down to (from a wrapper to the
+  program it runs) only where the deeper one is still what it was
+  read as when read again whole, which a child between its fork and
+  its exec is not.
 - *Which turn a rest belongs to* (`state::rest_now`, `Live::expects`,
   `answers`; the ShiftUp lead's items 27 and 34, 2026-11-26: "`start
   agy --resume ID --prompt …` reports `done` 1.4 s after the start,

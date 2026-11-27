@@ -489,7 +489,7 @@ def state(name):
     # (A session that isn't there: `display-message` answers nothing and
     # succeeds, and a bare name matches another's by its start; `=` is the
     # name exactly.)
-    own_run = False
+    own_run = at_work = False
     if via(name) == "rex":
         # (The service's word for whether it is there and runs; what it
         # is doing is read from its screen here, as for a tmux one: the
@@ -515,6 +515,14 @@ def state(name):
         # which the service told as the agent's run until 2026-11-27: a
         # reviewer that had written its review and said DONE read as
         # working for good, and its front door never saw it finish.)
+        # (And its word that it is at work, where the screen as read
+        # here doesn't say so: a Codex with a long message waiting in its
+        # field, or between two of its steps, has its status line out of
+        # the lines looked at below, or none; the service goes by its
+        # conversation's file then. Read as idle here all the same, a
+        # reviewer at work was told as "finished a turn", and DONE where
+        # an earlier result stood: a code review, 2026-11-27.)
+        at_work = said.get("state") == "working"
         runs = [str(b.get("cmd") or "") for b in said.get("background_shells") or []]
         own_run = said.get("waiting_on") == "own_run" and not (runs and all("codex-code-mode-host" in c or "/.codex/packages/" in c.split(" ")[0] for c in runs))
     else:
@@ -552,7 +560,7 @@ def state(name):
     # daemon, where the service doesn't find them among its processes.)
     if cli(name) == "agy" and any(re.search(r"\b[1-9][0-9]* task\(s\)", l) for l in lines[-3:]):
         own_run = True
-    return "working" if own_run else "idle"
+    return "working" if own_run or at_work else "idle"
 
 
 def at_rest(name):
@@ -2040,9 +2048,18 @@ def end(name, sessions=True):
             # (Its own word that it ended: it answers without an error and
             # `ended: false` where its program outlived the time it gave it.)
             try:
-                still = r.returncode == 0 and json.loads(r.stdout).get("ended") is False
+                stopped = json.loads(r.stdout) if r.returncode == 0 else {}
             except ValueError:
-                still = False
+                stopped = {}
+            still = stopped.get("ended") is False
+            # (The stop's own answer has the conversation's id where the
+            # status before it had none yet: an agy stopped as it began
+            # its first conversation. A code review, 2026-11-27.)
+            its = stopped.get("cli_session_id")
+            m0 = meta(name)
+            if its and m0 is not None and m0.get("cli_session") != its:
+                m0["cli_session"] = its
+                save_meta(name, m0)
             if (r.returncode != 0 or still) and state(name) not in ("gone", "exited"):
                 ended = False
                 print(f"agents: {name} couldn't be stopped ({(r.stderr or r.stdout).strip()[:200]}): it runs still; `olo agent stop {child(name)}` and look", file=sys.stderr)
@@ -2202,6 +2219,10 @@ def resume(name, text, result=None, session=None):
         sys.exit(f"agents: {name} is running: `agents say {name} …` tells it more")
     if via(name) != "rex" or not rex_here():
         sys.exit(f"agents: {name} was a tmux session, or this isn't a Rex pane: only a child tab can be brought back with its conversation; start it anew with a brief that says what it did")
+    # (Told from here on: what it writes while the service still answers
+    # this asking is written since. Taken after, a quick helper's result
+    # was "from before" for good. A code review, 2026-11-27.)
+    told_at = time.time()
     r = olo("resume", child(name), "--prompt", text, "--json")
     try:
         said = json.loads(r.stdout) if r.returncode == 0 else {}
@@ -2219,7 +2240,7 @@ def resume(name, text, result=None, session=None):
         d = folder(name)
         launch(name, d, ROOT, [], os.path.join(d, "target"), again=(session, text))
         m = meta(name)
-        m.update({"seen": "", "seen_state": "", "said_at": time.time(), "cli_session": session})
+        m.update({"seen": "", "seen_state": "", "said_at": told_at, "cli_session": session})
         m.pop("ended", None)
         if result:
             m["done"] = os.path.abspath(result)
@@ -2227,12 +2248,17 @@ def resume(name, text, result=None, session=None):
         print(f"agents: {name} is back, by its conversation's own id (the service had its record no more), and told; now wait on `tools/dev/agents watch`")
         return
     minded = os.environ.get("OLO_AGENTS_MINDER") != "off" and os.path.exists(MINDER_RULES)
-    if minded:
+    # (Brought back with what it was started with, a minder too: the
+    # service says which in its answer. Asked for another on top, the one
+    # just started was stopped for it. A code review, 2026-11-27.)
+    if minded and said.get("minder") and not said.get("minder_error"):
+        pass
+    elif minded:
         asked = olo("mind", said["id"], "--with", MINDER, "--rules", MINDER_RULES, "--json")
         if asked.returncode != 0:
             print(f"agents: {name} runs WITHOUT a minder ({(asked.stderr or asked.stdout).strip()[:200]}): what it asks comes to you; `olo agent mind {said['id']} --with {MINDER} --rules {MINDER_RULES}` once there is room", file=sys.stderr, flush=True)
             minded = False
-    m.update({"rex_id": said["id"], "window": said.get("window_id"), "minded": minded, "seen": "", "seen_state": "", "said_at": time.time()})
+    m.update({"rex_id": said["id"], "window": said.get("window_id"), "minded": minded, "seen": "", "seen_state": "", "said_at": told_at})
     m.pop("ended", None)
     if result:
         m["done"] = os.path.abspath(result)
@@ -2314,12 +2340,16 @@ def main():
     elif cmd == "resume" and len(rest) >= 2:
         # resume NAME [--result FILE] [--session ID] TEXT…
         words, result, session = rest[1:], None, None
-        while len(words) >= 3 and words[0] in ("--result", "--session"):
+        while len(words) >= 2 and words[0] in ("--result", "--session"):
             if words[0] == "--result":
                 result = words[1]
             else:
                 session = words[1]
             words = words[2:]
+        # (With nothing to tell it, `--session ID` itself was the
+        # message. A code review, 2026-11-27.)
+        if not " ".join(words).strip() or words[0] in ("--result", "--session"):
+            sys.exit("agents: resume NAME [--result FILE] [--session ID] TEXT…: what to tell it is missing")
         resume(rest[0], " ".join(words), result, session)
     elif cmd == "forget" and rest:
         forget(rest[0])

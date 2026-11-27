@@ -63,13 +63,21 @@ fn direct_children(pid: i32) -> Option<Vec<i32>> {
     let task_dir = format!("/proc/{pid}/task");
     let mut kids = Vec::new();
     let mut seen = HashSet::new();
-    for pass in 0..2 {
+    // Read twice, always, and what either reading has is kept. The
+    // kernel's list is exact only while none of the thread's children
+    // ends (proc_pid_task(5), `children`: a child that exits while the
+    // file is read can leave one that lives out of it): an agent's
+    // short-lived probe ending just then left its long-running shell
+    // out, and the agent was "done, no shell" for a moment again (a
+    // code review, 2026-11-27). A child left out of one reading by a
+    // sibling's end is in the other, unless another sibling ends at
+    // that very instant too.
+    for _pass in 0..2 {
         let rd = match std::fs::read_dir(&task_dir) {
             Ok(rd) => rd,
             Err(e) if e.kind() == ErrorKind::NotFound => return Some(kids),
             Err(_) => return None,
         };
-        let mut thread_vanished = false;
         for entry in rd.flatten() {
             let tid_path = entry.path();
             let children_path = tid_path.join("children");
@@ -88,14 +96,11 @@ fn direct_children(pid: i32) -> Option<Vec<i32>> {
                     if tid_path.exists() {
                         return None;
                     }
-                    // Thread exited mid-scan; its children were reparented to another thread of `pid`.
-                    thread_vanished = true;
+                    // Thread exited mid-scan; its children were reparented to another thread of `pid`
+                    // (found there, in this reading or the next).
                 }
                 Err(_) => return None,
             }
-        }
-        if !thread_vanished || pass == 1 {
-            break;
         }
     }
     Some(kids)

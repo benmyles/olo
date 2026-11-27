@@ -84,26 +84,72 @@ pub fn shared_server(comm: &str, exe: &str, args: &[String]) -> bool {
     identify(comm, exe, args) == Some(Agent::Codex) && args.iter().skip(1).take(3).any(|a| a == "app-server")
 }
 
+/// Codex's status line, by its own shape: a bullet or a spinner, words,
+/// and its clock with its hint in brackets, "• Working (1m 43s • esc to
+/// interrupt)" (and whatever it writes after them). Not any line that
+/// has the hint's words: an answer that speaks of the hint ("• The hint
+/// reads (esc to interrupt)") kept a finished Codex "working" for ever,
+/// and so did those words typed into its field (a code review,
+/// 2026-11-27).
+fn codex_status(line: &str) -> bool {
+    let l = line.trim();
+    let mut chars = l.chars();
+    // (A bullet or a spinner. Not the marks Codex sets before what a
+    // command printed or what waits in its queue: those lines are quoted.)
+    let led = chars.next().is_some_and(|c| !c.is_alphanumeric() && !c.is_ascii_punctuation() && !matches!(c, '└' | '↳' | '│')) && chars.next() == Some(' ');
+    let Some(at) = l.find(" • esc to interrupt)").filter(|_| led) else { return false };
+    let Some(open) = l[..at].rfind('(') else { return false };
+    // (Its clock: "4s", "1m 43s", "2h 03m 10s".)
+    let clock: Vec<&str> = l[open + 1..at].split(' ').collect();
+    let part = |p: &str, unit: char| p.strip_suffix(unit).is_some_and(|n| !n.is_empty() && n.len() <= 3 && n.bytes().all(|b| b.is_ascii_digit()));
+    match clock.as_slice() {
+        [s] => part(s, 's'),
+        [m, s] => part(m, 'm') && part(s, 's'),
+        [h, m, s] => part(h, 'h') && part(m, 'm') && part(s, 's'),
+        _ => false,
+    }
+}
+
 /// Codex's own word that it is at work, wherever its field has pushed
-/// it: its status line ("• Working (1m 43s • esc to interrupt)") stands
-/// above its field, and the field grows with what is typed or queued in
-/// it. Looked for in the screen's last six lines alone, a working Codex
-/// with a long message waiting in its field read as at rest, at its
-/// prompt: a lead's `list` said `idle` of ten reviewers at work, and a
-/// `run` took the first words of a turn for its end (the ShiftUp lead's
-/// items 50 and 51, 2026-11-27). The line is told by its own shape (a
-/// bullet or a spinner, then words ending "esc to interrupt)"), among
-/// the dozen lines above the field: words of a transcript that only
-/// mention it are not it.
+/// it: its status line stands above its field, and the field grows with
+/// what is typed or queued in it. Looked for in the screen's last six
+/// lines alone, a working Codex with a long message waiting in its field
+/// read as at rest, at its prompt (the ShiftUp lead's items 50 and 51,
+/// 2026-11-27; what settles those is its conversation's file,
+/// `olo_rex_link::agents::state::turn_on`: this is what its screen can
+/// say). The field is the last line that begins with Codex's mark at the
+/// screen's edge (what is typed under it is set in from the edge; a
+/// message that begins "2. Verify" is still the field: only a list of
+/// choices with the mark on one of them is not), and the status line is
+/// looked for among the sixteen lines above it, no further up than the
+/// line Codex ends a turn with ("Worked for 16s • 1:04 PM", as 0.172
+/// draws it) or a rule drawn across the screen: what stands above
+/// either is of a turn before.
 fn codex_at_work(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
-    let numbered = |s: &str| s.split_once('.').is_some_and(|(n, rest)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) && rest.starts_with(' '));
-    let Some(field) = lines.iter().rposition(|l| l.trim_start().strip_prefix('›').is_some_and(|rest| !numbered(rest.trim_start()))) else { return false };
-    lines[..field].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(12).any(|l| {
-        let mut chars = l.chars();
-        let led = chars.next().is_some_and(|c| !c.is_alphanumeric() && !c.is_ascii_punctuation()) && chars.next() == Some(' ');
-        led && l.to_ascii_lowercase().ends_with("esc to interrupt)")
-    })
+    let numbered = |s: &str| s.trim_start().split_once('.').is_some_and(|(n, rest)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && rest.starts_with(' '));
+    let Some(field) = lines.iter().rposition(|l| l.starts_with('›')) else { return false };
+    // (A chooser: the mark on one numbered choice, another numbered one under or over it.)
+    let choice = numbered(lines[field].trim_start_matches('›'));
+    let beside = |i: usize| lines.get(i).is_some_and(|l| !l.starts_with('›') && numbered(l));
+    if choice && (beside(field + 1) || field.checked_sub(1).is_some_and(beside)) {
+        return false;
+    }
+    // What Codex draws only while a turn is on: under its field, "tab
+    // to queue message" (its footer while something is typed there);
+    // over it, "shift+← edit last queued message" under what was queued.
+    if lines[field + 1..].iter().any(|l| l.trim().eq_ignore_ascii_case("tab to queue message")) {
+        return true;
+    }
+    // (Sixteen lines: what is queued stands between the status line and
+    // the field, "• Queued follow-up inputs" and a line for each.)
+    lines[..field]
+        .iter()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(16)
+        .take_while(|l| !l.trim_start().starts_with('─') && !l.trim_start().starts_with("Worked for "))
+        .any(|l| codex_status(l) || l.trim().eq_ignore_ascii_case("shift+← edit last queued message"))
 }
 
 /// What the agent is doing, from the bottom of its screen (where its
@@ -141,7 +187,13 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     let bottom6 = tail_joined(6);
     let bottom10 = tail_joined(10);
     // Genuine working indicator in Claude Code / Codex status footer.
-    if bottom6.contains("esc to interrupt") || (agent == Agent::Codex && codex_at_work(screen)) {
+    // (Codex's by its status line's own shape, at the foot or over its
+    // field: `codex_status`, `codex_at_work`.)
+    let at_work = match agent {
+        Agent::Codex => non_empty.iter().rev().take(6).any(|l| codex_status(l)) || codex_at_work(screen),
+        _ => bottom6.contains("esc to interrupt"),
+    };
+    if at_work {
         return State::Working;
     }
     // Check chooser/dialog chrome strictly within the bottom region so prose never triggers Blocked.
@@ -1380,6 +1432,36 @@ mod tests {
         assert_eq!(classify(Agent::Codex, &rested), State::Idle);
         let mentions = rested.replace("  └ Read review.md", "  └ the service looks for \"esc to interrupt\" in the last six lines; Working (1m • esc to interrupt) is the line");
         assert_eq!(classify(Agent::Codex, &mentions), State::Idle, "its own words about the line");
+        // (A code review's cases, 2026-11-27.) A message in its field that begins like a choice is still
+        // its field, and the status line over it is seen; so is one with a quoted mark in it.
+        assert_eq!(classify(Agent::Codex, &codex_field(&format!("2. Verify the result\n  {long}"))), State::Working, "a numbered message in its field");
+        assert_eq!(classify(Agent::Codex, &codex_field(&format!("{long}\n  › as it wrote\n  and more"))), State::Working, "a mark quoted in its field");
+        // An answer that speaks of the hint, in a bullet's line, over a long message in its field: at rest.
+        // And the hint's words typed into its field: at rest.
+        let speaks = rested.replace("  └ Read review.md", "  └ Read review.md\n\n• The hint reads (esc to interrupt)\n• Worked for 7s");
+        assert_eq!(classify(Agent::Codex, &speaks), State::Idle, "an answer that speaks of the hint");
+        let short = "• Done.\n\n› tell me what (esc to interrupt) means\n\n  GPT-6.2-Astra max · /var/tmp/x · Context 52% left\n  ← for agents · ? for shortcuts\n";
+        assert_eq!(classify(Agent::Codex, short), State::Idle, "the hint's words in its field");
+        // Its status line with more after its clock (a count of what it runs) is its status line.
+        assert_eq!(classify(Agent::Codex, &codex_field("Ask Codex to do anything").replace("esc to interrupt)", "esc to interrupt) · 1 background terminal running")), State::Working);
+        // A status line of a turn before, over a rule drawn since: not this turn's.
+        let before = rested.replace("  └ Read review.md", "• Working (2s • esc to interrupt)\n──────────────────────\n• Done.");
+        assert_eq!(classify(Agent::Codex, &before), State::Idle, "a status line above a rule");
+        // Codex 0.172's own screens, as a second investigator took them from the real program (2026-11-27).
+        // A turn over, with what was sent while it worked shown above as it was sent: at rest, whatever
+        // status line of the turn before stands further up.
+        let over = "• Working (9s • esc to interrupt)\n\n• First answer.\n\n  Worked for 16s • 1:04 PM\n\n› QUEUED_LINE_1: Please also check this after finishing.\n  QUEUED_LINE_2: Second line of queued note.\n  QUEUED_LINE_3: Third line.\n\n• QUEUED_FOLLOWUP_ANSWERED.\n\n  Worked for <1s • 1:04 PM\n\n› Ask Codex to do anything\n\n  gpt-5.4-codex high · /var/tmp/work · Run the full phased turn.\n  ← for agents · ? for shortcuts                    ⚠ 1 warning · f2 to view\n";
+        assert_eq!(classify(Agent::Codex, over), State::Idle, "a turn over");
+        // While it runs a command: its own words before its clock, and a count of what it runs after.
+        let running = "• I will check the diff first.\n\n• Checking the diff first, then running the verification command. (6s • esc to interrupt) · 1 background terminal runni…\n\n› Ask Codex to do anything\n\n  gpt-5.4-codex high · /var/tmp/work · Run the full phased turn.\n  ← for agents · ? for shortcuts\n";
+        assert_eq!(classify(Agent::Codex, running), State::Working, "its status line as it runs a command");
+        // While its answer comes, it draws no status line at all: by its screen it is at its prompt.
+        // (What says its turn is on then is its conversation's file: `olo_rex_link::agents::state::turn_on`.)
+        let streaming = "› Run the full phased turn.\n\n• Line 1 of commentary streaming slowly.\n  Line 2 of commentary streaming slowly.\n\n› Ask Codex to do anything\n\n  gpt-5.4-codex high · /var/tmp/work · Run the full phased turn.\n  ← for agents · ? for shortcuts\n";
+        assert_eq!(classify(Agent::Codex, streaming), State::Idle, "an answer coming: no word of it on its screen");
+        // A list of choices with its mark on one is no field, whatever stands over it.
+        let chooser = "• Working (2s • esc to interrupt)\n\n  Would you like to run the following command?\n\n  $ touch x\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again (a)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n";
+        assert_ne!(classify(Agent::Codex, chooser), State::Working, "a question under a status line of before");
         let codex = "• Working (4s • esc to interrupt)\n▌ \n";
         assert_eq!(classify(Agent::Codex, codex), State::Working);
         let codex_ask = "Would you like to run the following command?\n  $ cargo test\n› 1. Yes, proceed (y)\n";
@@ -1615,10 +1697,13 @@ mod tests {
     /// µs and 12.6 µs.)
     /// What telling a Codex at rest from one at work costs, on a screen of
     /// thirty lines read at each change of it (`jato test --release -p
-    /// olo-agent-screen -- --ignored the_cost_of_telling --nocapture`):
-    /// with the look above its field for its status line (2026-11-27:
-    /// 20.6 µs a reading; the same screen read as Claude Code's, which
-    /// has no such look, 18.4 µs).
+    /// olo-agent-screen -- --ignored the_cost_of_telling --nocapture`),
+    /// the same screen and the same classifier before and after the look
+    /// over its field for its status line (2026-11-27): 32.7 µs a
+    /// reading before (the hint's words looked for in the last six
+    /// lines), 20.2 µs after, each the least of forty rounds in a build
+    /// of its own: no cost that can be measured (the difference is the
+    /// two builds').
     #[test]
     #[ignore]
     fn the_cost_of_telling_a_codex_at_rest() {
@@ -1627,19 +1712,17 @@ mod tests {
             (0..26).map(|i| format!("• Ran step {i} of the work, and said so at some length")).collect::<Vec<_>>().join("\n")
         );
         assert_eq!(classify(Agent::Codex, &screen), State::Idle);
-        for (what, agent) in [("Codex at rest", Agent::Codex), ("the same screen as Claude Code's", Agent::Claude)] {
-            let least = (0..20)
-                .map(|_| {
-                    let t = std::time::Instant::now();
-                    for _ in 0..500 {
-                        std::hint::black_box(classify(agent, std::hint::black_box(&screen)));
-                    }
-                    t.elapsed() / 500
-                })
-                .min()
-                .unwrap();
-            println!("{what} ({} lines): {least:?} a reading", screen.lines().count());
-        }
+        let least = (0..40)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                for _ in 0..500 {
+                    std::hint::black_box(classify(Agent::Codex, std::hint::black_box(&screen)));
+                }
+                t.elapsed() / 500
+            })
+            .min()
+            .unwrap();
+        println!("Codex at rest ({} lines): {least:?} a reading", screen.lines().count());
     }
 
     #[test]

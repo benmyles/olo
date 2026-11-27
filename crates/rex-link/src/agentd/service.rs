@@ -103,6 +103,10 @@ pub struct Reading {
     activity: Activity,
     pub cls: ScreenClassification,
     pub screen: String,
+    /// What the child had been given and not yet been seen at when this
+    /// reading *began* (`Expected::cursor`): a reading takes up only
+    /// that ([`Looked::expected`]).
+    expected: Option<u64>,
 }
 
 /// What is kept of a child while it lives (nothing of it is written
@@ -291,6 +295,38 @@ pub fn minder_reports() -> Duration {
     std::env::var("OLO_REX_AGENTS_MINDER_REPORTS_MS").ok().and_then(|v| v.parse().ok()).map_or(MINDER_REPORTS, Duration::from_millis)
 }
 
+/// How long a conversation file's word that a turn is on is believed
+/// of an agent that shows no life (`state::TURN_ON_MS`; a test's own:
+/// `OLO_REX_AGENTS_TURN_ON_MS`).
+fn turn_on_ms() -> u64 {
+    std::env::var("OLO_REX_AGENTS_TURN_ON_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(state::TURN_ON_MS)
+}
+
+/// When a child's conversation file was last written (0: not known).
+fn transcript_written_ms(entry: &NativeSubagent, info: Option<&Value>) -> u64 {
+    info.and_then(|v| v["transcript_path"].as_str())
+        .or(entry.transcript_path.as_deref())
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// How a child stands, by its screen (`cls`) settled with its
+/// conversation's file (`info`: `effective_state`), and, where the screen
+/// reads as at rest, by whether the file says a turn is on all the same
+/// (`state::turn_on`: then it is at work). `output_ms`: when its screen
+/// was last written. One rule for `list`, `status`, `watch` and the
+/// events, so that none calls at rest what another calls at work.
+pub(super) fn standing(entry: &NativeSubagent, cls: &ScreenClassification, info: Option<&Value>, alive: bool, output_ms: u64, reports: bool) -> (SubagentLiveState, Option<String>, bool) {
+    let tx = info.and_then(|v| v["transcript_state"].as_str());
+    let (state, error, aborted) = olo_rex_link::agents::effective_state(cls, tx, info.and_then(|v| v["transcript_error"].as_str()), alive);
+    if state == SubagentLiveState::Idle && !aborted && !reports && state::turn_on(entry.cli, tx, transcript_written_ms(entry, info), output_ms, now_unix_ms(), turn_on_ms()) {
+        return (SubagentLiveState::Working, None, false);
+    }
+    (state, error, aborted)
+}
+
 /// Most live agents one shared minder minds before a second minder of
 /// the same `CLI:MODEL:EFFORT` is started under the asking tab
 /// (default 12; `OLO_REX_AGENTS_MINDS_MOST` for tests).
@@ -315,6 +351,18 @@ pub struct Looked {
     /// A feedback survey is drawn over it and wouldn't be set aside:
     /// what is read may be covered by it.
     pub survey: bool,
+    /// What the child had been given and not yet been seen at when the
+    /// reading began. A turn seen on in this reading takes up that and
+    /// nothing given since: a reading begun while turn A was on, with a
+    /// message B sent and noted as it ended, took B for begun, and A's
+    /// rest and last words were then B's answer (a code review,
+    /// 2026-11-27; the taking-up in `look` came with the status that
+    /// reads a screen first, d796809c2).
+    pub expected: Option<u64>,
+    /// Whether its program says what it is doing itself (an OSC 7501
+    /// record of its own). Where a Codex does, that is its turn's word
+    /// and its conversation's file is not asked (`state::turn_on`).
+    pub reports: bool,
 }
 
 pub struct Service {
@@ -528,7 +576,7 @@ impl Service {
     /// was read before; otherwise the last reading where nothing was
     /// written since.
     pub async fn look(&self, entry: &NativeSubagent, fresh: bool) -> Looked {
-        let (reading, out_seq, activity, status_msg, rows) = {
+        let (reading, out_seq, activity, status_msg, rows, expected) = {
             let st = self.lock();
             let alive = entry.exited_at.is_none() && st.reg.by_window(HOST, &entry.session_id, &entry.window_id).is_some();
             let Some(live) = st.live.get(&entry.id).filter(|_| alive) else {
@@ -539,7 +587,7 @@ impl Service {
                     None => exited("tab closed".into()),
                 };
                 let (out, chg) = st.live.get(&entry.id).map(|l| (l.last_output_at, l.last_state_change_at)).unwrap_or((0, 0));
-                return Looked { cls, screen: String::new(), last_output_at: out, last_state_change_at: chg, pid: entry.last_pid, survey: false };
+                return Looked { cls, screen: String::new(), last_output_at: out, last_state_change_at: chg, pid: entry.last_pid, survey: false, expected: None, reports: false };
             };
             if let Some(code) = live.exit_code {
                 return Looked {
@@ -549,6 +597,8 @@ impl Service {
                     last_state_change_at: live.last_state_change_at,
                     pid: live.pid.or(entry.last_pid),
                     survey: false,
+                    expected: None,
+                    reports: false,
                 };
             }
             let (activity, status_msg) = live.activity();
@@ -560,9 +610,11 @@ impl Service {
                     last_state_change_at: live.last_state_change_at,
                     pid: live.pid.or(entry.last_pid),
                     survey: live.survey_stays,
+                    expected: read.expected,
+                    reports: !live.statuses.is_empty(),
                 };
             }
-            (live.read.clone(), live.out_seq, activity, status_msg, live.rows)
+            (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.cursor))
         };
         let mut survey = false;
         let mut live_read = false;
@@ -581,10 +633,10 @@ impl Service {
             Err(_) => reading.map(|r| (r.cls, r.screen)).unwrap_or_else(|| (starting(), String::new())),
         };
         let mut st = self.lock();
-        let (mut out, mut chg, mut pid) = (0, 0, entry.last_pid);
+        let (mut out, mut chg, mut pid, mut reports) = (0, 0, entry.last_pid, false);
         if let Some(live) = st.live.get_mut(&entry.id) {
             if cls.state != SubagentLiveState::Exited {
-                live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone() });
+                live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone(), expected });
             }
             // Any live reading that sees a turn on (`cls.in_turn`) proves the
             // child took up what it was given, even if its turn finishes before
@@ -592,8 +644,11 @@ impl Service {
             // cached transition dedupe state and invalidate any stale pre-turn
             // confirmation task so the turn's end is never swallowed against
             // the pre-turn rest.
+            // Only what it had been given when this reading began: a
+            // message noted since is another turn's, which a later
+            // reading sees begin.
             if live_read
-                && cls.in_turn
+                && state::takes_up(cls.in_turn, expected, live.expects)
                 && let Some(given) = live.expects.take()
             {
                 live.answers = Some(given.cursor);
@@ -607,9 +662,9 @@ impl Service {
                 live.box_now = None;
             }
             live.survey_stays = survey;
-            (out, chg, pid) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid));
+            (out, chg, pid, reports) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), !live.statuses.is_empty());
         }
-        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey }
+        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected, reports }
     }
 
     /// A child's screen as the server has it, with a feedback survey
@@ -797,7 +852,11 @@ impl Service {
         let transcript_len = transcript_known.then(|| entry.transcript_path.as_deref().and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len()));
         if let Some(live) = self.lock().live.get_mut(&entry.id) {
             let now = now_unix_ms();
-            live.expects = Some(state::Expected { cursor, given_ms: now, until_ms: now + within.as_millis() as u64, transcript_len });
+            // (A prompt at its start: its turn can have begun from the
+            // moment the tab was made, two seconds' leave for the tab's
+            // making itself. A message: from now, before it is typed.)
+            let turn_from_ms = if transcript_known { now } else { (to_unix_ms(entry.started_at).max(0) as u64).saturating_sub(2000) };
+            live.expects = Some(state::Expected { cursor, given_ms: now, until_ms: now + within.as_millis() as u64, transcript_len, turn_from_ms });
         }
     }
 
@@ -1249,6 +1308,7 @@ impl Service {
     async fn transition(self: &Arc<Self>, id: &str) {
         let Some(entry) = self.lock().reg.entries.iter().rev().find(|e| e.id == id && e.exited_at.is_none()).cloned() else { return };
         let looked = self.look(&entry, false).await;
+        let read_expecting = looked.expected;
         let cls = looked.cls;
         // Its tab is gone (the server said so of its screen): its end is
         // said once, as an end is said (`exit`), whichever word of it
@@ -1298,7 +1358,9 @@ impl Service {
             // agent that had done nothing. The ShiftUp lead, 2026-11-27,
             // item 46: "we nearly read 'no findings' from it". A
             // folder's trust asked at the start did the same.)
-            if cls.in_turn
+            // (And only what it had been given when the reading this
+            // goes by began: `Looked::expected`.)
+            if state::takes_up(cls.in_turn, read_expecting, live.expects)
                 && let Some(given) = live.expects.take()
             {
                 live.answers = Some(given.cursor);
@@ -1354,7 +1416,13 @@ impl Service {
         // the next look at the same screen), and a follower that shows
         // the state it is told (the desktop's rows) would have said At
         // rest of a child that was done.
-        self.tell(id, cls.state, cls.summary.clone());
+        // (But for a Codex that reads as at rest and isn't kept back: its
+        // screen says so within a turn too, and what its conversation's
+        // file says of that is read below, a quarter of a second on:
+        // `state::turn_on`. Told there, as at rest or as at work.)
+        if !(entry.cli == olo_rex_link::agents::AgentCli::Codex && cls.state == SubagentLiveState::Idle && generation.is_some()) {
+            self.tell(id, cls.state, cls.summary.clone());
+        }
         // (A question come or gone: who waits on that looks at once.)
         if cls.folder_trust.is_some() || cls.approval.is_some() || cls.state == SubagentLiveState::Exited || cls.state == SubagentLiveState::Working {
             self.changed.notify_waiters();
@@ -1391,6 +1459,33 @@ impl Service {
             let pending = Self::pending_tools(info);
             let approval = again.cls.approval.as_ref().map(|ap| service.approval_json(&id, ap, &pending));
             let (state, error, _) = olo_rex_link::agents::effective_state(&again.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
+            // At rest by its screen, and in a turn by its conversation's
+            // file (`state::turn_on`): no rest to tell. Followers are
+            // told it works, and its screen and file are read again in a
+            // moment (nothing on the screen says when the file changes):
+            // until the file says the turn is over, or the agent has
+            // shown no life for so long that the file's word is no more
+            // believed.
+            if state == SubagentLiveState::Idle
+                && !again.reports
+                && state::turn_on(entry.cli, info.and_then(|v| v["transcript_state"].as_str()), transcript_written_ms(&entry, info), again.last_output_at, now_unix_ms(), turn_on_ms())
+            {
+                {
+                    let mut st = service.lock();
+                    let Some(live) = st.live.get_mut(&id) else { return };
+                    if live.check_gen != generation {
+                        return;
+                    }
+                    // (Kept back: the next reading of the same screen is
+                    // gone through again, not passed over as the same.)
+                    live.held_until = Some(now_unix_ms() + state::TURN_ON_LOOK_MS);
+                    live.seen_working = true;
+                }
+                service.tell(&id, SubagentLiveState::Working, None);
+                tokio::time::sleep(Duration::from_millis(state::TURN_ON_LOOK_MS)).await;
+                service.poke(&id);
+                return;
+            }
             // At rest, with what its conversation's file says: told, or
             // kept back still (`state::rest_now`).
             if matches!(state, SubagentLiveState::Idle | SubagentLiveState::Done) {
@@ -1400,6 +1495,7 @@ impl Service {
                     over,
                     at_ms: m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64),
                     said: last_message.is_some(),
+                    turn_ms: info.and_then(|v| v["turn_started_ms"].as_u64()),
                 });
                 let mut st = service.lock();
                 let Some(live) = st.live.get_mut(&id) else { return };

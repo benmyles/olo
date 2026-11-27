@@ -337,6 +337,9 @@ pub(crate) struct InspectItemResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     last_message: Option<String>,
     transcript_state: &'static str,
+    /// When the last turn in its conversation's file began ([`TranscriptInspection`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    turn_started_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     transcript_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -591,9 +594,23 @@ fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc
             // scripts/interpreters (e.g. bash/node wrapper -> agent binary),
             // without stepping down into a child with the same executable
             // (a fork-before-exec or sub-invocation of the agent itself).
+            // A step down is taken only to a process that is still what
+            // it was read as, read again whole (its name, its command
+            // line, its executable): a child read between its fork and
+            // its exec has the agent's command line and name for that
+            // instant and, a moment later, another executable (a shell's):
+            // read one after the other it passed for the agent's own
+            // program behind a wrapper, and the shell it became was then
+            // looked under for itself (a code review, 2026-11-27).
+            let still = |i: usize| {
+                let (p, _, exe) = &matches[i];
+                let comm = crate::procs::proc_stat_of(p.pid).map(|now| now.comm).unwrap_or_default();
+                let exe_now = read_exe(p.pid);
+                exe_now == *exe && agent_of(&read_argv(p.pid), &comm, &exe_now).is_some_and(|(kind, _)| kind == item.cli)
+            };
             let mut chosen = 0usize;
             for i in 1..matches.len() {
-                if !matches[i].2.is_empty() && matches[i].2 != matches[chosen].2 {
+                if !matches[i].2.is_empty() && matches[i].2 != matches[chosen].2 && still(i) {
                     chosen = i;
                 }
             }
@@ -792,6 +809,32 @@ struct TranscriptInspection {
     error: Option<String>,
     pending_tool: Option<PendingToolInfo>,
     pending_tools: Vec<PendingToolInfo>,
+    /// When the last turn in the file began, by the file's own word
+    /// (Claude Code: the time on the person's last message; Codex: on
+    /// its last `task_started`): what tells this turn from the one
+    /// before it in a conversation taken up again. None where the file
+    /// doesn't say, or the turn's beginning is further back than what
+    /// is read of the file.
+    turn_started_ms: Option<u64>,
+}
+
+/// A time as the agents write it in their files ("2026-11-27T13:04:34.832Z",
+/// in UTC), in milliseconds since 1970.
+fn iso_ms(s: &str) -> Option<u64> {
+    let (date, time) = s.trim().trim_end_matches('Z').split_once('T')?;
+    let mut d = date.split('-').map(|p| p.parse::<i64>().ok());
+    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
+    let (hms, frac) = time.split_once('.').unwrap_or((time, "0"));
+    let mut t = hms.split(':').map(|p| p.parse::<i64>().ok());
+    let (h, min, sec) = (t.next()??, t.next()??, t.next()??);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&day) || !(0..24).contains(&h) || !(0..60).contains(&min) || !(0..61).contains(&sec) || y < 1970 {
+        return None;
+    }
+    let ms: i64 = format!("{:0<3}", frac.chars().take(3).collect::<String>()).parse().ok()?;
+    // (Days from 1970 to a date: the civil-from-days rule, the other way.)
+    let (y, m) = if m <= 2 { (y - 1, m + 12) } else { (y, m) };
+    let days = 365 * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + day - 719_469;
+    u64::try_from(((days * 24 + h) * 60 + min) * 60_000 + sec * 1000 + ms).ok()
 }
 
 fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
@@ -828,6 +871,21 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
             }
         }
     }
+
+    // When the last turn began: the time on the person's last message
+    // (not on what a tool gave back, which is written as theirs too, nor
+    // on what Claude Code writes of itself in their name).
+    let turn_started_ms = parsed
+        .iter()
+        .rev()
+        .find(|v| {
+            v["type"].as_str() == Some("user")
+                && !v["isMeta"].as_bool().unwrap_or(false)
+                && !v.pointer("/message/content").and_then(Value::as_array).is_some_and(|parts| !parts.is_empty() && parts.iter().all(|p| p["type"].as_str() == Some("tool_result")))
+                && !extract_claude_text(v).is_some_and(|t| t.contains("<local-command-") || t.contains("<command-name>"))
+        })
+        .and_then(|v| v["timestamp"].as_str())
+        .and_then(iso_ms);
 
     // Determine tail state, error, and any uncompleted pending tool_use by scanning backwards.
     for v in parsed.iter().rev() {
@@ -950,7 +1008,7 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
     let last_message = (!parts.is_empty()).then(|| parts.join("\n"));
 
     let pending_tool = pending_tools.first().cloned();
-    TranscriptInspection { state, last_message, error, pending_tool, pending_tools }
+    TranscriptInspection { state, last_message, error, pending_tool, pending_tools, turn_started_ms }
 }
 
 fn extract_claude_text(v: &Value) -> Option<String> {
@@ -1054,7 +1112,7 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
     }
 
     let pending_tool = pending_tools.first().cloned();
-    TranscriptInspection { state, last_message, error, pending_tool, pending_tools }
+    TranscriptInspection { state, last_message, error, pending_tool, pending_tools, turn_started_ms: None }
 }
 
 fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
@@ -1098,9 +1156,18 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
                 && let Some(m) = p["message"].as_str().filter(|s| !s.trim().is_empty())
             {
                 last_message = Some(m.trim().to_owned());
+            } else if p["type"].as_str() == Some("task_complete")
+                && let Some(m) = p["last_agent_message"].as_str().filter(|s| !s.trim().is_empty())
+            {
+                // (A turn's end names its last words itself.)
+                last_message = Some(m.trim().to_owned());
             }
         }
     }
+
+    // When the last turn began: the time on its last `task_started`.
+    let turn_started_ms =
+        parsed.iter().rev().find(|v| v["type"].as_str() == Some("event_msg") && v["payload"]["type"].as_str() == Some("task_started")).and_then(|v| v["timestamp"].as_str()).and_then(iso_ms);
 
     // Collect all uncompleted function calls in order for H14 screen-matching.
     for v in &parsed {
@@ -1133,7 +1200,17 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
                         break;
                     }
                     "task_complete" => {
-                        state = "done";
+                        // (Codex 0.172 ends a turn that failed, a refused
+                        // request or a stream cut short past its retries,
+                        // with `task_complete` too, the error in it: read
+                        // as done, with no error. A second investigator,
+                        // with the real Codex, 2026-11-27.)
+                        if let Some(failed) = p.get("error").filter(|e| !e.is_null()) {
+                            state = "error";
+                            error = failed["message"].as_str().or_else(|| failed.as_str()).map(str::to_owned).or_else(|| Some("the turn failed".into()));
+                        } else {
+                            state = "done";
+                        }
                         break;
                     }
                     "turn_aborted" => {
@@ -1169,7 +1246,7 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
     }
 
     let pending_tool = pending_tools.first().cloned();
-    TranscriptInspection { state, last_message, error, pending_tool, pending_tools }
+    TranscriptInspection { state, last_message, error, pending_tool, pending_tools, turn_started_ms }
 }
 
 fn run_inspect() -> i32 {
@@ -1272,7 +1349,7 @@ fn inspect_items_with(items: &[InspectItemRequest], mut before_transcript: impl 
             Some(p) if item.cli == "claude" => inspect_claude_transcript(p),
             Some(p) if item.cli == "agy" => inspect_agy_transcript(p),
             Some(p) if item.cli == "codex" => inspect_codex_transcript(p),
-            _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None, pending_tools: Vec::new() },
+            _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None, pending_tools: Vec::new(), turn_started_ms: None },
         };
 
         pending.push(Pending { item, pid, cli_session_id, session_confidence, transcript_path, inspected });
@@ -1316,6 +1393,7 @@ fn inspect_items_with(items: &[InspectItemRequest], mut before_transcript: impl 
             transcript_path: p_item.transcript_path.map(|p| p.display().to_string()),
             last_message: p_item.inspected.last_message,
             transcript_state: p_item.inspected.state,
+            turn_started_ms: p_item.inspected.turn_started_ms,
             transcript_error: p_item.inspected.error,
             pending_tool: p_item.inspected.pending_tool,
             pending_tools: p_item.inspected.pending_tools,
@@ -1339,6 +1417,48 @@ pub(crate) fn trust(home_override: Option<&str>, config_dir_override: Option<&st
 #[cfg(test)]
 mod tests {
     /// A background shell's command is told whole (it was cut at 240 characters), up to a cap that says so.
+    /// When the last turn in a conversation's file began, by the file's own word.
+    #[test]
+    fn a_files_last_turn_says_when_it_began() {
+        assert_eq!(iso_ms("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(iso_ms("2026-11-27T13:04:34.832Z"), Some(1_795_784_674_832));
+        assert_eq!(iso_ms("2024-02-29T23:59:59Z"), Some(1_709_251_199_000));
+        assert_eq!(iso_ms("2026-11-27 13:04"), None);
+        let dir = std::env::temp_dir().join(format!("olo-turn-began-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Claude Code: the person's last message; not what a tool gave back, nor what Claude Code writes in
+        // their name, though both are later.
+        let claude = dir.join("c.jsonl");
+        let lines = [
+            json!({ "type": "user", "timestamp": "2026-11-27T10:00:00.000Z", "message": { "role": "user", "content": "The first thing." } }),
+            json!({ "type": "assistant", "timestamp": "2026-11-27T10:00:05.000Z", "message": { "id": "m1", "role": "assistant", "content": [{ "type": "text", "text": "Done." }], "stop_reason": "end_turn" } }),
+            json!({ "type": "user", "timestamp": "2026-11-27T11:00:00.250Z", "message": { "role": "user", "content": [{ "type": "text", "text": "The second thing." }] } }),
+            json!({ "type": "assistant", "timestamp": "2026-11-27T11:00:01.000Z", "message": { "id": "m2", "role": "assistant", "content": [{ "type": "tool_use", "id": "t1", "name": "Bash", "input": { "command": "true" } }], "stop_reason": "tool_use" } }),
+            json!({ "type": "user", "timestamp": "2026-11-27T11:00:02.000Z", "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "t1", "content": "" }] } }),
+            json!({ "type": "user", "isMeta": true, "timestamp": "2026-11-27T11:00:03.000Z", "message": { "role": "user", "content": "Caveat: what follows was written by Claude Code." } }),
+            json!({ "type": "assistant", "timestamp": "2026-11-27T11:00:04.000Z", "message": { "id": "m3", "role": "assistant", "content": [{ "type": "text", "text": "Second done." }], "stop_reason": "end_turn" } }),
+        ];
+        std::fs::write(&claude, lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+        let read = inspect_claude_transcript(&claude);
+        assert_eq!((read.state, read.turn_started_ms), ("done", iso_ms("2026-11-27T11:00:00.250Z")));
+        // Codex: its last `task_started`.
+        let codex = dir.join("x.jsonl");
+        let lines = [
+            json!({ "timestamp": "2026-11-27T10:00:00.000Z", "type": "event_msg", "payload": { "type": "task_started" } }),
+            json!({ "timestamp": "2026-11-27T10:00:09.000Z", "type": "event_msg", "payload": { "type": "task_complete", "last_agent_message": "One." } }),
+            json!({ "timestamp": "2026-11-27T12:30:00.500Z", "type": "event_msg", "payload": { "type": "task_started" } }),
+            json!({ "timestamp": "2026-11-27T12:30:01.000Z", "type": "response_item", "payload": { "type": "message", "role": "assistant", "content": [{ "type": "output_text", "text": "Two." }] } }),
+        ];
+        std::fs::write(&codex, lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+        let read = inspect_codex_transcript(&codex);
+        assert_eq!((read.state, read.turn_started_ms), ("working", iso_ms("2026-11-27T12:30:00.500Z")));
+        // A turn that failed ends with `task_complete` and its error: an error, not done.
+        std::fs::write(&codex, format!("{}\n{}\n", lines[2], json!({ "timestamp": "2026-11-27T12:30:02.000Z", "type": "event_msg", "payload": { "type": "task_complete", "last_agent_message": null, "error": { "message": "stream disconnected" } } }))).unwrap();
+        let read = inspect_codex_transcript(&codex);
+        assert_eq!((read.state, read.error.as_deref()), ("error", Some("stream disconnected")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_shells_command_is_told_whole() {
         let long = format!("cd /a/long/worktree && jato test -p some-package -- {} --exact the_last_word", "x".repeat(600));

@@ -158,7 +158,18 @@ pub fn doing_line(screen_text: &str) -> Option<String> {
     if rules.len() >= 2 {
         return last_said().map(str::to_owned);
     }
-    let working = above.iter().rev().take(8).copied().find(|l| l.contains("Working (") || l.contains("esc to interrupt)"));
+    // (No rules: Codex. What it does is said over its field, the last
+    // line that begins with its mark, however much is typed or waiting
+    // in the field: looked for in the screen's last eight lines, a
+    // Codex known to be at work with a long message in its field was
+    // said to be doing "← for agents · ? for shortcuts", its footer. A
+    // code review, 2026-11-27.)
+    let above = match above.iter().rposition(|l| l.starts_with('›')) {
+        Some(field) if field > 0 => &above[..field],
+        _ => above,
+    };
+    let last_said = || above.iter().rev().copied().find(|l| said(l));
+    let working = above.iter().rev().take(20).copied().find(|l| l.contains("Working (") || l.contains("esc to interrupt)"));
     working.or_else(last_said).map(str::to_owned)
 }
 
@@ -186,6 +197,55 @@ pub struct Expected {
     pub given_ms: u64,
     pub until_ms: u64,
     pub transcript_len: Option<u64>,
+    /// The earliest its turn can have begun: when the message was about
+    /// to be typed; for a prompt at its start, a moment before the child
+    /// was made (its program is up, and can have begun, before the
+    /// service has noted anything of it).
+    pub turn_from_ms: u64,
+}
+
+/// Whether a reading that sees a turn on takes up what the child has
+/// been given (`now`): only where that is what it had been given when
+/// the reading *began* (`at_reading`: [`Expected::cursor`] then). A
+/// reading is of a moment, and a message noted after that moment is
+/// another turn's: a reading begun while turn A was on, overtaken by
+/// A's end and a message B sent at that rest, took B for begun, and A's
+/// rest with A's last words was told as B's answer (a code review,
+/// 2026-11-27).
+pub fn takes_up(in_turn: bool, at_reading: Option<u64>, now: Option<Expected>) -> bool {
+    in_turn && at_reading.is_some() && now.map(|x| x.cursor) == at_reading
+}
+
+/// How long an agent's conversation file is believed that a turn is on
+/// while its screen reads as at rest, counted from its last sign of life
+/// (the screen written, the file written): [`turn_on`].
+pub const TURN_ON_MS: u64 = 10_000;
+/// And how soon such a screen and file are read again.
+pub const TURN_ON_LOOK_MS: u64 = 500;
+
+/// Whether an agent whose screen reads as at rest is in a turn all the
+/// same, by its conversation's file: asked only of a Codex that gives no
+/// word of its own of what it is doing (no OSC 7501 record: an older
+/// Codex, or a service that has not been told yet). One that does is
+/// believed (`classify_screen_rich`), at work and at rest alike: its
+/// file can say "working" for ever of a turn that was killed, where its
+/// own word is "idle". For Codex, whose file says so in
+/// so many words (a `task_started` with no `task_complete` or
+/// `turn_aborted` after it: `transcript_state` "working") and whose
+/// screen has no word of it at times within a turn: the service went by
+/// the screen alone, and a rest that held a quarter of a second was
+/// told as the turn's end, with the agent's first words as its answer
+/// (the ShiftUp lead's items 50 and 51, 2026-11-27: "`olo agent run
+/// codex` returns at Codex's first message as if the turn had ended";
+/// "a Codex tab that is working is listed as `idle` … `quiet_secs: 0`").
+/// Believed only while the agent shows life: its screen written or its
+/// file written within [`TURN_ON_MS`] (a Codex at work writes one or
+/// the other all the time: its clock ticks each second). A file left
+/// saying "working" by a turn that was killed says nothing of an agent
+/// that has been still that long: that one is at rest, and told so.
+/// (`believed_ms`: [`TURN_ON_MS`], or a test's own.)
+pub fn turn_on(cli: AgentCli, transcript_state: Option<&str>, written_ms: u64, output_ms: u64, now_ms: u64, believed_ms: u64) -> bool {
+    cli == AgentCli::Codex && transcript_state == Some("working") && now_ms < written_ms.max(output_ms).saturating_add(believed_ms)
 }
 
 /// A child's conversation's file as it stands at a rest: how long it
@@ -197,6 +257,8 @@ pub struct Written {
     pub over: bool,
     pub at_ms: u64,
     pub said: bool,
+    /// When its last turn began, where the file says ([`rest_now`]).
+    pub turn_ms: Option<u64>,
 }
 
 /// What is made of a child read at rest.
@@ -229,11 +291,24 @@ pub enum Rest {
 /// waits to send to it waits on that.
 pub fn rest_now(now_ms: u64, started_ms: u64, seen_working: bool, at_prompt: bool, expected: Option<Expected>, transcript: Option<Written>) -> Rest {
     if let Some(x) = expected {
+        // The turn it was given is over, by its file: the file's last
+        // turn is over and **began no earlier than it was given**
+        // (`Written::turn_ms`, where the file says when). By the file's
+        // length or its time of writing alone, as it was and still is
+        // where a file doesn't say: a conversation taken up again with a
+        // prompt, whose file its program wrote to as it started (no turn
+        // of it yet), was told done with the *last* conversation's
+        // closing words a second after its start; and a turn so quick
+        // that it was over before the service had noted its prompt (a
+        // loaded host) had "not been written since", and its end was
+        // kept back two minutes. Both met in the live suite under a load
+        // of seventy and more, 2026-11-27.
         let turn_there = transcript.is_some_and(|w| {
             w.over
-                && match x.transcript_len {
-                    Some(was) => w.len > was,
-                    None => w.said && w.at_ms >= x.given_ms,
+                && match (w.turn_ms, x.transcript_len) {
+                    (Some(began), _) => began >= x.turn_from_ms,
+                    (None, Some(was)) => w.len > was,
+                    (None, None) => w.said && w.at_ms >= x.given_ms,
                 }
         });
         if turn_there {
@@ -367,7 +442,25 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
         // an event, whatever is still running … 'working' should mean
         // the model is in a turn"). What it still has running is said
         // beside the state (`waiting_on`, `background_shells`).
-        Activity::Working if olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some(AT_PROMPT.into())),
+        //
+        // Not so for Codex, whose own word this is and is of its turn
+        // alone (OSC 7501 from Codex itself, 0.172: "working" from a
+        // turn's start to its end; "done" at its end, with a terminal of
+        // its own still running too; "idle" at an interrupt and when it
+        // is started again after it was killed). And its screen can't
+        // say: its field is drawn all through a turn, so it is always
+        // "at its prompt", and while an answer of its own comes it draws
+        // no status line at all (nor when a long heading of its
+        // thinking pushes its clock off the line's end). Thrown away
+        // here for the screen's sake, a working Codex was at rest for
+        // as long as its words streamed, and a rest was told with the
+        // first of them: the ShiftUp lead's items 50 and 51, 2026-11-27
+        // ("`olo agent run codex` returns at Codex's first message as
+        // if the turn had ended"), found with the real Codex by a
+        // second investigator. Its turn is not *taken up* by this word
+        // (`in_turn` stays false below): Codex says "working" for a few
+        // milliseconds as it starts with nothing to do.
+        Activity::Working if agent != olo_agent_screen::Agent::Codex && olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some(AT_PROMPT.into())),
         Activity::Working => (SubagentLiveState::Working, doing_line(screen_text)),
         Activity::Blocked => {
             if screen_text.trim().is_empty() {
@@ -377,7 +470,8 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             }
         }
         Activity::Error => (SubagentLiveState::Error, last_nonempty()),
-        Activity::Done => (SubagentLiveState::Done, last_nonempty()),
+        // (Done at its own prompt: said as that, not by its footer's last line.)
+        Activity::Done => (SubagentLiveState::Done, if olo_agent_screen::at_prompt(agent, screen_text) { Some(AT_PROMPT.into()) } else { last_nonempty() }),
         Activity::Idle => {
             if screen_text.trim().is_empty() {
                 (SubagentLiveState::Working, Some(STARTING.into()))

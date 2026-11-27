@@ -48,6 +48,18 @@ fn idle(said: &str) -> String {
     format!("● {said}\n✻ Crunched for 2s\n{0}\n❯ \n{0}\n  ⏸ manual mode on · ? for shortcuts\n", rule())
 }
 
+/// Codex's screens, as it draws them (0.172): at work (its status line
+/// over its field), and with words of its own on the screen and no
+/// status line (at its prompt; and what stands between two of its
+/// steps, a turn still on).
+fn codex_working() -> String {
+    "› Review it.\n\n• Explored\n  └ Read review.md\n\n• Working (4s • esc to interrupt)\n\n› Ask Codex to do anything\n\n  GPT-6.2-Astra max · /var/tmp/x · Context 52% left\n  ← for agents · ? for shortcuts\n".to_owned()
+}
+
+fn codex_idle(said: &str) -> String {
+    format!("› Review it.\n\n• {said}\n\n› Ask Codex to do anything\n\n  GPT-6.2-Astra max · /var/tmp/x · Context 52% left\n  ← for agents · ? for shortcuts\n")
+}
+
 struct Rig {
     dir: PathBuf,
     sock: PathBuf,
@@ -134,6 +146,8 @@ impl Rig {
             .env("OLO_REX_AGENTS_MINDER_REPORTS_MS", "3000")
             // (How long an agent at rest has to take up a message sent to it before its rest is told all the same: 2.5 s here, of thirty.)
             .env("OLO_REX_AGENTS_TAKEN_UP_MS", "2500")
+            // (How long a Codex's conversation file is believed that a turn is on while it shows no life: three seconds here, of ten.)
+            .env("OLO_REX_AGENTS_TURN_ON_MS", "3000")
             .env_remove("REX_SESSION")
             .env_remove("REX_BLOCK")
             .env_remove("SSH_AUTH_SOCK");
@@ -1910,6 +1924,164 @@ fn a_minder_that_fell_behind_answers_only_what_stands() {
 /// Then a launcher can tell a turn's reply from an earlier turn's without comparing times"). A child started
 /// with nothing to do is at rest once it is at its own prompt, and not before; a child given a message is not
 /// told at rest again until it has taken that up, and its turn's end says which message it answers.
+/// A Codex in a turn is not at rest, whatever its screen reads: its
+/// conversation's file says a task is started and not complete (the
+/// ShiftUp lead's items 50 and 51, 2026-11-27: "`olo agent run codex`
+/// returns at Codex's first message as if the turn had ended"; "a Codex
+/// tab that is working is listed as `idle`"). And a file left saying so
+/// by a turn that never ended is believed only while the agent shows
+/// life.
+#[test]
+fn a_codex_in_a_turn_by_its_file_is_not_at_rest() {
+    let Some(rig) = Rig::start("codexturn") else { return };
+    rig.stand_in("codex");
+    // (Codex's own record of a conversation: `sessions/Y/M/D/rollout-…-ID.jsonl` under its home.)
+    let rollout = |id: &str| {
+        let dir = rig.dir.join("home/.codex/sessions/2026/11/27");
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join(format!("rollout-2026-11-27T10-00-00-{id}.jsonl"))
+    };
+    let add = |file: &Path, records: &[Value]| {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file).unwrap();
+        f.write_all(records.iter().map(|r| format!("{r}\n")).collect::<String>().as_bytes()).unwrap();
+    };
+    let said =
+        |text: &str, phase: &str| json!({ "type": "response_item", "payload": { "type": "message", "role": "assistant", "phase": phase, "content": [{ "type": "output_text", "text": text }] } });
+    let begun = |asked: &str| {
+        [
+            json!({ "type": "event_msg", "payload": { "type": "task_started" } }),
+            json!({ "type": "response_item", "payload": { "type": "message", "role": "user", "content": [{ "type": "input_text", "text": asked }] } }),
+        ]
+    };
+
+    // 1. One Codex for one prompt (`run`). Its first words, then a step, then its last: `run` answers with the last.
+    const TURN: &str = "5f0c1f0e-2222-4a22-8a22-2f8f0e0a0002";
+    let file = rollout(TURN);
+    add(&file, &[json!({ "type": "session_meta", "payload": { "id": TURN, "cwd": rig.work() } })]);
+    assert!(Command::new("mkfifo").arg(rig.staged("reads", "fifo")).status().unwrap().success());
+    let (stage, path, named) = (format!("STAND_IN_DIR={}", rig.dir.join("stage").display()), format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display()), "STAND_IN_NAME=reads".to_owned());
+    let work = rig.work();
+    std::thread::scope(|scope| {
+        let done = scope.spawn(|| {
+            rig.olo(&[
+                "run",
+                "codex",
+                "--model",
+                "stand-in",
+                "--effort",
+                "none",
+                "--name",
+                "reads",
+                "--cwd",
+                &work,
+                "--env",
+                &stage,
+                "--env",
+                &named,
+                "--env",
+                &path,
+                "--timeout",
+                "40",
+                "--prompt",
+                "Review it.",
+                "--json",
+                "--resume",
+                TURN,
+            ])
+        });
+        rig.wait("the stand-in to listen", || rig.staged("reads", "ready").exists());
+        rig.show("reads", &codex_idle("Ready."));
+        // It takes its prompt up: the file says a task is started, the screen says it works.
+        add(&file, &begun("Review it."));
+        rig.show("reads", &codex_working());
+        rig.wait("the service to have seen it at work", || rig.status("reads")["answers"].is_u64());
+        let since = rig.status("reads")["cursor"].as_u64().unwrap();
+        // Its first words, written and on its screen, and no status line: as its screen stands between two
+        // steps. For two seconds and more, more words coming all the while.
+        add(&file, &[said("I will read the file first.", "commentary")]);
+        for words in 1..=6 {
+            rig.show("reads", &codex_idle(&format!("I will read the file first.{}", " And then.".repeat(words))));
+            std::thread::sleep(Duration::from_millis(400));
+            assert!(!done.is_finished(), "`run` returned at Codex's first words, its turn still on");
+        }
+        assert_eq!(rig.status("reads")["state"], "working", "listed as at rest within its turn: {}", rig.status("reads"));
+        assert_eq!(rig.json(&["list", "--all", "--json"])["subagents"][0]["state"], "working");
+        let (code, out, _) = rig.olo(&["watch", "reads", "--since", &since.to_string(), "--on", "idle,done", "--timeout", "1", "--json"]);
+        assert_eq!(code, 124, "a rest was told within its turn: {out}");
+        // Its turn ends: said in its file, and nothing more written to its screen. Told, with its last words.
+        add(&file, &[said("It says forty-two.", "final_answer"), json!({ "type": "event_msg", "payload": { "type": "task_complete" } })]);
+        let (code, out, err) = done.join().unwrap();
+        assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
+        let answer: Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!((&answer["ended_as"], &answer["last_message"]), (&json!("done"), &json!("It says forty-two.")), "{answer}");
+    });
+
+    // 2. A file left saying a task is started, by a turn that never ended, and a Codex that stands still at its
+    //    prompt: at work for as long as the file is believed (three seconds here), then at rest, and told so.
+    const LEFT: &str = "5f0c1f0e-3333-4a33-8a33-2f8f0e0a0003";
+    let left = rollout(LEFT);
+    add(&left, &[json!({ "type": "session_meta", "payload": { "id": LEFT, "cwd": rig.work() } })]);
+    add(&left, &begun("Something, long ago."));
+    let started = rig.start_child("codex", "still", &["--resume", LEFT, "--cwd", &work]);
+    let at = Instant::now();
+    rig.show("still", &codex_idle("Ready."));
+    let (code, out, err) = rig.olo(&["watch", "still", "--since", &started["cursor"].as_u64().unwrap().to_string(), "--on", "idle,done", "--timeout", "20", "--json"]);
+    assert_eq!(code, 0, "a Codex that stands still was never told at rest: {out}{err}\n{}", rig.said());
+    let told: Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(told["state"], "idle", "{told}");
+    assert!(at.elapsed() >= Duration::from_millis(2500), "told at rest while its file was still believed: {:?}", at.elapsed());
+    assert!(at.elapsed() < Duration::from_secs(12), "{:?}", at.elapsed());
+}
+
+/// A conversation taken up again with a prompt is not done by its old
+/// last words: its program writes to the conversation's file as it
+/// starts, and the last turn in the file is still the one before. Told
+/// by when the file's last turn began (met in the live suite under
+/// load, 2026-11-27: "the first rest told of a conversation taken up
+/// again with a prompt isn't the prompt's turn's end (after 1.18 s)",
+/// with the first conversation's reply as its answer).
+#[test]
+fn a_conversation_taken_up_again_is_not_done_by_its_old_last_words() {
+    let Some(rig) = Rig::start("again") else { return };
+    rig.stand_in("claude");
+    const AGAIN: &str = "5f0c1f0e-4444-4a44-8a44-2f8f0e0a0004";
+    let work = rig.work();
+    let folder: String = work.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let dir = rig.dir.join("home/.claude/projects").join(folder);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join(format!("{AGAIN}.jsonl"));
+    let add = |records: &[Value]| {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&file).unwrap();
+        f.write_all(records.iter().map(|r| format!("{r}\n")).collect::<String>().as_bytes()).unwrap();
+    };
+    let turn = |at: &str, asked: &str, said: &str| {
+        [
+            json!({ "type": "user", "timestamp": at, "message": { "role": "user", "content": asked } }),
+            json!({ "type": "assistant", "timestamp": at, "message": { "id": format!("msg_{said}"), "role": "assistant", "content": [{ "type": "text", "text": said }], "stop_reason": "end_turn" } }),
+        ]
+    };
+    // As it was left, long ago: a turn, over.
+    add(&turn("2020-01-01T00:00:00.000Z", "The first thing?", "The old answer."));
+    let started = rig.start_child("claude", "again", &["--resume", AGAIN, "--prompt", "And the second thing?", "--cwd", &work]);
+    let from = started["cursor"].as_u64().unwrap().to_string();
+    let watch = |secs: &str| rig.olo(&["watch", "again", "--since", &from, "--on", "idle,done", "--timeout", secs, "--json"]);
+    rig.show("again", &idle("The old answer."));
+    rig.wait("its conversation to be found", || rig.status("again")["last_message"] == "The old answer.");
+    // Its program writes to the file as it starts (no turn of it yet).
+    add(&[json!({ "type": "system", "subtype": "informational", "timestamp": "2099-01-01T00:00:00.000Z", "content": "Conversation resumed." })]);
+    let (code, out, _) = watch("3");
+    assert_eq!(code, 124, "told at rest by the old conversation's last words: {out}");
+    // Its turn, quicker than any reading of its screen: its message and its answer in the file.
+    add(&turn("2099-01-01T00:00:01.000Z", "And the second thing?", "The second answer."));
+    rig.show("again", &idle("The second answer."));
+    let (code, out, err) = watch("15");
+    assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
+    let told: Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!((&told["last_message"], &told["answers"]), (&json!("The second answer."), &started["cursor"]), "{told}");
+}
+
 #[test]
 fn a_rest_is_the_end_of_the_turn_it_says() {
     let Some(rig) = Rig::start("turns") else { return };

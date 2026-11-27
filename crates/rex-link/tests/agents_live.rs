@@ -70,6 +70,17 @@ impl Rng {
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
+enum CodexSseStep {
+    SleepMs(u64),
+    Reasoning { chunks: Vec<String>, delay_ms: u64 },
+    Message { phase: Option<String>, chunks: Vec<String>, delay_ms: u64 },
+    ExecCommand { command: String, escalated: bool, reason: String },
+    ExecCommandYield { command: String, yield_time_ms: u64 },
+    DropMidStream,
+}
+
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
 enum MockReply {
     /// Stream plain text and end the turn.
     Text(String),
@@ -87,6 +98,8 @@ enum MockReply {
     /// Plain text after a wait: a model that takes a while to begin (a
     /// turn that has begun and not ended, for that long).
     SlowText { after_ms: u64, text: String },
+    /// Stream a multi-step OpenAI Responses SSE sequence slowly over chunked HTTP.
+    CodexStream { steps: Vec<CodexSseStep> },
 }
 
 #[derive(Clone, Debug)]
@@ -405,6 +418,153 @@ async fn handle_mock_http(mut stream: TcpStream, state: Arc<std::sync::Mutex<Moc
     };
     match reply {
         MockReply::SlowText { .. } => unreachable!("made plain above"),
+        MockReply::CodexStream { steps } => {
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+            let _ = stream.write_all(head.as_bytes()).await;
+            let _ = stream.flush().await;
+            let rid = format!("resp_{req_id}");
+            async fn send_ev(stream: &mut TcpStream, ev: &str, data: Value) {
+                let s = format!("event: {ev}\ndata: {data}\n\n");
+                let frame = format!("{:x}\r\n{s}\r\n", s.len());
+                let _ = stream.write_all(frame.as_bytes()).await;
+                let _ = stream.flush().await;
+            }
+            send_ev(&mut stream, "response.created", json!({"type":"response.created","response":{"id":rid,"status":"in_progress"}})).await;
+            let mut output_items: Vec<Value> = Vec::new();
+            let mut output_index: usize = 0;
+            let mut dropped = false;
+            for (step_idx, step) in steps.into_iter().enumerate() {
+                match step {
+                    CodexSseStep::SleepMs(ms) => {
+                        tokio::time::sleep(Duration::from_millis(ms)).await;
+                    }
+                    CodexSseStep::DropMidStream => {
+                        dropped = true;
+                        break;
+                    }
+                    CodexSseStep::Reasoning { chunks, delay_ms } => {
+                        let rsid = format!("rs_{req_id}_{step_idx}");
+                        send_ev(&mut stream, "response.output_item.added", json!({"type":"response.output_item.added","output_index":output_index,"item":{"id":rsid,"type":"reasoning","summary":[]}}))
+                            .await;
+                        send_ev(
+                            &mut stream,
+                            "response.reasoning_summary_part.added",
+                            json!({"type":"response.reasoning_summary_part.added","item_id":rsid,"output_index":output_index,"summary_index":0,"part":{"type":"summary_text","text":""}}),
+                        )
+                        .await;
+                        let mut full = String::new();
+                        for chunk in chunks {
+                            full.push_str(&chunk);
+                            send_ev(
+                                &mut stream,
+                                "response.reasoning_summary_text.delta",
+                                json!({"type":"response.reasoning_summary_text.delta","item_id":rsid,"output_index":output_index,"summary_index":0,"delta":chunk}),
+                            )
+                            .await;
+                            if delay_ms > 0 {
+                                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            }
+                        }
+                        send_ev(
+                            &mut stream,
+                            "response.reasoning_summary_text.done",
+                            json!({"type":"response.reasoning_summary_text.done","item_id":rsid,"output_index":output_index,"summary_index":0,"text":full}),
+                        )
+                        .await;
+                        let item = json!({"id":rsid,"type":"reasoning","summary":[{"type":"summary_text","text":full}]});
+                        send_ev(&mut stream, "response.output_item.done", json!({"type":"response.output_item.done","output_index":output_index,"item":item})).await;
+                        output_items.push(item);
+                        output_index += 1;
+                    }
+                    CodexSseStep::Message { phase, chunks, delay_ms } => {
+                        let mid = format!("msg_{req_id}_{step_idx}");
+                        let mut added_item = json!({"id":mid,"type":"message","role":"assistant","status":"in_progress","content":[]});
+                        if let Some(ref ph) = phase {
+                            added_item["phase"] = json!(ph);
+                        }
+                        send_ev(&mut stream, "response.output_item.added", json!({"type":"response.output_item.added","output_index":output_index,"item":added_item})).await;
+                        send_ev(
+                            &mut stream,
+                            "response.content_part.added",
+                            json!({"type":"response.content_part.added","item_id":mid,"output_index":output_index,"content_index":0,"part":{"type":"output_text","text":""}}),
+                        )
+                        .await;
+                        let mut full = String::new();
+                        for chunk in chunks {
+                            full.push_str(&chunk);
+                            send_ev(&mut stream, "response.output_text.delta", json!({"type":"response.output_text.delta","item_id":mid,"output_index":output_index,"content_index":0,"delta":chunk}))
+                                .await;
+                            if delay_ms > 0 {
+                                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            }
+                        }
+                        send_ev(&mut stream, "response.output_text.done", json!({"type":"response.output_text.done","item_id":mid,"output_index":output_index,"content_index":0,"text":full})).await;
+                        let mut done_item = json!({"id":mid,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":full}]});
+                        if let Some(ref ph) = phase {
+                            done_item["phase"] = json!(ph);
+                        }
+                        send_ev(&mut stream, "response.output_item.done", json!({"type":"response.output_item.done","output_index":output_index,"item":done_item})).await;
+                        output_items.push(done_item);
+                        output_index += 1;
+                    }
+                    CodexSseStep::ExecCommand { command, escalated, reason } => {
+                        let fcid = format!("fc_{req_id}_{step_idx}");
+                        let cid = format!("call_{req_id}_{step_idx}");
+                        let args_json = if escalated {
+                            json!({
+                                "cmd": command,
+                                "sandbox_permissions": "require_escalated",
+                                "justification": reason,
+                            })
+                            .to_string()
+                        } else {
+                            json!({ "cmd": command }).to_string()
+                        };
+                        let call = json!({
+                            "id": fcid,
+                            "type": "function_call",
+                            "status": "completed",
+                            "call_id": cid,
+                            "name": "exec_command",
+                            "arguments": args_json,
+                        });
+                        send_ev(&mut stream, "response.output_item.added", json!({"type":"response.output_item.added","output_index":output_index,"item":call})).await;
+                        send_ev(&mut stream, "response.output_item.done", json!({"type":"response.output_item.done","output_index":output_index,"item":call})).await;
+                        output_items.push(call);
+                        output_index += 1;
+                    }
+                    CodexSseStep::ExecCommandYield { command, yield_time_ms } => {
+                        let fcid = format!("fc_{req_id}_{step_idx}");
+                        let cid = format!("call_{req_id}_{step_idx}");
+                        let args_json = json!({ "cmd": command, "yield_time_ms": yield_time_ms }).to_string();
+                        let call = json!({
+                            "id": fcid,
+                            "type": "function_call",
+                            "status": "completed",
+                            "call_id": cid,
+                            "name": "exec_command",
+                            "arguments": args_json,
+                        });
+                        send_ev(&mut stream, "response.output_item.added", json!({"type":"response.output_item.added","output_index":output_index,"item":call})).await;
+                        send_ev(&mut stream, "response.output_item.done", json!({"type":"response.output_item.done","output_index":output_index,"item":call})).await;
+                        output_items.push(call);
+                        output_index += 1;
+                    }
+                }
+            }
+            if dropped {
+                drop(stream);
+            } else {
+                send_ev(
+                    &mut stream,
+                    "response.completed",
+                    json!({"type":"response.completed","response":{"id":rid,"status":"completed","output":output_items,"usage":{"input_tokens":12,"output_tokens":20,"total_tokens":32}}}),
+                )
+                .await;
+                let _ = stream.write_all(b"0\r\n\r\n").await;
+                let _ = stream.flush().await;
+            }
+        }
         MockReply::HttpError { status, body } => {
             write_json(&mut stream, status, &body).await;
         }
@@ -767,6 +927,19 @@ impl LiveRexHarness {
             }
             for d in std::fs::read_dir(self.dir.join("agents")).into_iter().flatten().flatten() {
                 diag.push_str(&format!("--- the service's log ---\n{}", std::fs::read_to_string(d.path().join("service.log")).unwrap_or_default()));
+            }
+            // (What the service told, and how each child stands, when a wait gives up.)
+            for d in std::fs::read_dir(self.dir.join("agents")).into_iter().flatten().flatten() {
+                let events = std::fs::read_to_string(d.path().join("events.jsonl")).unwrap_or_default();
+                let last: Vec<&str> = events.lines().rev().take(12).collect();
+                diag.push_str(&format!("--- its last events, newest first ---\n{}\n", last.iter().map(|l| l.chars().take(420).collect::<String>()).collect::<Vec<_>>().join("\n")));
+            }
+            if let Ok(v) = serde_json::from_str::<Value>(listed.trim()) {
+                for child in v["subagents"].as_array().into_iter().flatten().filter(|c| c["state"] != "exited") {
+                    let id = child["id"].as_str().unwrap_or_default();
+                    let (_, said, _) = self.run_olo(&["agent", "status", id, "--json"]).await;
+                    diag.push_str(&format!("--- STATUS [{id}] ---\n{}\n", said.chars().take(1500).collect::<String>()));
+                }
             }
             panic!("olo {args:?} failed (code={code})\nstdout: {stdout}\nstderr: {stderr}\nDIAG:\n{diag}");
         }
@@ -1853,7 +2026,10 @@ fn live_mock_api_an_agents_own_background_shell_is_listed() {
         // looking about, `ps aux | grep …`: never said to be the agent's.)
         let until = Instant::now() + Duration::from_secs(40);
         let mut status = rig.run_olo_json(&["agent", "status", "waiter", "--json"]).await;
-        while !status["last_message"].as_str().is_some_and(|m| m.contains("OWN_SHELL_STARTED")) {
+        // (Its last words *and* its rest, in one answer: a status asked as the turn ends can have the
+        // words, read from its file, beside a screen read a moment before that still shows it at work.
+        // Under a load of ninety that was met here, 2026-11-27; a code review had said so of this loop.)
+        while !(status["last_message"].as_str().is_some_and(|m| m.contains("OWN_SHELL_STARTED")) && matches!(status["state"].as_str(), Some("done" | "idle"))) {
             assert!(status["approval"].is_null(), "nothing is asked (its commands are allowed): {status}");
             for shell in status["background_shells"].as_array().into_iter().flatten() {
                 assert!(shell["cmd"].as_str().is_some_and(|c| c.contains("sleep 45")), "Claude Code's own doing was said to be the agent's shell: {shell}");
@@ -2017,5 +2193,292 @@ fn live_mock_api_one_agent_for_one_prompt() {
         rig.mock.push("claude", MockReply::SlowText { after_ms: 1000, text: plain.into() });
         let (code, said, err) = rig.run_olo(&run("reader-2", Vec::new()).iter().map(String::as_str).collect::<Vec<_>>()).await;
         assert_eq!((code, said.as_str()), (0, format!("{plain}\n").as_str()), "{err}");
+    });
+}
+
+/// Reproduces Symptom 1 against real Codex 0.172:
+/// `olo agent run codex` must NOT exit 0 early with Codex's first commentary message
+/// when a subsequent commentary message streams slowly (Codex hides its status line
+/// while streaming assistant text).
+#[test]
+fn live_codex_run_waits_past_commentary_stream_for_final_answer() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("codex") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("codexrepro1").await;
+
+        rig.mock.clear_queues();
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream {
+                steps: vec![
+                    CodexSseStep::SleepMs(600),
+                    CodexSseStep::Message { phase: Some("commentary".into()), chunks: vec!["FIRST_MESSAGE_ONLY: starting review and running check 1.".into()], delay_ms: 0 },
+                    CodexSseStep::ExecCommand { command: "sh -c \"sleep 2; echo CHECK1_OK\"".into(), escalated: false, reason: "Check 1".into() },
+                ],
+            },
+        );
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream {
+                steps: vec![
+                    CodexSseStep::SleepMs(400),
+                    CodexSseStep::Message {
+                        phase: Some("commentary".into()),
+                        chunks: vec![
+                            "SECOND_COMMENTARY: Check 1 passed.\n".into(),
+                            "Inspecting callers and invariants now.\n".into(),
+                            "Cross-checking state transitions.\n".into(),
+                            "Preparing to run check 2.\n".into(),
+                            "Starting check 2...".into(),
+                        ],
+                        delay_ms: 500,
+                    },
+                    CodexSseStep::ExecCommand { command: "sh -c \"sleep 1; echo CHECK2_OK\"".into(), escalated: false, reason: "Check 2".into() },
+                ],
+            },
+        );
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream {
+                steps: vec![
+                    CodexSseStep::SleepMs(300),
+                    CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["REAL_FINAL_VERDICT: ".into(), "both checks passed cleanly.".into()], delay_ms: 200 },
+                ],
+            },
+        );
+
+        let mut run_args: Vec<String> = [
+            "agent",
+            "run",
+            "codex",
+            "--model",
+            "gpt-5.4-codex",
+            "--effort",
+            "high",
+            "--name",
+            "run-repro",
+            "--trust",
+            "--approval",
+            "on-request",
+            "--sandbox",
+            "read-only",
+            "--no-daemon",
+            "--prompt",
+            "Run both checks and give the final verdict.",
+            "--cwd",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        run_args.push(rig.work.display().to_string());
+        run_args.push("--json".into());
+        run_args.extend(rig.cli_env_args("codex"));
+
+        let (code, stdout, stderr) = rig.run_olo(&run_args.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        assert_eq!(code, 0, "olo agent run codex failed (code={code}): stdout={stdout} stderr={stderr}");
+        let ran: Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("bad json ({e}): {stdout}"));
+        assert_eq!(ran["ended_as"], "done", "unexpected ended_as: {ran}");
+        let msg = ran["last_message"].as_str().unwrap_or("");
+        assert!(msg.contains("REAL_FINAL_VERDICT"), "olo agent run codex returned prematurely mid-turn! got last_message={msg:?} full={ran}");
+    });
+}
+
+/// Reproduces premature `idle` during `olo agent start --prompt` + `watch` against real Codex 0.172
+/// when a long reasoning summary header truncates off `(Xs • esc to interrupt)` or when commentary streams.
+#[test]
+fn live_codex_watch_waits_past_long_reasoning_and_commentary_stream() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("codex") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("codexrepro2").await;
+
+        rig.mock.clear_queues();
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream {
+                steps: vec![
+                    CodexSseStep::SleepMs(500),
+                    CodexSseStep::Reasoning {
+                        chunks: vec![
+                            "**Analyzing a very long reasoning header that deliberately exceeds a single terminal line width of 120 columns so Codex ellipsizes the status line**\n\n".into(),
+                            "Reviewing details before running check.".into(),
+                        ],
+                        delay_ms: 1000,
+                    },
+                    CodexSseStep::Message {
+                        phase: Some("commentary".into()),
+                        chunks: vec![
+                            "WATCH_COMMENTARY_1: inspecting module.\n".into(),
+                            "WATCH_COMMENTARY_2: checking invariants.\n".into(),
+                            "WATCH_COMMENTARY_3: running check.\n".into(),
+                            "WATCH_COMMENTARY_4: almost ready.".into(),
+                        ],
+                        delay_ms: 500,
+                    },
+                    CodexSseStep::ExecCommand { command: "sh -c \"sleep 2; echo WATCH_CMD_OK\"".into(), escalated: false, reason: "Watch check".into() },
+                ],
+            },
+        );
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream {
+                steps: vec![
+                    CodexSseStep::SleepMs(300),
+                    CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["WATCH_FINAL_VERDICT: ".into(), "review complete.".into()], delay_ms: 200 },
+                ],
+            },
+        );
+
+        let mut start_args: Vec<String> = [
+            "agent",
+            "start",
+            "codex",
+            "--model",
+            "gpt-5.4-codex",
+            "--effort",
+            "high",
+            "--name",
+            "watch-repro",
+            "--trust",
+            "--approval",
+            "on-request",
+            "--sandbox",
+            "read-only",
+            "--no-daemon",
+            "--prompt",
+            "Review and run the verification check.",
+            "--cwd",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        start_args.push(rig.work.display().to_string());
+        start_args.push("--json".into());
+        start_args.extend(rig.cli_env_args("codex"));
+
+        let started = rig.run_olo_json(&start_args.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        let start_cur = started["cursor"].as_u64().unwrap();
+        let ev = rig.run_olo_json(&["agent", "watch", "watch-repro", "--since", &start_cur.to_string(), "--on", "idle,done,error,exit", "--timeout", "25", "--json"]).await;
+        let _ = rig.run_olo(&["agent", "stop", "watch-repro", "--force", "--json"]).await;
+        assert_eq!(ev["state"], "done", "watch emitted premature rest mid-turn: {ev}");
+        assert!(ev["last_message"].as_str().is_some_and(|m| m.contains("WATCH_FINAL_VERDICT")), "watch returned before final answer: {ev}");
+    });
+}
+
+/// Verifies Codex 0.172 status across the two opposing failure modes:
+/// 1. Working with a running command (`· 1 background terminal running`) + queued message
+///    in the field must stay `working` (never `idle` mid-turn).
+/// 2. A turn that completes while a background terminal (`yield_time_ms`) is still running
+///    must become `done` (never stuck `working`), and a session killed mid-turn and resumed
+///    without a prompt must NEVER stay stuck `working` on its unclosed rollout.
+#[test]
+fn live_codex_queued_message_stays_working_and_bg_or_resumed_rests() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("codex") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("codexrepro3").await;
+        let codex_start = |name: &str, extra: &[&str]| -> Vec<String> {
+            let mut args: Vec<String> =
+                ["agent", "start", "codex", "--model", "gpt-5.4-codex", "--effort", "high", "--name", name, "--trust", "--approval", "on-request", "--sandbox", "read-only", "--no-daemon", "--cwd"]
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect();
+            args.push(rig.work.display().to_string());
+            for e in extra {
+                args.push((*e).to_owned());
+            }
+            args.push("--json".into());
+            args.extend(rig.cli_env_args("codex"));
+            args
+        };
+
+        // Case A: tool running (`· 1 background terminal running`) + multi-line draft & Tab-queued follow-up.
+        rig.mock.clear_queues();
+        rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::ExecCommand { command: "sh -c \"sleep 8; echo TOOL_OK\"".into(), escalated: false, reason: "Run 8s tool".into() }] });
+        rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["TURN1_DONE".into()], delay_ms: 0 }] });
+        rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["TURN2_QUEUED_DONE".into()], delay_ms: 0 }] });
+        let a = codex_start("queued-tool", &["--prompt", "Run the slow tool."]);
+        let _ = rig.run_olo_json(&a.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        // Wait until the running command's status line shows `background terminal` on screen.
+        let dl = Instant::now() + Duration::from_secs(10);
+        let mut saw_bg_line = false;
+        while Instant::now() < dl {
+            let (_, scr, _) = rig.run_olo(&["agent", "read", "queued-tool", "--lines", "40"]).await;
+            if scr.contains("background terminal") {
+                saw_bg_line = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
+        assert!(saw_bg_line, "Codex never showed running command status line");
+        let draft = "LINE_1: follow-up check\nLINE_2: second line\nLINE_3: third line\nLINE_4: fourth line\nLINE_5: fifth line\nLINE_6: sixth line\nLINE_7: seventh line\nLINE_8: eighth line";
+        let _ = rig.run_olo(&["agent", "send", "queued-tool", draft, "--paste", "--json"]).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let st_draft = rig.run_olo_json(&["agent", "status", "queued-tool", "--json"]).await;
+        let _ = rig.run_olo(&["agent", "send", "queued-tool", "--key", "Tab", "--json"]).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let st_queued = rig.run_olo_json(&["agent", "status", "queued-tool", "--json"]).await;
+        let _ = rig.run_olo(&["agent", "stop", "queued-tool", "--force", "--json"]).await;
+        assert_eq!(st_draft["state"], "working", "working Codex with running tool + 8-line draft read as {}: {st_draft}", st_draft["state"]);
+        assert_eq!(st_queued["state"], "working", "working Codex with running tool + Tab-queued message read as {}: {st_queued}", st_queued["state"]);
+
+        // Case B: background terminal (`yield_time_ms: 500`) outlives the turn -> must reach `done`, never stuck `working`.
+        rig.mock.clear_queues();
+        rig.mock.push("codex", MockReply::CodexStream { steps: vec![CodexSseStep::ExecCommandYield { command: "sh -c \"sleep 25\"".into(), yield_time_ms: 500 }] });
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream {
+                steps: vec![
+                    CodexSseStep::SleepMs(300),
+                    CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["BG_DONE: ".into(), "background process started.".into()], delay_ms: 300 },
+                ],
+            },
+        );
+        let a = codex_start("bg-outlives", &["--prompt", "Start background sleep."]);
+        let started = rig.run_olo_json(&a.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        let c0 = started["cursor"].as_u64().unwrap();
+        let ev = rig.run_olo_json(&["agent", "watch", "bg-outlives", "--since", &c0.to_string(), "--on", "idle,done,error,exit", "--timeout", "15", "--json"]).await;
+        let st_bg = rig.run_olo_json(&["agent", "status", "bg-outlives", "--json"]).await;
+        let _ = rig.run_olo(&["agent", "stop", "bg-outlives", "--force", "--json"]).await;
+        assert_eq!(ev["state"], "done", "Codex turn with background terminal should reach done: {ev}");
+        assert!(ev["last_message"].as_str().is_some_and(|m| m.contains("BG_DONE")), "unexpected message: {ev}");
+        assert_eq!(st_bg["waiting_on"], "own_run", "background terminal should still be reported in waiting_on: {st_bg}");
+
+        // Case C: killed mid-turn (unclosed `task_started` in rollout) + resumed without prompt -> must NOT stay `working`.
+        rig.mock.clear_queues();
+        rig.mock.push(
+            "codex",
+            MockReply::CodexStream { steps: vec![CodexSseStep::SleepMs(15_000), CodexSseStep::Message { phase: Some("final_answer".into()), chunks: vec!["NEVER_SENT".into()], delay_ms: 0 }] },
+        );
+        let a = codex_start("kill-midturn", &["--prompt", "Start turn and get killed."]);
+        let _ = rig.run_olo_json(&a.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        let dl = Instant::now() + Duration::from_secs(10);
+        let mut sid = String::new();
+        while Instant::now() < dl {
+            let st_mid = rig.run_olo_json(&["agent", "status", "kill-midturn", "--json"]).await;
+            if let Some(s) = st_mid["cli_session_id"].as_str()
+                && st_mid["transcript_path"].is_string()
+            {
+                sid = s.to_owned();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        assert!(!sid.is_empty(), "kill-midturn never created rollout session");
+        let _ = rig.run_olo(&["agent", "stop", "kill-midturn", "--force", "--json"]).await;
+
+        let a = codex_start("resumed-rest", &["--resume", &sid]);
+        let _ = rig.run_olo_json(&a.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        tokio::time::sleep(Duration::from_millis(2500)).await;
+        let st_res = rig.run_olo_json(&["agent", "status", "resumed-rest", "--json"]).await;
+        let _ = rig.run_olo(&["agent", "stop", "resumed-rest", "--force", "--json"]).await;
+        assert_ne!(st_res["state"], "working", "resumed-after-kill Codex at rest must NEVER be stuck working: {st_res}");
     });
 }

@@ -945,6 +945,95 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Left by the code review of the missed shell and the working Codex**
+  (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/astra-acd8dc5c6d/
+  astra-review.md`, 29 findings; fixed at once: its 1, 2, 3, 5's race,
+  7, 15, 18, 19, 21, 27, 28, 29, and 4 by reading twice; its words for
+  the rest):
+  - 4, what is left: "A second read of the same racing interface cannot
+    guarantee completeness … verify that negative with a fresh
+    stat/PPID scan when the result decides completion, or use
+    authoritative task information from the CLI."
+  - 5: "Executable equality also fails in the opposite direction for a
+    stable Node launcher and Node CLI with distinct script arguments.
+    Both can match `agent_of` and use the same Node binary, leaving the
+    launcher selected and its grandchild Bash invisible for the entire
+    session."
+  - 6: "Let an agy worker run another agy as part of a CLI test, with
+    the same binary and home. The outer PID wins selection, but both
+    PIDs go to session discovery. The inner agy's newer presence lock
+    wins … Pass only the selected agent and its verified launcher
+    ancestors to session discovery."
+  - 8: "Claude ends its model turn with 'I will check when the build
+    finishes'. Even a perfect inspection yields `done` and `waiting_on:
+    own_run`. The watch event omits the latter, `turn_end` accepts the
+    rest, and `run` … stops the tab." (`olo agent run` and an agent's
+    own run that outlives its turn: to decide, then to say in the
+    skill.)
+  - 9: "With no status reader, a turn can start and finish inside the
+    120 ms output debounce. Suppose the first rest confirmation reads
+    the transcript before the CLI flushes the closing record, and the
+    flush produces no further terminal output. Nothing wakes the
+    watcher for that file change." (For Codex the file is now read
+    again each half second while it says a turn is on; the others
+    not.)
+  - 10: "Its pre-turn rest, with last message `OK`, is logged while the
+    expectation stays pending. The child takes it up late, then
+    finishes with `OK` again … the event log independently deduplicates
+    on child, state and message hash … The second completion has a new
+    `answers` value but is discarded."
+  - 11: "An exited agy record can live for days. If its old PID now
+    belongs to agy B, another `stop A` starts by asking for A's status.
+    Inspection uses A's `last_pid` on the live process table, finds B's
+    conversation lock … For exited entries, read only the recorded
+    session and transcript."
+  - 12, 13, 17, 20 (`tools/dev/agents resume` and its record): "Only
+    fall back on positive evidence that the exact record is missing";
+    "Fallback resume can move the worker to a different checkout …
+    Persist the original working directory and reuse its saved
+    settings"; "A fallback launch bypasses worker admission checks";
+    "`seen()` reads the whole metadata object, spends time reading the
+    screen and status, then writes that old object back. A concurrent
+    stop can store `cli_session` and `ended` in between."
+  - 14: "Locate agent P, then let it exit while later items in the
+    batch are inspected. Phase two still reports `alive: true`. If P
+    has been reused, its replacement's descendants can be attached to
+    the old transcript … Retain the process start ticks with the PID."
+  - 16: "Rex Activity supplies exactly 16 rows. It can display Idle and
+    can override a Working activity record through `turn_is_over`.
+    Terminal's equivalent limit is 30 rows. A status line split across
+    physical rows can also lose the single-line marker." (And Rex has
+    no conversation file to ask while a Codex's answer streams.)
+  - 22, 23 (`tools/publish-release.sh`): "Two background releases can
+    publish files from the wrong commit … Serialize publishers sharing
+    the release workspace"; "Suppose `$WORK/src` is an existing linked
+    worktree of clone A. Invoke the release from clone B … Resolve the
+    common directory with `git -C \"$ROOT\"` after `checkout-at`
+    returns … An apostrophe in the main checkout's path currently
+    breaks the newly added single-quoted `safe.directory` command."
+  - 24, 25 (the missed shell's test): "With the kernel children
+    interface unavailable … Teardown instead skips the background tree,
+    kills the outer script and leaves Bash and its sleep running";
+    "The hook waits for Bash to exec *and* appends the closing message
+    before returning. Move the shell lookup immediately after the hook
+    and immediately before `inspect_claude_transcript`. The test still
+    sees both results."
+  - 26: "On a kernel without `CONFIG_PROC_CHILDREN`, a batch of 30
+    agents reads at most two global tables but constructs PID/PPID
+    indexes over the host up to 60 times."
+  - And of the turn-on rule itself, mine: an older Codex (one that
+    gives no word of its own) with a goal's clock on its screen at rest
+    and a rollout left at "working" by a killed turn would read as at
+    work for as long as that clock ticks.
+  - From the second investigator's answer (the real Codex 0.172,
+    `/var/tmp/olo-hs/bug-codex/answer.md`), not done: "`parse_api_error`
+    matches Codex's `■ Conversation interrupted - use /feedback if
+    something went wrong` on user Esc interrupts (`turn_aborted`) and
+    resume-after-kill, reporting `state: "error"` (`aborted: false`)
+    instead of letting `tx_state == "aborted"` produce `Idle (aborted:
+    true)`". And Rex's own reading of a pane (`apps/rex/src/hub.rs`,
+    `turn_is_over`; `apps/terminal`) still lets a prompt on the screen
+    overrule Codex's own "working".
 - **Minders, after their two code reviews** (Astra 6.2, 2026-11-27:
   `/var/tmp/olo-reviews/astra-f26f167d2d/` and its confirming
   `astra-1e7b7e0aeb/astra-review.md`; what touched a lead's agents was

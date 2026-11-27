@@ -4123,6 +4123,10 @@ their host's"):
   worker anew on it (`--session ID` where the record hasn't it: the
   service's `events.jsonl` in `~/.local/state/olo/rex-agents/…` has
   every child's `cli_session_id`).
+  (Not always: an event may have no id yet, and the service cuts its
+  log down to its last 2,000 records once it passes 16 MiB. The id in a
+  stop's own answer is kept too, since 2026-11-27: an agy stopped as it
+  began had none in the status before.)
 - **A release is published from a checkout at origin/main's head, and
   that can be a worktree of its own** (`git worktree add --detach
   /var/tmp/NAME origin/main`, then `tools/publish-release.sh NOTES.md`

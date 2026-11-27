@@ -39,6 +39,43 @@ mod tests {
 
     /// The keys the server's encoder presses: those xterm's bytes can't
     /// say. The rest are their bytes.
+    /// What a reading takes up, and when a Codex's conversation file is
+    /// believed that a turn is on (a code review's case and the ShiftUp
+    /// lead's items 50 and 51, 2026-11-27).
+    #[test]
+    fn a_reading_takes_up_what_stood_when_it_began_and_a_codex_in_a_turn_is_not_at_rest() {
+        use super::state::{Expected, TURN_ON_MS, takes_up, turn_on};
+        let given = |cursor| Some(Expected { cursor, given_ms: 0, until_ms: 0, transcript_len: None, turn_from_ms: 0 });
+        // The message that stood when the reading began, seen begun: taken up.
+        assert!(takes_up(true, Some(7), given(7)));
+        // A reading begun while turn A was on (nothing given then), and a
+        // message noted since: not that one's beginning.
+        assert!(!takes_up(true, None, given(8)));
+        // One given at the reading, another since.
+        assert!(!takes_up(true, Some(7), given(8)));
+        // No turn seen on; nothing given.
+        assert!(!takes_up(false, Some(7), given(7)));
+        assert!(!takes_up(true, None, None));
+
+        let now = 1_000_000;
+        // Codex's file says a task is started and not complete, and it
+        // wrote to its screen a second ago: in a turn, whatever the screen reads.
+        assert!(turn_on(AgentCli::Codex, Some("working"), 0, now - 1_000, now, TURN_ON_MS));
+        // Or wrote its file a second ago.
+        assert!(turn_on(AgentCli::Codex, Some("working"), now - 1_000, now - 60_000, now, TURN_ON_MS));
+        // Its file says the turn is over, was aborted, or says nothing: by its screen.
+        for said in [Some("done"), Some("aborted"), Some("waiting"), Some("error"), Some("unknown"), None] {
+            assert!(!turn_on(AgentCli::Codex, said, now, now, now, TURN_ON_MS), "{said:?}");
+        }
+        // A file left saying "working" by a turn that was killed, the
+        // agent still for longer than the file is believed: at rest.
+        assert!(!turn_on(AgentCli::Codex, Some("working"), now - TURN_ON_MS, now - TURN_ON_MS - 1, now, TURN_ON_MS));
+        assert!(!turn_on(AgentCli::Codex, Some("working"), 0, 0, now, TURN_ON_MS));
+        // The others say on their screens that a turn is on, all through it.
+        assert!(!turn_on(AgentCli::Claude, Some("working"), now, now, now, TURN_ON_MS));
+        assert!(!turn_on(AgentCli::Agy, Some("working"), now, now, now, TURN_ON_MS));
+    }
+
     #[test]
     fn the_keys_that_bytes_cannot_say() {
         let press = |raw: &str| pressed_key(raw).map(|p| (p.key, p.mods));
@@ -111,6 +148,12 @@ mod tests {
         // No rules (Codex, drawn inline): the line that says it works.
         let codex = "• Ran cargo test\n\n• Working (12s • esc to interrupt)\n\n› Ask Codex to do anything\n  gpt-6.2-astra high · ~/src · Context 91% left\n";
         assert_eq!(doing_line(codex).as_deref(), Some("• Working (12s • esc to interrupt)"));
+        // With a long message waiting in its field: still its status line, never its footer. And with no
+        // status line on its screen (its turn on by its conversation's file alone): the last it said.
+        let waiting = (1..=9).map(|i| format!("  line {i} of what the lead sent")).collect::<Vec<_>>().join("\n");
+        let long = format!("• Ran cargo test\n\n• Working (12s • esc to interrupt)\n\n› First line\n{waiting}\n\n  gpt-6.2-astra high · ~/src · Context 91% left\n  ← for agents · ? for shortcuts\n");
+        assert_eq!(doing_line(&long).as_deref(), Some("• Working (12s • esc to interrupt)"));
+        assert_eq!(doing_line(&long.replace("• Working (12s • esc to interrupt)\n", "")).as_deref(), Some("• Ran cargo test"));
         // Nothing drawn yet.
         assert_eq!(doing_line("\n  \n"), None);
     }
@@ -393,11 +436,11 @@ mod tests {
         assert_eq!(rest_now(now, started, true, false, None, None), Rest::Told { answered: None });
 
         // Given work it hasn't been seen at: the rest before that turn, at its prompt or not, worked before or not.
-        let given = Expected { cursor: 41, given_ms: now, until_ms: now + 30_000, transcript_len: Some(900) };
+        let given = Expected { cursor: 41, given_ms: now, until_ms: now + 30_000, transcript_len: Some(900), turn_from_ms: now };
         for (seen, at_prompt) in [(false, true), (true, true), (true, false)] {
             assert_eq!(rest_now(now, started, seen, at_prompt, Some(given), None), Rest::Kept { until_ms: now + 30_000 });
         }
-        let file = |len, over| Some(Written { len, over, at_ms: now + 500, said: true });
+        let file = |len, over| Some(Written { len, over, at_ms: now + 500, said: true, turn_ms: None });
         // Its conversation's file the same, or longer with the turn not over (its message written, no reply yet): still before it.
         assert_eq!(rest_now(now, started, true, true, Some(given), file(900, true)), Rest::Kept { until_ms: now + 30_000 });
         assert_eq!(rest_now(now, started, true, true, Some(given), file(1400, false)), Rest::Kept { until_ms: now + 30_000 });
@@ -408,17 +451,39 @@ mod tests {
 
         // Given a prompt at its start, its file's length then not known (a new child has none yet). At its own
         // prompt a moment later, nothing written: the rest before its turn, for as long as it is given to come to it.
-        let at_start = Expected { cursor: 7, given_ms: started, until_ms: started + 120_000, transcript_len: None };
+        let at_start = Expected { cursor: 7, given_ms: started, until_ms: started + 120_000, transcript_len: None, turn_from_ms: started - 2000 };
         assert_eq!(rest_now(now, started, true, true, Some(at_start), None), Rest::Kept { until_ms: started + 120_000 });
         // A file last written before it was given (a conversation resumed: the old one's), with a message and its
         // turn over: says nothing of this turn.
-        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 5000, over: true, at_ms: started - 60_000, said: true })), Rest::Kept { until_ms: started + 120_000 });
+        assert_eq!(
+            rest_now(now, started, true, true, Some(at_start), Some(Written { len: 5000, over: true, at_ms: started - 60_000, said: true, turn_ms: None })),
+            Rest::Kept { until_ms: started + 120_000 }
+        );
         // Written since, its turn over, and nothing of the agent's in it (its own message alone): not yet.
-        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 300, over: true, at_ms: now, said: false })), Rest::Kept { until_ms: started + 120_000 });
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 300, over: true, at_ms: now, said: false, turn_ms: None })), Rest::Kept { until_ms: started + 120_000 });
         // Written since, and not over: not yet.
-        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: false, at_ms: now, said: true })), Rest::Kept { until_ms: started + 120_000 });
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: false, at_ms: now, said: true, turn_ms: None })), Rest::Kept { until_ms: started + 120_000 });
         // Written since, its turn over, a message of the agent's there: the prompt's turn, come and gone unseen.
-        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: true, at_ms: now, said: true })), Rest::Told { answered: Some(7) });
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: true, at_ms: now, said: true, turn_ms: None })), Rest::Told { answered: Some(7) });
+
+        // Where the file says when its last turn began, that is what tells this turn from the one before
+        // (both met under load, 2026-11-27).
+        // A conversation taken up again with a prompt: its program wrote to the file as it started, and the
+        // last turn in it is still the old one, over, with the old closing words. Not this turn.
+        let old_turn = Written { len: 6000, over: true, at_ms: now, said: true, turn_ms: Some(started - 600_000) };
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(old_turn)), Rest::Kept { until_ms: started + 120_000 });
+        // A turn so quick that it was over before the service had noted its prompt (`given_ms` later than
+        // the file's last writing): it began after the child was made, and is this turn.
+        let late_noted = Expected { given_ms: started + 900, ..at_start };
+        let quick = Written { len: 900, over: true, at_ms: started + 700, said: true, turn_ms: Some(started + 300) };
+        assert_eq!(rest_now(now, started, true, true, Some(late_noted), Some(quick)), Rest::Told { answered: Some(7) });
+        // A message sent at rest: the turn before it (begun before the message was typed, however little)
+        // is not its turn, though the file has grown since; one begun after is.
+        assert_eq!(
+            rest_now(now, started, true, true, Some(given), Some(Written { len: 1400, over: true, at_ms: now + 500, said: true, turn_ms: Some(now - 1) })),
+            Rest::Kept { until_ms: now + 30_000 }
+        );
+        assert_eq!(rest_now(now, started, true, true, Some(given), Some(Written { len: 1400, over: true, at_ms: now + 500, said: true, turn_ms: Some(now + 40) })), Rest::Told { answered: Some(41) });
     }
 
     /// A child is started in its agent's own automatic mode unless its parent says otherwise: by `--no-auto`, or

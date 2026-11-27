@@ -2059,9 +2059,10 @@ impl Service {
         let mut items = Vec::with_capacity(rows.len() + exited.len());
         let mut text = String::new();
         for row in &rows {
-            let cls = self.look(&row.entry, false).await.cls;
+            let looked = self.look(&row.entry, false).await;
+            let (cls, output_ms, reports) = (looked.cls, looked.last_output_at, looked.reports);
             let info = inspected.get(&row.entry.id);
-            let (state, _, _) = effective_state(&cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
+            let (state, _, _) = super::service::standing(&row.entry, &cls, info, true, output_ms, reports);
             let kids = self.lock().reg.direct_children(HOST, &sid, &row.entry.window_id, &live_windows).len();
             let mut item = summary_json(&row.entry, state, cls.summary.as_deref(), row.depth, kids);
             let minder = self.lock().reg.minder_of(&row.entry.id).map(|m| m.id.clone());
@@ -2212,8 +2213,12 @@ impl Service {
         let since = |at: u64| if at > 0 { now.saturating_sub(at) / 1000 } else { 0 };
         let last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
         let pending = Self::pending_tools(info);
-        let (state, error, aborted) =
-            effective_state(&cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), cls.state != SubagentLiveState::Exited);
+        // (Its end, where it ended while its processes were read: the
+        // record read again just above says so, and what its screen
+        // showed before does not make it "running" beside its own
+        // `exited_at`. A code review, 2026-11-27.)
+        let alive = cls.state != SubagentLiveState::Exited && entry.exited_at.is_none();
+        let (state, error, aborted) = super::service::standing(&entry, &cls, info, alive, looked.last_output_at, looked.reports);
         let tail = tail_of(&screen, 8);
 
         let mut payload = summary_json(&entry, state, cls.summary.as_deref(), 1, 0);
@@ -2847,20 +2852,25 @@ impl Service {
                         let entry = self.entry(&entry.id).unwrap_or(entry);
                         let now = self.look(&entry, false).await;
                         let pending = Self::pending_tools(info);
-                        let (state, error, _) =
-                            effective_state(&now.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), now.cls.state != SubagentLiveState::Exited);
-                        // (Answered from what stands, not written into the
-                        // log: the log is what happened, once each.)
-                        let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());
-                        ev.seq = self.cursor();
-                        if is_text {
-                            ev.event = name;
+                        let (state, error, _) = super::service::standing(&entry, &now.cls, info, now.cls.state != SubagentLiveState::Exited, now.last_output_at, now.reports);
+                        // (A rest that stood on its screen, and a turn on
+                        // by its conversation's file: not the rest that
+                        // was waited for. `state::turn_on`.)
+                        let in_turn_yet = !is_text && first.state == SubagentLiveState::Idle && state == SubagentLiveState::Working;
+                        if !in_turn_yet {
+                            // (Answered from what stands, not written into the
+                            // log: the log is what happened, once each.)
+                            let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());
+                            ev.seq = self.cursor();
+                            if is_text {
+                                ev.event = name;
+                            }
+                            ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
+                            ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
+                            ev.error = error;
+                            ev.tail = tail_of(&now.screen, 10);
+                            return answer(&ev, matched_line, had_gap);
                         }
-                        ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
-                        ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
-                        ev.error = error;
-                        ev.tail = tail_of(&now.screen, 10);
-                        return answer(&ev, matched_line, had_gap);
                     }
                 }
             }
