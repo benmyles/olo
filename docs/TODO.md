@@ -323,6 +323,32 @@ something nobody here has is in "Blocked", with what it waits for.
   (done 2026-11-27: `Menu::app_items`)
   (Opus's suggestion of 2026-11-26; Ben, 2026-11-27: "makes sense to
   me").
+- **The first menu, from Opus's look at its new order** (2026-11-27;
+  there before the change): "the settings row has no key hint … put
+  ⌘, in the existing column (on the first settings item only, if an
+  app ever has two). It's the key people try first"; "make it
+  'Notification Settings…' (a noun used as a modifier goes singular)"
+  (Gemini said the same); Weather's first menu is "File" and To-Do's
+  "To-Do" "over the same kind of contents … Use the app name
+  everywhere"; To-Do's bar is "To-Do Edit Item View": "View comes
+  straight after Edit, as it does in Weather"; Weather's "Data
+  Provider…": "if it picks the provider, it's a setting sitting among
+  commands"; "Weather's list is an inset, bordered well … while
+  To-Do's is a tinted sidebar flush with the window edge. Same job,
+  two idioms"; Weather with no places: "add an empty state like
+  To-Do's".
+- **Every menu, from the look at the first menu's new order**
+  (Gemini's, 2026-11-27; there before the change, none measured yet):
+  "`⇧` modifier glyph is too faint, slightly low, and crowded against
+  `⌘` … in light mode it reads almost mid-gray beside black `⌘/`. At
+  1x `⇧` and `⌘` practically touch"; "every etched separator sits
+  visibly closer to the baseline of the row above it than to the
+  cap-top of the row below it (about 2–3px tighter above than below at
+  1x)", and "`Quit` sits closer to the bottom menu border than
+  `About …` sits to the top border"; separators at 1.5× "the first and
+  third … look slightly softer than the second and fourth"; and
+  "plural `Notifications Settings...` reads awkwardly next to `AI
+  Settings...`; should be `Notification Settings...`".
 - **A screenshot's thumbnail, to drag** (Ben, 2026-11-27, "for
   later"): "after taking a screenshot please make it send a
   notification that comes up in the bottom left with a thumbnail of

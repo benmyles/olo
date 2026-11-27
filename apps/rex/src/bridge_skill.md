@@ -390,7 +390,9 @@ model or reasoning effort is used.
   person's desktop, NOT on this host — fetch or inspect them with:
   - `olo get rex://local/PATH [DEST]` (alias `olo fetch`): downloads the
     desktop file onto this host (into `DEST` if given, or
-    `/var/tmp/olo-rex-bridge/<filename>` by default, up to 32 MiB) and
+    `$XDG_RUNTIME_DIR/olo-rex-bridge-UID/<filename>` by default (your own
+    folder for this session; under `$TMPDIR` or `/var/tmp` where there is
+    no runtime folder), up to 32 MiB) and
     prints the saved local path on this host so you can read, view, or
     process it directly (`--json` for structured output). If given a folder,
     lists its entries and shows how to fetch files inside it.
@@ -450,7 +452,7 @@ model or reasoning effort is used.
     (text cut short): `tree` has the whole.
   - `olo screen look NAME [PATH]`: a picture, saved on this host, at
     PATH where you give one (beside your report), else under
-    `/var/tmp/olo-rex-bridge`; the answer names the file here (`--json`:
+    that same folder; the answer names the file here (`--json`:
     `{"path": …}`).
   - `olo screen stop NAME` when done; `olo screen --help` for the rest.
   In `olo screen run` (and `start`), a `http://localhost:PORT` of this

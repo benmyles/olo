@@ -6,6 +6,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### Every app's first menu: settings above Keyboard Shortcuts
+
+*06:09* — Under About, the app's settings item now comes first and Keyboard Shortcuts after it (they were the other way round), in every app: Menu::app_items in the kit. Ben: "settings above kb shortcuts in every app's first menu makes sense to me".
+
+![Every app's first menu: settings above Keyboard Shortcuts](2026-11-27/060905-every-app-s-first-menu-settings-above-keyboard-s.png)
+
 ### Rex: the floating pane in a dark look
 
 *04:14* — The same at 2×, dark: the card's line is a light grey there (the look's control outline is darker than a terminal's ground), so the card stands off the panes under it.

@@ -8,8 +8,8 @@
 //!
 //! A window's bar starts with its first menu (File, or what the app
 //! holds when it isn't files: Terminal, Disk, Screen), which starts as
-//! BeOS's did, with About, then Keyboard Shortcuts and the app's settings
-//! in Preferences ([`Menu::app_items`]), and ends with Close and Quit
+//! BeOS's did, with About, then the app's settings in Preferences and
+//! Keyboard Shortcuts ([`Menu::app_items`]), and ends with Close and Quit
 //! ([`Menu::close_quit`]). Then Edit (Undo, Redo, Cut, Copy, Paste,
 //! Select All, Find…, Find Again, in that order), View, and the app's
 //! own. The kit runs About, Keyboard Shortcuts and the settings items
@@ -95,20 +95,24 @@ impl Menu {
     /// is, apart from how it is set up: Opus 5.5's look at Token Pool's
     /// menus, 2026-11-25, "separate `About <App>` onto its own top group
     /// above `Settings…` + `Keyboard Shortcuts`"; BeOS's and the Mac's
-    /// way too), then Keyboard Shortcuts and the app's `settings`, each a
-    /// Preferences panel ("sound", or with a tab, "security/Passwords"),
-    /// and a separator.
+    /// way too), then the app's `settings`, each a Preferences panel
+    /// ("sound", or with a tab, "security/Passwords"), then Keyboard
+    /// Shortcuts, and a separator. (Settings above the shortcuts, as in
+    /// that look's own words; they had been under them. Ben, 2026-11-27:
+    /// "settings above kb shortcuts in every app's first menu makes
+    /// sense to me".)
     pub fn app_items(self, settings: &[&str]) -> Menu {
         // (In the person's language, the app's name as its catalog has
         // it; the English kept for the menus' check.)
         let name = app_name();
         let about = crate::tr!("About {}", crate::words::of_text(&name)).to_string();
-        let mut m = self.item(about, ABOUT).english(format!("About {name}")).separator().item("Keyboard Shortcuts", SHORTCUTS);
-        if let Some(keys) = shortcuts_keys() {
-            m = m.keys(keys);
-        }
+        let mut m = self.item(about, ABOUT).english(format!("About {name}")).separator();
         for s in settings {
             m = m.item(settings_label(s), format!("{PREF}{s}")).english(settings_english(s));
+        }
+        m = m.item("Keyboard Shortcuts", SHORTCUTS);
+        if let Some(keys) = shortcuts_keys() {
+            m = m.keys(keys);
         }
         m.separator()
     }

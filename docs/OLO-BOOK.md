@@ -863,8 +863,9 @@ documents, window places kept, search and filtering
 consistent and always available and the menu locations/options where
 applicable are consistent"). As BeOS's apps did, a window's bar starts
 with its first menu: File, or what the app holds when it isn't files
-(Terminal, Disk, Screen). It starts with About and Keyboard Shortcuts
-and the app's settings, each a Preferences panel ("Sound Settings…"),
+(Terminal, Disk, Screen). It starts with About, then the app's
+settings, each a Preferences panel ("Sound Settings…"), and Keyboard
+Shortcuts under them,
 then a separator (`Menu::app_items(&["sound", "security/Passwords"])`,
 a panel and its tab after a `/`), and it ends with Close and Quit
 (`close_quit()`; `close_item()` for a window of a program that keeps
