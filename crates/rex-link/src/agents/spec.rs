@@ -909,7 +909,10 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
         }
     }
 
-    let target = target.ok_or_else(|| "usage: olo agent send <ID|NAME> [TEXT | --file PATH] [--enter] [--paste] [--force] [--ctrl c|d|z] [--key Enter|Escape|Tab|Up|Down|Left|Right]".to_owned())?;
+    let target = target.ok_or_else(|| {
+        "usage: olo agent send <ID|NAME> [TEXT | --file PATH] [--enter] [--paste] [--force] [--ctrl c|d|z] [--key Enter|Escape|Tab|Up|Down|Left|Right] [--wait [--timeout SECS] [--out FILE]]"
+            .to_owned()
+    })?;
     let body = text_parts.join(" ");
     if body.is_empty() && !add_enter && post_keys.is_empty() {
         return Err("nothing to send: provide TEXT, --file PATH, --enter, --ctrl <KEY>, or --key <NAME>".into());

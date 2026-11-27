@@ -1981,6 +1981,88 @@ fn one_agent_for_one_prompt_from_start_to_finish() {
     });
 }
 
+/// `olo agent send NAME "…" --enter --wait`: asking a child that stands is one line that prints its answer (the
+/// ShiftUp lead's item 43). Sent to a child at rest, the message begins a turn of its own, and the answer is
+/// that turn's last message: not the rest it was sent from, which is still on the screen for a moment. Sent
+/// into a turn already going, it is that turn's, whose end is waited for. What comes in a turn's place is said
+/// as `run` says it, and the child is left as it is.
+#[test]
+fn a_message_is_sent_and_its_answer_waited_for() {
+    let Some(rig) = Rig::start("sendwait") else { return };
+    rig.stand_in("claude");
+    const PARTNER: &str = "5f0c1f0e-2222-4a22-8a22-2f8f0e0a0002";
+    let work = rig.work();
+    rig.start_child("claude", "partner", &["--cwd", &work, "--session-id", PARTNER]);
+    rig.says(PARTNER, "Hello.", "Ready.");
+    rig.show("partner", &idle("Ready."));
+    // (At rest: "idle", or "done" where its conversation says its last turn is over.)
+    let rests = || matches!(rig.status("partner")["state"].as_str(), Some("idle" | "done"));
+    rig.wait("it to be at rest", rests);
+    let ask = |more: &[&str]| {
+        let mut args = vec!["send", "partner", "What does the file say?", "--enter", "--wait"];
+        args.extend_from_slice(more);
+        rig.olo(&args)
+    };
+
+    std::thread::scope(|scope| {
+        // At rest: its answer is the turn the message begins, and nothing before it.
+        let before = rig.keys("partner").len();
+        let asked = scope.spawn(|| ask(&["--json", "--timeout", "40"]));
+        rig.wait("the message to be typed into it", || rig.keys("partner").len() > before);
+        std::thread::sleep(Duration::from_millis(700));
+        assert!(!asked.is_finished(), "it answered with the rest the message was sent from");
+        rig.show("partner", &working());
+        rig.wait("the service to have seen it at work", || rig.status("partner")["state"] == "working");
+        rig.says(PARTNER, "What does the file say?", "It says forty-two.");
+        rig.show("partner", &idle("It says forty-two."));
+        let (code, out, err) = asked.join().unwrap();
+        let said: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{code}: {e}: {out}{err}"));
+        assert!(code == 0 && said["ok"] == true && said["ended_as"] == "done" && said["last_message"] == "It says forty-two.", "{code}: {said}\n{err}");
+        assert_eq!(rig.status("partner")["running"], true, "the child is left as it is");
+
+        // Its answer alone, as text, where no JSON is asked.
+        let typed = rig.keys("partner").len();
+        let asked = scope.spawn(|| ask(&["--timeout", "40"]));
+        rig.wait("the second message to be typed into it", || rig.keys("partner").len() > typed);
+        rig.show("partner", &working());
+        rig.wait("the service to have seen it at work", || rig.status("partner")["state"] == "working");
+        rig.says(PARTNER, "What does the file say?", "Still forty-two.");
+        rig.show("partner", &idle("Still forty-two."));
+        let (code, out, err) = asked.join().unwrap();
+        assert!(code == 0 && out.trim() == "Still forty-two.", "{code}: {out}{err}");
+
+        // Into a turn already going: that turn's end is its answer.
+        rig.show("partner", &working());
+        rig.wait_state("partner", "working");
+        let asked = scope.spawn(|| ask(&["--json", "--timeout", "40", "--force"]));
+        std::thread::sleep(Duration::from_millis(700));
+        assert!(!asked.is_finished());
+        rig.says(PARTNER, "What does the file say?", "Forty-two, as before.");
+        rig.show("partner", &idle("Forty-two, as before."));
+        let (code, out, err) = asked.join().unwrap();
+        let said: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{code}: {e}: {out}{err}"));
+        assert!(code == 0 && said["last_message"] == "Forty-two, as before.", "{code}: {said}\n{err}");
+
+        // It asks leave in the message's turn: status 3, said, and it still asks.
+        let typed = rig.keys("partner").len();
+        let asked = scope.spawn(|| ask(&["--timeout", "40"]));
+        rig.wait("the next message to be typed into it", || rig.keys("partner").len() > typed);
+        rig.show("partner", &asking("git push origin main", 0));
+        let (code, out, err) = asked.join().unwrap();
+        assert!(code == 3 && out.is_empty() && err.contains("`partner` asks leave") && err.contains("git push origin main"), "{code}: {out}{err}");
+        assert_eq!(rig.status("partner")["state"], "waiting_approval");
+
+        // Its time passes: status 124.
+        rig.show("partner", &idle("Not pushed."));
+        rig.wait("it to be at rest again", rests);
+        let (code, _, err) = ask(&["--timeout", "2"]);
+        assert!(code == 124 && err.contains("had not ended its turn after 2 s"), "{code}: {err}");
+    });
+    // (A message not submitted begins no turn: said, nothing sent.)
+    let (code, _, err) = rig.olo(&["send", "partner", "half a thought", "--wait"]);
+    assert!(code == 2 && err.contains("--enter"), "{code}: {err}");
+}
+
 /// `olo agent watch --follow`: a watch that goes on (the ShiftUp lead's item 38: "a lead must keep one wait
 /// running over all its children and start it again each time it returns"). One command, each thing as it
 /// comes, until it is stopped.

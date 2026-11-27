@@ -123,6 +123,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             let asked = |op: &str, args: Vec<String>| ask(&server, &paths, &Request { op: op.to_owned(), args, ..req.clone() }, retriable(op));
             match sub.as_str() {
                 "run" => one_shot(req.args.clone(), &asked),
+                "send" if req.args.iter().any(|a| a == "--wait") => send_and_wait(req.args.clone(), &asked),
                 "watch" | "wait" if req.args.iter().any(|a| a == "--follow") => follow_watch(req.args.clone(), &asked),
                 _ => print_answer(ask(&server, &paths, &req, retriable(&sub))),
             }
@@ -146,6 +147,141 @@ pub const RUN_USAGE: &str = "usage: olo agent run <claude|codex|agy> --model MOD
 /// answers the start (`answers`: the prompt's own turn's end and no
 /// rest before it), then `stop`. From a parent's shell it is a
 /// background command that ends when the reading is in.
+/// Waits for the end of the turn that answers what a child was given
+/// at `given` (a start's cursor, a send's), or for what comes in its
+/// place: how it ended ("done", "unanswered", "question", "approval",
+/// "error", "exit", "timeout"), the event that said so, and the cursor
+/// to watch on from. `its_own`: the turn is one the giving began (the
+/// child was at rest), so its end is the rest whose `answers` is
+/// `given`, and a rest that answers anything else is the child never
+/// having taken it up; otherwise (a message sent into a turn already
+/// going) it is that turn's, and the next rest is its end.
+fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> Result<(&'static str, Value, u64), Response> {
+    let mut cursor = given;
+    loop {
+        let wait = match until {
+            Some(until) if Instant::now() >= until => return Ok(("timeout", Value::Null, cursor)),
+            Some(until) => until.saturating_duration_since(Instant::now()).as_secs().clamp(1, 90),
+            None => 90,
+        };
+        let told = asked(
+            "watch",
+            vec![id.to_owned(), "--since".into(), cursor.to_string(), "--on".into(), "question,approval,idle,done,error,exit".into(), "--timeout".into(), wait.to_string(), "--json".into()],
+        );
+        if let Some(c) = told.data["cursor"].as_u64() {
+            cursor = c;
+        }
+        if !told.ok {
+            // (Its time up with nothing to say: asked again. Anything else is said.)
+            if told.code == 124 {
+                continue;
+            }
+            return Err(told);
+        }
+        let ev = told.data;
+        match ev["state"].as_str().unwrap_or_default() {
+            "idle" | "done" if !its_own || ev["answers"].as_u64() == Some(given) => return Ok(("done", ev, cursor)),
+            // (At rest without having taken up what it was given: said as that.)
+            "idle" | "done" => return Ok(("unanswered", ev, cursor)),
+            "waiting_question" => return Ok(("question", ev, cursor)),
+            "waiting_approval" => return Ok(("approval", ev, cursor)),
+            "error" => return Ok(("error", ev, cursor)),
+            "exited" => return Ok(("exit", ev, cursor)),
+            _ => {}
+        }
+    }
+}
+
+/// `olo agent send NAME "…" --enter --wait`: a message sent to a child
+/// that stands, and its answer waited for (the ShiftUp lead's item 43,
+/// 2026-11-27: "returns when the turn that answers that message has
+/// ended and prints its whole last message … non-zero as `run` is when
+/// it stands on a question or the time passes. Then asking a standing
+/// agent is one line that prints its answer"). `send`, then a `watch`
+/// of that child from the send's cursor until the rest that ends the
+/// message's turn; the child is left as it is. Its own options, beside
+/// `send`'s: `--wait`, `--timeout SECS`, `--out FILE`, `--json`.
+fn send_and_wait(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+    let fail = |msg: &str, code: i32| {
+        eprintln!("olo agent send: {msg}");
+        code
+    };
+    let (mut out, mut as_json, mut timeout) = (None::<String>, false, None::<u64>);
+    let mut send = Vec::with_capacity(args.len() + 1);
+    let mut it = args.into_iter();
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--wait" => {}
+            "--json" => as_json = true,
+            "--out" => match it.next() {
+                Some(path) => out = Some(path),
+                None => return fail("--out requires a file path", 2),
+            },
+            "--timeout" => match it.next().and_then(|s| s.trim_end_matches('s').parse().ok()) {
+                Some(secs) => timeout = Some(secs),
+                None => return fail("--timeout requires a number of seconds", 2),
+            },
+            a if a.starts_with("--out=") => out = Some(a["--out=".len()..].to_owned()),
+            _ => send.push(arg),
+        }
+    }
+    // (A message that isn't submitted begins no turn to wait for.)
+    if !send.iter().any(|a| a == "--enter") {
+        return fail("--wait waits for the turn the message begins: send it with --enter", 2);
+    }
+    send.push("--json".to_owned());
+    let sent = asked("send", send);
+    if !sent.ok {
+        return print_answer(sent);
+    }
+    let id = sent.data["id"].as_str().unwrap_or_default().to_owned();
+    let name = sent.data["name"].as_str().unwrap_or(&id).to_owned();
+    let given = sent.data["cursor"].as_u64().unwrap_or(0);
+    // (A service from before it said so: taken as a turn of its own.)
+    let its_own = sent.data["began_turn"].as_bool().unwrap_or(true);
+    let until = timeout.map(|secs| Instant::now() + Duration::from_secs(secs));
+    let (how, event, cursor) = match turn_end(&id, given, its_own, until, asked) {
+        Ok(ended) => ended,
+        Err(failed) => return print_answer(failed),
+    };
+    let status = asked("status", vec![id.clone(), "--json".into()]).data;
+    let last = event["last_message"].as_str().or(status["last_message"].as_str()).map(str::to_owned);
+    let how = if how == "done" && last.as_deref().is_none_or(|m| m.trim().is_empty()) { "silent" } else { how };
+    if let (Some(path), Some(text), "done") = (&out, &last, how) {
+        let dest = Path::new(path);
+        let tmp = dest.with_extension(format!("olo-tmp-{}", std::process::id()));
+        let written = dest.parent().filter(|d| !d.as_os_str().is_empty()).map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&tmp, text)).and_then(|()| std::fs::rename(&tmp, dest));
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&tmp);
+            eprintln!("olo agent send: couldn't write {path}: {e}");
+        }
+    }
+    let (code, said) = match how {
+        "done" => (0, String::new()),
+        "unanswered" => (1, format!("`{name}` came to rest without taking the message up")),
+        "silent" => (1, format!("`{name}` came to rest with no message of its own to give")),
+        "question" => (3, format!("`{name}` stands on a question (`olo agent send {name} …`, or look): {}", event["summary"].as_str().unwrap_or_default())),
+        "approval" => (3, format!("`{name}` asks leave (`olo agent approve {name} --once|--no`): {}", event["approval"]["command"].as_str().or(event["summary"].as_str()).unwrap_or_default())),
+        "error" => (1, format!("`{name}` failed: {}", event["error"].as_str().or(event["summary"].as_str()).unwrap_or_default())),
+        "exit" => (1, format!("`{name}` exited before its turn ended ({})", event["summary"].as_str().unwrap_or("exited"))),
+        _ => (124, format!("`{name}` had not ended its turn after {} s", timeout.unwrap_or(0))),
+    };
+    if as_json {
+        let payload = json!({
+            "ok": code == 0, "ended_as": how, "id": id, "name": name, "last_message": last, "answers": event["answers"], "delivered": sent.data["delivered"],
+            "cli_session_id": status["cli_session_id"], "transcript_path": status["transcript_path"], "out": out.filter(|_| how == "done"), "cursor": cursor,
+        });
+        println!("{payload}");
+    } else if let (Some(text), "done") = (&last, how) {
+        println!("{}", text.trim_end());
+    }
+    let _ = std::io::stdout().flush();
+    if code != 0 {
+        eprintln!("olo agent send: {said}");
+    }
+    code
+}
+
 fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
     let fail = |msg: &str, code: i32| {
         eprintln!("olo agent run: {msg}");
@@ -193,38 +329,9 @@ fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) ->
     let until = timeout.map(|secs| Instant::now() + Duration::from_secs(secs));
 
     // Its prompt's own turn's end, or what came in its place.
-    let mut cursor = given;
-    let (how, event) = loop {
-        let wait = match until {
-            Some(until) if Instant::now() >= until => break ("timeout", Value::Null),
-            Some(until) => until.saturating_duration_since(Instant::now()).as_secs().clamp(1, 90),
-            None => 90,
-        };
-        let told = asked(
-            "watch",
-            vec![id.clone(), "--since".into(), cursor.to_string(), "--on".into(), "question,approval,idle,done,error,exit".into(), "--timeout".into(), wait.to_string(), "--json".into()],
-        );
-        if let Some(c) = told.data["cursor"].as_u64() {
-            cursor = c;
-        }
-        if !told.ok {
-            // (Its time up with nothing to say: asked again. Anything else is said.)
-            if told.code == 124 {
-                continue;
-            }
-            return print_answer(told);
-        }
-        let ev = told.data;
-        match ev["state"].as_str().unwrap_or_default() {
-            "idle" | "done" if ev["answers"].as_u64() == Some(given) => break ("done", ev),
-            // (At rest without having taken its prompt up: said as that.)
-            "idle" | "done" => break ("unanswered", ev),
-            "waiting_question" => break ("question", ev),
-            "waiting_approval" => break ("approval", ev),
-            "error" => break ("error", ev),
-            "exited" => break ("exit", ev),
-            _ => {}
-        }
+    let (how, event, cursor) = match turn_end(&id, given, true, until, asked) {
+        Ok(ended) => ended,
+        Err(failed) => return print_answer(failed),
     };
 
     // Its whole last message (a rest's own event has it; else as it stands now).

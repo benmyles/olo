@@ -31850,6 +31850,20 @@ agents through the night, could not move to it.
     set to answer (its tab kept, the words say how to answer it); 124,
     `--timeout` passed (kept). From a parent's shell it is a background
     command that ends when the reading is in.
+  - `olo agent send NAME "…" --enter --wait [--timeout SECS] [--out
+    FILE] [--json]` (2026-11-27; the ShiftUp lead's item 43: "returns
+    when the turn that answers that message has ended and prints its
+    whole last message … Then asking a standing agent is one line that
+    prints its answer"). The command's own doing, as `run` is: `send`,
+    then the same wait (`client.rs`, `turn_end`, shared with `run`). A
+    `send` now says whether the message began a turn of its own
+    (`began_turn`: the child was at rest, so the turn that follows
+    answers the send's cursor): then the answer is the rest whose
+    `answers` is that cursor, and a rest that answers anything else is
+    the message never taken up; sent into a turn already going, the
+    message is that turn's, and the next rest is its end. Status as
+    `run`'s (0; 1 failed, exited, `unanswered`, `silent`; 3 a question
+    or leave asked; 124 its time), and the child is left as it is.
   - `olo agent watch … --follow`: each thing waited for is printed as
     it comes and the watch goes on from it until it is stopped; without
     `--since` it begins from now. A line that says who and what

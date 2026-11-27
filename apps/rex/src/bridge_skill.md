@@ -303,6 +303,18 @@ model or reasoning effort is used.
   it answers whatever stands when it arrives, as before.
   Picks the one choice of that kind by what it means, wherever it stands in the list (`approval.choices[].kind`: `once`, `allow_session`, `dont_ask_again`, `switch_mode`, `no`, `no_always`, `other`): `--once` the yes for this once ("Yes", "Yes, run command", "Yes, but ask again next time"), `--session` the yes kept for this conversation alone (Antigravity's "Yes, and always allow in this conversation"), `--no` the no for this once (never "No, and block reads"). Two of the kind asked for, or none, is refused with the choices named.
   Never selects persistent (`don't ask again` / `always allow` / kept in settings) or mode-switching options; re-verifies cursor selection before pressing Enter, confirms the specific dialog key dismissed without touching any next dialog, and pastes sanitized `--reason` only after dismissal.
+- **Ask a child that stands, and get its answer: `send … --enter --wait`.**
+  `olo agent send <ID|NAME> "What did you find?" --enter --wait [--timeout SECS] [--out FILE] [--json]`
+  sends the message, waits for the turn it belongs to to end, and
+  prints that turn's whole last message (and writes it to `--out`): one
+  line that prints its answer. Sent to a child at rest, the answer is
+  the turn the message begins, never the rest it was sent from; sent
+  into a turn already going, it is that turn's, and its end is waited
+  for. Status as `run`'s: 0 with the answer; 1 if it failed, exited, or
+  came to rest with nothing of its own to say; 3 if it stands on a
+  question or asks leave (answer that, it still stands); 124 when your
+  time passed. The child is left as it is. `--json` gives one object
+  (`ok`, `ended_as`, `last_message`, `answers`, `cursor`, `delivered`).
 - **Send input reliably** (text, file paste, control chars, special keys, delivery verification):
   `olo agent send <ID|NAME> "Please check tests/api.rs next" --enter --json`
   `olo agent send <ID|NAME> --file /var/tmp/prompt.md --enter --json`

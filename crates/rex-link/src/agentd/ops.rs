@@ -1461,7 +1461,8 @@ impl Service {
         // and the turn's end says which message it answers (`answers`:
         // this cursor). Sent into a turn already going, it is that
         // turn's, and nothing is told apart.
-        if entry.cli.is_agent() && !spec.body.is_empty() && spec.enter && matches!(before.cls.state, SubagentLiveState::Idle | SubagentLiveState::Done) {
+        let began_turn = entry.cli.is_agent() && !spec.body.is_empty() && spec.enter && matches!(before.cls.state, SubagentLiveState::Idle | SubagentLiveState::Done);
+        if began_turn {
             self.expect_work(&entry, pre_cursor, super::service::taken_up(), true);
         }
 
@@ -1550,7 +1551,11 @@ impl Service {
                 }
             }
         }
-        let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "bytes": total, "delivered": delivered, "cursor": pre_cursor });
+        // (`began_turn`: the child was at rest, so the turn that follows is this
+        // message's own, and its end's `answers` is this `cursor`; sent into a
+        // turn already going, it is that turn's, and the next rest is its end.
+        // What `send --wait` waits by.)
+        let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "bytes": total, "delivered": delivered, "cursor": pre_cursor, "began_turn": began_turn });
         Response::ok(if spec.as_json { format!("{payload}\n") } else { format!("Sent {total} bytes to {} (delivered={delivered}).\n", entry.id) }, payload)
     }
 
