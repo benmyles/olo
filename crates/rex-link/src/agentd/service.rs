@@ -520,6 +520,52 @@ impl Service {
         self.paths.dir.join("minders").join(id).join("approve-all-but.txt")
     }
 
+    fn start_file(&self, id: &str) -> PathBuf {
+        self.paths.dir.join("minders").join(id).join("started-with.json")
+    }
+
+    /// What a child was started with, kept in its own folder so that it
+    /// can be started again as it was (`resume`): the arguments as they
+    /// reached the service (a file named in them is its text by then: a
+    /// minder's rules, a list), less its prompt, which is said once and
+    /// is nobody's to keep. The owner's alone to read: an `--env` or a
+    /// `--settings` may hold what is nobody else's.
+    pub fn keep_start(&self, id: &str, raw: &Value) {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let Some(args) = raw.get("args").and_then(Value::as_array) else { return };
+        let args: Vec<&str> = args.iter().filter_map(Value::as_str).collect();
+        let (mut kept, mut after) = (Vec::with_capacity(args.len()), false);
+        let mut it = args.into_iter();
+        while let Some(arg) = it.next() {
+            match arg {
+                _ if after => kept.push(arg),
+                "--" => {
+                    after = true;
+                    kept.push(arg);
+                }
+                "--prompt" | "-p" => {
+                    it.next();
+                }
+                a if a.starts_with("--prompt=") => {}
+                _ => kept.push(arg),
+            }
+        }
+        let file = self.start_file(id);
+        let written = std::fs::create_dir_all(file.parent().unwrap_or(&self.paths.dir))
+            .and_then(|()| std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&file))
+            .and_then(|mut f| f.write_all(json!({ "args": kept }).to_string().as_bytes()));
+        if let Err(e) = written {
+            logged!("olo agents: what {id} was started with couldn't be kept ({e}): it can't be started again by `resume`");
+        }
+    }
+
+    /// What a child was started with (`keep_start`), where it was kept.
+    pub fn kept_start(&self, id: &str) -> Option<Vec<String>> {
+        let kept: Value = serde_json::from_str(&std::fs::read_to_string(self.start_file(id)).ok()?).ok()?;
+        Some(kept["args"].as_array()?.iter().filter_map(|a| a.as_str().map(str::to_owned)).collect())
+    }
+
     /// Gives the child `id` a list (`text`: a pattern a line) from now,
     /// in another's place if it had one: how many patterns. A line that
     /// is no pattern is refused, and nothing changes.

@@ -303,6 +303,18 @@ model or reasoning effort is used.
   it answers whatever stands when it arrives, as before.
   Picks the one choice of that kind by what it means, wherever it stands in the list (`approval.choices[].kind`: `once`, `allow_session`, `dont_ask_again`, `switch_mode`, `no`, `no_always`, `other`): `--once` the yes for this once ("Yes", "Yes, run command", "Yes, but ask again next time"), `--session` the yes kept for this conversation alone (Antigravity's "Yes, and always allow in this conversation"), `--no` the no for this once (never "No, and block reads"). Two of the kind asked for, or none, is refused with the choices named.
   Never selects persistent (`don't ask again` / `always allow` / kept in settings) or mode-switching options; re-verifies cursor selection before pressing Enter, confirms the specific dialog key dismissed without touching any next dialog, and pastes sanitized `--reason` only after dismissal.
+- **Start an ended child again as it was: `olo agent resume <ID|NAME> [--prompt TEXT | --prompt-file FILE] [--json]`.**
+  The same conversation, with everything it was started with: its
+  agent, model and effort, its folder, its `--env`, `--settings`,
+  permission mode and other flags, its list (`--approve-all-but`), its
+  minder and its rules. You keep no conversation id and no flags: its
+  name is enough. What you say to it now (`--prompt`) is in place of its
+  first prompt; with none it comes up at its own prompt. It is a new
+  child of the same name (a new `id`; the answer is `start`'s). One that
+  still runs is not started again (speak to it with `send`), nor one
+  that never began a conversation; each says why. (What a child was
+  started with is kept from this version on: one started before it is
+  started with `start … --resume ID`, as before.)
 - **Ask a child that stands, and get its answer: `send … --enter --wait`.**
   `olo agent send <ID|NAME> "What did you find?" --enter --wait [--timeout SECS] [--out FILE] [--json]`
   sends the message, waits for the turn it belongs to to end, and

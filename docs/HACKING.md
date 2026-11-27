@@ -31850,6 +31850,22 @@ agents through the night, could not move to it.
     set to answer (its tab kept, the words say how to answer it); 124,
     `--timeout` passed (kept). From a parent's shell it is a background
     command that ends when the reading is in.
+  - `olo agent resume NAME [--prompt TEXT] [--json]` (2026-11-27; the
+    ShiftUp lead's item 44: "starts an exited child again as the same
+    conversation, with the flags it was started with (model, effort,
+    cwd, env, settings, the list, its minder and rules). Then our
+    records keep no conversation id at all"). What a child is started
+    with is kept at its start in its own folder
+    (`Service::keep_start`: `minders/ID/started-with.json`, the
+    arguments as they reached the service, a named file's text in place
+    of its name, less the prompt; mode 0600, an `--env` may hold what is
+    nobody else's; it is never in `list` or `status`). `resume` takes
+    those, drops what named a conversation then (`--session-id`,
+    `--resume`) for the conversation the child had
+    (`effective_session_id`), adds what is said now, and is `start` from
+    there: a new child of the same name. Refused, with why: one that
+    runs, a plain command, one that never began a conversation, one
+    whose start wasn't kept (started before this, or through `rex do`).
   - `olo agent send NAME "…" --enter --wait [--timeout SECS] [--out
     FILE] [--json]` (2026-11-27; the ShiftUp lead's item 43: "returns
     when the turn that answers that message has ended and prints its

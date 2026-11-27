@@ -145,6 +145,7 @@ impl Service {
         }
         match req.op.as_str() {
             "start" | "spawn" => self.start(req, &raw, &caller).await,
+            "resume" => self.resume(req, &raw, &caller).await,
             "list" | "ls" => self.list(&raw, &caller).await,
             "status" => self.status(&raw, &caller).await,
             "read" | "tail" => self.read(&raw, &caller).await,
@@ -159,7 +160,7 @@ impl Service {
             other => Response {
                 ok: false,
                 stdout: String::new(),
-                stderr: format!("olo agent: unknown command `{other}`\nusage: olo agent <start|list|status|read|watch|send|approve|mind|escalate|stop|prune|focus> [ARGS…]\n"),
+                stderr: format!("olo agent: unknown command `{other}`\nusage: olo agent <start|run|resume|list|status|read|watch|send|approve|mind|escalate|stop|prune|focus> [ARGS…]\n"),
                 code: 2,
                 data: Value::Null,
             },
@@ -316,6 +317,9 @@ impl Service {
             return Response::err("start", format!("--approve-all-but: {e}"), 2);
         }
         let mut answer = self.start_spec(req, spec.clone(), caller).await;
+        if let (true, Some(id)) = (answer.ok, answer.data["id"].as_str()) {
+            self.keep_start(id, raw);
+        }
         if let (true, Some(text), Some(id)) = (answer.ok, &spec.approve_all_but, answer.data["id"].as_str()) {
             match self.set_leave(id, text) {
                 Ok(n) => answer.data["approve_all_but"] = json!(n),
@@ -1048,6 +1052,16 @@ impl Service {
         payload["state_age_secs"] = json!(since(looked.last_state_change_at));
         payload["background_shells"] = info.map(|v| v["background_shells"].clone()).filter(|v| !v.is_null()).unwrap_or_else(|| json!([]));
         payload["waiting_on"] = json!(info.and_then(|v| v["waiting_on"].as_str()));
+        // (Antigravity's own tasks aren't among its processes: its footer
+        // says how many go. At rest with one going, it waits on its own
+        // run, as an agent with a shell of its own still running does.)
+        let own_tasks = if entry.cli == AgentCli::Agy { olo_rex_link::agents::state::agy_tasks(&screen) } else { 0 };
+        if own_tasks > 0 {
+            payload["own_tasks"] = json!(own_tasks);
+            if matches!(state, SubagentLiveState::Idle | SubagentLiveState::Done) {
+                payload["waiting_on"] = json!("own_run");
+            }
+        }
         payload["usage"] = json!(cls.usage.as_ref().map(|u| json!({ "line": u.line, "percent": u.percent, "limit_reached": u.limit_reached })));
         payload["cursor"] = json!(self.cursor());
         payload["tail"] = json!(tail);
@@ -1557,6 +1571,83 @@ impl Service {
         // What `send --wait` waits by.)
         let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "bytes": total, "delivered": delivered, "cursor": pre_cursor, "began_turn": began_turn });
         Response::ok(if spec.as_json { format!("{payload}\n") } else { format!("Sent {total} bytes to {} (delivered={delivered}).\n", entry.id) }, payload)
+    }
+
+    // ---- resume ----
+
+    /// `olo agent resume <ID|NAME> [--prompt TEXT] [--json]`: an ended
+    /// child started again as the same conversation, with what it was
+    /// started with (the ShiftUp lead's item 44, 2026-11-27: "starts an
+    /// exited child again as the same conversation, with the flags it
+    /// was started with (model, effort, cwd, env, settings, the list,
+    /// its minder and rules). Then our records keep no conversation id
+    /// at all"). Its arguments were kept at its start
+    /// (`Service::keep_start`); what named its conversation then
+    /// (`--session-id`, `--resume`) gives way to the conversation it
+    /// had, and it is `start` from there on: a new child, of the same
+    /// name, under whoever asks.
+    async fn resume(self: &Arc<Self>, req: &Request, raw: &Value, caller: &Caller) -> Response {
+        const USAGE: &str = "usage: olo agent resume <ID|NAME> [--prompt TEXT | --prompt-file FILE] [--json]";
+        let err = |msg: String, code: i32| Response::err("resume", msg, code);
+        let args: Vec<String> = raw.get("args").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+        let (mut target, mut prompt, mut as_json) = (None::<String>, None::<String>, false);
+        let mut it = args.into_iter();
+        while let Some(arg) = it.next() {
+            match arg.as_str() {
+                "--json" => as_json = true,
+                "--prompt" | "-p" => match it.next() {
+                    Some(text) => prompt = Some(text),
+                    None => return err("--prompt requires its text".into(), 2),
+                },
+                a if a.starts_with("--prompt=") => prompt = Some(a["--prompt=".len()..].to_owned()),
+                a if a.starts_with('-') => return err(format!("unknown resume option `{a}`: it is started with what it was started with\n{USAGE}"), 2),
+                _ if target.is_none() => target = Some(arg),
+                a => return err(format!("unexpected argument `{a}`\n{USAGE}"), 2),
+            }
+        }
+        let Some(target) = target else { return err(USAGE.into(), 2) };
+        let entry = match self.resolve(caller, &target) {
+            Ok(e) => e,
+            Err(e) => return err(e, 1),
+        };
+        let name = entry.name.clone().unwrap_or_else(|| entry.id.clone());
+        if entry.exited_at.is_none() {
+            return err(format!("`{name}` is running: there is nothing to start again (to speak to it: `olo agent send {name} …`)"), 1);
+        }
+        if !entry.cli.is_agent() {
+            return err(format!("`{name}` is a command, with no conversation to take up again: start it again"), 1);
+        }
+        let Some(conversation) = entry.effective_session_id().map(str::to_owned) else {
+            return err(format!("`{name}` has no conversation to take up again (it ended before it began one): start it anew"), 1);
+        };
+        let Some(kept) = self.kept_start(&entry.id) else {
+            return err(format!("what `{name}` was started with wasn't kept (it was started by an earlier Olo, or not by its arguments): start it with your own, and `--resume {conversation}`"), 1);
+        };
+        // Its own arguments, less what named a conversation and whether
+        // to answer as JSON; then the conversation it had, and what is
+        // said to it now.
+        let cut = kept.iter().position(|a| a == "--").unwrap_or(kept.len());
+        let (mut again, after) = (Vec::with_capacity(kept.len() + 5), kept[cut..].to_vec());
+        let mut it = kept[..cut].iter();
+        while let Some(arg) = it.next() {
+            match arg.as_str() {
+                "--resume" | "--session-id" => {
+                    it.next();
+                }
+                "--json" => {}
+                a if a.starts_with("--resume=") || a.starts_with("--session-id=") => {}
+                _ => again.push(arg.clone()),
+            }
+        }
+        again.extend(["--resume".to_owned(), conversation]);
+        if let Some(text) = prompt {
+            again.extend(["--prompt".to_owned(), text]);
+        }
+        if as_json {
+            again.push("--json".to_owned());
+        }
+        again.extend(after);
+        self.start(req, &json!({ "args": again }), caller).await
     }
 
     // ---- approve ----

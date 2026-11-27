@@ -421,6 +421,19 @@ mod tests {
         assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: true, at_ms: now, said: true })), Rest::Told { answered: Some(7) });
     }
 
+    /// Antigravity's own running tasks, by its footer (`state::agy_tasks`).
+    #[test]
+    fn antigravitys_footer_says_how_many_of_its_tasks_run() {
+        use crate::agents::state::agy_tasks;
+        let rule = "─".repeat(40);
+        let footer = |end: &str| format!("  Waiting for the tests.\n{rule}\n>\n{rule}\n? for shortcuts            accept-edits · Gemini 4 Neon · xhigh{end}\n");
+        assert_eq!(agy_tasks(&footer(" · 1 task(s) · /tasks")), 1);
+        assert_eq!(agy_tasks(&footer(" · 12 task(s) · /tasks")), 12);
+        assert_eq!(agy_tasks(&footer("")), 0);
+        // (Said of tasks somewhere above its footer: not its footer's word.)
+        assert_eq!(agy_tasks(&format!("  I started 3 task(s) for you.\n{}", footer(""))), 0);
+    }
+
     /// What makes a box the box it is (`state::box_hash`): its command to the letter, its tool, its
     /// question and its choices; not a count running down in its question, nor which choice is marked.
     #[test]

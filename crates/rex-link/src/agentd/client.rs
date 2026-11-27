@@ -507,7 +507,7 @@ fn with_files(sub: &str, args: Vec<String>) -> Result<Vec<String>, Refused> {
     type Named = (&'static str, &'static str, &'static [&'static str], &'static [&'static str]);
     const RULES: [Named; 3] = [("--rules", "rules", &["--rules-text"], &[]), ("--rules-file", "rules", &["--rules-text"], &[]), ("--approve-all-but", "list", &["--approve-all-but-text"], &[])];
     let named: Vec<Named> = match sub {
-        "start" | "spawn" | "run" => [("--prompt-file", "prompt", &["--prompt"][..], &[][..])].into_iter().chain(RULES).collect(),
+        "start" | "spawn" | "run" | "resume" => [("--prompt-file", "prompt", &["--prompt"][..], &[][..])].into_iter().chain(RULES).collect(),
         "mind" | "minder" => RULES.to_vec(),
         "send" | "input" => vec![("--file", "send", &["--text"], &["--paste"])],
         _ => return Ok(args),

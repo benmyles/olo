@@ -71,6 +71,17 @@ impl SubagentLiveState {
     }
 }
 
+/// How many tasks of its own Antigravity says are running, in its
+/// footer ("… · 1 task(s) · /tasks"): a command it put in the
+/// background (a test run, a build) goes on under its own daemon, not
+/// under its process, so it isn't among the shells found there; its
+/// turn may have ended on it, and it will be woken by it.
+pub fn agy_tasks(screen: &str) -> u32 {
+    let Some(footer) = screen.lines().rev().find(|l| !l.trim().is_empty()) else { return 0 };
+    let Some(at) = footer.find(" task(s)") else { return 0 };
+    footer[..at].rsplit(|c: char| !c.is_ascii_digit()).next().and_then(|n| n.parse().ok()).unwrap_or(0)
+}
+
 /// What makes an approval box the box it is: its tool, its command as
 /// the box shows it, its question and its choices, to the letter (the
 /// question's digits aside: a count that runs down in it is the same

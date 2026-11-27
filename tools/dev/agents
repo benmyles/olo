@@ -435,6 +435,7 @@ def state(name):
     # (A session that isn't there: `display-message` answers nothing and
     # succeeds, and a bare name matches another's by its start; `=` is the
     # name exactly.)
+    own_run = False
     if via(name) == "rex":
         # (The service's word for whether it is there and runs; what it
         # is doing is read from its screen here, as for a tmux one: the
@@ -453,6 +454,9 @@ def state(name):
             # every `list` and `watch`. A minder was told twenty times
             # that a helper's session had been closed, 2026-11-26.)
             return "gone" if (meta(name) or {}).get("ended") else "exited"
+        # (Its turn ended on a run of its own that still goes, a test or
+        # a build it will be woken by: the service knows, `waiting_on`.)
+        own_run = said.get("waiting_on") == "own_run"
     else:
         if tmux("has-session", "-t", f"={name}").returncode:
             return "gone"
@@ -481,7 +485,14 @@ def state(name):
     # reported finished, 2026-11-22.)
     if cli(name) == "agy" and any(SPINNER.match(l) for l in lines[-8:]):
         return "working"
-    return "idle"
+    # (At rest on a run of its own: at work, to whoever waits on it. Read
+    # as idle, a builder that waited two minutes on its own tests was told
+    # to the lead as "finished a turn" at every watch, 2026-11-27. agy
+    # says so in its footer, "1 task(s)": its tasks run under its own
+    # daemon, where the service doesn't find them among its processes.)
+    if cli(name) == "agy" and any(re.search(r"\b[1-9][0-9]* task\(s\)", l) for l in lines[-3:]):
+        own_run = True
+    return "working" if own_run else "idle"
 
 
 def asked(name):

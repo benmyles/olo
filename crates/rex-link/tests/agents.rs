@@ -1981,6 +1981,64 @@ fn one_agent_for_one_prompt_from_start_to_finish() {
     });
 }
 
+/// `olo agent resume NAME`: an ended child is started again as the same conversation, with what it was started
+/// with (the ShiftUp lead's item 44: "model, effort, cwd, env, settings, the list, its minder and rules. Then our
+/// records keep no conversation id at all"). Its own flags again, its environment, its folder; the conversation
+/// it had in place of whatever named one at its start; what is said to it now in place of its first prompt. One
+/// that runs, or that never began a conversation, is not started again, and says why.
+#[test]
+fn an_ended_child_is_started_again_as_it_was() {
+    let Some(rig) = Rig::start("resume") else { return };
+    rig.stand_in("claude");
+    const SID: &str = "5f0c1f0e-3333-4a33-8a33-2f8f0e0a0003";
+    let work = rig.work();
+    let first = rig.start_child("claude", "builder", &["--cwd", &work, "--session-id", SID, "--env", "COLOUR=teal", "--permission-mode", "acceptEdits", "--prompt", "Build the first part."]);
+    let (code, _, err) = rig.olo(&["resume", "builder"]);
+    assert!(code == 1 && err.contains("`builder` is running"), "{code}: {err}");
+    rig.json(&["stop", "builder", "--force", "--json"]);
+
+    // Started again: the stand-in listens anew, under the same name.
+    std::fs::remove_file(rig.staged("builder", "ready")).unwrap();
+    let again = rig.json(&["resume", "builder", "--prompt", "Go on with the second part.", "--json"]);
+    assert!(again["name"] == "builder" && again["id"] != first["id"], "{again}");
+    rig.wait("the stand-in to listen again", || rig.staged("builder", "ready").exists());
+    // What it runs as now: its own command line, its folder, what its environment has.
+    rig.tell("builder", "run tr '\\0' '\\n' < /proc/$PPID/cmdline; echo; echo COLOUR=$COLOUR; pwd");
+    rig.wait("it to have said what it runs as", || rig.staged("builder", "ran").exists());
+    let said = std::fs::read_to_string(rig.staged("builder", "out")).unwrap();
+    let args: Vec<&str> = said.lines().collect();
+    let after = |flag: &str| args.iter().position(|a| *a == flag).and_then(|i| args.get(i + 1)).copied();
+    assert_eq!((after("--resume"), after("--session-id"), after("--permission-mode"), after("--model")), (Some(SID), None, Some("acceptEdits"), Some("stand-in")), "{said}");
+    assert!(said.contains("Go on with the second part.") && !said.contains("Build the first part."), "what is said to it now, not its first prompt again: {said}");
+    assert!(args.contains(&"COLOUR=teal") && args.contains(&work.as_str()), "its environment and its folder: {said}");
+    assert_eq!(rig.status("builder")["cli_session_id"], SID);
+
+    // What it was started with is the owner's alone to read, and has no prompt in it.
+    let kept = rig.dir.join("agents");
+    let files: Vec<PathBuf> = std::fs::read_dir(&kept)
+        .unwrap()
+        .flatten()
+        .map(|d| d.path().join("minders"))
+        .filter(|p| p.is_dir())
+        .flat_map(|p| std::fs::read_dir(p).unwrap().flatten().map(|d| d.path().join("started-with.json")))
+        .filter(|p| p.exists())
+        .collect();
+    assert!(!files.is_empty(), "nothing kept under {}", kept.display());
+    for file in &files {
+        assert_eq!(std::fs::metadata(file).unwrap().permissions().mode() & 0o777, 0o600, "{}", file.display());
+        let text = std::fs::read_to_string(file).unwrap();
+        assert!(text.contains("COLOUR=teal") && !text.contains("Build the first part.") && !text.contains("Go on with"), "{text}");
+    }
+
+    // One that never began a conversation: nothing to take up again.
+    rig.start_child("claude", "blank", &[]);
+    rig.json(&["stop", "blank", "--force", "--json"]);
+    let (code, _, err) = rig.olo(&["resume", "blank"]);
+    assert!(code == 1 && err.contains("has no conversation to take up again"), "{code}: {err}");
+    let (code, _, err) = rig.olo(&["resume", "builder", "--model", "another"]);
+    assert!(code == 2 && err.contains("unknown resume option"), "{code}: {err}");
+}
+
 /// `olo agent send NAME "…" --enter --wait`: asking a child that stands is one line that prints its answer (the
 /// ShiftUp lead's item 43). Sent to a child at rest, the message begins a turn of its own, and the answer is
 /// that turn's last message: not the rest it was sent from, which is still on the screen for a moment. Sent
