@@ -38,14 +38,22 @@ something nobody here has is in "Blocked", with what it waits for.
   with no room for another row; the tab wants laying out again before
   anything more goes in it.
 - **Token Pool, left of "usage credits come last"** (fixed
-  2026-11-26; HACKING, Gateway): (1) *the desktop's pool doesn't claim
-  a reset for a host that is out*: a host's pool claims none itself,
-  and now answers "every account is out, a reset credit waits" rather
-  than spend credits ahead of it; the desktop's pool claims only when
-  a request of its own is turned away, so a host waits until then or
-  until the reset is used by hand in the window. The desktop should
-  look at its hosts' pools (it reaches them; they can't reach it) and
-  claim where one is out. (2) *a switch for "never use usage
+  2026-11-26; HACKING, Gateway): (1) *reset claiming across pools*
+  (desktop + Rex host keeper done 2026-11-27: claiming follows keeper
+  ownership `kept_on.is_none()`, Rex host keepers capture clients and
+  claim autonomously, borrowers delegate via `host::VERSION = 2`
+  `Ask::Redeem` with durable `op_id` reconciliation, `ObservedLimit`,
+  and `RemoteClaim::{Redeemed, AlreadyReady}`, fallback Claude calls
+  send CLI/profile `User-Agent`, `needs_limit` grants & stale caches
+  work on exhaustion, and missing `org` heals from
+  `/api/oauth/profile`). Still left for multi-host topologies: a
+  headless second Rex host borrowing accounts kept on a first Rex host
+  has no direct `Claimer` relay without the desktop, and two
+  independent keepers exhausting simultaneously can still claim one
+  reset each. (Pre-existing test note from Fable 5.2 review:
+  `tests/drain.rs::a_client_turned_off_passes_through_from_its_next_request`
+  flakes intermittently under heavy host load on base and branch
+  alike.) (2) *a switch for "never use usage
   credits"*: the last resort spends money when nothing else can
   serve, as the account's own setting at its provider allows; some
   will want the pool to stop instead. (3) Claude's

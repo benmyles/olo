@@ -1301,6 +1301,276 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     Ok(Capture { provider: p, version: client.version, installed: client.stamp, account: account.id.clone(), at: now(), requests: sent, account_uuid, hellos })
 }
 
+/// Remove all saved per-account captures and any leftover capture sandboxes
+/// (called by `olo-pool-host forget` on host uninstall so neither `account_uuid`
+/// capture files nor any killed sandbox's access token remains behind).
+pub fn remove_all() {
+    let _ = std::fs::remove_dir_all(olo_xdg::state_dir().join("pool/captures"));
+    let _ = std::fs::remove_dir_all(olo_xdg::cache_dir().join("pool-capture"));
+}
+
+/// Capture any accounts due after `initial_delay`, then watch the installed
+/// clients' directories (and their existing ancestors, so a client installed
+/// or upgraded later wakes it) with Linux inotify (zero CPU while idle) and
+/// wake immediately via an eventfd when `shared.drain.retire()` fires.
+/// Used by `olo-pool-host`, which runs without `olo-kit`.
+pub fn follow(shared: Arc<crate::gateway::Shared>, initial_delay: Duration) {
+    let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
+        sweep_at_start();
+        crate::upstream::refresh_claude_version();
+        // Watch existing install directories and their nearest ancestors.
+        // Ancestor directories carry an explicit filename allowlist so unrelated
+        // writes in `$HOME` (e.g. `~/.claude.json*`) never trigger PATH scans.
+        struct Watch {
+            wd: i32,
+            path: PathBuf,
+            dev: u64,
+            ino: u64,
+            only_names: Option<&'static [&'static str]>,
+        }
+        let dir_id = |p: &Path| -> Option<(u64, u64)> {
+            use std::os::unix::fs::MetadataExt as _;
+            let m = std::fs::metadata(p).ok()?;
+            m.is_dir().then(|| (m.dev(), m.ino()))
+        };
+        let watch_specs = || -> Vec<(PathBuf, Option<&'static [&'static str]>)> {
+            let mut specs: Vec<(PathBuf, Option<&'static [&'static str]>)> = Vec::new();
+            let mut push = |p: PathBuf, only: Option<&'static [&'static str]>| {
+                if !p.is_dir() {
+                    return;
+                }
+                if let Some(existing) = specs.iter_mut().find(|(d, _)| d == &p) {
+                    // Any unrestricted watch on the same dir takes precedence.
+                    if only.is_none() {
+                        existing.1 = None;
+                    }
+                } else {
+                    specs.push((p, only));
+                }
+            };
+            for p in [Provider::Claude, Provider::Codex] {
+                if let Some(i) = installed(p) {
+                    if let Some(dir) = i.exe.parent() {
+                        push(dir.to_owned(), None);
+                    }
+                    if let Ok(real) = std::fs::canonicalize(&i.exe)
+                        && let Some(dir) = real.parent()
+                    {
+                        push(dir.to_owned(), None);
+                    }
+                }
+            }
+            if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+                let home = PathBuf::from(home);
+                for (rel, only) in [
+                    (".local/bin", None),
+                    (".local/share/claude/versions", None),
+                    (".local/share/claude", Some(&["versions"][..])),
+                    (".local/share", Some(&["claude"][..])),
+                    (".codex/packages/standalone/releases", None),
+                    (".codex/packages/standalone", Some(&["releases"][..])),
+                    (".codex/packages", Some(&["standalone"][..])),
+                    (".codex", Some(&["packages"][..])),
+                    (".local", Some(&["bin", "share"][..])),
+                    ("", Some(&[".local", ".codex"][..])),
+                ] {
+                    let candidate = if rel.is_empty() { home.clone() } else { home.join(rel) };
+                    push(candidate, only);
+                }
+            }
+            specs
+        };
+        let stamps = || -> [Option<String>; 2] { [installed(Provider::Claude).map(|i| i.stamp), installed(Provider::Codex).map(|i| i.stamp)] };
+        // SAFETY: Linux inotify_init1 and eventfd with valid flags.
+        let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC | libc::IN_NONBLOCK) };
+        if fd < 0 {
+            tracing::warn!("pool: inotify_init1 failed ({}); client watcher disabled", std::io::Error::last_os_error());
+        }
+        // SAFETY: eventfd used purely to wake `poll()` on drain retirement.
+        let wake_fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
+        let wake_owner = if wake_fd >= 0 {
+            use std::os::fd::FromRawFd as _;
+            // SAFETY: freshly created eventfd owned by an Arc so both the
+            // watcher thread and the stop bridge share its lifetime cleanly.
+            let owned = Arc::new(unsafe { std::os::fd::OwnedFd::from_raw_fd(wake_fd) });
+            let bridge_fd = owned.clone();
+            let mut stop_rx = shared.drain.stop_watch();
+            shared.spawn(async move {
+                let _ = stop_rx.wait_for(|&stopped| stopped).await;
+                let one: u64 = 1;
+                // SAFETY: writing 8 bytes to our own eventfd.
+                unsafe {
+                    use std::os::fd::AsRawFd as _;
+                    libc::write(bridge_fd.as_raw_fd(), (&raw const one).cast(), std::mem::size_of::<u64>());
+                }
+            });
+            Some(owned)
+        } else {
+            None
+        };
+        let wait_or_wake = |dur: Duration| -> bool {
+            if shared.drain.retired() {
+                return true;
+            }
+            let Some(ref w) = wake_owner else {
+                std::thread::sleep(dur);
+                return shared.drain.retired();
+            };
+            use std::os::fd::AsRawFd as _;
+            let mut pfd = libc::pollfd { fd: w.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+            let ms = dur.as_millis().min(i32::MAX as u128) as i32;
+            // SAFETY: valid pollfd on our own eventfd.
+            let _ = unsafe { libc::poll(&mut pfd, 1, ms) };
+            shared.drain.retired()
+        };
+        let arm_watches = |fd: i32, watches: &mut Vec<Watch>| {
+            if fd < 0 {
+                return;
+            }
+            let mask = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_CLOSE_WRITE | libc::IN_ATTRIB | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF;
+            let specs = watch_specs();
+            // Drop any watch whose path disappeared or whose directory inode was replaced.
+            watches.retain(|w| {
+                let keep = dir_id(&w.path).is_some_and(|(dev, ino)| dev == w.dev && ino == w.ino);
+                if !keep {
+                    // SAFETY: removing stale watch descriptor from our own inotify fd.
+                    unsafe { libc::inotify_rm_watch(fd, w.wd) };
+                }
+                keep
+            });
+            for (dir, only_names) in specs {
+                let Some((dev, ino)) = dir_id(&dir) else { continue };
+                if let Some(existing) = watches.iter_mut().find(|w| w.path == dir && w.dev == dev && w.ino == ino) {
+                    existing.only_names = only_names;
+                    continue;
+                }
+                if let Ok(cpath) = std::ffi::CString::new(dir.as_os_str().as_encoded_bytes()) {
+                    // SAFETY: valid inotify fd and NUL-terminated path.
+                    let wd = unsafe { libc::inotify_add_watch(fd, cpath.as_ptr(), mask) };
+                    if wd < 0 {
+                        tracing::warn!("pool: inotify_add_watch({}) failed: {}", dir.display(), std::io::Error::last_os_error());
+                    } else {
+                        watches.retain(|w| w.wd != wd);
+                        watches.push(Watch { wd, path: dir, dev, ino, only_names });
+                    }
+                }
+            }
+        };
+        let drain_inotify = |fd: i32, buf: &mut [u8; 4096], watches: &mut Vec<Watch>| -> (bool, bool) {
+            let mut relevant = false;
+            let mut replaced = false;
+            let hdr = std::mem::size_of::<libc::inotify_event>();
+            loop {
+                // SAFETY: non-blocking read on our own inotify fd.
+                let n = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+                if n <= 0 {
+                    break;
+                }
+                let mut off = 0usize;
+                while off + hdr <= n as usize {
+                    // SAFETY: kernel-written aligned inotify_event struct inside buf.
+                    let ev = unsafe { std::ptr::read_unaligned(buf.as_ptr().add(off).cast::<libc::inotify_event>()) };
+                    let name_start = off + hdr;
+                    let name_end = (name_start + ev.len as usize).min(n as usize);
+                    let name = if ev.len > 0 && name_start < name_end {
+                        let raw = &buf[name_start..name_end];
+                        let nul = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+                        std::str::from_utf8(&raw[..nul]).ok()
+                    } else {
+                        None
+                    };
+                    if (ev.mask & (libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_IGNORED)) != 0 {
+                        replaced = true;
+                        watches.retain(|w| w.wd != ev.wd);
+                        relevant = true;
+                    } else if (ev.mask & libc::IN_Q_OVERFLOW) != 0 {
+                        replaced = true;
+                        relevant = true;
+                    } else if let Some(w) = watches.iter().find(|w| w.wd == ev.wd) {
+                        match w.only_names {
+                            None => relevant = true,
+                            Some(allowed) => {
+                                if name.is_some_and(|nm| allowed.contains(&nm)) {
+                                    relevant = true;
+                                }
+                            }
+                        }
+                    } else {
+                        relevant = true;
+                    }
+                    off += hdr + ev.len as usize;
+                }
+            }
+            (relevant, replaced)
+        };
+        let mut watches = Vec::new();
+        arm_watches(fd, &mut watches);
+        let mut last_stamps = stamps();
+        if wait_or_wake(initial_delay) {
+            if fd >= 0 {
+                // SAFETY: closing our own fd.
+                unsafe { libc::close(fd) };
+            }
+            return;
+        }
+        shared.capture(false);
+        if fd < 0 {
+            return;
+        }
+        let mut buf = [0u8; 4096];
+        loop {
+            if shared.drain.retired() {
+                break;
+            }
+            use std::os::fd::AsRawFd as _;
+            let mut fds = [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: wake_owner.as_ref().map_or(-1, |w| w.as_raw_fd()), events: libc::POLLIN, revents: 0 }];
+            let nfds = if wake_owner.is_some() { 2 } else { 1 };
+            // SAFETY: blocking poll on our own inotify + shutdown eventfd (0 CPU while idle).
+            let r = unsafe { libc::poll(fds.as_mut_ptr(), nfds, -1) };
+            if r < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
+            if shared.drain.retired() || (nfds == 2 && (fds[1].revents & libc::POLLIN) != 0) {
+                break;
+            }
+            if (fds[0].revents & libc::POLLIN) == 0 {
+                continue;
+            }
+            let (relevant, replaced) = drain_inotify(fd, &mut buf, &mut watches);
+            if !relevant {
+                continue;
+            }
+            if replaced {
+                watches.clear();
+            }
+            arm_watches(fd, &mut watches);
+            let now_stamps = stamps();
+            if now_stamps == last_stamps {
+                continue;
+            }
+            // Settle a burst of writes during a client update (interruptible on retirement).
+            if wait_or_wake(Duration::from_secs(60)) {
+                break;
+            }
+            // Inspect events accumulated during the settle window so any
+            // directory replacement (e.g. ~/.local/bin) re-arms cleanly.
+            let (_, settle_replaced) = drain_inotify(fd, &mut buf, &mut watches);
+            if settle_replaced {
+                watches.clear();
+            }
+            arm_watches(fd, &mut watches);
+            last_stamps = stamps();
+            crate::upstream::refresh_claude_version();
+            shared.capture(false);
+        }
+        // SAFETY: closing our own fd.
+        unsafe { libc::close(fd) };
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

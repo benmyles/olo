@@ -30,6 +30,8 @@ pub enum What {
     Usage,
     /// The reset credits read.
     Credits,
+    /// The account profile read (Claude organization uuid).
+    Profile,
     /// A reset's claim.
     Claim,
     /// A sign-in's renewal.
@@ -179,9 +181,12 @@ impl Like {
         let c = &self.capture;
         match (c.provider, what) {
             (Provider::Claude, What::Usage | What::Credits) => c.find("api.anthropic.com", "GET", "/api/oauth/usage", CLAUDE_RUNS).cloned().map(as_session),
+            // Profile uses `claude-code/<ver>` with no `anthropic-beta`; never
+            // synthesize it from `/api/oauth/usage` (which uses `claude-cli/...`).
+            (Provider::Claude, What::Profile) => c.find("api.anthropic.com", "GET", "/api/oauth/profile", CLAUDE_RUNS).cloned(),
             (Provider::Claude, What::Claim) => {
                 let path = format!("/api/organizations/{}/reset_rate_limits", capture::ORG);
-                c.find("api.anthropic.com", "POST", &path, CLAUDE_RUNS).cloned().or_else(|| claude_claim(c.find("api.anthropic.com", "GET", "/api/oauth/usage", CLAUDE_RUNS)?))
+                c.find("api.anthropic.com", "POST", &path, CLAUDE_RUNS).cloned().or_else(|| claude_claim(c.find("api.anthropic.com", "GET", "/api/oauth/usage", CLAUDE_RUNS)?)).map(as_session)
             }
             (Provider::Claude, What::Renewal) => {
                 c.find("platform.claude.com", "POST", "/v1/oauth/token", &["renewal"]).or_else(|| c.find("console.anthropic.com", "POST", "/v1/oauth/token", &["renewal"])).cloned()
@@ -192,6 +197,7 @@ impl Like {
             (Provider::Codex, What::Credits) => passive(c, "/backend-api/wham/rate-limit-reset-credits"),
             (Provider::Codex, What::Claim) => c.find("chatgpt.com", "POST", "/backend-api/wham/rate-limit-reset-credits/consume", CODEX_RUNS).cloned(),
             (Provider::Codex, What::Renewal) => c.find("auth.openai.com", "POST", "/oauth/token", &["renewal"]).cloned(),
+            (Provider::Codex, What::Profile) => None,
         }
     }
 }
@@ -219,8 +225,8 @@ fn passive(c: &crate::capture::Capture, path: &str) -> Option<Sent> {
 fn as_session(mut s: Sent) -> Sent {
     if s.run != "session" && s.run != "wall" {
         for (k, v) in s.headers.iter_mut() {
-            if k.eq_ignore_ascii_case("user-agent") && v.ends_with("(external, sdk-cli)") {
-                *v = v.replace("(external, sdk-cli)", "(external, cli)");
+            if k.eq_ignore_ascii_case("user-agent") && v.contains("(external, sdk-cli") {
+                *v = v.replace("(external, sdk-cli", "(external, cli");
             }
         }
     }
@@ -234,17 +240,39 @@ fn as_session(mut s: Sent) -> Sent {
 /// `Content-Length` that client puts before `Accept-Encoding` (as its
 /// sign-in renewal, a POST of the same client, shows).
 fn claude_claim(usage: &Sent) -> Option<Sent> {
-    let mut headers = Vec::with_capacity(usage.headers.len() + 1);
-    let mut placed = false;
+    let mut headers = Vec::with_capacity(usage.headers.len() + 2);
+    let has_content_type = usage.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type"));
+    let has_content_length = usage.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-length"));
+    let mut placed_ct = has_content_type;
+    let mut placed_cl = has_content_length;
     for (k, v) in &usage.headers {
-        if !placed && k.eq_ignore_ascii_case("accept-encoding") {
+        if k.eq_ignore_ascii_case("content-type") {
+            headers.push((k.clone(), "application/json".to_owned()));
+            continue;
+        }
+        if k.eq_ignore_ascii_case("content-length") {
+            headers.push((k.clone(), "0".to_owned()));
+            continue;
+        }
+        if !placed_cl && k.eq_ignore_ascii_case("accept-encoding") {
+            if !placed_ct {
+                headers.push(("Content-Type".to_owned(), "application/json".to_owned()));
+                placed_ct = true;
+            }
             headers.push(("Content-Length".to_owned(), "0".to_owned()));
-            placed = true;
+            placed_cl = true;
         }
         headers.push((k.clone(), v.clone()));
+        if !placed_ct && k.eq_ignore_ascii_case("accept") {
+            headers.push(("Content-Type".to_owned(), "application/json".to_owned()));
+            placed_ct = true;
+        }
     }
-    if !placed {
+    if !placed_cl {
         return None;
+    }
+    if !placed_ct {
+        headers.insert(0, ("Content-Type".to_owned(), "application/json".to_owned()));
     }
     Some(Sent {
         run: format!("{}+claim", usage.run),
@@ -424,28 +452,52 @@ fn origin(host: &str, up: &Upstreams) -> Result<(bool, String, u16), String> {
     Ok((tls, h, port))
 }
 
+/// Whether a transport error happened strictly before any request bytes left
+/// this host (so a reset claim definitely never reached the provider) or after
+/// transmission may have started.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendError {
+    BeforeSend(String),
+    AfterSend(String),
+}
+
+impl std::fmt::Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendError::BeforeSend(s) | SendError::AfterSend(s) => f.write_str(s),
+        }
+    }
+}
+
 /// Send `b` (on its own connection, which closes after: the clients'
 /// one-off reads and claims do the same, or are no different for it).
-pub async fn send(b: &Built, up: &Upstreams) -> Result<Answer, String> {
-    let (tls, host, port) = origin(&b.host, up)?;
-    let tcp = tokio::time::timeout(Duration::from_secs(20), TcpStream::connect((host.as_str(), port))).await.map_err(|_| format!("{host}: no connection"))?.map_err(|e| format!("{host}: {e}"))?;
+pub async fn send(b: &Built, up: &Upstreams) -> Result<Answer, SendError> {
+    let (tls, host, port) = origin(&b.host, up).map_err(SendError::BeforeSend)?;
+    let tcp = tokio::time::timeout(Duration::from_secs(20), TcpStream::connect((host.as_str(), port)))
+        .await
+        .map_err(|_| SendError::BeforeSend(format!("{host}: no connection")))?
+        .map_err(|e| SendError::BeforeSend(format!("{host}: {e}")))?;
     let _ = tcp.set_nodelay(true);
     if !tls {
-        return tokio::time::timeout(Duration::from_secs(60), http1(tcp, b)).await.map_err(|_| format!("{host}: no answer"))?;
+        return tokio::time::timeout(Duration::from_secs(60), http1(tcp, b)).await.map_err(|_| SendError::AfterSend(format!("{host}: no answer")))?.map_err(SendError::AfterSend);
     }
     let crypto = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-    let mut config =
-        rustls::ClientConfig::builder_with_provider(crypto).with_safe_default_protocol_versions().map_err(|e| e.to_string())?.with_root_certificates(capture::roots()).with_no_client_auth();
+    let mut config = rustls::ClientConfig::builder_with_provider(crypto)
+        .with_safe_default_protocol_versions()
+        .map_err(|e| SendError::BeforeSend(e.to_string()))?
+        .with_root_certificates(capture::roots())
+        .with_no_client_auth();
     config.alpn_protocols = b.alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
-    let name = ServerName::try_from(host.clone()).map_err(|e| e.to_string())?;
-    // (One deadline for all of it, the handshake too: a host that takes
-    // the connection and stalls holds nothing up for long.)
-    let work = async {
-        let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| format!("{host}: {e}"))?;
-        let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
-        if h2 { http2(stream, b).await } else { http1(stream, b).await }
-    };
-    tokio::time::timeout(Duration::from_secs(60), work).await.map_err(|_| format!("{host}: no answer"))?
+    let name = ServerName::try_from(host.clone()).map_err(|e| SendError::BeforeSend(e.to_string()))?;
+    // TLS handshake happens before any HTTP bytes are written; failures here
+    // cannot have delivered the request.
+    let stream = tokio::time::timeout(Duration::from_secs(20), tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp))
+        .await
+        .map_err(|_| SendError::BeforeSend(format!("{host}: TLS handshake timed out")))?
+        .map_err(|e| SendError::BeforeSend(format!("{host}: {e}")))?;
+    let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
+    let work = async { if h2 { http2(stream, b).await } else { http1(stream, b).await } };
+    tokio::time::timeout(Duration::from_secs(60), work).await.map_err(|_| SendError::AfterSend(format!("{host}: no answer")))?.map_err(SendError::AfterSend)
 }
 
 /// HTTP/1.1: the head and body written as they are; the answer read to
@@ -728,6 +780,58 @@ mod tests {
     #[test]
     fn a_chunk_too_big_ends_it() {
         assert_eq!(unchunk(b"2\r\nok\r\nffffffffffffffff\r\nrest"), b"ok");
+    }
+
+    /// A Claude claim derived from a `"print"` capture rewrites
+    /// `(external, sdk-cli...)` to `(external, cli)`, normalizes `Content-Type`
+    /// to `application/json`, and never duplicates `Content-Length`.
+    /// `What::Profile` is only taken from an actual `/api/oauth/profile` capture
+    /// (never synthesized from `/api/oauth/usage`).
+    #[test]
+    fn claude_claim_and_profile_from_print_capture_use_cli_surface() {
+        for ua in ["claude-cli/2.1.332 (external, sdk-cli)", "claude-cli/2.1.332 (external, sdk-cli, workload/agent)"] {
+            let mut usage = sent(
+                &[
+                    ("Accept", "application/json, text/plain, */*"),
+                    ("User-Agent", ua),
+                    ("Authorization", "Bearer {{access_token}}"),
+                    ("anthropic-beta", "oauth-2025-04-20"),
+                    ("Content-Length", "0"),
+                    ("Accept-Encoding", "gzip, compress, deflate, br"),
+                    ("Host", "api.anthropic.com"),
+                ],
+                "",
+            );
+            usage.method = "GET".into();
+            usage.target = "/api/oauth/usage".into();
+            let like = Like {
+                capture: Arc::new(Capture {
+                    provider: Provider::Claude,
+                    version: "2.1.332".into(),
+                    installed: String::new(),
+                    account: "a".into(),
+                    at: 0,
+                    requests: vec![usage],
+                    account_uuid: None,
+                    hellos: vec![],
+                }),
+                org: Some("org-1".into()),
+                email: None,
+                jar: Default::default(),
+            };
+            assert!(like.request(What::Profile).is_none(), "profile must not be synthesized from usage capture");
+            for what in [What::Credits, What::Claim] {
+                let s = like.request(what).expect("request built");
+                let got_ua = s.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("user-agent")).map(|(_, v)| v.as_str()).unwrap();
+                assert!(got_ua.contains("(external, cli"), "{what:?}: {got_ua}");
+                assert!(!got_ua.contains("sdk-cli"), "{what:?}: {got_ua}");
+                if matches!(what, What::Claim) {
+                    assert_eq!(s.method, "POST");
+                    assert!(s.headers.iter().any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v == "application/json"));
+                    assert_eq!(s.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("content-length")).count(), 1, "no duplicate Content-Length");
+                }
+            }
+        }
     }
 
     #[test]

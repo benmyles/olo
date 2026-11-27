@@ -166,6 +166,12 @@ impl Drain {
         self.retired.load(Ordering::SeqCst)
     }
 
+    /// Watch channel fired when this pool begins draining or retires, so
+    /// long-lived background watchers wake cleanly without polling.
+    pub fn stop_watch(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.stop.subscribe()
+    }
+
     /// Whether another copy of the pool is at work beside this one: the one
     /// it handed over to (retired), or the one it took over from, until
     /// that has finished. Sign-ins are then renewed under the store's lock

@@ -63,6 +63,7 @@ fn main() -> std::process::ExitCode {
             }
             let _ = std::fs::remove_file(olo_xdg::state_dir().join("pool-activity.json"));
             let _ = std::fs::remove_file(host::socket());
+            olo_token_pool::capture::remove_all();
             std::process::ExitCode::SUCCESS
         }
         Some("serve") => serve(),
@@ -155,6 +156,11 @@ fn serve() -> std::process::ExitCode {
         eprintln!("olo-pool-host: {e}");
         return std::process::ExitCode::FAILURE;
     }
+    // Capture installed Claude Code / Codex clients for each account on this
+    // host so quota, reset-credit and claim requests go out as the clients
+    // themselves send them (without a capture, Anthropic refuses cedar_ember
+    // reads as the wrong surface).
+    olo_token_pool::capture::follow(shared.clone(), std::time::Duration::from_secs(15));
     // Claude Code and Codex on this host use the pool (their settings
     // as they were are kept, for `put-back`), and Codex's daemon, which
     // outlives its windows, is kept on them.
@@ -170,7 +176,9 @@ fn serve() -> std::process::ExitCode {
     let mut got: libc::c_int = 0;
     // SAFETY: waits for one of the two signals blocked above.
     unsafe { libc::sigwait(&signals, &mut got) };
+    // Flush pending writes BEFORE retiring drain (`save_once` skips writes once retired).
     shared.flush();
+    shared.drain.retire();
     let _ = std::fs::remove_file(host::socket());
     std::process::ExitCode::SUCCESS
 }

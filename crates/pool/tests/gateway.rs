@@ -333,16 +333,16 @@ async fn usage_credits_come_after_another_account_and_a_reset() {
     }
     assert_eq!(ask_claude(addr).await, (200, "b".into()));
     assert_eq!(paid_for.load(Ordering::SeqCst), 3);
-    // 5b. On a host's pool, which claims no reset itself: "b" refused
-    // again and a reset credit there for "a" that the desktop's pool is
-    // to claim. No usage credits are spent ahead of it: the client is
-    // told all are out, and that a reset waits. With no reset anywhere,
-    // the last resort as before.
+    // 5b. On a host's pool that keeps "a" (`kept_on: None`): "b" refused
+    // again and "a" has a reset credit "g2". Because this host IS "a"'s
+    // keeper, it claims "g2" itself instead of spending usage credits or
+    // waiting for a desktop that may be off.
     state[1].store(2, Ordering::SeqCst);
     shared.set_hosted();
     {
         let mut p = shared.pool.lock().unwrap();
         let a = p.account_mut("a").unwrap();
+        a.redeem_tried = None;
         a.credits = vec![olo_token_pool::model::ResetCredit {
             id: "g2".into(),
             expires_at: Some(now() + 86400),
@@ -365,20 +365,49 @@ async fn usage_credits_come_after_another_account_and_a_reset() {
         let said = axum::body::to_bytes(r.into_body(), 1 << 20).await.map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
         (status, who, (), said)
     };
-    let (status, _, _, said) = through_the_proxy().await;
-    assert!(status == 429 && said.contains("reset credit waits"), "{status}: {said}");
-    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (3, 1), "neither credits spent nor a reset claimed by a host's pool");
-    shared.pool.lock().unwrap().account_mut("a").unwrap().credits.clear();
+    let (status, who, _, said) = through_the_proxy().await;
+    assert_eq!((status, who.as_str()), (200, "a"), "hosted keeper must claim its own reset: {said}");
+    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (3, 2));
+    assert_eq!(paid_until("a"), None);
+    // 5c. On a borrower pool whose account is kept elsewhere (`kept_on: Some`)
+    // and whose keeper can't be reached: "a" runs out onto credits again and
+    // has a reset credit waiting on its keeper. No usage credits are spent
+    // ahead of it: the client is told all are out and a reset waits. With no
+    // reset anywhere, the last resort as before.
+    state[0].store(1, Ordering::SeqCst);
     let (status, who, ..) = through_the_proxy().await;
     assert_eq!((status, who.as_str()), (200, "a"));
     assert_eq!(paid_for.load(Ordering::SeqCst), 4);
+    assert!(paid_until("a").is_some());
+    {
+        let mut p = shared.pool.lock().unwrap();
+        let a = p.account_mut("a").unwrap();
+        a.kept_on = Some("other-host".into());
+        a.redeem_tried = None;
+        a.credits = vec![olo_token_pool::model::ResetCredit {
+            id: "g3".into(),
+            expires_at: Some(now() + 86400),
+            remaining: 1,
+            usable: true,
+            program: Some("cedar_ember".into()),
+            clears: vec!["five_hour".into()],
+            ..Default::default()
+        }];
+    }
+    let (status, _, _, said) = through_the_proxy().await;
+    assert!(status == 429 && said.contains("reset credit waits"), "{status}: {said}");
+    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (4, 2), "neither credits spent nor a reset claimed by an unreachable borrower");
+    shared.pool.lock().unwrap().account_mut("a").unwrap().credits.clear();
+    let (status, who, ..) = through_the_proxy().await;
+    assert_eq!((status, who.as_str()), (200, "a"));
+    assert_eq!(paid_for.load(Ordering::SeqCst), 5);
     // 6. Both refuse outright ("a"'s credits ran out too): the client is
     // told every account is out.
     state[0].store(2, Ordering::SeqCst);
     state[1].store(2, Ordering::SeqCst);
     let (status, _, _, said) = through_the_proxy().await;
     assert!(status == 429 && said.contains("out of quota") && !said.contains("reset credit waits"), "{status}: {said}");
-    assert_eq!(paid_for.load(Ordering::SeqCst), 4);
+    assert_eq!(paid_for.load(Ordering::SeqCst), 5);
     // (And the status says which account is answered from credits.)
     let status: Value = reqwest::get(format!("http://{addr}/pool/status")).await.unwrap().json().await.unwrap();
     let a = status["accounts"].as_array().unwrap().iter().find(|a| a["id"] == "a").unwrap().clone();
@@ -1214,4 +1243,448 @@ async fn each_accounts_reads_on_its_own_connection() {
     let rows = seen.lock().unwrap().clone();
     let socket = |who: &str| rows.iter().filter(|(t, _)| t == who).map(|(_, p)| *p).collect::<std::collections::HashSet<_>>();
     assert!(socket("a").is_disjoint(&socket("b")), "two accounts' reads on one connection: {rows:?}");
+}
+
+/// End-to-end reproduction of why `olo-pool-host` missed Claude Code resets
+/// (Ben, 2026-11-27):
+/// 1) Hosted keeper (`set_hosted()`, `kept_on: None`) had no capture, and
+///    Anthropic rejects `cedar_ember` with `eligible: false, surface` unless
+///    `User-Agent` is `claude-cli/... (external, cli)`.
+/// 2) Grants with `use_requires_limit: true` can be cached with
+///    `usable_now: false, unavailable_reason: "needs_limit"` or absent from a
+///    stale cache until exhaustion refreshes credits.
+/// 3) Missing `account.org` is healed from `/api/oauth/profile` before
+///    claiming `/api/organizations/{org}/reset_rate_limits`.
+#[tokio::test(flavor = "multi_thread")]
+async fn hosted_keeper_discovers_claude_resets_heals_org_and_claims_on_exhaustion() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+    let reset = Arc::new(AtomicBool::new(false));
+    let redeemed = Arc::new(AtomicUsize::new(0));
+    let (r1, r2, r3, n) = (reset.clone(), reset.clone(), reset.clone(), redeemed.clone());
+    let is_cli_ua = |h: &HeaderMap| h.get("user-agent").and_then(|v| v.to_str().ok()).is_some_and(|ua| ua.starts_with("claude-cli/") && ua.contains("(external, cli)"));
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move || {
+                let reset = r1.clone();
+                async move {
+                    if reset.load(SeqCst) {
+                        Response::builder().header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":5,"output_tokens":7}}"#)).unwrap()
+                    } else {
+                        Response::builder()
+                            .status(429)
+                            .header("anthropic-ratelimit-unified-status", "rejected")
+                            .header("anthropic-ratelimit-unified-representative-claim", "seven_day")
+                            .header("anthropic-ratelimit-unified-reset", (now() + 3 * 86400).to_string())
+                            .body(Body::from("{}"))
+                            .unwrap()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/oauth/usage",
+            get(move |h: HeaderMap| {
+                let reset = r2.clone();
+                async move {
+                    let is_reset = reset.load(SeqCst);
+                    let cedar = if !is_cli_ua(&h) {
+                        json!({"eligible": false, "ineligible_reason": "surface", "grants": []})
+                    } else if is_reset {
+                        json!({"eligible": true, "at_limit": false, "grants": []})
+                    } else {
+                        json!({
+                            "eligible": true,
+                            "at_limit": false,
+                            "grants": [{
+                                "id": "full-reset-2611",
+                                "type": "full",
+                                "label": "Full Reset",
+                                "resets_left": 1,
+                                "paused": false,
+                                "usable_now": false,
+                                "use_requires_limit": true,
+                                "unavailable_reason": "needs_limit",
+                                "clears": ["five_hour", "seven_day"],
+                                "ends_at": now() + 86400
+                            }]
+                        })
+                    };
+                    axum::Json(json!({
+                        "seven_day": {"utilization": if is_reset { 0.0 } else { 100.0 }, "resets_at": now() + 3 * 86400},
+                        "cedar_ember": cedar
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/api/oauth/profile",
+            get(move |h: HeaderMap| async move {
+                let ua = h.get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("");
+                assert!(ua.starts_with("claude-code/"), "profile request must carry Claude Code UA, got {ua:?}");
+                assert!(!h.contains_key("anthropic-beta"), "profile request must not carry anthropic-beta");
+                axum::Json(json!({"organization": {"uuid": "org-healed"}, "account": {"uuid": "acct-1"}}))
+            }),
+        )
+        .route(
+            "/api/organizations/{org}/reset_rate_limits",
+            post(move |axum::extract::Path(org): axum::extract::Path<String>, h: HeaderMap, body: axum::body::Bytes| {
+                let (reset, n) = (r3.clone(), n.clone());
+                async move {
+                    assert!(is_cli_ua(&h), "reset request must carry Claude CLI UA");
+                    assert_eq!(h.get_all("content-type").iter().count(), 1, "uncaptured reset POST must carry exactly one Content-Type header");
+                    assert_eq!(org, "org-healed");
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!((v["grant_id"].as_str(), v["program"].as_str()), (Some("full-reset-2611"), Some("cedar_ember")));
+                    n.fetch_add(1, SeqCst);
+                    reset.store(true, SeqCst);
+                    axum::Json(json!({"result": "reset"}))
+                }
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "Work".into(), Provider::Claude);
+    a.created = 1;
+    a.org = None; // missing org -> must heal via /api/oauth/profile
+    a.windows = vec![olo_token_pool::model::Window { name: "seven_day".into(), label: "Weekly".into(), used: 95.0, resets_at: Some(now() + 3 * 86400), models: vec![] }];
+    saved.accounts.push(a);
+    saved.credentials.insert("a".into(), cred("ok"));
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+    shared.set_hosted();
+
+    // Send through proxy path (as `olo-pool-host` does) with no capture and empty cached credits.
+    let mut h = HeaderMap::new();
+    h.insert("content-type", "application/json".parse().unwrap());
+    let body = axum::body::Bytes::from(json!({"model": "claude-opus-5-5", "messages": []}).to_string());
+    let r = gateway::serve(shared.clone(), Provider::Claude, "messages".into(), None, axum::http::Method::POST, h, axum::http::Extensions::new(), body).await;
+    assert_eq!(r.status(), 200, "hosted keeper must discover, heal org, claim needs_limit reset, and succeed");
+    assert_eq!(redeemed.load(SeqCst), 1);
+    let p = shared.snapshot();
+    let a = p.account("a").unwrap();
+    assert_eq!(a.org.as_deref(), Some("org-healed"));
+    assert!(a.redeeming.is_none());
+    assert!(a.credits.is_empty());
+}
+
+/// If a Claude account is missing `org` and `/api/oauth/profile` cannot heal it,
+/// `redeem_locked` must fail cleanly before setting `a.redeeming` so the error
+/// does not strand a pending claim and block every other Claude account.
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_org_does_not_strand_redeeming_and_allows_next_account_to_claim() {
+    let state = claims_state();
+    let grants = [("a", "ga"), ("b", "gb")];
+    let fake = claims_fake(state.clone(), grants.to_vec(), Duration::ZERO, Arc::new(|_, _, _| (200, json!({"result": "reset"})))).route("/api/oauth/profile", get(|| async { StatusCode::NOT_FOUND }));
+    let (shared, addr, _) = out_of_quota(&["a", "b"], &grants, fake).await;
+    shared.pool.lock().unwrap().account_mut("a").unwrap().org = None;
+
+    assert_eq!(ask_claude(addr).await, (200, "b".to_owned()));
+    assert_eq!(claimed_grants(&state), ["gb"]);
+    assert!(shared.snapshot().account("a").unwrap().redeeming.is_none(), "missing org must never leave a stranded redeeming lock");
+}
+
+/// If every cached reset credit candidate fails definitively (e.g. refused),
+/// `redeem_kept_locked` performs one bounded stale-credit refresh so another
+/// account with a newly available credit can still rescue the request.
+#[tokio::test(flavor = "multi_thread")]
+async fn refused_cached_candidate_triggers_stale_refresh_and_claims_next_account() {
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    let b_reset = Arc::new(AtomicBool::new(false));
+    let (br1, br2) = (b_reset.clone(), b_reset.clone());
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move |h: HeaderMap| {
+                let br = br1.clone();
+                async move {
+                    if token(&h) == "b" && br.load(SeqCst) {
+                        Response::builder().header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":2,"output_tokens":3}}"#)).unwrap()
+                    } else {
+                        Response::builder()
+                            .status(429)
+                            .header("anthropic-ratelimit-unified-status", "rejected")
+                            .header("anthropic-ratelimit-unified-representative-claim", "seven_day")
+                            .header("anthropic-ratelimit-unified-reset", (now() + 3 * 86400).to_string())
+                            .body(Body::from("{}"))
+                            .unwrap()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/oauth/usage",
+            get(move |h: HeaderMap| {
+                let br = br2.clone();
+                async move {
+                    let who = token(&h);
+                    let is_reset = who == "b" && br.load(SeqCst);
+                    let grants = if who == "b" && !is_reset { json!([{"id": "gb-fresh", "resets_left": 1, "usable_now": true, "clears": ["seven_day"], "ends_at": now() + 86400}]) } else { json!([]) };
+                    axum::Json(json!({
+                        "seven_day": {"utilization": if is_reset { 0.0 } else { 100.0 }, "resets_at": now() + 3 * 86400},
+                        "cedar_ember": {"eligible": true, "grants": grants}
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/api/organizations/{org}/reset_rate_limits",
+            post(move |axum::extract::Path(org): axum::extract::Path<String>| {
+                let b_reset = b_reset.clone();
+                async move {
+                    if org == "org-a" {
+                        (StatusCode::BAD_REQUEST, axum::Json(json!({"error": {"message": "grant already spent"}}))).into_response()
+                    } else {
+                        b_reset.store(true, SeqCst);
+                        axum::Json(json!({"result": "reset"})).into_response()
+                    }
+                }
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "A".into(), Provider::Claude);
+    a.created = 1;
+    a.org = Some("org-a".into());
+    a.windows = vec![olo_token_pool::model::Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(now() + 3 * 86400), models: vec![] }];
+    a.credits = vec![olo_token_pool::model::ResetCredit {
+        id: "ga-stale".into(),
+        expires_at: Some(now() + 86400),
+        remaining: 1,
+        usable: true,
+        program: Some("cedar_ember".into()),
+        clears: vec!["seven_day".into()],
+        ..Default::default()
+    }];
+    let mut b = Account::new("b".into(), "B".into(), Provider::Claude);
+    b.created = 2;
+    b.org = Some("org-b".into());
+    b.windows = vec![olo_token_pool::model::Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(now() + 3 * 86400), models: vec![] }];
+    // b starts with empty cached credits -> discovered only if stale refresh runs after a's refusal!
+    saved.accounts.extend([a, b]);
+    saved.credentials.insert("a".into(), cred("a"));
+    saved.credentials.insert("b".into(), cred("b"));
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    let mut h = HeaderMap::new();
+    h.insert("content-type", "application/json".parse().unwrap());
+    let body = axum::body::Bytes::from(json!({"model": "claude-opus-5-5", "messages": []}).to_string());
+    let r = gateway::serve(shared.clone(), Provider::Claude, "messages".into(), None, axum::http::Method::POST, h, axum::http::Extensions::new(), body).await;
+    assert_eq!(r.status(), 200, "refusal on cached account a must refresh stale credits on b and succeed");
+    assert_eq!(r.headers().get("x-olo-pool-account").and_then(|v| v.to_str().ok()), Some("B"));
+}
+
+/// A pre-send TCP connection refusal before bytes leave the pool must classify
+/// as `Failure::NotSent` (`Claimed::NotNow`) and clear a newly persisted
+/// `a.redeeming` instead of stranding the provider claim lock.
+#[tokio::test(flavor = "multi_thread")]
+async fn presend_connect_error_does_not_strand_redeeming() {
+    // Bind and immediately drop a loopback listener so the port refuses connections immediately.
+    let closed_port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "A".into(), Provider::Claude);
+    a.created = 1;
+    a.org = Some("org-a".into());
+    a.windows = vec![olo_token_pool::model::Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(now() + 3 * 86400), models: vec![] }];
+    a.credits = vec![olo_token_pool::model::ResetCredit {
+        id: "ga".into(),
+        expires_at: Some(now() + 86400),
+        remaining: 1,
+        usable: true,
+        program: Some("cedar_ember".into()),
+        clears: vec!["seven_day".into()],
+        ..Default::default()
+    }];
+    saved.accounts.push(a);
+    saved.credentials.insert("a".into(), cred("a"));
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://127.0.0.1:{closed_port}")), || {});
+
+    let err = shared.redeem_credit("a", None, gateway::Why::Asked).await.expect_err("connect refusal must fail");
+    assert!(matches!(err, gateway::Claimed::NotNow(_)), "pre-send connect failure must be NotNow, got {err:?}");
+    assert!(shared.snapshot().account("a").unwrap().redeeming.is_none(), "pre-send connect error must not strand a.redeeming");
+}
+
+/// A narrow `five_hour` reset must NOT clear `a.paid` when `a.paid.meter` is
+/// `"seven_day"` (nor clear `seven_day` itself).
+#[tokio::test(flavor = "multi_thread")]
+async fn partial_five_hour_reset_preserves_seven_day_paid_mark() {
+    let fake = Router::new().route("/api/organizations/{org}/reset_rate_limits", post(|| async { axum::Json(json!({"result": "reset"})) })).route(
+        "/api/oauth/usage",
+        get(|| async {
+            axum::Json(json!({
+                "five_hour": {"utilization": 0.0, "resets_at": now() + 5 * 3600},
+                "seven_day": {"utilization": 100.0, "resets_at": now() + 3 * 86400},
+                "cedar_ember": {"eligible": true, "grants": []}
+            }))
+        }),
+    );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "A".into(), Provider::Claude);
+    a.created = 1;
+    a.org = Some("org-a".into());
+    a.windows = vec![
+        olo_token_pool::model::Window { name: "five_hour".into(), label: "5-hour".into(), used: 100.0, resets_at: Some(now() + 3 * 3600), models: vec![] },
+        olo_token_pool::model::Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(now() + 3 * 86400), models: vec![] },
+    ];
+    a.paid = Some(olo_token_pool::model::PaidFor { until: now() + 3 * 86400, meter: "seven_day".into() });
+    a.credits = vec![olo_token_pool::model::ResetCredit {
+        id: "g-5h".into(),
+        expires_at: Some(now() + 86400),
+        remaining: 1,
+        usable: true,
+        program: Some("cedar_ember".into()),
+        clears: vec!["five_hour".into()],
+        ..Default::default()
+    }];
+    saved.accounts.push(a);
+    saved.credentials.insert("a".into(), cred("a"));
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    shared.redeem_credit("a", Some("g-5h"), gateway::Why::Asked).await.unwrap();
+    let snap = shared.snapshot();
+    let after = snap.account("a").unwrap();
+    assert_eq!(after.paid.as_ref().map(|p| p.meter.as_str()), Some("seven_day"), "five_hour reset must not clear seven_day paid mark");
+    assert_eq!(after.windows.iter().find(|w| w.name == "five_hour").unwrap().used, 0.0);
+    assert_eq!(after.windows.iter().find(|w| w.name == "seven_day").unwrap().used, 100.0);
+}
+
+/// When Codex returns 429 with `Retry-After` only (no window headers), the
+/// cooldown has no exhausted window in cache; `refresh_credits_if_stale` must
+/// also fetch Codex usage so the exhausted weekly window + credit are seen and
+/// claimed automatically.
+#[tokio::test(flavor = "multi_thread")]
+async fn codex_cooldown_without_exhausted_window_fetches_usage_and_claims_reset() {
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    let reset = Arc::new(AtomicBool::new(false));
+    let (r1, r2, r3) = (reset.clone(), reset.clone(), reset.clone());
+    let fake = Router::new()
+        .route(
+            "/backend-api/codex/responses",
+            post(move || {
+                let reset = r1.clone();
+                async move {
+                    if reset.load(SeqCst) {
+                        Response::builder().header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":4,"output_tokens":6}}"#)).unwrap()
+                    } else {
+                        Response::builder().status(429).header("retry-after", "3600").body(Body::from("{}")).unwrap()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/backend-api/wham/usage",
+            get(move || {
+                let reset = r2.clone();
+                async move {
+                    let is_reset = reset.load(SeqCst);
+                    axum::Json(json!({
+                        "rate_limit": {
+                            "secondary_window": {
+                                "used_percent": if is_reset { 0.0 } else { 100.0 },
+                                "limit_window_seconds": 604800,
+                                "reset_at": now() + 3 * 86400
+                            }
+                        }
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/backend-api/wham/rate-limit-reset-credits",
+            get(move || {
+                let reset = r3.clone();
+                async move {
+                    if reset.load(SeqCst) {
+                        axum::Json(json!({"available_count": 0, "credits": []}))
+                    } else {
+                        axum::Json(json!({
+                            "available_count": 1,
+                            "credits": [{"id": "cx-1", "expires_at": now() + 86400}]
+                        }))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/backend-api/wham/rate-limit-reset-credits/consume",
+            post(move || {
+                let reset = reset.clone();
+                async move {
+                    reset.store(true, SeqCst);
+                    axum::Json(json!({"code": "reset"}))
+                }
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("cx".into(), "Codex".into(), Provider::Codex);
+    a.created = 1;
+    saved.accounts.push(a);
+    saved.credentials.insert("cx".into(), Credential { access: "cx-tok".into(), refresh: Some("r".into()), expires_at: Some(now() + 3600), account_id: Some("acct-cx".into()) });
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    let mut h = HeaderMap::new();
+    h.insert("content-type", "application/json".parse().unwrap());
+    let body = axum::body::Bytes::from(json!({"model": "gpt-6.2-astra", "input": []}).to_string());
+    let r = gateway::serve(shared, Provider::Codex, "responses".into(), None, axum::http::Method::POST, h, axum::http::Extensions::new(), body).await;
+    assert_eq!(r.status(), 200, "Codex cooldown with Retry-After must fetch usage + reset credit and succeed");
+}
+
+/// Regression for Astra R2 #7: an older slow `sync` response finishing after a
+/// newer `sync` discovered a grant must NOT overwrite the newer read's credits.
+#[tokio::test(flavor = "multi_thread")]
+async fn older_concurrent_sync_cannot_overwrite_newer_credit_read() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    use tokio::sync::Notify;
+
+    let credit_calls = Arc::new(AtomicUsize::new(0));
+    let first_started = Arc::new(Notify::new());
+    let release_first = Arc::new(Notify::new());
+    let (cc, fs, rf) = (credit_calls.clone(), first_started.clone(), release_first.clone());
+
+    let fake = Router::new().route(
+        "/api/oauth/usage",
+        get(move |axum::extract::RawQuery(q): axum::extract::RawQuery| {
+            let (cc, fs, rf) = (cc.clone(), fs.clone(), rf.clone());
+            async move {
+                if q.as_deref().is_some_and(|s| s.contains("cedar_ember")) {
+                    let n = cc.fetch_add(1, SeqCst);
+                    if n == 0 {
+                        fs.notify_one();
+                        rf.notified().await;
+                        // Older slow response returns empty grants.
+                        return axum::Json(json!({"seven_day": {"utilization": 50.0, "resets_at": now() + 3 * 86400}, "cedar_ember": {"eligible": true, "grants": []}}));
+                    }
+                    // Newer response returns 1 fresh grant.
+                    return axum::Json(json!({
+                        "seven_day": {"utilization": 50.0, "resets_at": now() + 3 * 86400},
+                        "cedar_ember": {"eligible": true, "grants": [{"id": "g-new", "resets_left": 1, "usable_now": true, "clears": ["seven_day"], "ends_at": now() + 86400}]}
+                    }));
+                }
+                axum::Json(json!({"seven_day": {"utilization": 50.0, "resets_at": now() + 3 * 86400}}))
+            }
+        }),
+    );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "A".into(), Provider::Claude);
+    a.created = 1;
+    a.org = Some("org-a".into());
+    saved.accounts.push(a);
+    saved.credentials.insert("a".into(), cred("a"));
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    let s1 = shared.clone();
+    let slow = tokio::spawn(async move { s1.sync(Some("a")).await });
+    first_started.notified().await;
+    // Complete a newer sync while the older one is still waiting on its credits call.
+    shared.sync(Some("a")).await;
+    assert_eq!(shared.snapshot().account("a").unwrap().credits.len(), 1);
+    // Release the older response: it MUST NOT wipe the newer grant!
+    release_first.notify_one();
+    slow.await.unwrap();
+    assert_eq!(shared.snapshot().account("a").unwrap().credits.len(), 1, "older sync must never overwrite newer credits");
 }

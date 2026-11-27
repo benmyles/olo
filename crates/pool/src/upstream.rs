@@ -91,8 +91,10 @@ pub fn with_oauth_beta(client: Option<&str>) -> String {
 /// Why talking to a provider failed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Failure {
-    /// It refused the sign-in: it must be signed in again.
+    /// It refused the sign-in (or refused a claim outright without spending it).
     Refused(String),
+    /// Could not be built or validated locally: nothing was sent over the network.
+    NotSent(String),
     /// Anything else (network, a server error): try again later.
     Other(String),
 }
@@ -107,9 +109,52 @@ impl Failure {
 impl std::fmt::Display for Failure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Failure::Refused(s) | Failure::Other(s) => f.write_str(s),
+            Failure::Refused(s) | Failure::NotSent(s) | Failure::Other(s) => f.write_str(s),
         }
     }
+}
+
+/// Cached installed Claude Code version so fallback requests never run
+/// synchronous PATH scans / `stat` calls on Tokio worker threads.
+static CLAUDE_VERSION_CACHE: std::sync::OnceLock<olo_sync::Mutex<(std::time::Instant, String)>> = std::sync::OnceLock::new();
+
+fn detect_claude_version() -> String {
+    crate::capture::installed(Provider::Claude).map(|i| i.version).filter(|v| !v.is_empty()).unwrap_or_else(|| "2.1.332".into())
+}
+
+/// Refresh the cached Claude Code version (called by `capture::follow` on
+/// client installs/updates, off the Tokio runtime).
+pub fn refresh_claude_version() {
+    let ver = detect_claude_version();
+    if let Some(cell) = CLAUDE_VERSION_CACHE.get() {
+        *cell.lock().unwrap() = (std::time::Instant::now(), ver);
+    } else {
+        let _ = CLAUDE_VERSION_CACHE.set(olo_sync::Mutex::new((std::time::Instant::now(), ver)));
+    }
+}
+
+fn claude_version() -> String {
+    let cell = CLAUDE_VERSION_CACHE.get_or_init(|| olo_sync::Mutex::new((std::time::Instant::now(), detect_claude_version())));
+    cell.lock().unwrap().1.clone()
+}
+
+/// Claude Code's CLI User-Agent when no per-account capture exists yet
+/// (before the first capture finishes, or where Claude Code isn't installed):
+/// Anthropic rejects `cedar_ember` reads without a Claude Code CLI User-Agent
+/// (`eligible: false, ineligible_reason: "surface"`).
+pub(crate) fn claude_cli_ua() -> String {
+    format!("claude-cli/{} (external, cli)", claude_version())
+}
+
+/// Claude Code's `/api/oauth/profile` User-Agent (matches Claude Code 2.1.332:
+/// `claude-code/<ver>`, with `Content-Type: application/json`,
+/// `Cache-Control: no-cache`, and no `anthropic-beta`).
+pub(crate) fn claude_profile_ua() -> String {
+    format!("claude-code/{}", claude_version())
+}
+
+fn with_claude_headers(req: RequestBuilder) -> RequestBuilder {
+    req.header("accept", "application/json, text/plain, */*").header("user-agent", claude_cli_ua()).header("anthropic-beta", OAUTH_BETA)
 }
 
 /// A request the pool makes for itself, sent as the account's client sends
@@ -389,7 +434,7 @@ pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential,
     };
     let mut req = authorize(client.get(url), p, c).timeout(Duration::from_secs(20));
     if p == Provider::Claude {
-        req = req.header("anthropic-beta", OAUTH_BETA);
+        req = with_claude_headers(req).header("content-type", "application/json");
     }
     let r = req.send().await.map_err(|e| Failure::Other(format!("Reading the quota: {e}")))?;
     if !r.status().is_success() {
@@ -397,6 +442,36 @@ pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential,
     }
     let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Reading the quota: {e}")))?;
     Ok(parse_usage(p, &d))
+}
+
+/// Read a Claude account's organization UUID from `/api/oauth/profile`
+/// (used to heal accounts whose `org` wasn't recorded at import, so reset
+/// claims to `/api/organizations/{org}/reset_rate_limits` can succeed).
+pub async fn profile_org(client: &Client, up: &Upstreams, c: &Credential, like: Option<&Like>) -> Result<Option<String>, Failure> {
+    let d: Value = match as_client(like, What::Profile, up, c, Some("/api/oauth/profile"), None, "Reading the profile").await {
+        Some(answer) => ok_json("Reading the profile", answer?)?,
+        None => {
+            let url = format!("{}/api/oauth/profile", up.claude);
+            // Match Claude Code 2.1.332's `/api/oauth/profile` call:
+            // `User-Agent: claude-code/<ver>`, axios `Accept`,
+            // `Content-Type: application/json`, `Cache-Control: no-cache`,
+            // and no `anthropic-beta`.
+            let r = authorize(client.get(url), Provider::Claude, c)
+                .header("accept", "application/json, text/plain, */*")
+                .header("user-agent", claude_profile_ua())
+                .header("content-type", "application/json")
+                .header("cache-control", "no-cache")
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .map_err(|e| Failure::Other(format!("Reading the profile: {e}")))?;
+            if !r.status().is_success() {
+                return Err(http_failure("Reading the profile", r).await);
+            }
+            r.json().await.map_err(|e| Failure::Other(format!("Reading the profile: {e}")))?
+        }
+    };
+    Ok(d["organization"]["uuid"].as_str().map(str::trim).filter(|o| !o.is_empty()).map(str::to_owned))
 }
 
 /// The reset credits in a provider's report (only ones it says the
@@ -445,6 +520,9 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
         Provider::Claude => {
             let program = &d["cedar_ember"];
             if program["eligible"] != true {
+                if let Some(why) = program["ineligible_reason"].as_str() {
+                    tracing::debug!("pool: Claude reset credits ineligible ({why})");
+                }
                 return Vec::new();
             }
             list(&program["grants"])
@@ -463,6 +541,7 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
                         starts_at: timestamp(&r["starts_at"]),
                         // (Claude Code's own default: true.)
                         needs_limit: r["use_requires_limit"].as_bool().unwrap_or(true),
+                        unavailable_reason: text(&r["unavailable_reason"]),
                         gives_back_weekly: r["gives_back_weekly"] == true,
                     })
                 })
@@ -484,7 +563,7 @@ pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credentia
     };
     let mut req = authorize(client.get(url), p, c).timeout(Duration::from_secs(20));
     if p == Provider::Claude {
-        req = req.header("anthropic-beta", OAUTH_BETA);
+        req = with_claude_headers(req).header("content-type", "application/json");
     }
     let r = req.send().await.map_err(|e| Failure::Other(format!("Reading reset credits: {e}")))?;
     if !r.status().is_success() {
@@ -510,10 +589,22 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             }
             Provider::Codex => likeness::with_fields(&sent.body, &[("redeem_request_id", json!(request))]),
         }
-        .map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        let built = likeness::build(&sent, &l.fill(c, &sent.host, sent.path()), None, Some(&body)).map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        l.remember(&sent.host, sent.path(), &answer.headers);
+        .map_err(|e| Failure::NotSent(format!("{DOING}: {e}")))?;
+        let effective_org = l.org.as_deref().or(org);
+        let concrete_path = match (p, effective_org) {
+            (Provider::Claude, Some(o)) if sent.path().contains(crate::capture::ORG) => sent.path().replace(crate::capture::ORG, o),
+            _ => sent.path().to_owned(),
+        };
+        let mut fill = l.fill(c, &sent.host, &concrete_path);
+        if fill.org.is_none() {
+            fill.org = org.map(str::to_owned);
+        }
+        let built = likeness::build(&sent, &fill, None, Some(&body)).map_err(|e| Failure::NotSent(format!("{DOING}: {e}")))?;
+        let answer = likeness::send(&built, up).await.map_err(|e| match e {
+            likeness::SendError::BeforeSend(s) => Failure::NotSent(format!("{DOING}: {s}")),
+            likeness::SendError::AfterSend(s) => Failure::Other(format!("{DOING}: {s}")),
+        })?;
+        l.remember(&sent.host, &concrete_path, &answer.headers);
         return claimed(p, &ok_json(DOING, answer)?);
     }
     let (url, body) = match p {
@@ -523,16 +614,16 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
         Provider::Codex => (format!("{}/wham/rate-limit-reset-credits/consume", up.chatgpt), json!({"redeem_request_id": request, "credit_id": credit.id})),
         Provider::Claude => {
             let org = org.filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
-            let org = org.ok_or_else(|| Failure::Other("This account's Claude organization isn't known: sign in again.".into()))?;
+            let org = org.ok_or_else(|| Failure::NotSent("This account's Claude organization isn't known: sign in again.".into()))?;
             let program = credit.program.as_deref().unwrap_or("cedar_ember");
             (format!("{}/api/organizations/{org}/reset_rate_limits", up.claude), json!({"program": program, "grant_id": credit.id, "request_id": request}))
         }
     };
     let mut req = authorize(client.post(url), p, c).timeout(Duration::from_secs(30)).json(&body);
     if p == Provider::Claude {
-        req = req.header("anthropic-beta", OAUTH_BETA);
+        req = with_claude_headers(req);
     }
-    let r = req.send().await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+    let r = req.send().await.map_err(|e| if e.is_connect() || e.is_builder() { Failure::NotSent(format!("{DOING}: {e}")) } else { Failure::Other(format!("{DOING}: {e}")) })?;
     if !r.status().is_success() {
         return Err(http_failure(DOING, r).await);
     }
@@ -657,7 +748,7 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
 /// among the windows.
 fn meter_out(h: &axum::http::HeaderMap, p: Provider, family: &str, until: i64, out: &mut Vec<Window>) -> (bool, String) {
     let claim = h.get("anthropic-ratelimit-unified-representative-claim").and_then(|v| v.to_str().ok()).unwrap_or("");
-    let model_only = p == Provider::Claude && !family.is_empty() && (claim == "seven_day_overage_included" || claude_models(claim).iter().any(|m| m == family));
+    let model_only = p == Provider::Claude && !family.is_empty() && ((claim == "seven_day_overage_included" && family == "fable") || claude_models(claim).iter().any(|m| m == family));
     if model_only && claim == "seven_day_overage_included" {
         let name = format!("model:{family}/seven_day");
         out.push(Window { name: name.clone(), label: format!("Weekly {}", words(family)), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
@@ -939,5 +1030,36 @@ mod tests {
         let token = format!("h.{}.s", URL_SAFE_NO_PAD.encode(br#"{"exp":1793000000,"email":"a@example.com"}"#));
         assert_eq!(jwt_exp(&token), Some(1793000000));
         assert_eq!(timestamp(&json!(1793000000123u64)), Some(1793000000));
+    }
+
+    #[test]
+    fn claude_credits_parse_needs_limit_and_cli_ua() {
+        let d = json!({
+            "cedar_ember": {
+                "eligible": true,
+                "at_limit": false,
+                "grants": [{
+                    "id": "full-reset-2611",
+                    "type": "full",
+                    "label": "Full Reset",
+                    "resets_left": 1,
+                    "paused": false,
+                    "usable_now": false,
+                    "use_requires_limit": true,
+                    "unavailable_reason": "needs_limit",
+                    "clears": ["five_hour", "seven_day"],
+                    "ends_at": "2026-12-01T00:00:00Z"
+                }]
+            }
+        });
+        let got = parse_credits(Provider::Claude, &d);
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].id.as_str(), got[0].usable, got[0].needs_limit, got[0].unavailable_reason.as_deref()), ("full-reset-2611", false, true, Some("needs_limit")));
+        let bad = json!({"cedar_ember": {"eligible": false, "ineligible_reason": "surface", "grants": []}});
+        assert!(parse_credits(Provider::Claude, &bad).is_empty());
+        let ua = claude_cli_ua();
+        assert!(ua.starts_with("claude-cli/") && ua.ends_with(" (external, cli)"), "{ua}");
+        let pua = claude_profile_ua();
+        assert!(pua.starts_with("claude-code/") && !pua.contains("external"), "{pua}");
     }
 }

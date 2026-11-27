@@ -39,11 +39,11 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 mod hosted;
-pub use hosted::{Carried, CarriedAccount, Hosting, Lender};
+pub use hosted::{Carried, CarriedAccount, ClaimAsk, Claimer, Hosting, Lender};
 
 use crate::{
     activity::Activity,
-    model::{Account, Credential, Outcome, Provider, Request, Usage, model_family, now, today},
+    model::{Account, ClearedScope, Credential, ObservedLimit, Outcome, PendingRemoteClaim, Provider, RemoteClaim, RemoteClaimRecord, Request, Usage, Window, model_family, now, today},
     schedule,
     store::{Saved, Store},
     upstream::{self, Failure, Upstreams},
@@ -122,6 +122,12 @@ pub struct Pool {
     /// When each account's latest reset was confirmed here: what the copy
     /// handed over from saw before it is old ([`Late::Seen`]).
     reset_at: HashMap<String, i64>,
+    /// Causal scope of the latest local reset completion per account (on a
+    /// keeper), so borrowers and keepers order observations and selectively
+    /// clear windows without relying on cross-machine wall clocks.
+    last_reset: HashMap<String, ClearedScope>,
+    /// Last `reset_id` seen by this borrower from `(keeper, account)`.
+    keeper_reset_id: HashMap<(String, String), String>,
 }
 
 impl Pool {
@@ -196,6 +202,9 @@ pub struct Shared {
     due: Mutex<HashMap<String, (i64, i64)>>,
     /// When each account's reset credits are next read.
     credits_due: Mutex<HashMap<String, i64>>,
+    /// When each account's reset credits were last read (or tried on exhaustion),
+    /// to avoid hammering the provider during a burst of 429s.
+    credits_fetched: Mutex<HashMap<String, i64>>,
     /// What is under way, for an upgrade to wait for (`drain`).
     pub drain: crate::drain::Drain,
     /// The clients the person turned the pool off for, still pointed at
@@ -226,13 +235,27 @@ pub struct Shared {
     /// nothing, 1: what's due, 2: every account): one lock, so an ask
     /// never falls between a run's last look and its end.
     capture_state: std::sync::Mutex<(bool, u8)>,
-    /// This pool is a Rex host's (`hosted`): it claims no reset credits
-    /// by itself (the desktop's pool does), and is given its accounts.
+    /// This pool is a Rex host's (`hosted`): it serves through its proxy
+    /// alone and is given its accounts (claiming resets for the accounts it keeps).
     hosted: std::sync::atomic::AtomicBool,
     /// Who brings a newer sign-in for an account kept elsewhere
     /// (`hosted::Lender`), and when each was last asked and failed (with why).
     lender: Mutex<Option<hosted::Lender>>,
     asked: Mutex<HashMap<String, (std::time::Instant, String)>>,
+    /// Who asks an account's keeper to claim a reset credit (`hosted::Claimer`),
+    /// negative-probe throttle per `(keeper, provider, family)`, and unreachable
+    /// keeper negative cache per `keeper`.
+    claimer: Mutex<Option<hosted::Claimer>>,
+    remote_claim_tried: Mutex<HashMap<(String, Provider, String), i64>>,
+    keeper_unreachable: Mutex<HashMap<String, i64>>,
+    /// Monotonic generation per account bumped on capture install and sign-in
+    /// replacement/removal so stale async reads cannot overwrite newer state.
+    sync_gen: Mutex<HashMap<String, u64>>,
+    /// Per-account `(next_issued, last_committed)` read sequence numbers so an
+    /// older concurrent quota/credit read cannot overwrite a newer completed one.
+    sync_seq: Mutex<HashMap<String, (u64, u64)>>,
+    /// Throttle failed `/api/oauth/profile` lookups during background sync.
+    profile_tried: Mutex<HashMap<String, i64>>,
     /// When each account's sign-in was last renewed here.
     lent: Mutex<HashMap<String, std::time::Instant>>,
     /// The pools on Rex hosts, as the gateway's `/pool/hosts` shows and
@@ -361,6 +384,7 @@ impl Shared {
             lazy,
             due: Mutex::new(HashMap::new()),
             credits_due: Mutex::new(HashMap::new()),
+            credits_fetched: Mutex::new(HashMap::new()),
             drain: Default::default(),
             paused: Default::default(),
             opener: Mutex::new(None),
@@ -375,6 +399,12 @@ impl Shared {
             hosted: Default::default(),
             lender: Mutex::new(None),
             asked: Mutex::new(HashMap::new()),
+            claimer: Mutex::new(None),
+            remote_claim_tried: Mutex::new(HashMap::new()),
+            keeper_unreachable: Mutex::new(HashMap::new()),
+            sync_gen: Mutex::new(HashMap::new()),
+            sync_seq: Mutex::new(HashMap::new()),
+            profile_tried: Mutex::new(HashMap::new()),
             lent: Mutex::new(HashMap::new()),
             hosting: Mutex::new(None),
             accounts_changed: Mutex::new(None),
@@ -547,7 +577,15 @@ impl Shared {
                             match crate::capture::save(&c) {
                                 Ok(()) => {
                                     tracing::info!("pool: captured {} {} for {} ({} requests, {:.0?})", provider.client(), c.version, account.name, c.requests.len(), began.elapsed());
+                                    if provider == Provider::Claude {
+                                        crate::upstream::refresh_claude_version();
+                                    }
                                     s.keep_capture(&id, c);
+                                    // Re-read quota and reset credits right away with the new capture
+                                    // instead of waiting up to CREDITS_EVERY (30 min).
+                                    s.credits_due.lock().unwrap().remove(&id);
+                                    s.credits_fetched.lock().unwrap().remove(&id);
+                                    s.sync_soon(Some(id.clone()));
                                 }
                                 Err(e) => tracing::warn!("pool: keeping the capture of {} for {}: {e}", provider.client(), account.name),
                             }
@@ -590,6 +628,32 @@ impl Shared {
     /// capture's own, once saved; a test's, never saved).
     pub fn keep_capture(&self, id: &str, c: crate::capture::Capture) {
         self.captures.lock().unwrap().insert(id.to_owned(), Some(Arc::new(c)));
+        self.bump_sync_gen(id);
+    }
+
+    fn sync_gen(&self, id: &str) -> u64 {
+        self.sync_gen.lock().unwrap().get(id).copied().unwrap_or(0)
+    }
+
+    fn bump_sync_gen(&self, id: &str) {
+        *self.sync_gen.lock().unwrap().entry(id.to_owned()).or_default() += 1;
+    }
+
+    fn begin_sync_seq(&self, id: &str) -> u64 {
+        let mut map = self.sync_seq.lock().unwrap();
+        let entry = map.entry(id.to_owned()).or_insert((0, 0));
+        entry.0 += 1;
+        entry.0
+    }
+
+    fn commit_sync_seq(&self, id: &str, seq: u64) -> bool {
+        let mut map = self.sync_seq.lock().unwrap();
+        let entry = map.entry(id.to_owned()).or_insert((0, 0));
+        if seq <= entry.1 {
+            return false;
+        }
+        entry.1 = seq;
+        true
     }
 
     /// Account `id`'s capture: read from its file the first time it's
@@ -606,6 +670,7 @@ impl Shared {
     /// signed in again, perhaps as another account): its capture (one
     /// under way isn't kept either), cookies and connections.
     fn forget_kept(&self, id: &str) {
+        self.bump_sync_gen(id);
         {
             let mut made = self.captures_gen.lock().unwrap();
             *made.entry(id.to_owned()).or_default() += 1;
@@ -753,6 +818,8 @@ impl Shared {
             activity: Activity::default(),
             resets: p.resets.clone(),
             reset_at: p.reset_at.clone(),
+            last_reset: p.last_reset.clone(),
+            keeper_reset_id: p.keeper_reset_id.clone(),
         }
     }
 
@@ -781,17 +848,30 @@ impl Shared {
 
     /// Replace an account's sign-in (signed in again).
     pub fn reauth(self: &Arc<Self>, id: &str, credential: Credential) {
-        {
+        let prev_keeper = {
             let mut p = self.pool.lock().unwrap();
             p.saved.credentials.insert(id.to_owned(), credential);
-            if let Some(a) = p.account_mut(id) {
+            p.account_mut(id).and_then(|a| {
                 a.signed_out = None;
                 a.cooldown_until = None;
+                // Invalidate any stale org UUID so `/api/oauth/profile` heals
+                // the new sign-in's real organization.
+                a.org = None;
                 // (Signed in anew here: this pool's to keep, until it
                 // is next carried to the hosts, `hosted`.)
-                a.kept_on = None;
-            }
+                let prev = a.kept_on.take();
+                if let Some(ref host) = prev {
+                    a.reauth_pending_host = Some(host.clone());
+                }
+                prev
+            })
+        };
+        if let Some(host) = prev_keeper
+            && let Some(hosting) = self.hosting()
+        {
+            let _ = hosting.act(&host, "sync");
         }
+        self.profile_tried.lock().unwrap().remove(id);
         // (Signed in again, perhaps as another account under the same name:
         // what was captured and kept of the old goes, and it's captured
         // anew.)
@@ -826,6 +906,8 @@ impl Shared {
             p.saved.credentials.remove(id);
             p.resets.remove(id);
             p.reset_at.remove(id);
+            p.last_reset.remove(id);
+            p.keeper_reset_id.retain(|(_, aid), _| aid != id);
         }
         // (What was kept of it goes with it: its capture, its cookies, its
         // connections.)
@@ -1047,22 +1129,411 @@ impl Shared {
         rx.recv_timeout(within).ok()
     }
 
-    /// Claim the credit `credit` of account `id` (None: the one that gives
-    /// back most now, the narrowest and soonest to expire of those as good)
-    /// for `why`. A claim left unclear is made again first, the same credit
-    /// under the same request id (gone from the account's credits, it went
-    /// through: nothing more). An automatic one is checked again under the
-    /// lock (another request may have restored service meanwhile), and none
-    /// is made by a copy of the pool that has handed over. The claim's
-    /// intent is kept on disk before the provider is asked.
+    /// Claim the credit `credit` of account `id` (None: the best manually
+    /// claimable credit via [`Account::manual_credit`]) for `why`. Only the
+    /// pool that keeps `id` (`kept_on.is_none()`) claims directly (unless a
+    /// remote keeper is a legacy v1 host without `Ask::Redeem`); a borrower
+    /// delegates to the keeper (`Claimer`) under `claims_gate(provider)` with
+    /// a durable `op_id` so two pools never double-claim even across lost
+    /// replies or handovers.
     pub async fn redeem_credit(&self, id: &str, credit: Option<&str>, why: Why) -> Result<(), Claimed> {
-        let provider = self.pool.lock().unwrap().account(id).map(|a| a.provider).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
+        let (provider, kept_on, reauth_pending) =
+            self.pool.lock().unwrap().account(id).map(|a| (a.provider, a.kept_on.clone(), a.reauth_pending_host.clone())).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
         let gate = self.claims_gate(provider);
         let _gate = gate.lock().await;
-        self.redeem_locked(id, credit, why).await
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
+        // Reconcile any pending remote claim for this provider before spending
+        // anything new (prevents interrupted manual retries from double-spending).
+        if let Some(reconciled) = self.reconcile_pending_remote_locked(provider, "", &HashMap::new()).await? {
+            if reconciled == id && why == Why::Asked {
+                return Ok(());
+            }
+        }
+        if let Some(keeper) = kept_on {
+            // Expiring claims belong strictly to the keeper; if ownership
+            // changed after `spend_expiring` picked `id`, skip rather than
+            // converting it into a manual claim on the new keeper.
+            if why == Why::Expiring {
+                return Err(Claimed::NotNow(format!("This account is now kept on {keeper}.")));
+            }
+            let claimer = self.claimer().ok_or_else(|| Claimed::NotNow(format!("This account’s reset credits are claimed by {keeper}, which keeps its sign-in.")))?;
+            let op_id = crate::store::new_uuid();
+            let observed = self.observed_limit_for_account(id, &keeper);
+            let t = now();
+            // Persist the pending remote op BEFORE dispatching to the keeper so
+            // cancellation or crash mid-RPC reconciles the exact op_id on retry.
+            self.persist_pending_remote_claim(PendingRemoteClaim {
+                provider,
+                keeper: keeper.clone(),
+                op_id: op_id.clone(),
+                account: Some(id.to_owned()),
+                credit: credit.map(str::to_owned),
+                family: String::new(),
+                at: t,
+                tried_at: t,
+            })
+            .await?;
+            let ask = ClaimAsk::Account { id: id.to_owned(), credit: credit.map(str::to_owned), op_id: op_id.clone(), timeout_secs: Some(90), reconcile_only: false, observed };
+            match claimer(keeper.clone(), ask).await {
+                Ok(claim) => {
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    let _ = self.apply_remote_claim(&keeper, claim, "", &HashMap::new());
+                    return Ok(());
+                }
+                Err(Claimed::Unsupported(_)) => {
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    // Legacy v1 host doesn't support Ask::Redeem: fall back to
+                    // direct claim using borrowed token until the host upgrades.
+                    return self.redeem_locked(id, credit, why, true, None, None, false).await.map(|_| ());
+                }
+                Err(e @ Claimed::Unclear(_)) => {
+                    // Leave PendingRemoteClaim persisted so the next attempt reconciles op_id.
+                    return Err(e);
+                }
+                Err(e) => {
+                    // Definitive Refused / NotNow / NoRecord / Unreachable (never delivered):
+                    // clear the pre-persisted pending op.
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    return Err(e);
+                }
+            }
+        }
+        if let Some(host) = reauth_pending {
+            return Err(Claimed::NotNow(format!("Waiting for {host} to accept the updated sign-in before claiming a reset.")));
+        }
+        self.redeem_locked(id, credit, why, false, None, None, false).await.map(|_| ())
     }
 
-    async fn redeem_locked(&self, id: &str, credit: Option<&str>, why: Why) -> Result<(), Claimed> {
+    /// Valid Claude organization UUID check shared by sync and redemption.
+    fn valid_claude_org(org: Option<&str>) -> bool {
+        org.filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).is_some()
+    }
+
+    fn is_critical_remote_record(r: &RemoteClaimRecord) -> bool {
+        matches!(r.result, Some(RemoteClaim::Redeemed { .. })) || r.error_kind.as_deref() == Some("unclear")
+    }
+
+    fn prune_remote_claims(records: &mut Vec<RemoteClaimRecord>, t: i64) {
+        let mut critical: Vec<RemoteClaimRecord> = Vec::new();
+        let mut ephemeral: Vec<RemoteClaimRecord> = Vec::new();
+        for r in records.drain(..) {
+            if Self::is_critical_remote_record(&r) {
+                if t - r.at <= 7 * 86_400 {
+                    critical.push(r);
+                }
+            } else if t - r.at <= 86_400 {
+                ephemeral.push(r);
+            }
+        }
+        if critical.len() > 128 {
+            let excess = critical.len() - 128;
+            critical.drain(..excess);
+        }
+        if ephemeral.len() > 32 {
+            let excess = ephemeral.len() - 32;
+            ephemeral.drain(..excess);
+        }
+        records.extend(critical);
+        records.extend(ephemeral);
+    }
+
+    fn record_remote_claim_pending_locked(p: &mut Pool, op_id: &str, account: &str) {
+        let t = now();
+        p.saved.remote_claims.retain(|r| r.op_id != op_id);
+        p.saved.remote_claims.push(RemoteClaimRecord {
+            op_id: op_id.to_owned(),
+            at: t,
+            account: Some(account.to_owned()),
+            result: None,
+            error_kind: Some("unclear".into()),
+            error: Some("Reset claim is still in flight.".into()),
+        });
+        Self::prune_remote_claims(&mut p.saved.remote_claims, t);
+    }
+
+    fn make_remote_record(op_id: &str, account: Option<String>, outcome: Result<&RemoteClaim, &Claimed>, t: i64) -> RemoteClaimRecord {
+        match outcome {
+            Ok(claim) => RemoteClaimRecord { op_id: op_id.to_owned(), at: t, account: Some(claim.account().to_owned()), result: Some(claim.clone()), error_kind: None, error: None },
+            Err(e) => {
+                let kind = match e {
+                    Claimed::Refused(_) => "refused",
+                    Claimed::NotNow(_) | Claimed::Unsupported(_) => "not_now",
+                    Claimed::NoRecord(_) => "no_record",
+                    Claimed::Unreachable(_) => "unreachable",
+                    Claimed::Unclear(_) => "unclear",
+                };
+                RemoteClaimRecord { op_id: op_id.to_owned(), at: t, account, result: None, error_kind: Some(kind.into()), error: Some(e.to_string()) }
+            }
+        }
+    }
+
+    fn record_remote_claim_outcome(&self, op_id: &str, outcome: Result<&RemoteClaim, &Claimed>) {
+        let t = now();
+        let mut p = self.pool.lock().unwrap();
+        let prev_account = p.saved.remote_claims.iter().find(|r| r.op_id == op_id).and_then(|r| r.account.clone());
+        let rec = Self::make_remote_record(op_id, prev_account, outcome, t);
+        p.saved.remote_claims.retain(|r| r.op_id != op_id);
+        p.saved.remote_claims.push(rec);
+        Self::prune_remote_claims(&mut p.saved.remote_claims, t);
+    }
+
+    fn resolve_pending_ops_for_account_locked(p: &mut Pool, account: &str, outcome: Result<&RemoteClaim, &Claimed>) -> bool {
+        let t = now();
+        let mut resolved = false;
+        for rec in &mut p.saved.remote_claims {
+            if rec.error_kind.as_deref() == Some("unclear") && rec.account.as_deref() == Some(account) {
+                *rec = Self::make_remote_record(&rec.op_id, Some(account.to_owned()), outcome, t);
+                resolved = true;
+            }
+        }
+        if resolved {
+            Self::prune_remote_claims(&mut p.saved.remote_claims, t);
+        }
+        resolved
+    }
+
+    fn lookup_remote_claim_record(&self, op_id: &str) -> Option<RemoteClaimRecord> {
+        let p = self.pool.lock().unwrap();
+        p.saved.remote_claims.iter().find(|r| r.op_id == op_id).cloned()
+    }
+
+    async fn persist_pending_remote_claim(&self, pending: PendingRemoteClaim) -> Result<(), Claimed> {
+        let provider = pending.provider;
+        let op_id = pending.op_id.clone();
+        {
+            let mut p = self.pool.lock().unwrap();
+            p.saved.pending_remote_claims.retain(|r| r.provider != provider);
+            p.saved.pending_remote_claims.push(pending);
+        }
+        if let Err(e) = self.save_checked().await {
+            self.pool.lock().unwrap().saved.pending_remote_claims.retain(|r| !(r.provider == provider && r.op_id == op_id));
+            return Err(Claimed::NotNow(e));
+        }
+        self.touch();
+        Ok(())
+    }
+
+    async fn clear_pending_remote_claim(&self, provider: Provider, op_id: &str) {
+        let removed = {
+            let mut p = self.pool.lock().unwrap();
+            let before = p.saved.pending_remote_claims.len();
+            p.saved.pending_remote_claims.retain(|r| !(r.provider == provider && r.op_id == op_id));
+            p.saved.pending_remote_claims.len() != before
+        };
+        if removed {
+            let _ = self.save_checked().await;
+            self.touch();
+        }
+    }
+
+    /// Reconcile any pending unclear remote claim for `provider` before
+    /// starting a new claim or falling back to usage credits.
+    /// ONLY clears `PendingRemoteClaim` when the keeper returns `Ok`,
+    /// `NoRecord`, `Refused`, or `Unsupported` — NEVER on `Unreachable`,
+    /// `NotNow` (service down / gateway starting / copy handed over), or `Unclear`.
+    /// Caller MUST hold `self.claims_gate(provider)`.
+    async fn reconcile_pending_remote_locked(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>) -> Result<Option<String>, Claimed> {
+        let pending = {
+            let p = self.pool.lock().unwrap();
+            p.saved.pending_remote_claims.iter().find(|r| r.provider == provider).cloned()
+        };
+        let Some(pending) = pending else { return Ok(None) };
+        let t = now();
+        if t - pending.tried_at < 10 {
+            return Err(Claimed::Unclear("A previous remote reset claim still needs to be reconciled.".into()));
+        }
+        let Some(claimer) = self.claimer() else {
+            return Err(Claimed::Unclear(format!("A previous reset claim on {} still needs to be reconciled.", pending.keeper)));
+        };
+        {
+            let mut p = self.pool.lock().unwrap();
+            if let Some(r) = p.saved.pending_remote_claims.iter_mut().find(|r| r.provider == provider && r.op_id == pending.op_id) {
+                r.tried_at = t;
+            }
+        }
+        let ask = match &pending.account {
+            Some(id) => ClaimAsk::Account { id: id.clone(), credit: pending.credit.clone(), op_id: pending.op_id.clone(), timeout_secs: Some(90), reconcile_only: true, observed: Vec::new() },
+            None => ClaimAsk::For { provider, family: pending.family.clone(), op_id: pending.op_id.clone(), timeout_secs: Some(90), reconcile_only: true, observed: Vec::new() },
+        };
+        match claimer(pending.keeper.clone(), ask).await {
+            Ok(claim) => {
+                self.clear_pending_remote_claim(provider, &pending.op_id).await;
+                Ok(self.apply_remote_claim(&pending.keeper, claim, family, tried))
+            }
+            Err(Claimed::NoRecord(_) | Claimed::Refused(_) | Claimed::Unsupported(_)) => {
+                // Keeper explicitly confirmed this op_id did not spend a credit: safe to clear!
+                self.clear_pending_remote_claim(provider, &pending.op_id).await;
+                Ok(None)
+            }
+            Err(e) => {
+                // Unreachable / NotNow (service down, gateway starting, copy retired) / Unclear:
+                // keep PendingRemoteClaim intact so we NEVER spend a second credit!
+                Err(Claimed::Unclear(e.to_string()))
+            }
+        }
+    }
+
+    /// Selectively clear ONLY the windows, cooldowns, and paid marks proven by
+    /// a keeper reset scope (`cleared_shared`, `cleared_models`, `cleared_windows`),
+    /// preserving any omitted exhausted windows (such as `five_hour`) not cleared.
+    #[allow(clippy::too_many_arguments)]
+    fn apply_cleared_scope(
+        a: &mut Account,
+        cleared_shared: bool,
+        cleared_models: &[String],
+        cleared_windows: &[String],
+        windows: Vec<Window>,
+        credits: Vec<crate::model::ResetCredit>,
+        force_credits: bool,
+        t: i64,
+    ) {
+        let clears_window = |w: &Window| cleared_windows.iter().any(|c| c == &w.name) || (cleared_shared && cleared_windows.is_empty() && w.is_shared());
+        if cleared_shared {
+            a.cooldown_until = None;
+            if a.paid.as_ref().is_none_or(|paid| cleared_windows.is_empty() || cleared_windows.iter().any(|w| w == &paid.meter)) {
+                a.paid = None;
+            }
+        }
+        for m in cleared_models {
+            a.model_cooldowns.remove(m);
+            a.model_paid.remove(m);
+        }
+        for w in &mut a.windows {
+            if clears_window(w) {
+                w.used = 0.0;
+            }
+        }
+        if !windows.is_empty() {
+            a.paid_settled(Some(&windows), t);
+            let fresh_ok = |name: &str| windows.iter().any(|w| w.name == name && w.used < 100.0);
+            a.windows.retain(|w| !clears_window(w) && w.resets_at.is_some_and(|r| r > t) && (w.name.starts_with("model:") || (w.used >= 100.0 && !fresh_ok(&w.name))));
+            a.merge_windows(windows);
+        }
+        if !credits.is_empty() || force_credits {
+            a.credits = credits;
+        }
+    }
+
+    /// Apply a keeper's distinct [`RemoteClaim`] outcome on a borrower pool.
+    /// - Verifies `account` is actually kept by `keeper`.
+    /// - For `Redeemed`, bumps revision and clears ONLY the cooldowns, paid
+    ///   marks, and windows proven cleared by the reset, updating from the
+    ///   keeper's post-reset snapshot.
+    /// - For `AlreadyReady`, NEVER bumps revision and NEVER wipes local
+    ///   exhaustion evidence or retries an account already tried at its
+    ///   current revision, UNLESS the keeper attaches a strictly unseen causal
+    ///   `last_reset` (`ClearedScope`), in which case ONLY that reset's proven
+    ///   scope is cleared (never unrelated windows or shared cooldowns).
+    fn apply_remote_claim(&self, keeper: &str, claim: RemoteClaim, family: &str, tried: &HashMap<String, u64>) -> Option<String> {
+        let t = now();
+        let mut p = self.pool.lock().unwrap();
+        let account_id = claim.account().to_owned();
+        if p.account(&account_id).is_none_or(|a| a.kept_on.as_deref() != Some(keeper)) {
+            tracing::warn!("pool: ignoring remote claim reply from {keeper} for account {account_id} not kept there");
+            return None;
+        }
+        match claim {
+            RemoteClaim::Redeemed { account, credit_id, reset_id, cleared_shared, cleared_models, cleared_windows, windows, credits } => {
+                *p.resets.entry(account.clone()).or_default() += 1;
+                p.reset_at.insert(account.clone(), t);
+                if let Some(rid) = reset_id {
+                    p.keeper_reset_id.insert((keeper.to_owned(), account.clone()), rid);
+                }
+                if let Some(a) = p.account_mut(&account) {
+                    Self::apply_cleared_scope(a, cleared_shared, &cleared_models, &cleared_windows, windows, credits, !credit_id.is_empty(), t);
+                }
+                drop(p);
+                self.touch();
+                Some(account)
+            }
+            RemoteClaim::AlreadyReady { account, last_reset, windows, credits } => {
+                let unseen_scope =
+                    last_reset.as_ref().filter(|s| !s.reset_id.is_empty() && p.keeper_reset_id.get(&(keeper.to_owned(), account.clone())).map(String::as_str) != Some(s.reset_id.as_str())).cloned();
+                if let Some(ref scope) = unseen_scope {
+                    p.keeper_reset_id.insert((keeper.to_owned(), account.clone()), scope.reset_id.clone());
+                    *p.resets.entry(account.clone()).or_default() += 1;
+                    p.reset_at.insert(account.clone(), t);
+                }
+                let rev = p.reset_revision(&account);
+                let already_tried = tried.get(&account) == Some(&rev);
+                let has_cred = p.saved.credentials.contains_key(&account);
+                let ready = if let Some(a) = p.account_mut(&account) {
+                    if let Some(scope) = unseen_scope {
+                        // Apply ONLY the keeper reset's proven cleared scope so an
+                        // unrelated Fable reset NEVER discards an exhausted five_hour
+                        // window or shared cooldown.
+                        Self::apply_cleared_scope(a, scope.cleared_shared, &scope.cleared_models, &scope.cleared_windows, windows, credits, false, t);
+                    } else {
+                        if !credits.is_empty() {
+                            a.credits = credits;
+                        }
+                        let local_blocked =
+                            a.cooldown_until.is_some_and(|c| c > t) || (!family.is_empty() && a.model_cooldowns.get(family).is_some_and(|&c| c > t)) || a.paid_until(family, t).is_some();
+                        if !already_tried && !local_blocked && !windows.is_empty() {
+                            a.merge_windows(windows);
+                        }
+                    }
+                    !already_tried && schedule::eligible(a, a.provider, family, t, has_cred)
+                } else {
+                    false
+                };
+                drop(p);
+                self.touch();
+                ready.then_some(account)
+            }
+        }
+    }
+
+    fn build_observed_limit(p: &Pool, a: &Account, keeper: &str, family: &str, t: i64) -> Option<ObservedLimit> {
+        let windows: Vec<Window> = a.windows.iter().filter(|w| w.exhausted(t)).cloned().collect();
+        let cooldown_until = a.cooldown_until.filter(|&c| c > t);
+        let model_cooldown = (!family.is_empty()).then(|| a.model_cooldowns.get(family).copied().filter(|&c| c > t).map(|u| (family.to_owned(), u))).flatten();
+        let paid = a
+            .paid
+            .as_ref()
+            .filter(|pf| pf.until > t)
+            .map(|pf| (family.to_owned(), false, pf.until, pf.meter.clone()))
+            .or_else(|| (!family.is_empty()).then(|| a.model_paid.get(family).filter(|pf| pf.until > t).map(|pf| (family.to_owned(), true, pf.until, pf.meter.clone()))).flatten());
+        if windows.is_empty() && cooldown_until.is_none() && model_cooldown.is_none() && paid.is_none() {
+            return None;
+        }
+        let last_reset_id = p.keeper_reset_id.get(&(keeper.to_owned(), a.id.clone())).cloned();
+        Some(ObservedLimit { account: a.id.clone(), last_reset_id, windows, cooldown_until, model_cooldown, paid })
+    }
+
+    fn observed_limits_for(&self, provider: Provider, keeper: &str, family: &str) -> Vec<ObservedLimit> {
+        let t = now();
+        let p = self.pool.lock().unwrap();
+        p.saved
+            .accounts
+            .iter()
+            .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.kept_on.as_deref() == Some(keeper))
+            .filter_map(|a| Self::build_observed_limit(&p, a, keeper, family, t))
+            .collect()
+    }
+
+    fn observed_limit_for_account(&self, id: &str, keeper: &str) -> Vec<ObservedLimit> {
+        let t = now();
+        let p = self.pool.lock().unwrap();
+        p.account(id).and_then(|a| Self::build_observed_limit(&p, a, keeper, "", t)).into_iter().collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn redeem_locked(
+        &self,
+        id: &str,
+        credit: Option<&str>,
+        why: Why,
+        allow_legacy_borrowed: bool,
+        remote_op: Option<&str>,
+        deadline: Option<std::time::Instant>,
+        reconcile_pending_only: bool,
+    ) -> Result<RedeemedInfo, Claimed> {
         if self.drain.retired() {
             return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
         }
@@ -1071,10 +1542,23 @@ impl Shared {
         if self.drain.retired() {
             return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
         }
-        let (provider, org, credit, request, had_pending) = {
+        enum PendingCheck {
+            Proceed(Provider, Option<String>, crate::model::ResetCredit, String, bool),
+            AlreadyUsed(RedeemedInfo, bool),
+        }
+        let check = {
             let mut p = self.pool.lock().unwrap();
             let a = p.account(id).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
-            if a.redeeming.is_none() && p.saved.accounts.iter().any(|other| other.provider == a.provider && other.redeeming.is_some()) {
+            if !allow_legacy_borrowed && let Some(keeper) = &a.kept_on {
+                return Err(Claimed::NotNow(format!("This account’s reset credits are claimed by {keeper}, which keeps its sign-in.")));
+            }
+            if !allow_legacy_borrowed && let Some(host) = &a.reauth_pending_host {
+                return Err(Claimed::NotNow(format!("Waiting for {host} to accept the updated sign-in before claiming a reset.")));
+            }
+            if reconcile_pending_only && a.redeeming.is_none() {
+                return Err(Claimed::NotNow("No pending reset claim remains for this account.".into()));
+            }
+            if a.redeeming.is_none() && p.saved.accounts.iter().any(|other| other.provider == a.provider && (other.kept_on.is_none() || allow_legacy_borrowed) && other.redeeming.is_some()) {
                 return Err(Claimed::Unclear("A previous reset claim still needs to be reconciled.".into()));
             }
             if why != Why::Asked && (!a.enabled || a.signed_out.is_some() || !p.saved.credentials.contains_key(id)) {
@@ -1084,31 +1568,57 @@ impl Shared {
             let t = now();
             match a.redeeming.clone() {
                 Some((cid, request)) => match a.credits.iter().find(|c| c.id == cid).cloned() {
-                    Some(c) => (a.provider, a.org.clone(), c, request, true),
+                    Some(c) => PendingCheck::Proceed(a.provider, a.org.clone(), c, request, true),
                     None => {
                         // (Gone from what the provider lists: it was used.)
+                        let provider = a.provider;
                         a.redeeming = None;
-                        drop(p);
-                        self.touch();
-                        return Ok(());
+                        a.redeem_tried = None;
+                        let rid = crate::store::new_uuid();
+                        let cleared_shared = provider == Provider::Codex;
+                        let scope = ClearedScope { reset_id: rid.clone(), cleared_shared, cleared_models: Vec::new(), cleared_windows: Vec::new() };
+                        let windows = a.windows.clone();
+                        let credits = a.credits.clone();
+                        *p.resets.entry(id.to_owned()).or_default() += 1;
+                        p.reset_at.insert(id.to_owned(), t);
+                        p.last_reset.insert(id.to_owned(), scope);
+                        let claim = RemoteClaim::Redeemed {
+                            account: id.to_owned(),
+                            credit_id: cid.clone(),
+                            reset_id: Some(rid.clone()),
+                            cleared_shared,
+                            cleared_models: Vec::new(),
+                            cleared_windows: Vec::new(),
+                            windows,
+                            credits,
+                        };
+                        let resolved = Self::resolve_pending_ops_for_account_locked(&mut p, id, Ok(&claim));
+                        PendingCheck::AlreadyUsed(
+                            RedeemedInfo { account: id.to_owned(), credit_id: cid, reset_id: Some(rid), cleared_shared, cleared_models: Vec::new(), cleared_windows: Vec::new() },
+                            resolved,
+                        )
                     }
                 },
                 None => {
                     let chosen = match (credit, &why) {
                         (Some(c), Why::Blocked(family)) => a.claims_for(family, t).into_iter().find(|(x, _)| x.id == c).map(|(x, _)| x.clone()),
                         (Some(c), Why::Expiring) => a.expiring_claim(t).filter(|x| x.id == c).cloned(),
-                        (Some(c), Why::Asked) => a.credits.iter().find(|x| x.id == c && x.usable_at(t)).cloned(),
-                        (None, _) => a
-                            .credits
-                            .iter()
-                            .filter(|c| c.usable_at(t))
-                            .map(|c| (c, a.claim_worth(c, t, t)))
-                            .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.breadth(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.breadth(), x.0.expires_at.unwrap_or(i64::MAX)))))
-                            .map(|(c, _)| c.clone()),
+                        (Some(c), Why::Asked) => a.credits.iter().find(|x| x.id == c && a.credit_claimable_now(x, t)).cloned(),
+                        (None, _) => a.manual_credit(t).cloned(),
                     };
                     let c = chosen.ok_or_else(|| Claimed::NotNow("No reset credit to use for it now.".into()))?;
-                    (a.provider, a.org.clone(), c, crate::store::new_uuid(), false)
+                    PendingCheck::Proceed(a.provider, a.org.clone(), c, crate::store::new_uuid(), false)
                 }
+            }
+        };
+        let (provider, mut org, credit, request, had_pending) = match check {
+            PendingCheck::Proceed(provider, org, credit, request, had_pending) => (provider, org, credit, request, had_pending),
+            PendingCheck::AlreadyUsed(info, resolved) => {
+                if resolved {
+                    let _ = self.save_checked().await;
+                }
+                self.touch();
+                return Ok(info);
             }
         };
         // Renew/verify the sign-in BEFORE persisting `a.redeeming` so a sign-in
@@ -1122,72 +1632,189 @@ impl Shared {
                 return Err(Claimed::NotNow(e.to_string()));
             }
         };
-        // (Handed over while it waited: the copy now at work makes it, from
-        // the intent kept, if it's still wanted.)
-        if self.drain.retired() {
-            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
-        }
-        {
-            let mut p = self.pool.lock().unwrap();
-            if let Some(a) = p.account_mut(id) {
-                a.redeeming = Some((credit.id.clone(), request.clone()));
-                a.redeem_tried = Some(now());
+        // For Claude, ensure the organization UUID is known BEFORE persisting
+        // `a.redeeming` so a missing org never strands a pending claim and
+        // blocks other accounts. If missing, try healing it from `/api/oauth/profile`.
+        if provider == Provider::Claude {
+            if !Self::valid_claude_org(org.as_deref()) {
+                let sgen = self.sync_gen(id);
+                if let Ok(Some(fetched)) = upstream::profile_org(&self.client_for(id), &self.up, &cred, self.like(id).as_ref()).await
+                    && Self::valid_claude_org(Some(&fetched))
+                    && self.sync_gen(id) == sgen
+                {
+                    if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+                        a.org = Some(fetched.clone());
+                    }
+                    self.touch();
+                    org = Some(fetched);
+                }
+            }
+            if !Self::valid_claude_org(org.as_deref()) {
+                if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+                    // A Claude claim without a valid org could never have been
+                    // sent upstream; drop any stale pending marker too.
+                    a.redeeming = None;
+                    a.redeem_tried = Some(now());
+                }
+                self.touch();
+                return Err(Claimed::NotNow("This account's Claude organization isn't known: sign in again.".into()));
             }
         }
-        // (Kept before the provider is asked, or not asked.)
+        // Re-verify deadline, retirement, and ownership under lock right before
+        // persisting intent so a slow profile/token refresh or handover can
+        // never dispatch an expired or out-of-custody upstream POST.
+        {
+            if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                return Err(Claimed::NotNow("This reset request expired before sending.".into()));
+            }
+            let mut p = self.pool.lock().unwrap();
+            if self.drain.retired() {
+                return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+            }
+            let Some(a) = p.account_mut(id) else {
+                return Err(Claimed::NotNow("No such account.".into()));
+            };
+            if !allow_legacy_borrowed && let Some(keeper) = &a.kept_on {
+                return Err(Claimed::NotNow(format!("This account’s reset credits are claimed by {keeper}, which keeps its sign-in.")));
+            }
+            if !allow_legacy_borrowed && let Some(host) = &a.reauth_pending_host {
+                return Err(Claimed::NotNow(format!("Waiting for {host} to accept the updated sign-in before claiming a reset.")));
+            }
+            a.redeeming = Some((credit.id.clone(), request.clone()));
+            a.redeem_tried = Some(now());
+            if let Some(op) = remote_op {
+                Self::record_remote_claim_pending_locked(&mut p, op, id);
+            }
+        }
+        // (Kept atomically — both `a.redeeming` and any `remote_op` — before the provider is asked.)
         if let Err(e) = self.save_checked().await {
-            if !had_pending && let Some(a) = self.pool.lock().unwrap().account_mut(id) {
-                a.redeeming = None;
+            let mut p = self.pool.lock().unwrap();
+            if !had_pending {
+                if let Some(a) = p.account_mut(id) {
+                    a.redeeming = None;
+                }
+                if let Some(op) = remote_op {
+                    p.saved.remote_claims.retain(|r| r.op_id != op);
+                }
             }
             return Err(Claimed::NotNow(e));
         }
         let result = upstream::redeem(&self.client_for(id), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
+        let mut info = RedeemedInfo { account: id.to_owned(), credit_id: credit.id.clone(), reset_id: None, cleared_shared: false, cleared_models: Vec::new(), cleared_windows: Vec::new() };
+        let mut resolved_pending_ops = false;
         {
             let mut p = self.pool.lock().unwrap();
-            if result.is_ok() {
+            let rid = if result.is_ok() {
+                let rid = crate::store::new_uuid();
                 *p.resets.entry(id.to_owned()).or_default() += 1;
                 p.reset_at.insert(id.to_owned(), now());
-            }
+                info.reset_id = Some(rid.clone());
+                Some(rid)
+            } else {
+                None
+            };
+            let mut post_claim: Option<Result<RemoteClaim, Claimed>> = None;
+            let mut new_scope: Option<ClearedScope> = None;
             if let Some(a) = p.account_mut(id) {
                 match &result {
                     Ok(()) => {
                         a.redeeming = None;
-                        // What it resets starts again (a Fable reset, Fable's
-                        // week alone), and only what stopped on it goes on
-                        // (another meter's wait stays); the report says by how
-                        // much.
+                        // Clear failure throttle on success so a Fable-only
+                        // reset never suppresses an Opus weekly reset right after.
+                        a.redeem_tried = None;
                         let provider = a.provider;
-                        if a.windows.iter().any(|w| w.models.is_empty() && credit.clears(provider, w)) {
+                        let mut cleared_windows: Vec<String> = a.windows.iter().filter(|w| credit.clears(provider, w)).map(|w| w.name.clone()).collect();
+                        // Always include the grant's own `clears` names so a borrower
+                        // clears omitted windows (e.g. `five_hour`) even if this
+                        // keeper didn't previously store that window entry.
+                        for cname in &credit.clears {
+                            if !cleared_windows.iter().any(|w| w == cname) {
+                                cleared_windows.push(cname.clone());
+                            }
+                        }
+                        let cleared_shared = a.windows.iter().any(|w| w.is_shared() && credit.clears(provider, w))
+                            || (provider == Provider::Codex)
+                            || credit.clears.is_empty()
+                            || credit.clears.iter().any(|c| c == "five_hour" || c == "seven_day")
+                            || credit.gives_back_weekly;
+                        if cleared_shared {
                             a.cooldown_until = None;
-                            // (Its allowance is back: no longer answered
-                            // from usage credits.)
-                            a.paid = None;
+                            // Clear `paid` only when this reset actually covers
+                            // the meter that put the account on usage credits.
+                            if a.paid.as_ref().is_none_or(|paid| {
+                                cleared_windows.iter().any(|w| w == &paid.meter)
+                                    || credit.clears.is_empty()
+                                    || credit.clears.iter().any(|c| c == &paid.meter)
+                                    || (credit.gives_back_weekly && paid.meter == "seven_day")
+                            }) {
+                                a.paid = None;
+                            }
                         }
                         for w in a.windows.iter_mut().filter(|w| credit.clears(provider, w)) {
                             w.used = 0.0;
                         }
-                        for family in a.windows.iter().filter(|w| credit.clears(provider, w)).flat_map(|w| w.models.clone()).collect::<Vec<_>>() {
-                            a.model_cooldowns.remove(&family);
-                            a.model_paid.remove(&family);
+                        let mut cleared_models: Vec<String> = a.windows.iter().filter(|w| credit.clears(provider, w)).flat_map(|w| w.scoped_models()).collect();
+                        if credit.clears.iter().any(|c| c == "seven_day_overage_included") && !cleared_models.iter().any(|m| m == "fable") {
+                            cleared_models.push("fable".to_owned());
+                        }
+                        for family in &cleared_models {
+                            a.model_cooldowns.remove(family);
+                            a.model_paid.remove(family);
                         }
                         if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
                             c.remaining = c.remaining.saturating_sub(1);
                         }
                         a.credits.retain(|c| c.remaining > 0);
+                        info.cleared_shared = cleared_shared;
+                        info.cleared_models = cleared_models.clone();
+                        info.cleared_windows = cleared_windows.clone();
+                        if let Some(ref rid) = rid {
+                            new_scope = Some(ClearedScope { reset_id: rid.clone(), cleared_shared, cleared_models: cleared_models.clone(), cleared_windows: cleared_windows.clone() });
+                        }
+                        post_claim = Some(Ok(RemoteClaim::Redeemed {
+                            account: id.to_owned(),
+                            credit_id: credit.id.clone(),
+                            reset_id: rid.clone(),
+                            cleared_shared,
+                            cleared_models,
+                            cleared_windows,
+                            windows: a.windows.clone(),
+                            credits: a.credits.clone(),
+                        }));
                     }
                     // Refused outright: nothing was spent.
-                    Err(Failure::Refused(_)) => a.redeeming = None,
+                    Err(Failure::Refused(e)) => {
+                        a.redeeming = None;
+                        post_claim = Some(Err(Claimed::Refused(e.clone())));
+                    }
+                    // Never left the pool (local build/validation/connect error): clear if newly set.
+                    Err(Failure::NotSent(e)) => {
+                        if !had_pending {
+                            a.redeeming = None;
+                            post_claim = Some(Err(Claimed::NotNow(e.clone())));
+                        }
+                    }
                     Err(Failure::Other(_)) => {}
                 }
             }
+            if let Some(scope) = new_scope {
+                p.last_reset.insert(id.to_owned(), scope);
+            }
+            if let Some(ref outcome) = post_claim {
+                resolved_pending_ops = Self::resolve_pending_ops_for_account_locked(&mut p, id, outcome.as_ref());
+            }
+        }
+        if resolved_pending_ops {
+            let _ = self.save_checked().await;
         }
         self.touch();
         // (What the provider says now, after either: what it reset, or the
         // credit it refused, which may be gone.)
         self.sync(Some(id)).await;
         match result {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(info),
             Err(Failure::Refused(e)) => Err(Claimed::Refused(e)),
+            Err(Failure::NotSent(e)) => Err(Claimed::NotNow(e)),
             Err(Failure::Other(e)) => Err(Claimed::Unclear(e)),
         }
     }
@@ -1198,97 +1825,786 @@ impl Shared {
         tokio::task::block_in_place(|| self.write(true)).map_err(|e| format!("The pool couldn’t keep the claim before making it: {e}"))
     }
 
-    /// Recheck which account can serve under the provider's claim lock. A
-    /// refusal or another request's reset may already have released one.
-    async fn redeem_for(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>) -> Option<String> {
-        // (A host's pool claims nothing by itself: `hosted`.)
-        if self.is_hosted() {
-            return None;
-        }
-        let gate = self.claims_gate(provider);
-        let _gate = gate.lock().await;
-        if self.drain.retired() {
-            return None;
-        }
-        let available = |refused: &[String]| self.pool.lock().unwrap().pick(provider, family, None, tried, refused).map(|a| a.id.clone());
-        if let Some(id) = available(&[]) {
-            return Some(id);
-        }
+    /// Refresh reset credits (and missing Claude org, or usage for a Codex
+    /// cooldown without an exhausted window) for locally-kept enabled accounts
+    /// of `provider` not checked in the last 60 s. Stops early as soon as a
+    /// claimable candidate for `family` is found.
+    async fn refresh_credits_if_stale(&self, provider: Provider, family: &str) {
         let t = now();
-        let pending = {
-            let p = self.pool.lock().unwrap();
-            p.saved.accounts.iter().find(|a| a.provider == provider && a.redeeming.is_some()).map(|a| (a.id.clone(), a.redeem_tried))
-        };
-        if let Some((id, tried)) = pending {
-            // (Not asked again at once: the provider may be having trouble.)
-            if tried.is_some_and(|r| t - r < 10) {
-                return None;
-            }
-            match self.redeem_locked(&id, None, Why::Blocked(family.to_owned())).await {
-                Ok(()) => return Some(id),
-                Err(Claimed::Unclear(e)) => {
-                    tracing::warn!("pool: a reset claim still unclear: {e}");
-                    return None;
-                }
-                Err(Claimed::NotNow(_)) => return None,
-                Err(Claimed::Refused(_)) => {
-                    if let Some(ready) = available(std::slice::from_ref(&id)) {
-                        return Some(ready);
-                    }
-                }
-            }
-        }
-        let mut candidates: Vec<(String, String, f64, usize, i64)> = {
+        let fetched_snapshot: HashMap<String, i64> = self.credits_fetched.lock().unwrap().clone();
+        let stale: Vec<(String, bool, bool)> = {
             let p = self.pool.lock().unwrap();
             p.saved
                 .accounts
                 .iter()
-                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
-                .filter(|a| a.redeem_tried.is_none_or(|r| t - r >= 60))
-                .flat_map(|a| a.claims_for(family, t).into_iter().map(|(c, worth)| (a.id.clone(), c.id.clone(), worth, c.breadth(), c.expires_at.unwrap_or(i64::MAX))))
+                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.kept_on.is_none() && p.saved.credentials.contains_key(&a.id))
+                .filter(|a| fetched_snapshot.get(&a.id).is_none_or(|&at| t - at >= 60))
+                .map(|a| {
+                    let needs_org = provider == Provider::Claude && !Self::valid_claude_org(a.org.as_deref());
+                    let needs_usage = a.cooldown_until.is_some_and(|c| c > t) && !a.windows.iter().any(|w| w.applies_to(family) && w.exhausted(t));
+                    (a.id.clone(), needs_org, needs_usage)
+                })
                 .collect()
         };
-        candidates.sort_by(|x, y| y.2.total_cmp(&x.2).then(x.3.cmp(&y.3)).then(x.4.cmp(&y.4)));
-        // Accounts whose claims were refused, their quotas read again since.
-        let mut refused: Vec<String> = Vec::new();
-        for (id, credit, _, _, _) in candidates {
-            if let Some(ready) = available(&refused) {
-                return Some(ready);
+        if stale.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        for (id, needs_org, needs_usage) in stale {
+            if self.drain.retired() {
+                break;
             }
-            match self.redeem_locked(&id, Some(&credit), Why::Blocked(family.to_owned())).await {
-                Ok(()) => return Some(id),
-                Err(e @ Claimed::Refused(_)) => {
-                    tracing::info!("pool: a reset credit not used: {e}; the next");
-                    refused.push(id);
+            let revision = self.pool.lock().unwrap().reset_revision(&id);
+            let sgen = self.sync_gen(&id);
+            let seq = self.begin_sync_seq(&id);
+            self.credits_fetched.lock().unwrap().insert(id.clone(), now());
+            let Ok(cred) = self.fresh(&id, provider, None, 60).await else { continue };
+            let like = self.like(&id);
+            let fetched_windows = if needs_usage { upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await.ok().map(|(w, _)| w) } else { None };
+            let fetched_org =
+                if needs_org { upstream::profile_org(&self.client_for(&id), &self.up, &cred, like.as_ref()).await.ok().flatten().filter(|o| Self::valid_claude_org(Some(o))) } else { None };
+            let fetched_credits = match upstream::credits(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
+                Ok(c) => {
+                    self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
+                    Some(c)
                 }
-                Err(e @ Claimed::NotNow(_)) => tracing::info!("pool: a reset credit not used: {e}; the next"),
                 Err(e) => {
-                    tracing::warn!("pool: redeeming a reset credit: {e}");
-                    return None;
+                    tracing::warn!("pool: reading reset credits for {id}: {e}");
+                    None
+                }
+            };
+            if self.sync_gen(&id) != sgen || !self.commit_sync_seq(&id, seq) {
+                continue;
+            }
+            let found_candidate = {
+                let mut p = self.pool.lock().unwrap();
+                if p.reset_revision(&id) != revision {
+                    continue;
+                }
+                if let Some(a) = p.account_mut(&id) {
+                    if let Some(w) = fetched_windows {
+                        a.merge_windows(w);
+                        changed = true;
+                    }
+                    if let Some(c) = fetched_credits
+                        && a.credits != c
+                    {
+                        a.credits = c;
+                        changed = true;
+                    }
+                    if let Some(org) = fetched_org {
+                        a.org = Some(org);
+                        changed = true;
+                    }
+                    !a.claims_for(family, now()).is_empty()
+                } else {
+                    false
+                }
+            };
+            if found_candidate {
+                break;
+            }
+        }
+        if changed {
+            self.touch();
+        }
+    }
+
+    /// Reconcile any locally-kept account with an unclear pending claim
+    /// (`a.redeeming.is_some()`). Shared by local-only and mixed/remote paths.
+    async fn reconcile_local_pending_locked(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>, not_ready: &[String], kept_only: bool) -> Result<Option<KeptOutcome>, Claimed> {
+        let t = now();
+        let pending = {
+            let p = self.pool.lock().unwrap();
+            p.saved.accounts.iter().find(|a| a.provider == provider && a.kept_on.is_none() && a.redeeming.is_some()).map(|a| (a.id.clone(), a.redeem_tried))
+        };
+        let Some((id, last_tried)) = pending else { return Ok(None) };
+        if last_tried.is_some_and(|r| t - r < 10) {
+            return Err(Claimed::Unclear("A previous reset claim still needs to be reconciled.".into()));
+        }
+        match self.redeem_locked(&id, None, Why::Blocked(family.to_owned()), false, None, None, true).await {
+            Ok(info) => Ok(Some(KeptOutcome::Redeemed(info))),
+            Err(e @ Claimed::Unclear(_)) => {
+                tracing::warn!("pool: a reset claim still unclear: {e}");
+                Err(e)
+            }
+            Err(Claimed::NotNow(_) | Claimed::Unsupported(_) | Claimed::NoRecord(_) | Claimed::Unreachable(_)) => Err(Claimed::Unclear("A previous reset claim could not be reconciled yet.".into())),
+            Err(Claimed::Refused(_)) => {
+                let ready = self.pick_available(provider, family, tried, std::slice::from_ref(&id), not_ready, kept_only);
+                Ok(ready.map(KeptOutcome::Ready))
+            }
+        }
+    }
+
+    fn pick_available(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>, reconsider: &[String], not_ready: &[String], kept_only: bool) -> Option<String> {
+        let p = self.pool.lock().unwrap();
+        if kept_only {
+            schedule::pick(&p.saved.accounts, provider, family, None, now(), &[], |a| {
+                a.kept_on.is_none() && !not_ready.contains(&a.id) && p.saved.credentials.contains_key(&a.id) && (reconsider.contains(&a.id) || tried.get(&a.id) != Some(&p.reset_revision(&a.id)))
+            })
+            .map(|a| a.id.clone())
+        } else {
+            schedule::pick(&p.saved.accounts, provider, family, None, now(), &[], |a| {
+                !not_ready.contains(&a.id) && p.saved.credentials.contains_key(&a.id) && (reconsider.contains(&a.id) || tried.get(&a.id) != Some(&p.reset_revision(&a.id)))
+            })
+            .map(|a| a.id.clone())
+        }
+    }
+
+    /// Reconcile any pending unclear claim on a locally-kept account of
+    /// `provider`, then claim the best locally-kept credit for `family`.
+    /// Caller MUST hold `self.claims_gate(provider)`.
+    #[allow(clippy::too_many_arguments)]
+    async fn redeem_kept_locked(
+        &self,
+        provider: Provider,
+        family: &str,
+        tried: &HashMap<String, u64>,
+        refused: &mut Vec<String>,
+        not_ready: &[String],
+        kept_only: bool,
+        remote_op: Option<&str>,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<KeptOutcome, Claimed> {
+        if let Some(outcome) = self.reconcile_local_pending_locked(provider, family, tried, not_ready, kept_only).await? {
+            return Ok(outcome);
+        }
+        let collect = |now_s: i64, skip: &[(String, String)]| -> Vec<(String, String, f64, usize, i64)> {
+            let p = self.pool.lock().unwrap();
+            let mut cands: Vec<_> = p
+                .saved
+                .accounts
+                .iter()
+                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.kept_on.is_none() && a.reauth_pending_host.is_none())
+                .filter(|a| a.redeem_tried.is_none_or(|r| now_s - r >= 60))
+                .flat_map(|a| {
+                    a.claims_for(family, now_s)
+                        .into_iter()
+                        .filter(|(c, _)| !skip.iter().any(|(si, sc)| si == &a.id && sc == &c.id))
+                        .map(|(c, worth)| (a.id.clone(), c.id.clone(), worth, c.breadth(), c.expires_at.unwrap_or(i64::MAX)))
+                })
+                .collect();
+            cands.sort_by(|x, y| y.2.total_cmp(&x.2).then(x.3.cmp(&y.3)).then(x.4.cmp(&y.4)));
+            cands
+        };
+        let mut tried_pairs: Vec<(String, String)> = Vec::new();
+        let mut refreshed = false;
+        loop {
+            let t = now();
+            let candidates = collect(t, &tried_pairs);
+            if candidates.is_empty() {
+                if refreshed {
+                    break;
+                }
+                refreshed = true;
+                self.refresh_credits_if_stale(provider, family).await;
+                if let Some(ready) = self.pick_available(provider, family, tried, refused, not_ready, kept_only) {
+                    return Ok(KeptOutcome::Ready(ready));
+                }
+                continue;
+            }
+            for (id, credit, _, _, _) in candidates {
+                if let Some(ready) = self.pick_available(provider, family, tried, refused, not_ready, kept_only) {
+                    return Ok(KeptOutcome::Ready(ready));
+                }
+                tried_pairs.push((id.clone(), credit.clone()));
+                match self.redeem_locked(&id, Some(&credit), Why::Blocked(family.to_owned()), false, remote_op, deadline, false).await {
+                    Ok(info) => return Ok(KeptOutcome::Redeemed(info)),
+                    Err(e @ Claimed::Refused(_)) => {
+                        tracing::info!("pool: a reset credit not used: {e}; the next");
+                        refused.push(id);
+                    }
+                    Err(e @ Claimed::NotNow(_)) => tracing::info!("pool: a reset credit not used: {e}; the next"),
+                    Err(e) => {
+                        tracing::warn!("pool: redeeming a reset credit: {e}");
+                        return Err(e);
+                    }
+                }
+            }
+            // If all cached candidates failed definitively, do one bounded
+            // stale-credit refresh so newly issued grants on other accounts
+            // can still rescue this request.
+            if refreshed {
+                break;
+            }
+            refreshed = true;
+            self.refresh_credits_if_stale(provider, family).await;
+            if let Some(ready) = self.pick_available(provider, family, tried, refused, not_ready, kept_only) {
+                return Ok(KeptOutcome::Ready(ready));
+            }
+        }
+        Ok(match self.pick_available(provider, family, tried, refused, not_ready, kept_only) {
+            Some(id) => KeptOutcome::Ready(id),
+            None => KeptOutcome::None,
+        })
+    }
+
+    fn remote_claim_snapshot(&self, info: RedeemedInfo) -> RemoteClaim {
+        let (windows, credits) = {
+            let p = self.pool.lock().unwrap();
+            p.account(&info.account).map(|a| (a.windows.clone(), a.credits.clone())).unwrap_or_default()
+        };
+        RemoteClaim::Redeemed {
+            account: info.account,
+            credit_id: info.credit_id,
+            reset_id: info.reset_id,
+            cleared_shared: info.cleared_shared,
+            cleared_models: info.cleared_models,
+            cleared_windows: info.cleared_windows,
+            windows,
+            credits,
+        }
+    }
+
+    fn already_ready_snapshot(&self, account: String) -> RemoteClaim {
+        let (last_reset, windows, credits) = {
+            let p = self.pool.lock().unwrap();
+            let last_reset = p.last_reset.get(&account).cloned();
+            let (windows, credits) = p.account(&account).map(|a| (a.windows.clone(), a.credits.clone())).unwrap_or_default();
+            (last_reset, windows, credits)
+        };
+        RemoteClaim::AlreadyReady { account, last_reset, windows, credits }
+    }
+
+    fn merge_observed_limits(&self, provider: Provider, observed: &[ObservedLimit], only_account: Option<&str>) -> Vec<String> {
+        let t = now();
+        let mut observed_ids = Vec::new();
+        let mut p = self.pool.lock().unwrap();
+        for obs in observed {
+            if only_account.is_some_and(|id| id != obs.account) {
+                continue;
+            }
+            if p.last_reset.get(&obs.account).is_some_and(|cur| obs.last_reset_id.as_deref() != Some(cur.reset_id.as_str())) {
+                continue;
+            }
+            let Some(a) = p.account_mut(&obs.account) else { continue };
+            if a.kept_on.is_some() || a.provider != provider {
+                continue;
+            }
+            observed_ids.push(obs.account.clone());
+            if !obs.windows.is_empty() {
+                a.merge_windows(obs.windows.clone());
+            }
+            if let Some(u) = obs.cooldown_until.filter(|&u| u > t) {
+                a.cooldown_until = Some(a.cooldown_until.map_or(u, |cur| cur.max(u)));
+            }
+            if let Some((ref f, u)) = obs.model_cooldown
+                && u > t
+            {
+                let entry = a.model_cooldowns.entry(f.clone()).or_insert(0);
+                *entry = (*entry).max(u);
+            }
+            if let Some((ref f, model_only, u, ref meter)) = obs.paid
+                && u > t
+            {
+                a.now_paid(f, model_only, u, meter);
+            }
+        }
+        observed_ids
+    }
+
+    /// Keeper's handler for a borrower pool's `host::Ask::Redeem`:
+    /// - Serialized under this keeper's `claims_gate(provider)`.
+    /// - Deduplicated by durable `op_id` (`Saved::remote_claims`) checked BEFORE
+    ///   retirement so a borrower retrying after a lost reply, HTTP 500, or
+    ///   handover receives the original outcome (or reconciles `a.redeeming`)
+    ///   instead of double-spending.
+    /// - Stamps relative `timeout_secs` on receipt with the keeper's monotonic
+    ///   clock and re-checks before upstream dispatch.
+    /// - Merges borrower's `observed` exhaustion limits for BOTH manual
+    ///   (`id: Some`) and automatic (`id: None`) asks.
+    /// - Returns distinct [`RemoteClaim::Redeemed`] vs [`RemoteClaim::AlreadyReady`],
+    ///   and distinct [`Claimed::NoRecord`] ONLY when `reconcile_only` truly has
+    ///   no record on an active keeper.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn handle_remote_redeem(
+        &self,
+        id: Option<String>,
+        credit: Option<String>,
+        provider: Option<Provider>,
+        family: Option<String>,
+        op_id: Option<String>,
+        timeout_secs: Option<u64>,
+        reconcile_only: bool,
+        observed: Vec<ObservedLimit>,
+    ) -> Result<RemoteClaim, Claimed> {
+        let deadline = timeout_secs.map(|s| std::time::Instant::now() + Duration::from_secs(s));
+        let provider = match (provider, id.as_deref()) {
+            (Some(p), _) => p,
+            (None, Some(aid)) => self.pool.lock().unwrap().account(aid).map(|a| a.provider).ok_or_else(|| Claimed::NotNow("No such account.".into()))?,
+            (None, None) => return Err(Claimed::NotNow("Neither an account nor a provider was named.".into())),
+        };
+        let gate = self.claims_gate(provider);
+        let _gate = gate.lock().await;
+        // 1. Check durable op_id record BEFORE retirement so a retiring copy can
+        //    still return a recorded outcome (or report Unclear, never NoRecord).
+        if let Some(ref op) = op_id
+            && let Some(rec) = self.lookup_remote_claim_record(op)
+        {
+            if let Some(claim) = rec.result {
+                return Ok(claim);
+            }
+            match rec.error_kind.as_deref() {
+                Some("refused") => return Err(Claimed::Refused(rec.error.unwrap_or_else(|| "Previous reset request was refused.".into()))),
+                Some("not_now") => return Err(Claimed::NotNow(rec.error.unwrap_or_else(|| "Previous reset request did not succeed.".into()))),
+                Some("unclear") => {
+                    if self.drain.retired() {
+                        return Err(Claimed::Unclear("Previous reset claim is still pending on a retiring copy.".into()));
+                    }
+                    if let Some(ref aid) = rec.account {
+                        let still_pending = self.pool.lock().unwrap().account(aid).is_some_and(|a| a.redeeming.is_some());
+                        if still_pending {
+                            // Refresh credits first so a crash-before-sync sees a spent grant without re-POSTing.
+                            self.sync(Some(aid)).await;
+                            match self.redeem_locked(aid, None, Why::Asked, false, Some(op), deadline, true).await {
+                                Ok(info) => {
+                                    let claim = self.remote_claim_snapshot(info);
+                                    self.record_remote_claim_outcome(op, Ok(&claim));
+                                    let _ = self.save_checked().await;
+                                    self.touch();
+                                    return Ok(claim);
+                                }
+                                Err(e @ (Claimed::Refused(_) | Claimed::NotNow(_))) => {
+                                    self.record_remote_claim_outcome(op, Err(&e));
+                                    let _ = self.save_checked().await;
+                                    self.touch();
+                                    return Err(e);
+                                }
+                                Err(e) => return Err(Claimed::Unclear(e.to_string())),
+                            }
+                        }
+                    }
+                    return Err(Claimed::Unclear(rec.error.unwrap_or_else(|| "Previous reset request is still unclear.".into())));
+                }
+                _ => return Err(Claimed::Unclear(rec.error.unwrap_or_else(|| "Previous reset request is still unclear.".into()))),
+            }
+        }
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
+        if reconcile_only {
+            return Err(Claimed::NoRecord("No record of that reset request on the keeper.".into()));
+        }
+        if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+            return Err(Claimed::NotNow("This reset request expired before reaching the keeper.".into()));
+        }
+        // Receiving an Ask::Redeem proves a v2+ peer delegates claiming here.
+        {
+            let mut p = self.pool.lock().unwrap();
+            p.saved.legacy_desktop_claims = false;
+        }
+        let outcome: Result<RemoteClaim, Claimed> = if let Some(id) = id {
+            // Merge borrower observations for `id` so manual "Use a Reset Credit…"
+            // sees limits only the borrower observed (e.g. unlisted `five_hour`).
+            let _ = self.merge_observed_limits(provider, &observed, Some(&id));
+            self.redeem_locked(&id, credit.as_deref(), Why::Asked, false, op_id.as_deref(), deadline, false).await.map(|info| self.remote_claim_snapshot(info))
+        } else {
+            let fam = family.unwrap_or_default();
+            let t = now();
+            let observed_ids = self.merge_observed_limits(provider, &observed, None);
+            // Confirm any locally-kept account that still appears eligible
+            // unless it was just reset (< 30 s) or freshly synced (< 15 s).
+            let to_confirm: Vec<String> = {
+                let p = self.pool.lock().unwrap();
+                p.saved
+                    .accounts
+                    .iter()
+                    .filter(|a| a.kept_on.is_none() && schedule::eligible(a, provider, &fam, t, p.saved.credentials.contains_key(&a.id)))
+                    .filter(|a| p.reset_at.get(&a.id).is_none_or(|&r| t - r >= 30))
+                    .filter(|a| a.synced.is_none_or(|s| t - s >= 15))
+                    .map(|a| a.id.clone())
+                    .collect()
+            };
+            let mut confirm_failed: Vec<String> = Vec::new();
+            for aid in to_confirm {
+                let before_synced = self.pool.lock().unwrap().account(&aid).and_then(|a| a.synced);
+                self.sync(Some(&aid)).await;
+                let after_synced = self.pool.lock().unwrap().account(&aid).and_then(|a| a.synced);
+                // If usage read failed (e.g. 429 on /api/oauth/usage) and didn't
+                // advance `synced`, don't falsely report a stale account as ready.
+                if after_synced == before_synced {
+                    confirm_failed.push(aid);
+                }
+            }
+            let mut not_ready = confirm_failed;
+            for oid in &observed_ids {
+                if !not_ready.contains(oid) {
+                    not_ready.push(oid.clone());
+                }
+            }
+            let ready = {
+                let p = self.pool.lock().unwrap();
+                schedule::pick(&p.saved.accounts, provider, &fam, None, now(), &[], |a| a.kept_on.is_none() && p.saved.credentials.contains_key(&a.id) && !not_ready.contains(&a.id))
+                    .map(|a| a.id.clone())
+            };
+            if let Some(aid) = ready {
+                Ok(self.already_ready_snapshot(aid))
+            } else {
+                let mut refused = Vec::new();
+                match self.redeem_kept_locked(provider, &fam, &HashMap::new(), &mut refused, &not_ready, true, op_id.as_deref(), deadline).await {
+                    Ok(KeptOutcome::Redeemed(info)) => Ok(self.remote_claim_snapshot(info)),
+                    Ok(KeptOutcome::Ready(aid)) => Ok(self.already_ready_snapshot(aid)),
+                    Ok(KeptOutcome::None) => Err(Claimed::NotNow("No reset credit to use for it now.".into())),
+                    Err(e) => Err(e),
+                }
+            }
+        };
+        if let Some(ref op) = op_id {
+            match &outcome {
+                Ok(claim) => {
+                    self.record_remote_claim_outcome(op, Ok(claim));
+                    if matches!(claim, RemoteClaim::Redeemed { .. }) {
+                        let _ = self.save_checked().await;
+                    }
+                    self.touch();
+                }
+                Err(e @ (Claimed::Refused(_) | Claimed::NotNow(_))) => {
+                    self.record_remote_claim_outcome(op, Err(e));
+                    self.touch();
+                }
+                Err(Claimed::Unclear(_) | Claimed::Unsupported(_) | Claimed::NoRecord(_) | Claimed::Unreachable(_)) => {}
+            }
+        }
+        outcome
+    }
+
+    /// Convenience wrapper for tests calling remote exhaustion directly.
+    pub async fn redeem_for_remote(&self, provider: Provider, family: &str) -> Result<RemoteClaim, Claimed> {
+        self.handle_remote_redeem(None, None, Some(provider), Some(family.to_owned()), None, None, false, Vec::new()).await
+    }
+
+    /// Recheck which account can serve under the provider's claim lock.
+    /// Locally-kept accounts (`kept_on.is_none()`) are claimed directly here
+    /// (unless this host is paired with a legacy v1 desktop); accounts kept on
+    /// another pool are delegated to their keeper (`Claimer`) with durable
+    /// `op_id` reconciliation and observed exhaustion limits.
+    async fn redeem_for(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>) -> RedeemOutcome {
+        let gate = self.claims_gate(provider);
+        let _gate = gate.lock().await;
+        if self.drain.retired() {
+            return RedeemOutcome::None;
+        }
+        if let Some(id) = self.pick_available(provider, family, tried, &[], &[], false) {
+            return RedeemOutcome::Ready(id);
+        }
+        // Reconcile any pending unclear remote claim before doing anything else.
+        match self.reconcile_pending_remote_locked(provider, family, tried).await {
+            Ok(Some(id)) => return RedeemOutcome::Ready(id),
+            Ok(None) => {
+                if let Some(id) = self.pick_available(provider, family, tried, &[], &[], false) {
+                    return RedeemOutcome::Ready(id);
+                }
+            }
+            Err(_) => return RedeemOutcome::ResetWaits,
+        }
+        // On a host paired with a legacy v1 desktop (`legacy_desktop_claims`),
+        // let the legacy desktop claim to avoid double-claiming until it upgrades.
+        if self.is_hosted() && self.pool.lock().unwrap().saved.legacy_desktop_claims {
+            let t = now();
+            let waiting = self.pool.lock().unwrap().saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.claim_for(family, t).is_some());
+            return if waiting { RedeemOutcome::ResetWaits } else { RedeemOutcome::None };
+        }
+        let mut refused: Vec<String> = Vec::new();
+        let claimer = self.claimer();
+        let has_remote_accounts = self.pool.lock().unwrap().saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.kept_on.is_some());
+        let Some(claimer) = claimer.filter(|_| has_remote_accounts) else {
+            let local_res = self.redeem_kept_locked(provider, family, tried, &mut refused, &[], false, None, None).await;
+            return match local_res {
+                Ok(KeptOutcome::Redeemed(info)) => RedeemOutcome::Ready(info.account),
+                Ok(KeptOutcome::Ready(id)) => RedeemOutcome::Ready(id),
+                Err(Claimed::Unclear(_)) => RedeemOutcome::ResetWaits,
+                Ok(KeptOutcome::None) | Err(_) => {
+                    // A headless borrower (no Claimer) with a cached credit
+                    // waiting on a remote keeper holds off usage credits.
+                    let t = now();
+                    let remote_waits = has_remote_accounts
+                        && self
+                            .pool
+                            .lock()
+                            .unwrap()
+                            .saved
+                            .accounts
+                            .iter()
+                            .any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.kept_on.is_some() && a.claim_for(family, t).is_some());
+                    if remote_waits { RedeemOutcome::ResetWaits } else { RedeemOutcome::None }
+                }
+            };
+        };
+        // Mixed or remote-kept pool (desktop): reconcile local pending first.
+        match self.reconcile_local_pending_locked(provider, family, tried, &[], false).await {
+            Ok(Some(KeptOutcome::Redeemed(info))) => return RedeemOutcome::Ready(info.account),
+            Ok(Some(KeptOutcome::Ready(id))) => return RedeemOutcome::Ready(id),
+            Ok(Some(KeptOutcome::None)) | Ok(None) => {}
+            Err(_) => return RedeemOutcome::ResetWaits,
+        }
+        let collect_all = |now_s: i64, skip_local: &[(String, String)]| -> Vec<(String, Option<String>, String, f64, usize, i64)> {
+            let p = self.pool.lock().unwrap();
+            let mut cands: Vec<_> = p
+                .saved
+                .accounts
+                .iter()
+                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
+                .filter(|a| a.kept_on.is_some() || a.reauth_pending_host.is_none())
+                .filter(|a| a.redeem_tried.is_none_or(|r| now_s - r >= 60))
+                .flat_map(|a| {
+                    a.claims_for(family, now_s)
+                        .into_iter()
+                        .filter(|(c, _)| a.kept_on.is_some() || !skip_local.iter().any(|(si, sc)| si == &a.id && sc == &c.id))
+                        .map(|(c, worth)| (a.id.clone(), a.kept_on.clone(), c.id.clone(), worth, c.breadth(), c.expires_at.unwrap_or(i64::MAX)))
+                })
+                .collect();
+            cands.sort_by(|x, y| y.3.total_cmp(&x.3).then(x.4.cmp(&y.4)).then(x.5.cmp(&y.5)));
+            cands
+        };
+        let mut tried_local_pairs: Vec<(String, String)> = Vec::new();
+        let mut tried_keepers: Vec<String> = Vec::new();
+        let mut legacy_keepers: Vec<String> = Vec::new();
+        let mut unreachable_keepers: Vec<String> = Vec::new();
+        let mut refreshed_local = false;
+        let is_unreachable_cached = |k: &str| -> bool { self.keeper_unreachable.lock().unwrap().get(k).is_some_and(|&at| now() - at < 60) };
+        let is_probe_throttled = |k: &str| -> bool { self.remote_claim_tried.lock().unwrap().get(&(k.to_owned(), provider, family.to_owned())).is_some_and(|&at| now() - at < 60) };
+        loop {
+            let mut candidates = collect_all(now(), &tried_local_pairs);
+            if !refreshed_local && !candidates.iter().any(|c| c.1.is_none()) {
+                refreshed_local = true;
+                self.refresh_credits_if_stale(provider, family).await;
+                if let Some(ready) = self.pick_available(provider, family, tried, &refused, &[], false) {
+                    return RedeemOutcome::Ready(ready);
+                }
+                candidates = collect_all(now(), &tried_local_pairs);
+            }
+            let mut tried_any_local = false;
+            for (id, kept_on, credit, _, _, _) in candidates {
+                if let Some(ready) = self.pick_available(provider, family, tried, &refused, &[], false) {
+                    return RedeemOutcome::Ready(ready);
+                }
+                match kept_on {
+                    None => {
+                        tried_any_local = true;
+                        tried_local_pairs.push((id.clone(), credit.clone()));
+                        match self.redeem_locked(&id, Some(&credit), Why::Blocked(family.to_owned()), false, None, None, false).await {
+                            Ok(info) => return RedeemOutcome::Ready(info.account),
+                            Err(e @ Claimed::Refused(_)) => {
+                                tracing::info!("pool: a reset credit not used: {e}; the next");
+                                refused.push(id);
+                            }
+                            Err(e @ Claimed::NotNow(_)) => tracing::info!("pool: a reset credit not used: {e}; the next"),
+                            Err(e) => {
+                                tracing::warn!("pool: redeeming a reset credit: {e}");
+                                return RedeemOutcome::ResetWaits;
+                            }
+                        }
+                    }
+                    Some(keeper) => {
+                        if legacy_keepers.contains(&keeper) {
+                            match self.redeem_locked(&id, Some(&credit), Why::Blocked(family.to_owned()), true, None, None, false).await {
+                                Ok(info) => return RedeemOutcome::Ready(info.account),
+                                Err(Claimed::Refused(_)) => refused.push(id),
+                                Err(Claimed::NotNow(_) | Claimed::Unsupported(_) | Claimed::NoRecord(_) | Claimed::Unreachable(_)) => {}
+                                Err(_) => return RedeemOutcome::ResetWaits,
+                            }
+                            continue;
+                        }
+                        if tried_keepers.contains(&keeper) {
+                            continue;
+                        }
+                        if is_unreachable_cached(&keeper) {
+                            if !unreachable_keepers.contains(&keeper) {
+                                unreachable_keepers.push(keeper.clone());
+                            }
+                            tried_keepers.push(keeper);
+                            continue;
+                        }
+                        if is_probe_throttled(&keeper) {
+                            tried_keepers.push(keeper);
+                            continue;
+                        }
+                        tried_keepers.push(keeper.clone());
+                        let op_id = crate::store::new_uuid();
+                        let observed = self.observed_limits_for(provider, &keeper, family);
+                        let t = now();
+                        if self
+                            .persist_pending_remote_claim(PendingRemoteClaim {
+                                provider,
+                                keeper: keeper.clone(),
+                                op_id: op_id.clone(),
+                                account: None,
+                                credit: None,
+                                family: family.to_owned(),
+                                at: t,
+                                tried_at: t,
+                            })
+                            .await
+                            .is_err()
+                        {
+                            continue;
+                        }
+                        let ask = ClaimAsk::For { provider, family: family.to_owned(), op_id: op_id.clone(), timeout_secs: Some(90), reconcile_only: false, observed };
+                        match claimer(keeper.clone(), ask).await {
+                            Ok(claim) => {
+                                self.clear_pending_remote_claim(provider, &op_id).await;
+                                self.keeper_unreachable.lock().unwrap().remove(&keeper);
+                                if let Some(ready) = self.apply_remote_claim(&keeper, claim, family, tried) {
+                                    return RedeemOutcome::Ready(ready);
+                                }
+                                // Keeper said AlreadyReady for an account we already
+                                // tried / can't use -> throttle probes for this family.
+                                self.remote_claim_tried.lock().unwrap().insert((keeper, provider, family.to_owned()), now());
+                            }
+                            Err(Claimed::Unsupported(_)) => {
+                                self.clear_pending_remote_claim(provider, &op_id).await;
+                                legacy_keepers.push(keeper);
+                                match self.redeem_locked(&id, Some(&credit), Why::Blocked(family.to_owned()), true, None, None, false).await {
+                                    Ok(info) => return RedeemOutcome::Ready(info.account),
+                                    Err(Claimed::Refused(_)) => refused.push(id),
+                                    Err(Claimed::NotNow(_) | Claimed::Unsupported(_) | Claimed::NoRecord(_) | Claimed::Unreachable(_)) => {}
+                                    Err(_) => return RedeemOutcome::ResetWaits,
+                                }
+                            }
+                            Err(Claimed::Unclear(e)) => {
+                                tracing::warn!("pool: redeeming a reset credit on {keeper}: {e}");
+                                // PendingRemoteClaim is already persisted on disk.
+                                return RedeemOutcome::ResetWaits;
+                            }
+                            Err(Claimed::Unreachable(e)) => {
+                                self.clear_pending_remote_claim(provider, &op_id).await;
+                                tracing::info!("pool: {keeper} couldn’t be reached for a reset credit: {e}");
+                                self.keeper_unreachable.lock().unwrap().insert(keeper.clone(), now());
+                                if !unreachable_keepers.contains(&keeper) {
+                                    unreachable_keepers.push(keeper);
+                                }
+                            }
+                            Err(e) => {
+                                self.clear_pending_remote_claim(provider, &op_id).await;
+                                tracing::info!("pool: {keeper} couldn’t claim a reset credit: {e}; the next");
+                                self.remote_claim_tried.lock().unwrap().insert((keeper, provider, family.to_owned()), now());
+                            }
+                        }
+                    }
+                }
+            }
+            // If cached local candidates all failed definitively, perform ONE
+            // bounded stale-credit refresh so newly issued local grants can still rescue.
+            if tried_any_local && !refreshed_local {
+                refreshed_local = true;
+                self.refresh_credits_if_stale(provider, family).await;
+                if let Some(ready) = self.pick_available(provider, family, tried, &refused, &[], false) {
+                    return RedeemOutcome::Ready(ready);
+                }
+                continue;
+            }
+            break;
+        }
+        // Even if this borrower's local credit cache was empty/stale, ask any
+        // remaining keeper once (throttled per keeper+provider+family to 60 s).
+        let keepers: Vec<String> = {
+            let p = self.pool.lock().unwrap();
+            let mut out = Vec::new();
+            for a in p.saved.accounts.iter().filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none()) {
+                if let Some(k) = &a.kept_on
+                    && !tried_keepers.contains(k)
+                    && !out.contains(k)
+                {
+                    out.push(k.clone());
+                }
+            }
+            out
+        };
+        for keeper in keepers {
+            if let Some(ready) = self.pick_available(provider, family, tried, &refused, &[], false) {
+                return RedeemOutcome::Ready(ready);
+            }
+            if is_unreachable_cached(&keeper) {
+                if !unreachable_keepers.contains(&keeper) {
+                    unreachable_keepers.push(keeper);
+                }
+                continue;
+            }
+            if is_probe_throttled(&keeper) {
+                continue;
+            }
+            let op_id = crate::store::new_uuid();
+            let observed = self.observed_limits_for(provider, &keeper, family);
+            let t = now();
+            if self
+                .persist_pending_remote_claim(PendingRemoteClaim { provider, keeper: keeper.clone(), op_id: op_id.clone(), account: None, credit: None, family: family.to_owned(), at: t, tried_at: t })
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            let ask = ClaimAsk::For { provider, family: family.to_owned(), op_id: op_id.clone(), timeout_secs: Some(90), reconcile_only: false, observed };
+            match claimer(keeper.clone(), ask).await {
+                Ok(claim) => {
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    self.keeper_unreachable.lock().unwrap().remove(&keeper);
+                    if let Some(ready) = self.apply_remote_claim(&keeper, claim, family, tried) {
+                        return RedeemOutcome::Ready(ready);
+                    }
+                    self.remote_claim_tried.lock().unwrap().insert((keeper, provider, family.to_owned()), now());
+                }
+                Err(Claimed::Unsupported(_)) => {
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    // Legacy v1 host with empty cache here: nothing cached to claim.
+                    self.remote_claim_tried.lock().unwrap().insert((keeper, provider, family.to_owned()), now());
+                }
+                Err(Claimed::Unclear(e)) => {
+                    tracing::warn!("pool: redeeming a reset credit on {keeper}: {e}");
+                    return RedeemOutcome::ResetWaits;
+                }
+                Err(Claimed::Unreachable(e)) => {
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    tracing::info!("pool: {keeper} couldn’t be reached for a reset credit: {e}");
+                    self.keeper_unreachable.lock().unwrap().insert(keeper.clone(), now());
+                    if !unreachable_keepers.contains(&keeper) {
+                        unreachable_keepers.push(keeper);
+                    }
+                }
+                Err(e) => {
+                    self.clear_pending_remote_claim(provider, &op_id).await;
+                    tracing::info!("pool: {keeper} had no reset credit to claim: {e}");
+                    self.remote_claim_tried.lock().unwrap().insert((keeper, provider, family.to_owned()), now());
                 }
             }
         }
-        // (A refusal as the account wasn't out after all, a window having
-        // reset by itself: read again, it serves.)
-        available(&refused)
+        if let Some(ready) = self.pick_available(provider, family, tried, &refused, &[], false) {
+            return RedeemOutcome::Ready(ready);
+        }
+        // Only hold off usage credits (`ResetWaits`) for an unreachable keeper
+        // when we actually know a claimable reset credit waits on that keeper.
+        let t = now();
+        let waiting_on_unreachable = !unreachable_keepers.is_empty()
+            && self
+                .pool
+                .lock()
+                .unwrap()
+                .saved
+                .accounts
+                .iter()
+                .any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.kept_on.as_ref().is_some_and(|k| unreachable_keepers.contains(k)) && a.claim_for(family, t).is_some());
+        if waiting_on_unreachable { RedeemOutcome::ResetWaits } else { RedeemOutcome::None }
     }
 
     /// Claim credits that would otherwise expire unused, each at its best
     /// moment (`Account::expiring_claim`). At most once a minute per
-    /// account; none from a copy that has handed over.
+    /// account; only for accounts this pool keeps (`kept_on.is_none()`, so
+    /// two pools never claim the same reset); none from a copy that has
+    /// handed over or a host paired with a legacy v1 desktop.
     async fn spend_expiring(&self) {
-        // (A host's pool claims nothing by itself: two pools would
-        // claim the same reset.)
-        if self.drain.retired() || self.is_hosted() {
+        if self.drain.retired() {
             return;
         }
         let t = now();
         let due: Vec<(String, String)> = {
             let p = self.pool.lock().unwrap();
+            if self.is_hosted() && p.saved.legacy_desktop_claims {
+                return;
+            }
             p.saved
                 .accounts
                 .iter()
-                .filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
+                .filter(|a| a.enabled && a.signed_out.is_none() && a.kept_on.is_none() && a.reauth_pending_host.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
+                .filter(|a| !p.saved.pending_remote_claims.iter().any(|r| r.provider == a.provider))
                 .filter_map(|a| a.expiring_claim(t).map(|c| (a.id.clone(), c.id.clone())))
                 .collect()
         };
@@ -1309,7 +2625,7 @@ impl Shared {
             return;
         }
         let t = now();
-        let accounts: Vec<(String, Provider)> = {
+        let accounts: Vec<(String, Provider, bool)> = {
             let p = self.pool.lock().unwrap();
             let due = self.due.lock().unwrap();
             p.saved
@@ -1317,11 +2633,13 @@ impl Shared {
                 .iter()
                 .filter(|a| only.is_none_or(|o| o == a.id) && (only.is_some() || a.enabled) && a.signed_out.is_none())
                 .filter(|a| only.is_some() || due.get(&a.id).is_none_or(|(at, _)| *at <= t))
-                .map(|a| (a.id.clone(), a.provider))
+                .map(|a| (a.id.clone(), a.provider, a.provider == Provider::Claude && !Self::valid_claude_org(a.org.as_deref())))
                 .collect()
         };
-        for (id, provider) in accounts {
+        for (id, provider, needs_org) in accounts {
             let revision = self.pool.lock().unwrap().reset_revision(&id);
+            let sgen = self.sync_gen(&id);
+            let seq = self.begin_sync_seq(&id);
             let Ok(cred) = self.fresh(&id, provider, None, 600).await else { continue };
             let like = self.like(&id);
             let report = match upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
@@ -1346,35 +2664,62 @@ impl Shared {
                 due.insert(id.clone(), next);
             }
             let credits_due = only.is_some() || self.credits_due.lock().unwrap().get(&id).is_none_or(|&at| at <= now());
-            let credits = match &report {
+            let credits_cred = match &report {
                 Ok(_) if credits_due => {
                     self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
                     self.fresh(&id, provider, None, 60).await.ok()
                 }
                 _ => None,
             };
-            let credits = match credits {
-                Some(c) => upstream::credits(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await.ok(),
+            let profile_allowed = needs_org && self.profile_tried.lock().unwrap().get(&id).is_none_or(|&at| now() - at >= 3600);
+            let fetched_org = if profile_allowed && let Some(c) = &credits_cred {
+                match upstream::profile_org(&self.client_for(&id), &self.up, c, like.as_ref()).await {
+                    Ok(Some(o)) if Self::valid_claude_org(Some(&o)) => Some(o),
+                    _ => {
+                        self.profile_tried.lock().unwrap().insert(id.clone(), now());
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            let credits = match credits_cred {
+                Some(c) => {
+                    self.credits_fetched.lock().unwrap().insert(id.clone(), now());
+                    match upstream::credits(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await {
+                        Ok(c) => Some(c),
+                        Err(e) => {
+                            tracing::warn!("pool: reading reset credits for {id}: {e}");
+                            None
+                        }
+                    }
+                }
                 None => None,
             };
+            if self.sync_gen(&id) != sgen || !self.commit_sync_seq(&id, seq) {
+                continue;
+            }
             let mut p = self.pool.lock().unwrap();
             if p.reset_revision(&id) != revision {
                 continue;
             }
             let Some(a) = p.account_mut(&id) else { continue };
+            if let Some(org) = fetched_org {
+                a.org = Some(org);
+            }
             if let Some(c) = credits {
                 a.credits = c;
             }
             match report {
                 Ok((windows, plan)) => {
-                    // The report is the truth; a rejection's per-model
-                    // window stays until it resets.
+                    // The report is the truth; preserve per-model windows AND
+                    // any unexpired exhausted header window (e.g. `five_hour`)
+                    // omitted from a sparse report until it resets or the report
+                    // explicitly shows headroom (< 100%).
                     let t = now();
-                    // (An allowance the report shows back, a reset claimed
-                    // by another pool of these accounts: no longer taken
-                    // as answered from usage credits.)
                     a.paid_settled(Some(&windows), t);
-                    a.windows.retain(|w| w.name.starts_with("model:") && w.resets_at.is_some_and(|r| r > t));
+                    let fresh_ok = |name: &str| windows.iter().any(|w| w.name == name && w.used < 100.0);
+                    a.windows.retain(|w| w.resets_at.is_some_and(|r| r > t) && (w.name.starts_with("model:") || (w.used >= 100.0 && !fresh_ok(&w.name))));
                     a.merge_windows(windows);
                     if plan.is_some() {
                         a.plan = plan;
@@ -1563,7 +2908,7 @@ pub fn status_json(p: &Pool) -> Value {
             json!({
                 "id": a.id, "name": a.name, "provider": a.provider, "enabled": a.enabled,
                 "email": a.email, "plan": a.plan, "signed_out": a.signed_out,
-                "reset_credits": a.credits.iter().map(|c| json!({"remaining": c.remaining, "usable": c.usable, "expires_at": c.expires_at})).collect::<Vec<_>>(),
+                "reset_credits": a.credits.iter().map(|c| json!({"remaining": c.remaining, "usable": c.usable, "needs_limit": c.needs_limit, "unavailable_reason": c.unavailable_reason, "expires_at": c.expires_at})).collect::<Vec<_>>(),
                 "blocked_until": schedule::blocked_until(a, "", t),
                 // (Its allowance out, its provider answering from usage
                 // credits until then: the last the pool turns to.)
@@ -1669,21 +3014,55 @@ pub enum Why {
 }
 
 /// A claim that didn't reset: refused (nothing spent), not made now (not
-/// needed, not allowed, not kept first), or unclear (it may have gone: the
-/// same claim is made again first).
+/// needed, not allowed, not kept first), no record (keeper explicitly confirmed
+/// an `op_id` never ran), unreachable (pre-delivery transport/service failure),
+/// or unclear (it may have gone: the same claim is reconciled first).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Claimed {
     Refused(String),
     NotNow(String),
+    /// Keeper explicitly confirmed a `reconcile_only` `op_id` has no record
+    /// (did not spend a credit); safe for the borrower to clear pending state.
+    NoRecord(String),
+    /// Failed before delivery to the keeper (SSH refused/unreachable or service
+    /// not running); safe to clear an unsent pre-persisted op on initial send,
+    /// NEVER safe to clear an already-unclear pending op on reconcile.
+    Unreachable(String),
     Unclear(String),
+    /// The remote keeper is an older host (`version < 2`) that does not
+    /// implement `Ask::Redeem`; the borrower may fall back to direct claiming.
+    Unsupported(String),
 }
 
 impl std::fmt::Display for Claimed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Claimed::Refused(e) | Claimed::NotNow(e) | Claimed::Unclear(e) => f.write_str(e),
+            Claimed::Refused(e) | Claimed::NotNow(e) | Claimed::NoRecord(e) | Claimed::Unreachable(e) | Claimed::Unclear(e) | Claimed::Unsupported(e) => f.write_str(e),
         }
     }
+}
+
+/// Outcome of attempting to free an account via reset credits on exhaustion.
+enum RedeemOutcome {
+    Ready(String),
+    ResetWaits,
+    None,
+}
+
+/// Outcome of a local kept-account reset claim pass.
+enum KeptOutcome {
+    Redeemed(RedeemedInfo),
+    Ready(String),
+    None,
+}
+
+struct RedeemedInfo {
+    account: String,
+    credit_id: String,
+    reset_id: Option<String>,
+    cleared_shared: bool,
+    cleared_models: Vec<String>,
+    cleared_windows: Vec<String>,
 }
 
 /// What a request for one account carries of its own (`Shared::own`).
@@ -1850,6 +3229,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
     // request goes to one its provider answers from usage credits, the
     // last the pool turns to (never before another account or a reset).
     let mut on_credits = false;
+    let mut reset_retries = 0u8;
     loop {
         // Choose, and count it as busy at once.
         let chosen = {
@@ -1888,26 +3268,25 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             }
             Err((any, retry)) => {
                 // Every account out: a reset credit keeps things going if an
-                // account with a working sign-in can redeem one.
-                if any
-                    && !on_credits
-                    && let Some(id) = s.redeem_for(provider, &family, &tried).await
-                {
-                    tried.remove(&id);
-                    continue;
+                // account with a working sign-in can redeem one (bounded so a
+                // misbehaving upstream or stale peer can never loop).
+                let mut reset_waits = false;
+                if any && !on_credits && reset_retries < 4 {
+                    match s.redeem_for(provider, &family, &tried).await {
+                        RedeemOutcome::Ready(id) => {
+                            reset_retries += 1;
+                            tried.remove(&id);
+                            continue;
+                        }
+                        RedeemOutcome::ResetWaits => reset_waits = true,
+                        RedeemOutcome::None => {}
+                    }
                 }
                 // Nothing with allowance, no reset to claim: an account
                 // its provider answers from usage credits, if there is
                 // one (the next turn of the loop finds it, or none).
-                // (A host's pool claims no reset itself, the desktop's
-                // does: where one waits that would let this request
-                // through, usage credits aren't spent ahead of it. The
-                // client is told all are out, and that a reset waits.)
-                let reset_waits = any && s.is_hosted() && {
-                    let p = s.pool.lock().unwrap();
-                    let t = now();
-                    p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.claim_for(&family, t).is_some())
-                };
+                // Usage credits are held back only when a reset waits on an
+                // unreachable/unclear keeper or an unresolved pending claim.
                 if any && !on_credits && !reset_waits {
                     let waiting = s.pool.lock().unwrap().pick_paid(provider, &family, None, &tried).map(|a| a.name.clone());
                     if let Some(name) = waiting {
@@ -1924,10 +3303,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 }
                 return if any {
                     let msg = if reset_waits {
-                        format!(
-                            "Every {} account in the pool is out of quota for now. A reset credit waits: Token Pool on your desktop claims it (this host’s pool claims none itself).",
-                            provider.client()
-                        )
+                        format!("Every {} account in the pool is out of quota for now. A reset credit waits on the pool that keeps its sign-in.", provider.client())
                     } else {
                         format!("Every {} account in the pool is out of quota for now.", provider.client())
                     };
@@ -2246,6 +3622,7 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
     let offer: Vec<&str> = offer.iter().map(String::as_str).collect();
     let mut tried: HashMap<String, u64> = HashMap::new();
     let mut network_tries = 0;
+    let mut reset_retries = 0u8;
     let mut refresh_error: Option<String> = None;
     loop {
         let chosen = {
@@ -2270,7 +3647,11 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
         let (id, name, mut revision) = match chosen {
             Ok(c) => c,
             Err((any, retry)) => {
-                if any && let Some(id) = s.redeem_for(provider, &family, &tried).await {
+                if any
+                    && reset_retries < 4
+                    && let RedeemOutcome::Ready(id) = s.redeem_for(provider, &family, &tried).await
+                {
+                    reset_retries += 1;
                     tried.remove(&id);
                     continue;
                 }

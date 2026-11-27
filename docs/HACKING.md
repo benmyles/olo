@@ -26963,12 +26963,25 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   reset is claimed here, when the provider's report lists the meter as
   not used up (a reset claimed by another pool of the same accounts:
   `Account::paid_settled`), or at the first answer that comes within
-  the allowance again. A host's pool claims no reset itself: where one
-  waits that would let the request through, it spends no credits
-  ahead of it and answers that all are out and a reset waits for the
-  desktop's pool (which doesn't yet claim for a host that is out:
-  TODO). One answer is paid for each time an account tips over, with
-  those under way beside it: Claude says so only in the answer. The
+  the allowance again. Each account's reset credits are claimed by the
+  pool that keeps its sign-in (`kept_on.is_none()`, whether the desktop
+  or a Rex host); a borrower delegates automatic and manual claims to
+  that keeper (`host::VERSION = 2`, `host::Ask::Redeem`, `Claimer`)
+  with durable `op_id` deduplication/reconciliation (persisted before
+  dispatch on the borrower and committed atomically with `a.redeeming`
+  on the keeper), relative `timeout_secs`, borrower-observed exhaustion
+  limits (`ObservedLimit`), and distinct `RemoteClaim::{Redeemed,
+  AlreadyReady}` (carrying `ClearedScope`) and `Claimed::{NoRecord,
+  Unreachable}` replies. Only when a waiting reset's keeper is
+  unreachable (with a known waiting credit) or an in-flight claim is
+  unclear does the borrower hold off usage credits and answer that a
+  reset waits; during rolling upgrades, a v2 desktop falls back to
+  direct claiming against a v1 host (`Claimed::Unsupported`) and a v2
+  host loaded from a v1 vault (`legacy_desktop_claims` defaulting true
+  on deserialize) defers to a v1 desktop until carried with
+  `host_claims: true`. One answer is paid
+  for each time an account tips over, with those under way beside it:
+  Claude says so only in the answer. The
   window's card says of such an account "Out of quota until …" and "Its
   usage credits are used only when no other account can serve and no
   reset can be claimed."; `/pool/status` has `paid_until` and
@@ -27274,12 +27287,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     undefined at the link). `serve` runs it (Claude Code and Codex
     there pointed at it as it first starts), `ctl` puts one line of
     JSON to it and writes the answer (`host::Ask`: status, carry,
-    lend, give back, stop), over a socket in the account's own state
+    lend, give back, redeem, stop), over a socket in the account's own state
     folder: no port, no token. It serves through its proxy alone
     (which knows the program asking is the account's own Claude Code
-    or Codex), not by address, since a host has other people on it;
-    and it claims no reset credits by itself (the desktop's pool
-    does: two pools would claim the same one).
+    or Codex), not by address, since a host has other people on it. It
+    captures its own installed clients (`capture::follow`, via Linux
+    inotify with zero idle CPU) and claims reset credits autonomously
+    for every account whose sign-in it keeps (`kept_on.is_none()`),
+    also answering `host::Ask::Redeem` from the desktop under the same
+    per-provider `claims_gate` so two pools never double-claim.
   - *Upgraded without a gap* (`host::Ask::Upgrade`, `host::hand_over`;
     Ben, 2026-11-25: "when upgrading olo it seems to sever the token
     pool connection and claude often does 'API Error: Connection lost
@@ -27738,7 +27754,22 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   a claim only what it reset starts again, and only the waits it lifts
   end; a Claude 429 marks the meter it names used up until its reset.
   Claude's claims need the account's organization (`organizationUuid`,
-  read at sign-in). Codex's count is ChatGPT's (`available_count`),
+  read at sign-in and healed from `/api/oauth/profile` with Claude
+  Code's `claude-code/…` `User-Agent` and no `anthropic-beta` if
+  missing, validated before persisting `redeeming` so a missing org
+  never strands a pending claim). Uncaptured fallback Claude usage and
+  reset calls send the CLI `User-Agent` (`claude-cli/… (external,
+  cli)`) so Anthropic returns `cedar_ember` grants instead of
+  `ineligible_reason: "surface"`; grants with `use_requires_limit:
+  true` cached with `unavailable_reason: None | Some("needs_limit")`
+  stay eligible once their limit is hit
+  (`ResetCredit::usable_at_limit`), and exhaustion refreshes stale
+  credit caches (throttled to 60 s, stopping once a candidate is found)
+  before falling back to 429. `host::serve_at` dispatches `Lend`,
+  `GiveBack`, and `Redeem` onto worker threads so slow claims never
+  block `Status`, `Carry`, `Upgrade`, or `Stop`, and `host::hand_over`
+  holds `claims_closed` from before the final flush through
+  `drain.retire()`. Codex's count is ChatGPT's (`available_count`),
   either way: its list of details shorter at times (the rest ChatGPT's
   own choice), or longer (the soonest to expire of them). The pool's
   polls of Codex's quota are the reads Codex makes on its own (its app

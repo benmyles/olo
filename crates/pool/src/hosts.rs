@@ -27,9 +27,9 @@ use olo_rex_client::{SshSessionPool, SshTarget};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::gateway::{Carried, Hosting, Lender, Shared};
+use crate::gateway::{Carried, ClaimAsk, Claimed, Claimer, Hosting, Lender, Shared};
 use crate::host::Ask;
-use crate::model::{Credential, now};
+use crate::model::{Credential, RemoteClaim, now};
 
 /// The host's program, built for one kind of host.
 #[derive(Clone, Copy, Debug)]
@@ -148,6 +148,16 @@ impl Hosts {
             })
         });
         shared.set_lender(Some(lender));
+        // Reset credit claims for accounts kept on a host: delegated to its keeper.
+        let weak = Arc::downgrade(&hosts);
+        let claimer: Claimer = Arc::new(move |host, ask| {
+            let weak = weak.clone();
+            Box::pin(async move {
+                let hosts = weak.upgrade().ok_or_else(|| Claimed::NotNow("the pool is closing".into()))?;
+                hosts.redeem(&host, ask).await
+            })
+        });
+        shared.set_claimer(Some(claimer));
         shared.set_hosting(Some(hosts.clone() as Arc<dyn Hosting>));
         // The accounts changed here: carried, a moment after.
         let weak = Arc::downgrade(&hosts);
@@ -245,15 +255,28 @@ impl Hosts {
         Ok((ran.ok(), ran.output))
     }
 
+    /// One thing sent to the host's `olo-pool-host ctl`, returning `(ok, last_line)`
+    /// or the raw [`olo_rex_client::RexError`] so callers can distinguish pre-delivery
+    /// transport failures from ambiguous post-delivery drops.
+    async fn ctl_raw(&self, target: &SshTarget, ask: &Ask) -> Result<(bool, String), olo_rex_client::RexError> {
+        let line = serde_json::to_string(ask).map_err(|e| olo_rex_client::RexError::Ssh(e.to_string()))?;
+        let ran = self.ssh.put(target, None, &format!("\"$HOME\"/{DIR}/olo-pool-host ctl"), line.as_bytes()).await?;
+        let last = ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().to_owned();
+        Ok((ran.ok(), last))
+    }
+
+    /// One thing sent to the host's `olo-pool-host ctl`, returning `(ok, last_line)`.
+    async fn ctl(&self, target: &SshTarget, ask: &Ask) -> Result<(bool, String), String> {
+        self.ctl_raw(target, ask).await.map_err(said)
+    }
+
     /// One thing asked of the host's pool, and its answer.
     async fn ask(&self, target: &SshTarget, ask: &Ask) -> Result<Value, String> {
-        let line = serde_json::to_string(ask).map_err(|e| e.to_string())?;
-        let (ok, said) = self.run(target, &format!("\"$HOME\"/{DIR}/olo-pool-host ctl"), Some(line.as_bytes())).await?;
-        let last = said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default();
+        let (ok, last) = self.ctl(target, ask).await?;
         if !ok {
             return Err(if last.is_empty() { "The Token Pool there didn’t answer.".to_owned() } else { last.trim_start_matches("olo-pool-host: ").to_owned() });
         }
-        let answer: Value = serde_json::from_str(last).map_err(|_| "The Token Pool there answered something else.".to_owned())?;
+        let answer: Value = serde_json::from_str(&last).map_err(|_| "The Token Pool there answered something else.".to_owned())?;
         match answer["error"].as_str() {
             Some(why) => Err(why.to_owned()),
             None => Ok(answer),
@@ -264,6 +287,41 @@ impl Hosts {
         let target = self.target(host)?;
         let answer = self.ask(&target, &Ask::Lend { id: id.to_owned(), at_least }).await?;
         serde_json::from_value(answer["credential"].clone()).map_err(|_| "The Token Pool there lent nothing.".to_owned())
+    }
+
+    /// Whether `host`'s last reported status is a legacy v1 pool that does not
+    /// implement `Ask::Redeem`.
+    fn known_legacy(&self, host: &str) -> bool {
+        let st = self.state.lock().unwrap();
+        let Some(status) = st.live.get(host).and_then(|l| l.status.as_ref()) else { return false };
+        status["version"].as_u64().is_some_and(|v| v < 2) && status["redeems"].as_bool() != Some(true)
+    }
+
+    async fn redeem(&self, host: &str, ask: ClaimAsk) -> Result<RemoteClaim, Claimed> {
+        if self.known_legacy(host) {
+            return Err(Claimed::Unsupported("This host runs an older Token Pool that doesn’t support remote reset claiming.".into()));
+        }
+        let target = self.target(host).map_err(Claimed::Unreachable)?;
+        let req = match ask {
+            ClaimAsk::Account { id, credit, op_id, timeout_secs, reconcile_only, observed } => {
+                Ask::Redeem { id: Some(id), credit, provider: None, family: None, op_id: Some(op_id), timeout_secs, reconcile_only, observed }
+            }
+            ClaimAsk::For { provider, family, op_id, timeout_secs, reconcile_only, observed } => {
+                Ask::Redeem { id: None, credit: None, provider: Some(provider), family: Some(family), op_id: Some(op_id), timeout_secs, reconcile_only, observed }
+            }
+        };
+        let (ok, last) = match self.ctl_raw(&target, &req).await {
+            Ok(res) => res,
+            Err(e) => return Err(classify_ssh_redeem_error(e)),
+        };
+        if !ok {
+            let why = if last.is_empty() { "The Token Pool there didn’t answer.".to_owned() } else { last.trim_start_matches("olo-pool-host: ").to_owned() };
+            if why.contains("The Token Pool isn’t running here") {
+                return Err(Claimed::Unreachable(why));
+            }
+            return Err(Claimed::Unclear(why));
+        }
+        parse_redeem_reply(&last)
     }
 
     /// What decides whether a host has what is here: the accounts as
@@ -284,7 +342,7 @@ impl Hosts {
     /// The accounts carried to host `id` now, and how it took them.
     async fn carry(&self, id: &str) -> Result<(), String> {
         let target = self.target(id)?;
-        let carried = self.shared.carry_to(id, "this computer");
+        let carried = self.shared.carry_to_checked(id, "this computer").await;
         let status = self.ask(&target, &Ask::Carry { carried }).await?;
         self.shared.handed_over(id, &status);
         let unaccepted = self.shared.unaccepted_handovers(id);
@@ -577,6 +635,41 @@ impl Hosts {
     }
 }
 
+/// Distinguish SSH failures that happened BEFORE stdin could be delivered to
+/// `olo-pool-host ctl` (`Unreachable`: connect refused, auth refused, unknown
+/// host key, exec setup failed) from failures AFTER delivery started
+/// (`Unclear`: timeout, write/EOF drop mid-command).
+pub(crate) fn classify_ssh_redeem_error(e: olo_rex_client::RexError) -> Claimed {
+    use olo_rex_client::RexError;
+    match &e {
+        RexError::SshRefused(_) | RexError::SshHostUnknown(_) | RexError::Io(_) => Claimed::Unreachable(said(e)),
+        RexError::Ssh(msg) if !msg.starts_with("sending to ") => Claimed::Unreachable(said(e)),
+        _ => Claimed::Unclear(said(e)),
+    }
+}
+
+/// Parse the JSON line returned by `olo-pool-host ctl` for `Ask::Redeem`.
+/// Unknown or missing error `kind`, malformed JSON, or missing outcome fields
+/// are always treated as [`Claimed::Unclear`] so the borrower reconciles by
+/// `op_id` rather than risking a second spend.
+pub(crate) fn parse_redeem_reply(last: &str) -> Result<RemoteClaim, Claimed> {
+    let answer: Value = serde_json::from_str(last).map_err(|_| Claimed::Unclear("The Token Pool there answered something else.".to_owned()))?;
+    if let Some(why) = answer["error"].as_str() {
+        if why.starts_with("not understood") {
+            return Err(Claimed::Unsupported(why.to_owned()));
+        }
+        return Err(match answer["kind"].as_str() {
+            Some("refused") => Claimed::Refused(why.to_owned()),
+            Some("not_now") => Claimed::NotNow(why.to_owned()),
+            Some("no_record") => Claimed::NoRecord(why.to_owned()),
+            Some("unreachable") => Claimed::Unreachable(why.to_owned()),
+            // `"unclear"` or any unknown/missing `kind`: assume ambiguous!
+            _ => Claimed::Unclear(why.to_owned()),
+        });
+    }
+    serde_json::from_value::<RemoteClaim>(answer).map_err(|_| Claimed::Unclear("The Token Pool there answered without a valid reset outcome.".to_owned()))
+}
+
 impl Hosting for Hosts {
     fn list(&self) -> Value {
         json!({ "hosts": Hosts::list(self) })
@@ -616,7 +709,9 @@ fn last(said: &str) -> String {
 pub(crate) fn service_script(name: &str) -> String {
     format!(
         "set -e; d=\"$HOME\"/{DIR}; ln -sfn {name} \"$d/olo-pool-host\"; \
-             up=0; if echo '{{\"do\":\"upgrade\"}}' | \"$d/olo-pool-host\" ctl 2> /dev/null | grep -q '\"upgrading\"'; then up=1; \
+             up=0; out=$(echo '{{\"do\":\"upgrade\"}}' | \"$d/olo-pool-host\" ctl 2> /dev/null || true); \
+             if echo \"$out\" | grep -q '\"upgrading\"'; then up=1; \
+             elif echo \"$out\" | grep -q '\"deferred\"'; then echo 'reset claim in progress; upgrade deferred'; exit 6; \
              else echo '{{\"do\":\"stop\"}}' | \"$d/olo-pool-host\" ctl > /dev/null 2>&1 || true; fi; \
              export XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"; \
              if command -v systemctl > /dev/null 2>&1 && systemctl --user show-environment > /dev/null 2>&1; then \
@@ -635,16 +730,46 @@ mod service_tests {
     use super::*;
 
     /// The program there is asked to hand over before anything is stopped,
-    /// and the service restarted only where it couldn't (one from before
-    /// `upgrade`, or none running): a stream through the host was cut at
-    /// every upgrade of the desktop's pool (Ben, 2026-11-25).
+    /// aborts without stopping when a claim defers upgrade, and restarts the
+    /// service only where handover couldn't run (one from before `upgrade`,
+    /// or none running).
     #[test]
     fn the_service_is_handed_over_before_it_is_stopped() {
         let s = service_script("olo-pool-host-abc");
-        let (upgrade, stop, restart) = (s.find(r#"{"do":"upgrade"}"#).unwrap(), s.find(r#"{"do":"stop"}"#).unwrap(), s.find("systemctl --user restart").unwrap());
-        assert!(upgrade < stop && stop < restart, "{s}");
+        let (upgrade, deferred, stop, restart) =
+            (s.find(r#"{"do":"upgrade"}"#).unwrap(), s.find(r#""deferred""#).unwrap(), s.find(r#"{"do":"stop"}"#).unwrap(), s.find("systemctl --user restart").unwrap());
+        assert!(upgrade < deferred && deferred < stop && stop < restart, "{s}");
         assert!(s.contains("[ $up = 1 ] || systemctl --user restart") && s.contains("elif [ $up = 0 ]; then (setsid nohup"), "{s}");
         assert!(s.contains("ln -sfn olo-pool-host-abc"), "{s}");
+    }
+
+    #[test]
+    fn redeem_wire_replies_classify_legacy_definitive_and_unclear() {
+        assert!(matches!(
+            parse_redeem_reply(r#"{"outcome":"redeemed","redeemed":true,"account":"a","credit_id":"g1","cleared_shared":true}"#),
+            Ok(RemoteClaim::Redeemed { ref account, ref credit_id, cleared_shared: true, .. }) if account == "a" && credit_id == "g1"
+        ));
+        assert!(matches!(
+            parse_redeem_reply(r#"{"outcome":"already_ready","redeemed":false,"account":"b"}"#),
+            Ok(RemoteClaim::AlreadyReady { ref account, .. }) if account == "b"
+        ));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"not understood: unknown variant `redeem`"}"#), Err(Claimed::Unsupported(_))));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"refused","kind":"refused"}"#), Err(Claimed::Refused(_))));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"none left","kind":"not_now"}"#), Err(Claimed::NotNow(_))));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"no record","kind":"no_record"}"#), Err(Claimed::NoRecord(_))));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"down","kind":"unreachable"}"#), Err(Claimed::Unreachable(_))));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"timed out","kind":"unclear"}"#), Err(Claimed::Unclear(_))));
+        // Unknown or missing kind, or corrupt JSON, MUST map to Unclear (never NotNow).
+        assert!(matches!(parse_redeem_reply(r#"{"error":"mystery","kind":"future"}"#), Err(Claimed::Unclear(_))));
+        assert!(matches!(parse_redeem_reply(r#"{"error":"plain"}"#), Err(Claimed::Unclear(_))));
+        assert!(matches!(parse_redeem_reply("not json"), Err(Claimed::Unclear(_))));
+        // Pre-delivery SSH errors classify as Unreachable; post-delivery drops/timeouts stay Unclear.
+        assert!(matches!(classify_ssh_redeem_error(olo_rex_client::RexError::SshRefused("u@h:22".into())), Claimed::Unreachable(_)));
+        assert!(matches!(classify_ssh_redeem_error(olo_rex_client::RexError::SshHostUnknown("h:22".into())), Claimed::Unreachable(_)));
+        assert!(matches!(classify_ssh_redeem_error(olo_rex_client::RexError::Io(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused"))), Claimed::Unreachable(_)));
+        assert!(matches!(classify_ssh_redeem_error(olo_rex_client::RexError::Ssh("exec on h failed: closed".into())), Claimed::Unreachable(_)));
+        assert!(matches!(classify_ssh_redeem_error(olo_rex_client::RexError::Ssh("sending to h failed: eof".into())), Claimed::Unclear(_)));
+        assert!(matches!(classify_ssh_redeem_error(olo_rex_client::RexError::Timeout), Claimed::Unclear(_)));
     }
 
     /// The script, written to `OLO_POOL_SCRIPT_OUT` for a try on a host of
