@@ -13,6 +13,33 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **Paused on Ben's word, 2026-11-27 19:50 UTC, for a handover.** What
+  was in hand, in the order it is owed:
+  - **Update 11 is not published.** On the lead's branch and not
+    pushed (origin/main is update 10, `1d5067e45`): the screenshot
+    card (`64df6b665`, `f680a95ec`: reviewed twice, answered);
+    `tools/dev/agents say` (`e08ab640d`); "a question is answered
+    once" (`121b9a3fd`, and `d83fe39a8` answering its review); the
+    registry written one write at a time (`f1b5e9267`); a save to a
+    host put in place only when whole (`40e7b92e5`). Its notes are
+    written (`/var/tmp/olo-hs/notes-update11.md`). Owed before it goes
+    out: (1) **the confirming review of `d83fe39a8`** (Astra 6.2,
+    `/var/tmp/olo-reviews/astra-3a59dc8fd0/astra-review.md`: "Hold the
+    change", twenty-one findings and five on its tests) has been read
+    by nobody against the code: each is a claim until made to happen;
+    what is real is fixed with a test that fails first, and then no
+    further review; (2) **one code review of `f1b5e9267` and
+    `40e7b92e5`**, which have had none; (3) the other lead's note at
+    least twenty minutes before this host's agents service is handed
+    to it (CLAUDE.md, "Leave the host's agents alone too").
+  - **Agent Screens for Rex hosts**: the entry of that name below.
+  - What the reviews of the answering code keep finding is one thing
+    in many places: several tasks read a child's screen and type into
+    it, each with a flag to say so. Three passes have each closed what
+    was found and been shown more. Worth deciding before a fourth: one
+    task a child that alone reads its screen in order and types into
+    it, the others asking it.
+
 - ~~**Five small things Ben asked for, 2026-11-26 evening**~~ All done
   the same evening (About Olo's stale offer and "Reload"; the pointer's
   shape in a window opened under it; a row's tip always waits; the
@@ -1330,14 +1357,66 @@ something nobody here has is in "Blocked", with what it waits for.
   host's screens served live"; the design and the builders' reports are
   under `/var/tmp/olo-agents/screens/` and `/var/tmp/olo-agents/
   hostside/` while it is built).
-  - Next, in order: Agent Screens shows connected hosts' screens (the
-    Rex Screens socket's types, a stand-in for Rex, the sidebar's
-    sections: in hand); Rex's client end for screen streams
-    (`crates/rex`: a stream kind below terminals and control, SSH as
-    the fallback); Rex's hub follows each host's screens and serves the
-    socket and its state file; Activity's rows for screens under the
-    agent that controls them, and the pane in Rex; passwords for a
-    host's screen, last.
+  - **Where it stood when the work was paused (2026-11-27, 19:50 UTC,
+    Ben's word; nothing of it is committed):** four builders' work is in
+    the shared working tree, each in its own crates, built and tested by
+    its builder and each past its two code reviews. Every confirming
+    review said hold, and each builder was given, or is owed, one final
+    pass of what its review still held (no further review: the lead
+    checks each fix against the code and its test, then commits all
+    four together, since they build against each other):
+    - the transport (`crates/rex`, `vendor/russh`): Rex's client end
+      for screen streams, a stream kind of its own over QUIC with SSH
+      as the fallback. Review `/var/tmp/olo-reviews/astra-4de487fb70`;
+      final pass `/var/tmp/olo-hs/screens/BRIEF-step2-final.md`, in
+      hand when paused;
+    - the helper (`crates/rex-link`: `screens.rs`, `screen_follow.rs`,
+      `screen_wire.rs`, `quic.rs`): follow, the streams, and Stop,
+      Delete and Clear that name the screen they were decided for.
+      Review `/var/tmp/olo-reviews/astra-86ddc6f50f` ("Hold the guarded
+      lifecycle commands"), **not yet read against the code nor made
+      into a final pass**;
+    - Rex's side (`apps/rex`: `screens_sock.rs`, the hub): follows each
+      host's screens and serves them on a socket of its own. Review
+      `/var/tmp/olo-reviews/astra-c8fba69203`; final pass
+      `/var/tmp/olo-hs/screens/BRIEF-step5-final.md`, in hand when
+      paused;
+    - Agent Screens and the pane (`apps/screen`, `crates/screen-pane`,
+      the kit's `style::fit_middle`): the sidebar by host, a host's
+      screen in the pane. Review `/var/tmp/olo-reviews/
+      astra-8672db4c2c`; three rounds of looks, the last confirming all
+      thirteen decisions (`/var/tmp/olo-agents/screens/shots6-final/
+      opus-look.md`, `agy-look.md`); final pass `/var/tmp/olo-hs/
+      screens/BRIEF-step6-final.md` (five things in the pictures,
+      thirteen in the code), in hand when paused.
+    Each final brief ends in a list headed "Left": those findings are
+    for this file, in the reviews' words, when the work is committed.
+  - Then, not started: Rex's Activity rows for screens under the agent
+    that controls them, and the pane in Rex (the brief is written:
+    `/var/tmp/olo-hs/screens/BRIEF-step7.md`; it has the minder row's
+    "Stop Minder…" words too); passwords for a host's screen last, and
+    Ben's to decide first (to show them, sealed copies of a host's
+    passwords would be kept on another machine's disk).
+  - Left by the last round of looks at the app (2026-11-27), in the
+    reviewers' words, not in this change. Opus 5.5: "Hosts that share a
+    domain lose the part that tells them apart when cut
+    (staging-…nternal, build-u…ternal). Drop the shared '.internal' in
+    the sidebar and keep the full name in the header"; "A running
+    screen with no actions has an empty age slot … In a column of ages
+    it looks like a missing value"; "Once hosts exist, the sidebar's
+    'New Screen…' doesn't say where it will start the screen. Make it
+    follow the selected host, as the pane's button does"; "The no-hosts
+    sidebar and the hosts sidebar look like two different designs: no
+    hosts: RUNNING and STOPPED sections with icons, about 30 pt
+    narrower; hosts: groups with dots. The switch when the first host
+    connects is abrupt"; "The host's well repeats the sidebar's rows
+    word for word. Give each row something the sidebar can't show, such
+    as the latest action or the size"; from the round before, "a tile
+    with no sidebar has no way to another screen" and thumbnails of a
+    host's screens. Gemini 4 Neon: "In the pre-existing `no-hosts`
+    sidebar … stopped screen `design-pass` under `STOPPED` still uses
+    primary text ink rather than stepping down to secondary ink as
+    stopped screens do in the host-grouped sidebar."
   - Left to the compositor by the review of the whole (Astra 6.2,
     `/var/tmp/olo-reviews/astra-67622ee483/astra-review.md`): its 15,
     "The helper asks the compositor for a full RGBA capture in the
