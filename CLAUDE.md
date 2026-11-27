@@ -351,8 +351,10 @@ are universal and non-negotiable:
     skill). Up to five at once, all in this working tree, each in one
     crate that no other agent, nor you, is changing meanwhile, so none
     clobbers another. Each gets a clear brief: the task, its crate,
-    what done is, how to test it. They never start agents themselves
-    (the tooling refuses, and their brief says so). When one finishes,
+    what done is, how to test it. They never start helpers of their own
+    (the tooling refuses, and their brief says so); the agent programs
+    themselves (`claude`, `codex`, `agy`) they may run where their task
+    is about them. When one finishes,
     review its work as your own before anything is committed: read the
     whole diff, run its tests, picture every visual change and judge it
     closely (expect to redo some of what a subagent designs), then
@@ -390,10 +392,20 @@ are universal and non-negotiable:
   questions promptly, steer what drifts, unstick what stalls. What is
   routine goes ahead without you (reading, searching, building,
   testing: `tools/dev/agents allowed`, given to that run alone, the
-  person's own agy settings never touched); what an agent's rules
-  forbid is refused outright; only the rest comes to you. Never
-  approve a push, a commit, anything on the person's session, deletion
-  outside its scope, or sudo.
+  person's own agy settings never touched); what is dangerous is
+  refused outright; the rest asks, and **a helper is given whatever its
+  task reasonably needs**: refuse only what is dangerous, out of line
+  with the task, or done safer another way, and then say which way
+  (Ben, 2026-11-27, of a builder refused the help text of the very
+  programs its task was about: "how is it supposed to do its job
+  blind? you're micromanaging these subagents way too much let them do
+  whatever they need to reasonably do to do their job. only deny
+  dangerous commands that are out of alignment with the task at hand
+  or where they could be done safer"). A brief says what a task needs
+  that isn't routine (a program to run, something of the person's to
+  read), so its minder says yes at once. Never approve a push, a
+  commit, anything on the person's session, deletion outside its
+  scope, or sudo.
 - **Every helper has a minder, and every one of them is a native Rex
   agent.** (Ben, 2026-11-27: "as a standing rule please setup a minder
   for all subagents you launch (add this to the project rules) and

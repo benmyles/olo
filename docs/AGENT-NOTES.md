@@ -1646,6 +1646,36 @@ build before fails eleven). The rig's `look=` option had never done anything:
 it asked `tsession look`, which doesn't exist (`theme` is the word), so
 "dark" pictures from the rig came out light without a word.
 
+### A helper is given what its task needs; only the dangerous is refused (2026-11-27)
+
+A builder whose task was the three agent programs' own instruction
+files asked to read their `--help`, was refused by the tool's own list
+(`agy`, `codex` and `claude` stood among what a helper is refused
+outright, to keep helpers from starting helpers), and I upheld the
+refusal and told it to work from what I would read for it. Ben: "so
+you denied the subagent from using claude/agy/codex to just read its
+help and stuff? how is it supposed to do its job blind? you're
+micromanaging these subagents way too much let them do whatever they
+need to reasonably do to do their job. only deny dangerous commands
+that are out of alignment with the task at hand or where they could be
+done safer". What changed, in `tools/dev/agents` and the minders'
+rules: the three programs are no longer refused (their help and
+version go ahead unasked; any other run asks, and is given where the
+task is about them); a helper may look at what its task needs outside
+the repository (a tool's own folder in the person's home: never a
+credential's contents); the network to read documentation is a yes;
+and a minder reads the helper's brief and asks one thing of each
+request, whether it is reasonable for that task. What stays refused is
+the dangerous: git that changes anything, sudo, the person's session
+and desktop, files elsewhere, processes by name, another machine, the
+live agents service and Rex server, and a helper of the helper's own
+through the lead's tools. A list given to a running agy is fixed for
+that run (`--settings`): to lift a refusal the helper is started
+again, so the brief should say at the start what the task needs that
+isn't routine. And a rule of mine that stops a helper doing its task
+is mine to fix, not a wall to hold: the instruction about deliberate
+blockers is for somebody else's.
+
 ### Claude Code's trust question takes no key in its first moments (2026-11-27)
 
 Opus's look ended one second after its start, with no review and

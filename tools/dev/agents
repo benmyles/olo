@@ -99,15 +99,27 @@ starts as one of ALLOW does (reading, searching, building, testing,
 git's reading commands, Olo's own test tools); a command line of
 several (a pipe, `&&`) goes ahead when each of them does. What starts
 as one of DENY does is refused without asking (anything that changes
-git, sudo, another agent). Everything else stops and asks, and `watch`
-tells you: `approve` it, or say no. The lists are given to that one
+git, sudo, a helper of its own started with this tool). Everything else
+stops and asks, and is given leave wherever it is what the task
+reasonably needs: refused is only what is dangerous, out of line with
+the task, or better done a safer way (Ben, 2026-11-27: "you're
+micromanaging these subagents way too much let them do whatever they
+need to reasonably do to do their job. only deny dangerous commands
+that are out of alignment with the task at hand or where they could be
+done safer"). `watch` tells you of what asks: `approve` it, or say no. The lists are given to that one
 run (`agy --settings`): the person's own agy settings are never read
 for it nor written (the tool never takes the choice that would save a
 rule there).
 
-An agent can't start agents: OLO_SUBAGENT is set in its environment,
-which this script and its front doors (agy-help, agy-look, opus-look) refuse, and agy,
-codex and claude are in DENY.
+An agent can't start helpers of its own: OLO_SUBAGENT is set in its
+environment, which this script and its front doors (agy-help, agy-look,
+opus-look) refuse. The agent programs themselves (`claude`, `codex`,
+`agy`) it may run where its task is about them: their `--help` and
+`--version` go ahead unasked, anything else of theirs asks (a test of
+how one reads a file is the task's; handing its own work to one is
+not). They were refused outright until 2026-11-27, and a builder whose
+task was the three programs' own instruction files could not read
+their help.
 """
 import hashlib
 import json
@@ -210,10 +222,12 @@ CARGO = ["cargo build", "cargo check", "cargo test", "cargo clippy", "cargo fmt 
 GIT = ["git status", "git diff", "git log", "git show", "git blame", "git ls-files", "git grep", "git rev-parse", "git merge-base", "git describe", "git cat-file",
        "git branch --show-current", "git worktree list"]
 TOOLS = ["tsession", "ui-lint", "cost", "bench", "scroll-check", "words", "layout-check", "damage-check", "rest-check"]
+# The agent programs' own account of themselves: read by whoever's task is about them.
+ABOUT_AGENTS = [f"{cli} {word}" for cli in ("claude", "codex", "agy") for word in ("--help", "--version", "help", "-h", "-V")]
 # Refused without asking: what an agent's rules forbid outright, so it
 # hears no at once and no approval waits on you that you'd never give.
 DENY = ["git push", "git commit", "git add", "git stash", "git checkout", "git switch", "git reset", "git restore", "git rebase", "git merge", "git clean", "git rm",
-        "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "agy", "codex", "claude", "tools/dev/agents",
+        "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "tools/dev/agents",
         "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/astra-look", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
         "systemctl", "loginctl", "reboot", "shutdown", "poweroff"]
 
@@ -221,7 +235,7 @@ DENY = ["git push", "git commit", "git add", "git stash", "git checkout", "git s
 def allow():
     """Every prefix that goes ahead: Olo's tools as they are run, from
     the repository or by their whole path, with python or without."""
-    out = READING + CARGO + GIT
+    out = READING + CARGO + GIT + ABOUT_AGENTS
     for t in TOOLS:
         for path in (f"tools/dev/{t}", f"./tools/dev/{t}", f"{ROOT}/tools/dev/{t}"):
             out += [path, f"/usr/bin/python3 {path}"]
@@ -513,19 +527,23 @@ APPROVALS = """Asking leave
   leave: ls, cat, head, tail, grep, find, sed -n, wc, cargo
   build/check/test/clippy/fmt -p, git status/diff/log/show,
   tools/dev/tsession and the like, alone or piped together.
-  Anything else stops until the lead answers, which can take minutes:
-  so keep to those where you can. Don't wrap a command in `timeout`,
-  `env`, `sh -c` or `xargs`. Make and change files with your file
-  tools, not with the shell (`>`, `cat <<`, `sed -i`, `cp`, `mv`), and
+  Anything else stops and asks, and is answered within seconds by a
+  minder that reads your task: what your task reasonably needs is given
+  leave. So ask for what you need and say why in a word; don't go
+  without, and don't guess at what a look would settle. It goes faster
+  unasked, so where it's the same to you: make and change files with
+  your file tools, not with the shell (`>`, `cat <<`, `sed -i`), and
   pipe a command's output to tail or grep rather than into a file.
 - Your scratch folder is yours: output sent to a file there goes
   ahead, and leave to `rm` a file there (give its whole path) is given
   within seconds. You needn't tidy it: the lead removes the folder
   when your work is in.
-- No network (curl, wget, ssh, a download) unless your task asks for
-  it by name.
-- What your rules forbid is refused outright: don't look for another
-  way to it."""
+- The network, to read what your task needs (a tool's documentation,
+  a crate's source): ask. Nothing of the person's or of this machine
+  goes out, and no other machine is signed in to.
+- What is refused is refused for being dangerous, outside your task,
+  or better done another way, which the answer says: take that way,
+  don't look for a third."""
 
 RULES = """You are a subagent working on Olo (a BeOS-inspired Wayland desktop
 written in Rust) for another agent, the lead, who reads your screen,
@@ -548,10 +566,14 @@ Scope
   stash list` too: it is refused with the rest).
 - No new dependencies (no edits to a Cargo.toml's dependencies, no
   Cargo.lock change) unless the task says so; if you need one, ask.
-- You are a subagent: don't start agents of any kind (no agy, codex,
-  claude, tools/dev/agents, tools/dev/agy-help, tools/dev/astra-look, tools/dev/agy-look,
-  tools/dev/opus-look, nor any subagent, multi-agent or delegation tool
-  of your own).
+- You are a subagent: do your task yourself. Don't hand it, or any
+  part of it, to another agent (no tools/dev/agents, tools/dev/agy-help,
+  tools/dev/astra-look, tools/dev/agy-look, tools/dev/opus-look, no
+  `olo agent`, nor any subagent, multi-agent or delegation tool of your
+  own). Running `claude`, `codex` or `agy` themselves is another
+  matter, and fine where your task is about them: their `--help` and
+  `--version` go ahead unasked; a test of how one of them behaves, with
+  a config folder of its own under /var/tmp, asks leave and gets it.
 
 Building and testing
 - Your builds go in a target folder of your own (CARGO_TARGET_DIR is
@@ -571,8 +593,11 @@ Building and testing
   the same names).
 - Nothing of the person's (their name, email, accounts, files, what
   their windows show) goes to any outside service, and what you read
-  goes to your model's: read nothing of theirs outside the repository
-  and /var/tmp (their ~/.config, ~/.local, ~/.ssh, their logs).
+  goes to your model's. So outside the repository and /var/tmp, read
+  what your task needs and no more (where it is about a tool's own
+  folder in their home, that folder: names first, then the files the
+  task is about), and never the contents of a credential, a key or a
+  token, their mail, their history or their logs.
 - A script of more than one line (python3 -c '…', a heredoc, a loop)
   goes in a file in your scratch folder, run from there: a long command
   shows folded where leave is asked ("⋯ N lines hidden"), can't be read,

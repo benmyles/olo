@@ -87,13 +87,22 @@ For a child you start with `olo agent start` yourself, give the same
 two options; for one that runs already, `olo agent mind NAME --with
 claude:claude-opus-5-5:max --rules FILE`.
 
-**What it does.** By its rules (`minder-rules.md`: yes to reading,
-`jato`'s build, check and test, Olo's test tools, files in the
-helper's own scratch folder or crate, a fenced script of its own; no,
-with the reason, to git that changes anything, sudo, the person's
-session, files elsewhere, processes by name, the network, the live
-agents service or Rex server, more agents) it answers the helper's
-questions at once. What the rules don't cover, every question about
+**What it does.** By its rules (`minder-rules.md`) it answers the
+helper's questions at once, and it judges as Ben said to (2026-11-27:
+"let them do whatever they need to reasonably do to do their job. only
+deny dangerous commands that are out of alignment with the task at
+hand or where they could be done safer"): it reads the helper's brief,
+and says yes to whatever that task reasonably needs (reading, `jato`'s
+build, check and test, Olo's test tools, files in the helper's own
+scratch folders or crate, a script of its own, the agent programs
+themselves where the task is about them, the network to read
+documentation); it says no, with the reason and the safer way, only to
+the dangerous (git that changes anything, sudo, the person's session
+and desktop, files elsewhere, processes by name, another machine, the
+live agents service or Rex server, a helper of the helper's own).
+**So say in the brief what the task needs that isn't routine** (a
+program to run, a folder of the person's to look in): then the yes is
+immediate. What the rules don't cover, every question about
 the work itself, and its report when the helper ends, it hands to you:
 an `escalation` on your own watch.
 
@@ -205,11 +214,16 @@ tools/dev/agents allowed                     # what goes ahead unasked, what is 
   `tools/dev/tsession`, `ui-lint`, `cost`, `bench`; several piped or
   joined go ahead when each does), and so does output sent to a file
   inside its own scratch folder. A command on the refused list (any
-  git that changes something, `sudo`, another agent, `pkill`,
-  `systemctl`) is refused without asking. Everything else stops and
-  asks: read the command, and answer `y` (this once), `p` (this, and
-  commands that start the same, for the rest of its conversation) or
-  `no` (then `say` what to do instead). Never approve a push, a
+  git that changes something, `sudo`, a helper of its own through this
+  tool, `pkill`, `systemctl`) is refused without asking. Everything
+  else stops and asks: read the command, and answer `y` (this once),
+  `p` (this, and commands that start the same, for the rest of its
+  conversation) or `no` (then `say` what to do instead). **Give it what
+  its task reasonably needs**: no is for what is dangerous, out of line
+  with the task, or done safer another way (say which). The agent
+  programs (`claude`, `codex`, `agy`) are a helper's to run where its
+  task is about them: their help and version go ahead unasked. Never
+  approve a push, a
   commit, anything on the person's session, deletion outside its
   crate, sudo, or what its rules forbid. The tool never takes agy's
   choice that would save a rule in the person's settings.
