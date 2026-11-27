@@ -1,0 +1,171 @@
+#!/usr/bin/python3
+"""The card that comes up after a screenshot (apps/screenshot, after.rs),
+tried in a headless desktop of its own.
+
+  shot-card-check [N]
+
+  a shot by the shortcut's command (`olo-screenshot --silent`) brings its
+  card up in the screen's lower left;
+  N more shots in a row (15 if not said): none has the card of the one
+  before in its picture (each is put away first, and has gone before
+  the picture is taken), and one card stands after each;
+  `--no-card` takes the picture, puts the card before it away and shows
+  none;
+  the card's picture pressed and dragged onto a Tracker window is the
+  file there, and the card goes.
+
+Needs olo-app-server, olo-screenshot and olo-tracker built in the profile
+it runs (dev; TSESSION_PROFILE=release for release). /usr/bin/python3: it
+compares pictures (PIL).
+"""
+import glob, json, os, shutil, subprocess, sys, time
+from PIL import Image, ImageChops
+
+TREE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+N = int(sys.argv[1]) if len(sys.argv) > 1 else 15
+TS = ["/usr/bin/python3", os.path.join(TREE, "tools/dev/tsession")]
+NAME = f"shotcard-{os.getpid()}-{time.time_ns() % 1_000_000}"
+SCRATCH = f"/var/tmp/olo-shot-card-{os.getpid()}-{time.time_ns()}"
+HOME = os.path.join(SCRATCH, "home")
+OUT = os.path.join(SCRATCH, "out")
+REGION = (0, 480, 344, 320)  # the screen's lower left, points (scale 1)
+
+
+def ts(*a, check=False):
+    # (No call waits for ever: a desktop that doesn't answer is a failure.)
+    r = subprocess.run(TS + list(a), capture_output=True, text=True, timeout=90)
+    if check and r.returncode != 0:
+        sys.exit(f"tsession {a}: {r.stdout}{r.stderr}")
+    return r
+
+
+def region(path):
+    ts("shot", NAME, path, *map(str, REGION), check=True)
+    return Image.open(path).convert("RGB")
+
+
+def until(what, is_it, secs=15):
+    end = time.time() + secs
+    while time.time() < end:
+        got = is_it()
+        if got:
+            return got
+        time.sleep(0.1)
+    sys.exit(f"FAILED: waited {secs} s for {what}")
+
+
+def shots():
+    return sorted(glob.glob(os.path.join(HOME, "**", "screenshot*.png"), recursive=True), key=os.path.getmtime)
+
+
+def cards():
+    """The card processes of this run (by their HOME), and those of them the compositor shows a card for."""
+    mine = []
+    for d in glob.glob("/proc/[0-9]*"):
+        try:
+            argv = open(d + "/cmdline", "rb").read().split(b"\0")
+            env = open(d + "/environ", "rb").read().split(b"\0")
+        except OSError:
+            continue
+        if b"--after" in argv and f"HOME={HOME}".encode() in env:
+            mine.append(int(os.path.basename(d)))
+    return mine
+
+
+def shown():
+    """The processes with a card's layer on the test desktop, as its compositor has them."""
+    try:
+        said = json.loads(ts("ipc", NAME, '{"type":"layer_clients"}').stdout)
+    except ValueError:
+        return None
+    return sorted(c[0] for c in said.get("clients", []) if c[1] == "screenshot-after")
+
+
+def one_card(newer_than=()):
+    """One card and no more: one process, its layer the only card's, and not one of `newer_than`."""
+    now, layers = cards(), shown()
+    return len(now) == 1 and layers == now and now[0] not in newer_than and now[0]
+
+
+def main():
+    # (A program that isn't built is said at once: a test desktop starts one that is missing without a
+    # word, and the wait for its picture then runs out, which reads as the card's failure.)
+    there = os.path.join(TREE, "target", "release" if os.environ.get("TSESSION_PROFILE") == "release" else "debug")
+    missing = [p for p in ("olo-app-server", "olo-screenshot", "olo-tracker") if not os.path.exists(os.path.join(there, p))]
+    if missing:
+        sys.exit(f"shot-card-check: not built in {there}: {', '.join(missing)} (jato build -p app_server -p olo-screenshot -p olo-tracker)")
+    os.makedirs(HOME, exist_ok=True)
+    os.makedirs(OUT, exist_ok=True)
+    ts("start", NAME, "1280x800", "--light", "--scale", "1", "--home", HOME, check=True)
+    try:
+        drop = os.path.join(HOME, "dropped")
+        os.makedirs(drop)
+        ts("run", NAME, "olo-tracker", drop, check=True)
+        time.sleep(2.0)
+        base = region(os.path.join(OUT, "base.png"))
+        # 1. A shot: its card comes up.
+        ts("run", NAME, "olo-screenshot", "--silent", check=True)
+        first = until("the first picture", lambda: (shots() or [None])[0])
+        card = until("its card", lambda: one_card(), 10)
+        until("the card drawn", lambda: ImageChops.difference(region(os.path.join(OUT, "card.png")), base).getbbox())
+        time.sleep(0.6)
+        region(os.path.join(OUT, "card.png"))
+        ts("shot", NAME, os.path.join(OUT, "whole.png"), check=True)
+        without = Image.open(first).convert("RGB").crop((REGION[0], REGION[1], REGION[0] + REGION[2], REGION[1] + REGION[3]))
+        if ImageChops.difference(without, base).getbbox():
+            print("note: the first picture's corner differs from the screen's before it (the pointer, or a clock)")
+        print(f"ok: a card came up after {os.path.basename(first)}")
+        # 2. Shots in a row: none has the card of the one before in it, and one card stands.
+        for i in range(N):
+            had = len(shots())
+            ts("run", NAME, "olo-screenshot", "--silent", check=True)
+            newest = until("the next picture", lambda: len(shots()) > had and shots()[-1])
+            until("its file to be whole", lambda: os.path.getsize(newest) > 0 and Image.open(newest).size == (1280, 800))
+            got = Image.open(newest).convert("RGB").crop((REGION[0], REGION[1], REGION[0] + REGION[2], REGION[1] + REGION[3]))
+            box = ImageChops.difference(got, without).getbbox()
+            if box:
+                got.save(os.path.join(OUT, f"with-card-{i}.png"))
+                sys.exit(f"FAILED: picture {i + 2} ({os.path.basename(newest)}) has the card of the one before in it (differs at {box})")
+            before = card
+            card = until("its own card, and that one alone", lambda: one_card((before,)), 10)
+        print(f"ok: {N} more shots, none with a card in it, one card standing each time")
+        # 3. `--no-card`: a picture and no card.
+        had = len(shots())
+        ts("run", NAME, "olo-screenshot", "--silent", "--no-card", check=True)
+        newest = until("the picture", lambda: len(shots()) > had and shots()[-1])
+        until("its file to be whole", lambda: os.path.getsize(newest) > 0 and Image.open(newest).size == (1280, 800))
+        until("the card of the one before to be put away", lambda: not cards() and shown() == [], 5)
+        got = Image.open(newest).convert("RGB").crop((REGION[0], REGION[1], REGION[0] + REGION[2], REGION[1] + REGION[3]))
+        if ImageChops.difference(got, without).getbbox():
+            sys.exit("FAILED: the picture taken with --no-card has a card in it")
+        time.sleep(0.5)
+        if ImageChops.difference(region(os.path.join(OUT, "nocard.png")), base).getbbox() or cards():
+            sys.exit("FAILED: --no-card showed a card")
+        print("ok: --no-card takes the picture, puts the card before it away, and shows none")
+        # 4. The picture dragged out onto Tracker's window is the file there.
+        ts("run", NAME, "olo-screenshot", "--silent", check=True)
+        until("a card to drag from", lambda: one_card() and ImageChops.difference(region(os.path.join(OUT, "again.png")), base).getbbox())
+        time.sleep(0.6)
+        newest = shots()[-1]
+        # (Tracker's window opens at the screen's top left, 550 points wide: its list's middle.)
+        tx, ty = 300, 240
+        ts("down", NAME, "168", "627", check=True)
+        for step in range(1, 11):
+            x, y = 168 + (tx - 168) * step // 10, 627 + (ty - 627) * step // 10
+            ts("move", NAME, str(x), str(y), check=True)
+            time.sleep(0.05)
+        ts("shot", NAME, os.path.join(OUT, "dragging.png"), "--pointer")
+        ts("up", NAME, check=True)
+        there = os.path.join(drop, os.path.basename(newest))
+        # (Whole: the folder has the name before it has the bytes.)
+        until("the file, whole, in the folder it was dropped on", lambda: os.path.exists(there) and os.path.getsize(there) == os.path.getsize(newest), 10)
+        if open(there, "rb").read() != open(newest, "rb").read():
+            sys.exit("FAILED: what was dropped is not the picture's file")
+        until("the card to go once its picture was dropped", lambda: not cards(), 5)
+        print(f"ok: the card's picture dragged onto Tracker is the file there ({os.path.basename(newest)}), and the card goes")
+    finally:
+        ts("stop", NAME)
+        shutil.rmtree(SCRATCH, ignore_errors=True)
+
+
+main()

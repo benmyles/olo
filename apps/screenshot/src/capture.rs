@@ -155,6 +155,8 @@ fn windows(client: &mut Client) -> Result<Vec<WindowInfo>, String> {
 /// minimized first (and brought back after), so they aren't in it and
 /// the active window is the one behind them.
 pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
+    // (The card of the picture before is not in this one: after.rs.)
+    crate::after::put_away();
     let mut client = Client::connect().map_err(|e| e.to_string())?;
     let me = std::process::id() as i32;
     let mine: Vec<u64> = if hide { windows(&mut client)?.iter().filter(|w| w.pid == Some(me) && !w.minimized).map(|w| w.id).collect() } else { Vec::new() };
@@ -165,7 +167,11 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
         // Long enough for the next frame to be drawn without them.
         std::thread::sleep(Duration::from_millis(250));
     }
-    std::thread::sleep(Duration::from_secs(settings.delay.min(60) as u64));
+    if settings.delay > 0 {
+        std::thread::sleep(Duration::from_secs(settings.delay.min(60) as u64));
+        // (And one that came up while this waited.)
+        crate::after::put_away();
+    }
     let result = (|| {
         let window = if let Some(id) = settings.window_id {
             Some(id)

@@ -430,12 +430,66 @@ something nobody here has is in "Blocked", with what it waits for.
   third … look slightly softer than the second and fourth"; and
   "plural `Notifications Settings...` reads awkwardly next to `AI
   Settings...`; should be `Notification Settings...`".
-- **A screenshot's thumbnail, to drag** (Ben, 2026-11-27, "for
-  later"): "after taking a screenshot please make it send a
-  notification that comes up in the bottom left with a thumbnail of
-  the screenshot and the thumbnail should support drag and drop so i
-  can drag it into an app i want to use the screenshot in (just like
-  in macos)".
+- **The screenshot's card (done 2026-11-27: Ben's "after taking a
+  screenshot … a notification that comes up in the bottom left with a
+  thumbnail … drag and drop"; HACKING, "After"): left by its reviews.**
+  - The code review (Astra 6.2, `/var/tmp/olo-reviews/astra-079fd973c1/
+    astra-review.md`, 23 findings, "hold this change"; fixed: its 1 for
+    recordings and for a delayed shot, 6, 7, 9, 10, 14, 15's kind, 18,
+    19's first half, 20, 21, and the check's 22 and 23 in part). Left,
+    in its words: 1, the rest, "Two fast shortcuts can do the same if
+    the first child has spawned but has yet to listen. Region and
+    PickColor workers likewise capture each output later" (the
+    compositor could leave the card out of the Screenshot app's own
+    stills too: a field of `Request::Screenshot`); 2, "A and B both
+    finish `put_away` while the socket is absent. A binds. B's
+    `listen_at` connects to A and returns silently. Both then open
+    windows"; 3, "The 1.5-second deadline starts after the blocking
+    IPC … A full accept queue can block either Unix socket connect
+    indefinitely"; 4, "`running_pid` gets A's credentials and drops
+    the connection. A exits and B binds before `forward` reconnects";
+    5, "Process exit does not acknowledge compositor removal"; 8,
+    "Two shortcuts can both select `screenshot1.png` before either
+    publishes it" (from before the card); 11, "`JpegDecoder::new`
+    calls `read_to_end` before parsing headers … A large JPEG on slow
+    storage stalls the helper's main thread before it listens"; 12,
+    "It reads the entire encoded file into memory up front … An 8K BMP
+    can exceed 90 MiB … Serve the image from an opened file on
+    demand"; 13, "Open resolves MIME data and reads default-app files
+    synchronously in the click handler … Delete on a removable
+    pictures drive can copy the entire screenshot into the home Trash
+    on the window looper"; 16, "Copy a PNG from the card and paste
+    into a styled StyledEdit document. Its editor fetches one external
+    representation via `paste_item`, which chooses text before any
+    image … A consumer accepting only `image/png` also needs a PNG
+    alternative to receive pixels from a JPEG, BMP, TIFF or WebP"; 17,
+    "launch `olo-screenshot --no-card` while its window is up. The
+    existing instance takes the arguments but only raises the window.
+    Save checks the original process argv and shows the card"; 19, the
+    rest, "A still saved in a directory with a non-UTF-8 name … The
+    parent passes a `Path` to the child, whose
+    `std::env::args().collect()` panics"; 22, the rest, "All captures
+    use `--silent`, leaving windowed Save, region, portal, Copy and
+    recording behavior outside this script".
+  - Opus 5.5, of the card's own look (the kit's card, as notification
+    banners and Deskbar's Inbox have it: for all of them at once):
+    "The card is a web toast, not an Olo panel … Corners: square
+    (0pt). Fill: the panel colour role in light, the grey of window
+    chrome … Edge, both themes: the desktop's window border: a 1pt
+    dark outline, a 1pt highlight inside top and left, and a 1pt shade
+    inside bottom and right. No soft shadow"; "Bevels disappear on
+    white: the buttons lose their light top-left edge"; of the close
+    box, "a bare 12pt hairline × in the secondary grey, not a box …
+    use the desktop's own close box … on hover, the same treatment as
+    a button hover. When pressed, an inverted bevel"; and "Press and
+    move: dim the picture in the card to about 50%, since it has been
+    'lifted'". A middle-cut name has no tip with its whole (the kit's
+    end cut has one).
+  - Gemini 4 Neon, of the kit's sunken frame: "At the top-right
+    corner, the dark top bevel line stops about 1–2 pixels short of
+    the light-grey right bevel line, leaving a small corner notch/gap,
+    while at the bottom-left corner the light bottom bevel runs all
+    the way across under the dark left edge."
 - **Agent Screens of Rex hosts, seen from the desktop and from Rex**
   (Ben, 2026-11-27): "once you have built agent screens support for
   rex hosts, also make it so that in the olo desktop agent screens app

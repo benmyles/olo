@@ -57,6 +57,18 @@ impl Going {
 /// the screen but never in the recording (or a share).
 pub const CONTROLS_NAMESPACE: &str = "olo-recording-controls";
 
+/// The namespace of the card that comes up after a screenshot or a
+/// recording is saved (Screenshot's `--after`, a layer surface): left
+/// out of every capture as the controls are. A picture taken while the
+/// screen is being recorded brought its card into the recording.
+pub const AFTER_NAMESPACE: &str = "screenshot-after";
+
+/// A layer surface that is for the person's screen alone, never in a
+/// recording or a share of it.
+pub fn only_on_the_screen(namespace: &str) -> bool {
+    namespace == CONTROLS_NAMESPACE || namespace == AFTER_NAMESPACE
+}
+
 /// Beside the status file while a recording is being discarded
 /// (`--discard`): the recorder, finishing, deletes what it made.
 pub fn discard_path_for(display: &str) -> PathBuf {

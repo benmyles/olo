@@ -526,7 +526,7 @@ fn rect(v: &str) -> Option<[f64; 4]> {
 
 /// The display the pointer is on, as app_server says (None: it doesn't,
 /// an older one: the first there is, as before).
-fn pointer_display() -> Option<String> {
+pub(crate) fn pointer_display() -> Option<String> {
     match olo_protocol::Client::connect().ok()?.request(&olo_protocol::Request::PointerDisplay).ok()? {
         olo_protocol::Reply::Display { name } => name,
         _ => None,
@@ -583,6 +583,10 @@ const ZOOM: f64 = 2.0;
 
 /// A recording, or None: a region was to be picked, and none was.
 fn record(args: &[String]) -> Result<Option<Made>, String> {
+    // (A card still up from the picture or the recording before goes
+    // first: after.rs. Before the look at whether one is going, not
+    // between that and the start.)
+    crate::after::put_away();
     if let Some(g) = going() {
         return Err(format!("this display is being recorded already (into {}; olo-screenshot --stop)", g.path.display()));
     }

@@ -297,11 +297,12 @@ where
     let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
         let map = layer_map_for_output(output);
         // (In Rescue, only Rescue's own. In a recording or a share, never a
-        // recording's controls: on the screen, not in what's recorded.)
+        // recording's controls nor a saved picture's card: on the screen,
+        // not in what's recorded.)
         map.layers()
             .rev()
             .filter(|l| crate::rescue::shows_layer(l))
-            .filter(|l| !(capturing && l.namespace() == olo_protocol::recording::CONTROLS_NAMESPACE))
+            .filter(|l| !(capturing && olo_protocol::recording::only_on_the_screen(l.namespace())))
             .filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc)))
             .collect()
     };
@@ -1053,7 +1054,7 @@ where
     let Some(region) = space.output_geometry(output) else { return Vec::new() };
     let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
         let map = layer_map_for_output(output);
-        map.layers().rev().filter(|l| l.namespace() != olo_protocol::recording::CONTROLS_NAMESPACE).filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
+        map.layers().rev().filter(|l| !olo_protocol::recording::only_on_the_screen(l.namespace())).filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
     };
     let mut out: Vec<OutputRenderElements<R, WindowRenderElement<R>>> = Vec::new();
     let surfaces = |renderer: &mut R, out: &mut Vec<_>, of: &[Layer]| {

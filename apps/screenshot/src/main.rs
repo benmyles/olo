@@ -9,7 +9,10 @@
 //! `--silent [--window [ID]]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
 //! straight into the folder, as `screenshotN`, with no window; `--region`
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
-//! it is saved, the file's path goes on the clipboard.
+//! it is saved, the file's path goes on the clipboard, and its picture
+//! comes up in a card in the screen's lower left, to drag out as the
+//! file, copy, open, show in Tracker or delete (after.rs; not with
+//! `--no-card`, a script's, nor for the Screenshot portal's `--for-app`).
 
 mod after;
 mod backdrop;
@@ -618,9 +621,18 @@ impl View for Screenshot {
                         cx.close_window();
                         let _ = std::fs::remove_file(capture::scratch_path());
                         std::thread::spawn(move || {
-                            if let Err(e) = held_clipboard::hold(held_clipboard::text(&path.display().to_string())) {
+                            // (The card once the path is on the clipboard,
+                            // or with no clipboard at all: `saved`.)
+                            let mut card = Some(path.clone());
+                            let mut show = || {
+                                if let Some(path) = card.take() {
+                                    show_card(&path);
+                                }
+                            };
+                            if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&path.display().to_string()), &mut show) {
                                 tracing::warn!("couldn't put where it went on the clipboard: {e}");
                             }
+                            show();
                             olo_kit::quit();
                         });
                     }
@@ -827,18 +839,49 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
     }
 }
 
+/// The card for a picture just saved (after.rs: its thumbnail in the
+/// screen's lower left, to drag out as the file), in a process of its
+/// own, detached: it outlives this one's window, and this one may go on
+/// holding the clipboard. On the display the pointer is on, which is the
+/// one that was pictured. Not for the Screenshot portal's (`--for-app`:
+/// the app that asked has the picture) nor where whoever runs this says
+/// so (`--no-card`: a script's own picture).
+fn show_card(path: &Path) {
+    if std::env::args().any(|a| a == "--for-app" || a == "--no-card") {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let mut argv: Vec<std::ffi::OsString> = vec![exe.into_os_string(), "--after".into(), path.as_os_str().to_owned(), "--picture".into()];
+    if let Some(display) = recording::pointer_display() {
+        argv.extend(["--display".into(), display.into()]);
+    }
+    if let Err(e) = olo_xdg::open::spawn(&argv) {
+        eprintln!("olo-screenshot: couldn't show the saved picture's card: {e}");
+    }
+}
+
 /// Saved with no window: say where, and put that on the clipboard, held
 /// until something else is copied (not with `--for-app`: the Screenshot
-/// portal's, which hands the file to the app that asked).
+/// portal's, which hands the file to the app that asked). Its card comes
+/// up once the path is on the clipboard (before, a Copy pressed on the
+/// card at once was overwritten by the path).
 fn saved(path: &Path) -> std::process::ExitCode {
-    let path = path.display().to_string();
-    println!("{path}");
+    let said = path.display().to_string();
+    println!("{said}");
     if std::env::args().any(|a| a == "--for-app") {
         return std::process::ExitCode::SUCCESS;
     }
-    if let Err(e) = held_clipboard::hold(held_clipboard::text(&path)) {
+    let mut card = Some(path.to_owned());
+    let mut show = || {
+        if let Some(path) = card.take() {
+            show_card(&path);
+        }
+    };
+    if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&said), &mut show) {
         eprintln!("olo-screenshot: couldn't copy where it went: {e}");
     }
+    // (No clipboard to hold: the card all the same.)
+    show();
     std::process::ExitCode::SUCCESS
 }
 

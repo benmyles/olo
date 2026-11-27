@@ -500,6 +500,23 @@ Each note: what to do, then why (what happened), then how to apply it.
   `y` above or below it (the scroll view's band). Filter by the
   window's height before saying what's on screen.
 
+### A program a test desktop can't find is started without a word
+
+`tsession run NAME PROGRAM` answers "started PROGRAM pid N" whether or
+not `target/debug/PROGRAM` is there: what runs is `env`, and its "No
+such file or directory" is in the session's `PROGRAM.log` alone. A
+check that then waits for the program's work runs out its time and
+reads as the work's failure (2026-11-27: `shot-card-check` said "waited
+15 s for the first picture" twice before the log was read). The dev
+program had been there five minutes before and was gone: between the
+two stood a `jato test -p` of its package that failed, a release build
+of it and of app_server, and a release test desktop; four tries of each
+(a test that compiled and passed, one that failed, a release build that
+compiled, both packages together) did not take it away again, so what
+did is not known. Look that a tool's programs are built before it
+starts (`shot-card-check` does), and read a session's log before
+believing a timeout.
+
 ### DiskBackup's window in a state of your choosing
 
 `OLO_DISKBACKUP_DIR=DIR olo-diskbackup` (in a test session) reads its

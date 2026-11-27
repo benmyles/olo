@@ -13082,7 +13082,11 @@ pixels follows the corner); Escape or a click cancels. `--pick-color`
 does the same undimmed, with a loupe by the pointer.
 Saved with no window (`--silent`, `--region`), it prints the file's path
 and puts it on the clipboard (`olo_kit::held_clipboard::hold`), staying until
-something else is copied. ⌘⇧5 opens the app.
+something else is copied. ⌘⇧5 opens the app. However a picture is saved
+(a shortcut's, or Save in the window), its card comes up in the screen's
+lower left, to drag out as the file ("After", under Screen recording
+below); not with `--no-card` (a script's own picture) nor for the
+Screenshot portal's `--for-app`.
 
 ## Screen recording (apps/screenshot recording.rs, crates/video)
 
@@ -13620,6 +13624,72 @@ Screens' Export Video uses too).
   review --all`: nothing found); dragged into a Tracker window (the file
   copied there), Copy pasted as the path, Delete in the Trash, Show in
   Tracker its folder; idle, 0 wakeups.
+  **A screenshot has the same card** (Ben, 2026-11-27: "after taking a
+  screenshot please make it send a notification that comes up in the
+  bottom left with a thumbnail of the screenshot and the thumbnail
+  should support drag and drop so i can drag it into an app i want to
+  use the screenshot in (just like in macos)"): a picture saved by a
+  shortcut (`--silent`, `--region`) or by Save in the window starts
+  `--after PATH --picture` for it (`show_card`, main.rs: detached, on
+  the display the pointer is on, once the path is on the clipboard, so
+  that a Copy pressed on the card at once is not overwritten by it).
+  Its card says its size in pixels and bytes, and has Open (in the
+  program that opens its kind) where a recording has Edit; Copy offers
+  the picture itself first (its own type, what a chat or an editor
+  pastes), then the file as file managers copy one. **The picture is
+  shown so that it can be told what it is of** (`shown`, for both
+  kinds): fitted whole in the card's column where it is larger (a
+  16:10 screen's fills it); a few pixels dragged out of the screen as
+  blocks, each pixel a whole number of device pixels and never
+  smoothed, until it is 44 points tall; a strip from its start at its
+  own size, its far end fading into the card (fitted whole it was a
+  line). **The frame is the picture's own edge**: built on whole device
+  pixels round a picture made for exactly its inside (`frame_size`,
+  `made`), so nothing stands between them at any scale (a picture made
+  for "the frame less four points" left a line of the frame's fill at
+  1.25×, 1.5× and 1.75×). The name is bold, cut **in its middle** to
+  its room with its end kept (`middle_cut`, as Tracker cuts one: where
+  names differ, a number, a date, its kind); the facts are small under
+  it, 8 points from the frame, 12 from the buttons. The buttons span
+  the column: Delete by itself at its start, far from the close box,
+  then Show in Tracker, Open and Copy at its end. The pointer over the
+  picture is the open hand and the frame's edge lights (the keyboard's
+  colour): it can be taken hold of; a drag carries the picture itself
+  (128 points at most, seven tenths opaque). One wait for its going,
+  armed as the pointer leaves and dropped as it comes back (under a
+  resting pointer it woke every twenty seconds to ask). **One card at
+  a time, and never in a picture** (`after::put_away`): a screenshot
+  is the screen as it is, so the card of the shot before was in the
+  next one, and two cards stood on each other. A new card, and
+  whatever is about to take a picture of the screen (`capture::take`,
+  again after a delayed shot's wait; the region picker's freeze; a
+  recording's start, before it looks whether one is going), tells the
+  card showing to go (a launch on its own instance socket,
+  `olo.screenshot-after`, by the display's name) and waits for its
+  process's end on a pidfd, a second and a half at most; a card that
+  only holds the clipboard (Copy: no window) has stopped listening,
+  and a putting-away already on its way to it is passed over. And
+  app_server leaves the card's layer out of every recording and share
+  (`olo_protocol::recording::only_on_the_screen`: the controls' rule,
+  for the card's namespace too): a picture taken while the screen was
+  being recorded brought its card into the recording. Tried headless
+  by `tools/dev/shot-card-check` (a card after a shot, asked of the
+  compositor: one process, its layer the only card's; fifteen more
+  shots in a row, none with a card in its picture and its own card
+  standing after each; `--no-card`, its picture's pixels too; the
+  picture dragged onto a Tracker window is the file there, whole, and
+  the card goes): it fails at the second shot with the putting away
+  taken out. Pictured in seven states (a screen's picture with the
+  scale changed under it, a window's, a few pixels, a strip, a long
+  name, the close box lit, the picture lit), light and dark, at 1×,
+  1.25×, 1.5×, 1.75× and 2× (`tsession review --all`: nothing found
+  in any). At rest on release builds: 0.0% of a core, 0 wakeups a
+  second, no frames in ten seconds (`tools/dev/cost`). The compositor
+  while a display is recorded (release, a pointer moved for forty
+  seconds, its own `timings`): gathering the upper layers 0.55 µs a
+  call and a look 102 µs before the card's namespace was left out
+  (a busier moment), 0.10 µs and 60 µs after: no cost that can be
+  told.
 - **Recordings** (`library.rs`, `olo-screenshot --library`; Record ▸
   Recordings…, Deskbar's recording menu; one window, a second
   `--library` brings it forward): every screen recording in the Videos

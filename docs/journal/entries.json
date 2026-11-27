@@ -5524,5 +5524,17 @@
   "title": "Rex server limits: what will change, and for whom",
   "caption": "The confirmation for a shared server says that everyone on the host shares it and that a restart ends the programs in everyone's tabs; a personal server's says whose it is and gives the command to restart it.",
   "image": "2026-11-27/155545-rex-server-limits-what-will-change-and-for-whom.png"
+ },
+ {
+  "time": "2026-11-27T17:47:17",
+  "title": "Screenshot: a card with the picture just taken",
+  "caption": "After a screenshot its picture comes up in a card at the screen's lower left: drag it out and the file goes with it. Delete, Show in Tracker, Open and Copy; gone twenty seconds after the pointer leaves it, put away before the next shot, never in a picture or a recording. Ben: 'a notification that comes up in the bottom left with a thumbnail \u2026 drag and drop \u2026 just like in macos'.",
+  "image": "2026-11-27/174717-screenshot-a-card-with-the-picture-just-taken.png"
+ },
+ {
+  "time": "2026-11-27T17:47:17",
+  "title": "The card shows a few pixels as blocks, a strip from its start",
+  "caption": "A picture of a few pixels dragged out of the screen is shown as crisp blocks of whole device pixels, never smoothed; a long strip from its start at its own size, its far end going out into the card with its frame. The frame is always the picture's own edge.",
+  "image": "2026-11-27/174717-the-card-shows-a-few-pixels-as-blocks-a-strip-fr.png"
  }
 ]

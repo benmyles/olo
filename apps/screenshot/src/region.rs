@@ -427,6 +427,8 @@ fn loupe(g: &mut Painter, b: Bounds<Pixels>, image: &image::RgbaImage, p: Point<
 /// Freezes every output and lets the person drag out a part, or pick a
 /// colour (`pick`): runs until they're done.
 fn freeze(cut: Arc<Mutex<Option<Cut>>>, pick: Option<Arc<Mutex<Option<[u8; 3]>>>>) {
+    // (The card of the picture before is not in what is frozen: after.rs.)
+    crate::after::put_away();
     olo_kit::run(APP_ID, move |app| {
         let mut outputs: Vec<Option<String>> = olo_kit::display_names().into_iter().flatten().map(Some).collect();
         if outputs.is_empty() {

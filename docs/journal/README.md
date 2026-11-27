@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### The card shows a few pixels as blocks, a strip from its start
+
+*17:47* — A picture of a few pixels dragged out of the screen is shown as crisp blocks of whole device pixels, never smoothed; a long strip from its start at its own size, its far end going out into the card with its frame. The frame is always the picture's own edge.
+
+![The card shows a few pixels as blocks, a strip from its start](2026-11-27/174717-the-card-shows-a-few-pixels-as-blocks-a-strip-fr.png)
+
+### Screenshot: a card with the picture just taken
+
+*17:47* — After a screenshot its picture comes up in a card at the screen's lower left: drag it out and the file goes with it. Delete, Show in Tracker, Open and Copy; gone twenty seconds after the pointer leaves it, put away before the next shot, never in a picture or a recording. Ben: 'a notification that comes up in the bottom left with a thumbnail … drag and drop … just like in macos'.
+
+![Screenshot: a card with the picture just taken](2026-11-27/174717-screenshot-a-card-with-the-picture-just-taken.png)
+
 ### Rex server limits: what will change, and for whom
 
 *15:55* — The confirmation for a shared server says that everyone on the host shares it and that a restart ends the programs in everyone's tabs; a personal server's says whose it is and gives the command to restart it.
