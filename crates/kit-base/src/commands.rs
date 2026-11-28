@@ -8,7 +8,8 @@
 //! `{"menus":true}` → [`Menus`]; `{"invoke":"cmd"}` → `{"ok":bool}`;
 //! `{"menus_in":ID}` and `{"invoke_in":{"surface":ID,"command":"cmd"}}`:
 //! the same for the window with that surface (`wl_surface` id), not the
-//! front one (a window's tab menu: Close and Quit as the app's own);
+//! front one (a window's tab menu: Close and Quit as the app's own), which
+//! a program [`serve`] answers for declines (`{"unscoped":true}`);
 //! `{"tree":true}` → a [`WindowTree`] per window: what each shows, as
 //! an accessibility tree, made for one frame on demand (so agents read
 //! the widgets, their text and places rather than pixels);
@@ -260,6 +261,11 @@ pub struct WindowReview {
     /// A layer surface's namespace ("deskbar"); None for a window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// Its `wl_surface`'s protocol id ([`olo_protocol::WindowInfo::surface`]),
+    /// which tells two windows of the same title apart: a review of one
+    /// window is that window's alone (`olo screen review --window`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<u32>,
     /// The window is on its way to another size (one that follows what
     /// it shows, laid out for what just came but not yet as tall): what
     /// was found is of a window nobody is shown, so a lint asks again
@@ -276,6 +282,13 @@ pub enum Ask {
     Invoke(String),
     MenusIn(u32),
     InvokeIn(InvokeIn),
+    /// [`Ask::MenusIn`] and [`Ask::InvokeIn`] for one window named by
+    /// an agent (`olo-screen --window`): asks a program older than these
+    /// can't read, so never answers, rather than taking the command for
+    /// whichever of its windows (an older Chrome or Slack helper took a
+    /// window's command for the first: Astra's review, 2026-11-28).
+    MenusWindow(u32),
+    InvokeWindow(InvokeIn),
     Tree(bool),
     Hints(Vec<u32>),
     Focus(u64),
@@ -432,12 +445,12 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
                         to(Query::Invoke(cmd, tx));
                         serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
                     }
-                    Ok(Ask::MenusIn(surface)) => {
+                    Ok(Ask::MenusIn(surface) | Ask::MenusWindow(surface)) => {
                         let (tx, rx) = mpsc::channel();
                         to(Query::MenusIn(surface, tx));
                         serde_json::to_string(&rx.recv_timeout(WAIT).unwrap_or_default())
                     }
-                    Ok(Ask::InvokeIn(ask)) => {
+                    Ok(Ask::InvokeIn(ask) | Ask::InvokeWindow(ask)) => {
                         tracing::info!(command = %ask.command, surface = ask.surface, by = %peer(&s), "asked to choose a window's menu command");
                         let (tx, rx) = mpsc::channel();
                         to(Query::InvokeIn(ask, tx));
@@ -581,11 +594,19 @@ pub fn serve(pid: u32, served: Served) -> std::io::Result<Serving> {
                 continue;
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
-                Ok(Ask::Menus(_) | Ask::MenusIn(_)) => serde_json::to_string(&Menus { app_id: served.app_id.clone(), entries: (served.menus)() }),
-                Ok(Ask::Invoke(cmd) | Ask::InvokeIn(InvokeIn { command: cmd, .. })) => {
+                Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: served.app_id.clone(), entries: (served.menus)() }),
+                Ok(Ask::Invoke(cmd)) => {
                     tracing::info!(command = %cmd, by = %peer(&s), "asked to choose a command");
                     serde_json::to_string(&serde_json::json!({ "ok": (served.invoke)(&cmd) }))
                 }
+                // One window's menus or command: what a served program
+                // can't tell apart (its windows' surfaces are
+                // olo-wlproxy's, its commands the whole program's), so
+                // declined, said so (`invoke_in_or_unscoped`), rather
+                // than done in whichever window (two Slack windows: the
+                // first took both; Astra's review, 2026-11-28).
+                Ok(Ask::MenusIn(_) | Ask::MenusWindow(_)) => serde_json::to_string(&serde_json::json!({ "unscoped": true })),
+                Ok(Ask::InvokeIn(_) | Ask::InvokeWindow(_)) => serde_json::to_string(&serde_json::json!({ "ok": false, "unscoped": true })),
                 Ok(Ask::Focus(_) | Ask::FocusIn(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
@@ -656,6 +677,43 @@ pub fn menus_in(pid: u32, surface: u32) -> Option<Menus> {
 /// the UI thread.
 pub fn invoke_in(pid: u32, surface: u32, command: &str) -> bool {
     ask(pid, &Ask::InvokeIn(InvokeIn { surface, command: command.to_owned() })).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
+}
+
+/// What a program said to an ask for one of its windows alone
+/// ([`invoke_window`], [`menus_window`]).
+#[derive(Debug, PartialEq)]
+pub enum InWindow<T> {
+    /// It took it: what came of it.
+    Done(T),
+    /// It can't tell its windows apart ([`serve`]'s: Chrome's, Slack's):
+    /// its commands and menus are the whole program's.
+    Unscoped,
+    /// No answer it could read: older than such asks (or gone), so
+    /// nothing was done.
+    Unanswered,
+}
+
+/// Choose `command` from the menus of the window with surface `surface`
+/// of the program with process id `pid`, and only there: a program that
+/// can't do that never does it in another window ([`Ask::InvokeWindow`]).
+/// Blocks briefly: call it off the UI thread.
+pub fn invoke_window(pid: u32, surface: u32, command: &str) -> InWindow<bool> {
+    let answer = ask(pid, &Ask::InvokeWindow(InvokeIn { surface, command: command.to_owned() })).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok());
+    match answer {
+        Some(v) if v["unscoped"] == true => InWindow::Unscoped,
+        Some(v) if v.get("ok").is_some() => InWindow::Done(v["ok"] == true),
+        _ => InWindow::Unanswered,
+    }
+}
+
+/// That window's menus alone ([`invoke_window`]'s rule). Blocks briefly:
+/// call it off the UI thread.
+pub fn menus_window(pid: u32, surface: u32) -> InWindow<Menus> {
+    let Some(answer) = ask(pid, &Ask::MenusWindow(surface)).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()) else { return InWindow::Unanswered };
+    if answer["unscoped"] == true {
+        return InWindow::Unscoped;
+    }
+    serde_json::from_value(answer).map_or(InWindow::Unanswered, InWindow::Done)
 }
 
 /// Give the keyboard to the widget with tree id `node` in the kit app
@@ -738,5 +796,73 @@ mod tests {
         assert_eq!(ask(pid, &Ask::Tree(true)).as_deref().map(str::trim), Some("[]"));
         second.stop();
         let _ = std::fs::remove_file(socket_path(pid));
+    }
+
+    /// A served program takes its commands as the whole program's, and
+    /// declines one window's, saying so: never done in whichever window.
+    #[test]
+    fn a_served_program_declines_one_windows_command() {
+        let pid = 4_100_100_000 + std::process::id() % 100_000;
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = done.clone();
+        let entry = Entry { path: vec!["File".into()], label: "Close".into(), command: "close".into(), keys: None, enabled: true, checked: false };
+        let served = Served {
+            app_id: "test".into(),
+            trees: Box::new(Vec::new),
+            menus: Box::new(move || vec![entry.clone()]),
+            invoke: Box::new(move |_| {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                true
+            }),
+        };
+        let serving = serve(pid, served).expect("served");
+        assert_eq!(invoke_window(pid, 5, "close"), InWindow::Unscoped, "one window's: declined");
+        assert!(!invoke_in(pid, 5, "close"));
+        assert_eq!(menus_window(pid, 5), InWindow::Unscoped, "one window's menus: declined");
+        assert!(menus_in(pid, 5).is_none());
+        assert_eq!(done.load(std::sync::atomic::Ordering::SeqCst), 0, "nothing done for them");
+        assert!(invoke(pid, "close"), "the whole program's: done");
+        assert_eq!(menus(pid).map(|m| m.entries.len()), Some(1));
+        assert_eq!(done.load(std::sync::atomic::Ordering::SeqCst), 1);
+        serving.stop();
+        let _ = std::fs::remove_file(socket_path(pid));
+    }
+
+    /// A program older than the asks for one window alone (its socket
+    /// reads the asks it knows, as `serve` before them did, and answers
+    /// nothing to one it can't read) never takes a window's command: it's
+    /// unanswered, and nothing is done; the whole program's still is.
+    #[test]
+    fn an_older_program_never_takes_a_windows_command() {
+        use std::io::{BufRead as _, Write as _};
+        let pid = 4_100_200_000 + std::process::id() % 100_000;
+        let path = socket_path(pid);
+        let _ = std::fs::remove_file(&path);
+        let listener = std::os::unix::net::UnixListener::bind(&path).expect("bound");
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = done.clone();
+        let older = std::thread::spawn(move || {
+            for s in listener.incoming().take(3).flatten() {
+                let mut line = String::new();
+                if std::io::BufReader::new(&s).read_line(&mut line).is_err() {
+                    continue;
+                }
+                // (What it knew: a whole program's command, and one
+                // window's as it read them then, the surface left out.)
+                let known = ["\"invoke\"", "\"invoke_in\"", "\"menus_in\""].iter().any(|k| line.contains(k));
+                if !known {
+                    continue;
+                }
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = (&s).write_all(b"{\"ok\":true}\n");
+            }
+        });
+        assert_eq!(invoke_window(pid, 5, "close"), InWindow::Unanswered);
+        assert_eq!(menus_window(pid, 5), InWindow::Unanswered);
+        assert_eq!(done.load(std::sync::atomic::Ordering::SeqCst), 0, "nothing done in any window");
+        assert!(invoke(pid, "close"), "the whole program's: done");
+        older.join().expect("the older program ends");
+        assert_eq!(done.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let _ = std::fs::remove_file(&path);
     }
 }

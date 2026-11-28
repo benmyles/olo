@@ -835,7 +835,7 @@ Cleared
 Click
 Click Back Up Now to make the first.
 Click a graph to see what was busy then
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Click a shortcut to give it other keys.
 Click an event to see it here; double-click it to change it.
 Click and hold
@@ -986,7 +986,7 @@ Copy a code no tab is waiting for
 Copy its folders in /var/tmp too (it has none)
 Copy its folders in /var/tmp too ({} folders, {})
 Copy the Code That Just Came
-Copy to clipboard
+Copy to Clipboard
 Copy ~/.cache too (caches, made again as they are used)
 Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
@@ -1141,11 +1141,11 @@ Delete these {} backups, the unfinished one too? The space only they took is fre
 Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 Delete to the line's start
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 Delete {} Backups…
 Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 Delete “{}” for good? Its attached files can’t come back.
 Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.
 Deleted in 1Password
@@ -2484,6 +2484,7 @@ New Login
 New Message
 New Partition Table…
 New Screen
+New Screenshot
 New Section
 New Sections
 New Section…
@@ -2505,7 +2506,6 @@ New host
 New message
 New ones go in
 New ones go in:
-New screenshot
 New shells can't start until it's running again.
 New windows go:
 Newest first
@@ -5103,7 +5103,7 @@ signed in
 signed in, 1 calendar
 signed in, {} calendars
 slots of the pool in use
-some of it couldn't be read
+some of it couldn’t be read
 something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh://you@host or host.ts.net
@@ -5194,7 +5194,7 @@ yes ({})
 yesterday
 yesterday at {}
 you
-you don't have permission
+you don’t have permission
 your cloud storage
 your home folder
 your own picture
@@ -5220,7 +5220,7 @@ your own picture
 {n} files couldn’t be read.
 {n} files to copy
 {n} films playing on AirPlay receivers. Click to pause or stop them.
-{n} folders couldn't be read
+{n} folders couldn’t be read
 {n} folders taken
 {n} forwarded ports are waiting.
 {n} hours

@@ -38,7 +38,8 @@ use olo_kit::{
     style::{self, c},
     theme, tracker,
     widgets::{
-        AlertFrame, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, Slider, StatusBar, TextControl, TextField, TextFieldEvent, button_row, level_bar, open_alert, paragraph, text_field,
+        AlertFrame, Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, Slider, StatusBar, TextControl, TextField, TextFieldEvent, button_row, level_bar, open_alert,
+        paragraph, text_field,
     },
 };
 use olo_system::disks::{self, Disk, Segment, Space, Status, Volume};
@@ -95,6 +96,44 @@ fn table_name(d: &Disk) -> String {
 /// A device without "/dev/".
 fn short(device: &str) -> String {
     device.strip_prefix("/dev/").unwrap_or(device).to_owned()
+}
+
+/// Whether the free space is looked at again every few seconds: only
+/// while disks are shown (`loaded`).
+fn keeps_ticking(loaded: bool) -> bool {
+    loaded
+}
+
+/// Why the disks can't be seen, said plainly: the disk service not there
+/// or not running, or the system's bus out of reach (never D-Bus's "not
+/// activatable", nor "Address error: see" and its specification's
+/// address: Neon's and Opus's reviews, 2026-11-28); else UDisks's own
+/// words, less any address in them. What it said itself goes to the log
+/// (at debug: it's asked again every few seconds).
+fn unseen(e: &olo_system::Error) -> String {
+    let said = disks::error_text(e);
+    tracing::debug!("UDisks: {said}");
+    unseen_words(&said, matches!(e, olo_system::Error::InputOutput(_) | olo_system::Error::Address(_) | olo_system::Error::Handshake(_)))
+}
+
+/// [`unseen`]'s words for what UDisks (or the bus) said (`said`), and
+/// whether the bus itself couldn't be reached (`unreachable`).
+fn unseen_words(said: &str, unreachable: bool) -> String {
+    const MISSING: [&str; 5] = ["ServiceUnknown", "NameHasNoOwner", "has no owner", "was not provided by any .service files", "not activatable"];
+    if MISSING.iter().any(|m| said.contains(m)) {
+        return "The disk service (UDisks) isn’t running.".into();
+    }
+    if unreachable {
+        return "The system’s message bus can’t be reached, so the disk service can’t be asked.".into();
+    }
+    without_addresses(said)
+}
+
+/// An error's words without the addresses in them (D-Bus's
+/// specification's, after a bus that can't be reached): one word as
+/// long as a line, wrapped, broke mid-word.
+fn without_addresses(error: &str) -> String {
+    error.split_whitespace().filter(|w| !w.contains("://")).collect::<Vec<_>>().join(" ")
 }
 
 fn disk_icon(d: &Disk) -> &'static str {
@@ -855,6 +894,9 @@ struct DriveSetup {
     error: Option<String>,
     loading: bool,
     again: bool,
+    /// A look at the free space is due ([`SPACE_EVERY`] after the last):
+    /// only while disks are shown.
+    ticking: bool,
     selected: Option<Item>,
     /// The selection's disk, to fall back to when the selection goes.
     sel_disk: Option<String>,
@@ -879,6 +921,7 @@ impl DriveSetup {
             error: None,
             loading: false,
             again: false,
+            ticking: false,
             selected: None,
             sel_disk: None,
             pending,
@@ -898,11 +941,19 @@ impl DriveSetup {
                 tracing::warn!("can't watch UDisks: {e}");
             }
         });
-        // The free space, again every few seconds while the window is
-        // open (writing files sends UDisks no signal).
-        cx.every(SPACE_EVERY, || Msg::Tick);
+        // The free space, again every few seconds while disks show
+        // (writing files sends UDisks no signal): from the first read
+        // that sees them, `Msg::Status`.
         d.refresh(cx);
         d
+    }
+
+    /// The next look at the free space, where disks show and none is due.
+    fn tick_again(&mut self, cx: &mut Cx<Self>) {
+        if keeps_ticking(self.loaded) && !self.ticking {
+            self.ticking = true;
+            cx.after(SPACE_EVERY, Msg::Tick);
+        }
     }
 
     /// Read everything again on a worker (once more after, if asked
@@ -913,7 +964,7 @@ impl DriveSetup {
             return;
         }
         self.loading = true;
-        cx.work(|| disks::status().map_err(|e| disks::error_text(&e)), Msg::Status);
+        cx.work(|| disks::status().map_err(|e| unseen(&e)), Msg::Status);
     }
 
     fn select(&mut self, item: Item) {
@@ -1502,11 +1553,23 @@ impl View for DriveSetup {
                         self.loaded = true;
                         self.error = None;
                         self.settle();
+                        self.tick_again(cx);
                     }
                     Err(e) => self.error = Some(e),
                 }
             }
-            Msg::Changed | Msg::Tick => return self.refresh(cx),
+            Msg::Changed => return self.refresh(cx),
+            // (None due with nothing shown: the disk service away, the
+            // window waits at no cost for Try Again or its news; it read
+            // again every 5 s for ever: Astra's review, 2026-11-28.)
+            Msg::Tick => {
+                self.ticking = false;
+                if keeps_ticking(self.loaded) {
+                    self.tick_again(cx);
+                    return self.refresh(cx);
+                }
+                return;
+            }
             Msg::Sweep => {
                 self.sweeping = false;
                 if !self.unmeasured() {
@@ -1583,19 +1646,14 @@ impl View for DriveSetup {
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let root = div().size_full().flex().flex_col().child(bar);
         if !self.loaded {
-            let error = self.error.clone();
-            let look = style::key(&error);
-            return root.child(
-                canvas(move |g, b| {
-                    if let Some(e) = &error {
-                        let p = theme::palette();
-                        style::label(g, b.center().x, b.center().y, style::Align::Center, format!("Can't see the disks: {e}"), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.failure));
-                    }
-                })
-                .paint_key(look)
-                .flex_1()
-                .w_full(),
-            );
+            // Why the disks can't be seen, its lines wrapped to the window
+            // and centred in it: one line, the disk service's whole error
+            // ran past both sides of a narrow window (QA, 2026-11-28).
+            let Some(e) = &self.error else { return root.child(div().flex_1().w_full()) };
+            // (Read again every few seconds anyway; Try Again at once.)
+            let again = cx.listener(|v: &mut DriveSetup, _: &ClickEvent, cx| v.refresh(cx));
+            let empty = EmptyState::new("Can’t see the disks").icon("disk").detail(without_addresses(e)).action("Try Again", again);
+            return root.child(div().flex_1().min_h_0().w_full().child(empty));
         }
 
         // The chosen disk's map, under its name.
@@ -1767,6 +1825,23 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Why the disks can't be seen, in plain words: the disk service not
+    /// there or not running, the bus out of reach, else UDisks's own words
+    /// without an address.
+    #[test]
+    fn unseen_disks_are_said_plainly() {
+        let running = "The disk service (UDisks) isn’t running.";
+        assert_eq!(unseen_words("The name is not activatable", false), running);
+        assert_eq!(unseen_words("The name org.freedesktop.UDisks2 was not provided by any .service files", false), running);
+        assert_eq!(unseen_words("org.freedesktop.DBus.Error.NameHasNoOwner", false), running);
+        let bus = "Address error: see https://dbus.freedesktop.org/doc/dbus-specification.html#addresses";
+        assert_eq!(unseen_words(bus, true), "The system’s message bus can’t be reached, so the disk service can’t be asked.");
+        assert_eq!(unseen_words("Timed out", false), "Timed out");
+        assert!(!unseen_words(bus, false).contains("://"));
+        // Nothing shown, nothing looked at again: the window idles.
+        assert!(!keeps_ticking(false) && keeps_ticking(true));
+    }
 
     fn volume(path: &str, offset: u64, size: u64, content: &str) -> Volume {
         Volume { path: path.into(), device: format!("/dev/{path}"), offset, size, number: Some(1), content: content.into(), usage: "filesystem".into(), ..Default::default() }

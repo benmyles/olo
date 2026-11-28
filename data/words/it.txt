@@ -2458,7 +2458,7 @@ Per creare il primo backup, fai clic su Esegui backup ora.
 Click a graph to see what was busy then
 Fai clic su un grafico per vedere quali risorse erano occupate
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Fai clic su un anello per aprire una cartella o sul centro per risalire. Trascina nel raccoglitore ciò che non ti serve.
 
 Click a shortcut to give it other keys.
@@ -2908,7 +2908,7 @@ Copia i codici che nessuna scheda attende
 Copy the Code That Just Came
 Copia il codice appena ricevuto
 
-Copy to clipboard
+Copy to Clipboard
 Copia negli appunti
 
 Copy-on-write
@@ -3355,7 +3355,7 @@ Eliminare questo backup? Verrà liberato lo spazio che occupa in esclusiva. I fi
 Delete to the line's start
 Elimina fino all’inizio della riga
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 Eliminare definitivamente {} ({})? Gli elementi non passeranno dal cestino e non potrai recuperarli.
 
 Delete {} Backups…
@@ -3367,7 +3367,7 @@ Elimina {} chat…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 Eliminare {} chat? I messaggi verranno rimossi da questo account{}. L’eliminazione è definitiva.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 Eliminare definitivamente “{}” ({})? Non passerà dal cestino e non potrai recuperarlo.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7370,7 +7370,7 @@ Destinazione dei nuovi elementi
 New ones go in:
 Destinazione dei nuovi elementi:
 
-New screenshot
+New Screenshot
 Nuova istantanea dello schermo
 
 New shells can't start until it's running again.
@@ -14993,7 +14993,7 @@ accesso effettuato, {} calendari
 slots of the pool in use
 posti del pool occupati
 
-some of it couldn't be read
+some of it couldn’t be read
 impossibile leggere parte dei dati
 
 something else is called “{}” there now
@@ -15269,7 +15269,7 @@ ieri alle {}
 you
 tu
 
-you don't have permission
+you don’t have permission
 non hai il permesso
 
 your cloud storage
@@ -15361,7 +15361,7 @@ other: {n} file da copiare
 one: {n} film in riproduzione su AirPlay. Fai clic per sospendere o interrompere.
 other: {n} film in riproduzione su AirPlay. Fai clic per sospendere o interrompere.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: impossibile leggere {n} cartella
 other: impossibile leggere {n} cartelle
 

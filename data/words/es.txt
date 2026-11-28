@@ -2458,7 +2458,7 @@ Haz clic en Hacer copia ahora para hacer la primera.
 Click a graph to see what was busy then
 Haz clic en un gráfico para ver qué estaba ocupado entonces
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Haz clic en un anillo para entrar en una carpeta y en el centro para volver; arrastra lo que no necesites al Colector.
 
 Click a shortcut to give it other keys.
@@ -2908,7 +2908,7 @@ Copiar un código que ninguna pestaña espera
 Copy the Code That Just Came
 Copiar el código recién llegado
 
-Copy to clipboard
+Copy to Clipboard
 Copiar al portapapeles
 
 Copy-on-write
@@ -3355,7 +3355,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 Borrar hasta el inicio de la línea
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 ¿Eliminar {} ({}) para siempre? No irán a la papelera y no se puede deshacer.
 
 Delete {} Backups…
@@ -3367,7 +3367,7 @@ Eliminar {} chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 ¿Eliminar {} chats? Sus mensajes desaparecen de esta cuenta{}. No se puede deshacer.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 ¿Eliminar «{}» ({}) para siempre? No irá a la papelera y no se puede deshacer.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7370,7 +7370,7 @@ Los nuevos van en
 New ones go in:
 Los nuevos van en:
 
-New screenshot
+New Screenshot
 Nueva captura
 
 New shells can't start until it's running again.
@@ -14993,7 +14993,7 @@ sesión iniciada, {} calendarios
 slots of the pool in use
 huecos del conjunto en uso
 
-some of it couldn't be read
+some of it couldn’t be read
 parte no se pudo leer
 
 something else is called “{}” there now
@@ -15269,7 +15269,7 @@ ayer a las {}
 you
 tú
 
-you don't have permission
+you don’t have permission
 no tienes permiso
 
 your cloud storage
@@ -15361,7 +15361,7 @@ other: {n} archivos por copiar
 one: {n} película en un receptor AirPlay. Haz clic para pausarla o detenerla.
 other: {n} películas en receptores AirPlay. Haz clic para pausarlas o detenerlas.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: no se pudo leer {n} carpeta
 other: no se pudieron leer {n} carpetas
 

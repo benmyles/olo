@@ -409,7 +409,20 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
     // (Its menus under the field where narrow start where the field does,
     // as the section's menu over them: the list's first column is check
     // boxes, no words to put them over.)
-    let header = search::header(cx, &app.u.search, "updates", facets, width).min_field(240.0).count(if app.session.is_some() { format!("{shown} of {total}") } else { String::new() });
+    // (The count only where there's one: an empty one kept its room,
+    // the field 13 points short of the menus under it; Opus's and Neon's
+    // reviews, 2026-11-28.)
+    let mut header = search::header(cx, &app.u.search, "updates", facets, width).min_field(240.0);
+    if app.session.is_some() {
+        header = header.count(format!("{shown} of {total}"));
+    }
+    // Nothing read (yet, or it couldn't be): the list's place says why,
+    // with a way to try again where it failed; no search or filters of
+    // nothing over it (the kit's can't be shown off: docs/TODO.md), no
+    // details beside it and no Choose or Update under it, the same while
+    // it's tried again (Opus's and Neon's reviews, 2026-11-28).
+    let unread = app.session.is_none();
+    let failed = unread && app.error.is_some() && app.loading.is_none();
 
     let list: Element = if app.session.is_none() {
         let (title, detail) = match (&app.error, &app.loading) {
@@ -417,7 +430,17 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
             (None, Some(l)) => (l.what.clone(), olo_kit::words::tr("The package service reads what’s installed and what each repository has.").to_owned()),
             _ => (olo_kit::words::tr("Nothing read yet").to_owned(), String::new()),
         };
-        crate::well(cx, p.document_background, olo_kit::widgets::EmptyState::new(title).icon("software-update").detail(detail))
+        let mut empty = olo_kit::widgets::EmptyState::new(title).icon("software-update").detail(detail);
+        if failed {
+            empty = empty.action(
+                "Try Again",
+                cx.listener(|v: &mut OsUpdates, _: &ClickEvent, cx| {
+                    use olo_kit::View as _;
+                    v.command("check", cx);
+                }),
+            );
+        }
+        crate::well(cx, p.document_background, empty)
     } else if total == 0 {
         crate::well(
             cx,
@@ -448,13 +471,26 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
         }),
         cx.listener(|v: &mut OsUpdates, _: &ClickEvent, cx| message(v, Msg::Act, cx)),
     );
-    let foot = div().flex().flex_col().gap(px(m::STACK)).children(over).child(div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(app.status(cx))).child(act));
-    let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).child(header);
+    // (Nothing read: the status alone, while it's read; its progress.)
+    let foot = if unread {
+        app.loading.is_some().then(|| div().flex().items_center().child(div().flex_1().min_w_0().child(app.status(cx))).into_element())
+    } else {
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(m::STACK))
+                .children(over)
+                .child(div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(app.status(cx))).child(act))
+                .into_element(),
+        )
+    };
+    let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).children((!unread).then_some(header));
     if let Some(b) = crate::release::waiting_banner(app, cx) {
         col = col.child(b);
     }
-    let at = app.details_at(cx);
-    col.child(crate::list_and_details(at, list, || details_view(app, cx))).child(foot).into_element()
+    let at = if unread { crate::DetailsAt::Gone } else { app.details_at(cx) };
+    col.child(crate::list_and_details(at, list, || details_view(app, cx))).children(foot).into_element()
 }
 
 fn list_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {

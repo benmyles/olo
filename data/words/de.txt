@@ -2458,7 +2458,7 @@ Klicken Sie auf „Jetzt sichern“, um die erste zu erstellen.
 Click a graph to see what was busy then
 Klicken Sie auf einen Graphen, um zu sehen, was damals beschäftigt war
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Klicken Sie auf einen Ring, um einen Ordner zu öffnen, auf die Mitte, um zurückzugehen; ziehen Sie Unnötiges in den Sammler.
 
 Click a shortcut to give it other keys.
@@ -2908,7 +2908,7 @@ Einen Code kopieren, auf den kein Tab wartet
 Copy the Code That Just Came
 Gerade eingegangenen Code kopieren
 
-Copy to clipboard
+Copy to Clipboard
 In die Zwischenablage kopieren
 
 Copy-on-write
@@ -3355,7 +3355,7 @@ Diese Sicherung löschen? Der nur von ihr belegte Platz wird freigegeben; Dateie
 Delete to the line's start
 Bis zum Zeilenanfang löschen
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 {} ({}) endgültig löschen? Sie kommen nicht in den Papierkorb, und das kann nicht widerrufen werden.
 
 Delete {} Backups…
@@ -3367,7 +3367,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 {} Chats löschen? Ihre Nachrichten verschwinden aus diesem Konto{}. Das kann nicht widerrufen werden.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 „{}“ ({}) endgültig löschen? Es kommt nicht in den Papierkorb, und das kann nicht widerrufen werden.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7370,7 +7370,7 @@ Neue kommen in
 New ones go in:
 Neue kommen in:
 
-New screenshot
+New Screenshot
 Neues Bildschirmfoto
 
 New shells can't start until it's running again.
@@ -14993,7 +14993,7 @@ angemeldet, {} Kalender
 slots of the pool in use
 Slots des Pools in Gebrauch
 
-some of it couldn't be read
+some of it couldn’t be read
 manches davon war nicht lesbar
 
 something else is called “{}” there now
@@ -15269,7 +15269,7 @@ gestern um {}
 you
 Sie
 
-you don't have permission
+you don’t have permission
 Sie haben keine Berechtigung
 
 your cloud storage
@@ -15361,7 +15361,7 @@ other: {n} Dateien zu kopieren
 one: {n} Film läuft auf einem AirPlay-Empfänger. Klicken, um ihn zu pausieren oder zu stoppen.
 other: {n} Filme laufen auf AirPlay-Empfängern. Klicken, um sie zu pausieren oder zu stoppen.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: {n} Ordner konnte nicht gelesen werden
 other: {n} Ordner konnten nicht gelesen werden
 

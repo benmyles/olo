@@ -6151,6 +6151,263 @@ something nobody here has is in "Blocked", with what it waits for.
   portals, MIME handlers, GDM/login entries, audio, input, or shell
   config).
 
+- **Night light can't be seen in a headless session, an Agent Screen
+  or a screenshot (low priority)** (QA, 2026-11-28, `qa-neon` NEON-18:
+  `night_light.mode = "on"` at 3600 K, no warmth in any captured
+  frame). By design today: night light scales each CRTC's gamma ramps
+  (or the colour matrix, `CTM`) on the udev backend, at scan-out, so it
+  costs no rendering; a headless session has no scan-out, and every
+  picture (`tsession shot`, Agent Screens' `look`, Screenshot) reads the
+  rendered frame, never the screen's. Headless only logs each step
+  ("white point"), which is what its tests read. So Night mode can't be
+  judged from pictures: on a real screen only. If it ever needs to be
+  (a review of night-time colours, a screen shared at night), headless
+  could apply the same gains to the frames it captures, or a
+  `screenshot` could ask for "as shown"; app_server's night.rs and
+  headless.rs (not changed here: `qa-fix-core` holds app_server).
+
+- **Agent Screens' `--window`: what only Chrome and the compositor can
+  settle** (Astra 6.2's review of `qa-fix-tiling-tools`, 2026-11-28; not
+  that branch's to change: `apps/chrome/`, `crates/app_server/`). What
+  the branch did: a program served by `commands::serve` (Chrome, Slack)
+  now declines a window's command or menus (`{"unscoped":true}`), and
+  `olo-screen invoke`/`menus --window` refuse then rather than act on
+  the process's first window; a click on a Chrome tab by its node still
+  goes process-wide. Left:
+  - *Chrome's provider*, in Astra's words: "The Chrome/Slack command
+    provider discards the surface even when the CLI sends it … With two
+    Slack windows in one profile, the extension picks the first matching
+    app tab for both menus and navigation. With two Chrome windows, a
+    `tab ID` belonging to B can activate B even when the request names
+    A. Give served providers a surface-aware callback … Preserve
+    Chrome's tab clicks by validating the tab's owning window. Exercise
+    the served socket as well as the kit responder."
+    (`apps/chrome/extension/background.js`, `apps/chrome/src/host.rs`.)
+  - *A named window's click*, in Astra's words: "A named tree can supply
+    the right coordinates and still click the window in front … It does
+    not ask which compositor surface is actually there. With two
+    overlapping documents and a button in the rear document covered by a
+    button in the front one, the front button receives the click and the
+    result names the rear match. For a named-window click, have the
+    compositor verify the target at input delivery, or raise and verify
+    the target before acting."
+
+- **Kit widgets the tiling fixes needed and didn't have** (found while
+  fixing `qa-fix-tiling-tools`' review, 2026-11-28; the branch worked
+  round each in its app, said here so the kit can do it once):
+  - `SearchField` and `TabView` can't be shown disabled. Calendar's
+    empty state (no calendars) leaves Search and its Day/Week/Month/
+    Agenda tabs live with nothing to search or show (Opus 5.5: "Search
+    and the view popup stay live with nothing to search or show"); it
+    disables its folded View pop-up only. OS Updates, with nothing read,
+    leaves its search, filters, details and footer out altogether. A
+    `SearchField::set_enabled` (its `TextField` has one) and a
+    `TabView::enabled(false)` would let both say "not now" in place.
+  - `dashboard::Facts` cuts a value it hasn't room for ("4.5 ms least,
+    9.7 ms…") and never wraps: Speed Test in a third of a screen still
+    cuts four of its values (Neon 4: "let long values wrap onto a second
+    line … so nothing truncates"; Opus 5.5: "labels are never cut but
+    values are, even though the values are the data"). A Facts that
+    puts a value under its label, or wraps it, where the card is narrow.
+  - `MonthGrid` is always six weeks at 22 points: a horizontal third
+    now shows it whole only by dropping its padding (Calendar's
+    `month_pad`). Opus 5.5: "6-week months: tighten the pitch to 19pt …
+    dim the dots under out-of-month dates along with their numbers";
+    Neon 4: "`11`'s dot sits about 1px from the top of the blue selection
+    frame around `18`, and `18`'s own event dot is missing/obscured".
+  - `Graph` below 76 points is a bare sparkline: "the highest peak
+    reaches only 54% of the plot height … lines at zero run along the
+    well's bottom border" (Opus 5.5); "inset the plotted sparkline about
+    3–4pt from the bottom (and side) inner bevels of the well" (Neon 4).
+    Token Pool's quarter now gives its plot the 76 points where it has
+    them; a sparkline that scales to a nice number just over its data
+    and stands a few points off the well would do it for every app.
+  - A window held shorter than its content (a tile) is scrolled by its
+    Frame menu bar and all: "the scrollbar starts at y≈27pt, level with
+    'File Edit' … No native window does this" (Opus 5.5, Speed Test).
+    Speed Test now scrolls its cards itself under a fixed menu bar and
+    strip when held; the Frame keeping a `MenuBar` out of what it
+    scrolls would do it for every window that fits its content.
+
+- **Terminal's folder: what the branch can't settle by reading the PTY**
+  (Astra 6.2's second review of `qa-fix-tiling-tools`, 2026-11-28):
+  - *Who wrote a report* (Astra #6): "Foreground ownership at parse time
+    does not identify the writer. A short-lived child can print a
+    directory report, exit and return the PTY to its parent before
+    Terminal's feeder processes the queued output … A background job
+    can also write to the PTY while the parent owns the foreground."
+    Astra: "use a shell-owned prompt hook to publish directory changes,
+    or treat uncorroborated PTY text as a hint" (Olo's own brush could
+    say it over a channel of its own).
+  - *A title's trailing spaces* (Astra #15): "The pinned VTE parser
+    joins and trims OSC 0/2 text *before* emitting `Event::Title`. A
+    title-reporting brush in a directory named `draft ` therefore
+    supplies `draft` … Cmd+T opens the sibling if it exists." The
+    parser is alacritty's `vte` (0.15): a title's raw bytes would have
+    to be read before it, by Olo's own scanner (`io.rs`), as OSC 7 is.
+
+- **Calendar: a double-click whose first click brings the preview up**
+  (Astra 6.2's second review, #18, "Likely"): "Double-click an event in
+  the bottom quarter of the grid. The first mouse-down selects it and
+  brings up a preview taking the bottom third of the column. If the next
+  frame is presented between clicks, the second mouse-down lands in the
+  preview and the event's double-click handler never opens the editor."
+  Astra: "Defer the first reveal through the double-click interval for
+  pointer selection … or otherwise preserve the pressed event as the
+  target of the second click." (In a narrow column the preview now shows
+  only once an event is chosen, which is when this can happen.)
+
+- **The tiling batch's second looks, for later** (Opus 5.5's and Neon 4's
+  looks at `qa-fix-tiling-tools` round 2, 2026-11-28; broader than the
+  branch, which fixed what was its own):
+  - *Calendar Month in a third* (Opus #2): "every timed event is a colour
+    square plus one or two letters plus '…' … The grid reads as noise.
+    Below ≈70pt per cell, draw timed events as 5pt dots … at most 3, then
+    '+n' … List the selected day's events underneath."
+  - *Calendar Week and Agenda in a third* (Opus #3): "Stagger overlapping
+    events instead of splitting the column … On blocks under 70pt wide,
+    drop the time and location lines and wrap the title … Cut the tab
+    view's inner padding to 6pt … Add weekday initials"; the Agenda's
+    time column: "show the start time only, in a ≈58pt column".
+  - *Doctor's cards* (Opus #4): "set the body in the secondary text
+    colour and limit it to 3 lines, with a 'More' disclosure"; the title
+    on a line of its own at the body's edge; the "Problem" tag's orange
+    "about 2.7:1 … darken the orange to ≈#B85C00 … or keep the orange and
+    use near-black text".
+  - *Links as controls, desktop-wide* (Opus #5): "nothing on this desktop
+    should be blue text that acts as a button": Doctor's and Updates'
+    Choose (a "Select ▾" pop-up), Ignore (a button), Weather's ten
+    suggestions (four, as buttons or list rows) and New Conversation (the
+    Assistant menu). With it, Neon 4's #11: "Disabled blue links render in
+    a dark muted blue … Raise the brightness of disabled link text in dark
+    mode".
+  - *Square cards* (Opus #6): Doctor's, Speed Test's and Weather's
+    rounded cards, "square corners (0pt radius) and the same 1pt etched
+    frame as DiskBackup's group boxes".
+  - *Token Pool, narrow* (Opus #8, #9): in one column "add a warning row
+    at the top … '2 hosts have errors', and a 'Show' button", the tab
+    badge a count; the shared scroll "in a sunken well … as the Accounts
+    tab does"; "Sync All" a full-width row under both columns in a
+    quarter; the two-row footers "the 2×2 grid Screenshot already uses".
+  - *Calendar Day* (Opus #10): "remove the column header in Day view";
+    the "all day" row only with all-day events; "in dark mode, fill
+    events with the calendar colour at ≈30% opacity … plus a 3pt solid
+    bar". (Light mode's fills are now dark enough for white words.)
+  - *Weather* (Opus #11, #12): "Sunrise 07:12 · Sunset 16:48"; Feels like
+    "a 1.5pt dashed line"; the rain chart "the full width of the main
+    column … ≈32pt tall"; the three columns' headings alike; in a third
+    "a 2-column grid … of 48pt tiles"; in a horizontal half the tiles
+    beside the forecast. With Neon 4's #9: the next hour's place among
+    the cards the same at every size.
+  - *DiskBackup* (Opus #13): "centre the content vertically … or pin the
+    footnote"; "use the app's own icon, without the tick … a plain cloud
+    for the Google Drive option"; "every hour" said once.
+  - *Disk Usage* (Opus #14): the stray "~" by Up; deeper rings "a lighter
+    version of its parent's colour", not greyer; no segment under ≈3°;
+    the Collector's hint centred in its box.
+  - *To-Do* (Opus #15): the list tags at one place: "a fixed,
+    right-aligned date column 50pt wide … even when it's empty" (the
+    branch has a narrow row's tag hug its own due instead).
+  - *The kit's `Graph`* (Opus #16): "use whole-number ticks (0, 5, 10,
+    15)" for counts ("0 / 7.5 / 15").
+
+- **ui-lint's notes on the tiling batch's apps, for later** (its
+  `--review --tiles` on 2560×1600 and 2208×1600 at 2×, 2026-11-28: "to
+  look at", none errors, all there before `qa-fix-tiling-tools`' last
+  pass):
+  - *Calendar:* "“https://meet.example.org/j/8” and “Work” beside it are
+    almost level, 1 px apart" (Agenda; a vertical half, a quarter), and
+    the same of "Room 2", "Sam’s birthday", "Call with New York" and
+    "Swimming lesson" by their calendars (a vertical half, 2208×1600);
+    Month's all-day bars, "“Weekend o…” has 2.2 pt of its band after
+    it: give its words room (3.5 pt at least either side)" (a vertical
+    half), and the title row's "“Week…” has 1.5 pt" (a vertical third).
+    In a horizontal third, with the small month given way, the
+    calendars' rows fall 1–3 px from the day's lines beside them, in
+    another well ("“Holidays” and “Wednesday, November 18” beside it are
+    almost level, 3 px apart"): the check might leave words in two wells
+    be.
+  - *Token Pool:* Machines' "rows at x 56 are 80 px apart, but “build”
+    to “dev-box” is 82: space them evenly" (zoomed, a vertical half, a
+    vertical third), and "rows at x 40 are 24 px apart, but “Gateway” to
+    “Claude Code” is 25" (a horizontal third).
+
+- **Screenshot's preview stands up to 1 pt inside its column** (`qa-fix-tiling-tools`' final pictures, 2026-11-28, as in Round 2's): its aspect-fitted area, rounded, is 0.5 pt in at each side in a vertical third and 1 pt at the left in a quarter, against the buttons' and pop-ups' edges under it.
+
+- **A fitting window arranged into a tile right after settling at its own size reports `resizing` for good** (`qa-fix-tiling-tools`' tilecheck, 2026-11-28: Screenshot at 1.5×, put back at its own frame, reviewed there, then `arrange`d into a quarter: its review says `resizing` past 12 s at the tile's size, at 0% CPU, a pointer over it no help); check again on a tree with `qa-fix-core`'s `Frame::HoldLetGo` and fixed-window Arrange fixes.
+
+- **Doctor's own words, curled at their source** (Neon 4's and Opus
+  5.5's looks at `qa-fix-tiling-tools`, 2026-11-28: "straight ASCII
+  apostrophes in DiskUsage and Olo Doctor"). Disk Usage's are curled,
+  their keys in every `data/words` catalog renamed with them (each
+  translation kept). Doctor's window and notifications curl what they
+  show (`app::curled`); its ~410 strings themselves still have `'`. Some
+  must keep it: the files a fix installs (compared with what's there to
+  say whether it's applied), its own errors matched again with
+  `contains` ("headers aren't installed"), `--report` for scripts. A
+  pass over the rest (finding titles and details, fix steps) can curl
+  them where they're made, `curled` then left for the window's
+  safety.
+
+- **Review notes on the tiling batch, for later** (Opus 5.5's and Neon
+  4's looks at `qa-fix-tiling-tools`, 2026-11-28, and its own review's
+  notes; broader than that branch, which fixed what was its own):
+  - *Rounded cards* (Opus #2): "Rounded 'cards' are web-dashboard
+    styling, not Olo … Round corners, hairline borders, and boxes inside
+    panels inside wells. Nothing else on the desktop looks like this."
+    Doctor's findings, Speed Test's and Weather's cards: DiskBackup-style
+    group boxes ("square, etched, with the title set into the frame"),
+    "0 radius and no shadows", no darker backdrop panel.
+  - *Links as controls* (Opus #3): "Blue, underline-less text used as
+    controls is a web convention": Doctor's Ignore (a push button left
+    of the primary), the Choose links and "Choose ▾" (a "Select ▾"
+    pop-up), Weather's "New Conversation" (a menu item). With it, Neon
+    4's #11: "Olo Doctor dark-mode `Ignore` and `Choose` links have too
+    little contrast … Use the same lighter dark-mode link blue as
+    Weather's Assistant".
+  - *Empty and error headlines* (Opus #4): "'Can't see the disks', 'The
+    packages can't be read', 'Forecasts from tomorrow.io' and 'No
+    calendars yet' are all in secondary grey, so they don't separate
+    from the detail line"; a 48-point caution icon on an error's
+    `EmptyState`. (Drive Setup and OS Updates now have Try Again.)
+  - *Doctor's cards* (Opus #8): "the checkbox and pill take x=47–125pt,
+    so the title gets a ~167pt column … title and body don't share a
+    left edge"; "white bold text on the orange pill is under 3:1"; the
+    udev path in the body font on a line of its own; "cards run 10–15
+    lines each" (a disclosure).
+  - *To-Do* (Opus #9): "the bare ◀ … reads as 'previous day'. That is
+    exactly what the same glyph means in Calendar": "◀ Lists", or a
+    sidebar glyph; header gaps of 8 points; "move the list and due time
+    to a second line … Collapse the three glyphs into one 12pt
+    indicator" (rows are a fixed 30 points: the branch has a narrow
+    row's list hug its own due instead).
+  - *Weather* (Opus #10, #11, #12): three header treatments (PLACES in
+    small caps in its well, Assistant bold outside its own) and four
+    levels of nesting (window, white well, tab view, scroll view); in a
+    horizontal half "the hourly forecast, the core of the app, is
+    entirely below the fold" (six cards in one row, or beside the hero);
+    the chart's hour icons "centred on half-hours … under labels and
+    ticks every 2 hours", a night band with no key, a minute chart
+    "about 10pt tall", and "Sun 07:12–16:48" in the hero reading as
+    Sunday beside "Sun 29".
+  - *Disk Usage* (Opus #15): the `Home ▾` path, and the rings' slivers
+    merged.
+  - *DiskBackup* (Opus #16): "the option reuses the app icon (disk +
+    cloud + check), so the header seems to promise cloud backup": Google
+    Drive's own picture.
+  - *Calendar* (Opus #18): "in dark mode the 45-minute 'Run' event is a
+    766 × 35pt slab of saturated light green, the brightest thing on
+    screen": the calendar's colour at about 35% with a 3-point bar of
+    the full colour; at 48 points an hour, a horizontal third shows
+    about 2 hours. The branch's own review's notes: the Agenda's rows 1
+    pixel from their calendars' names, and the Month view's all-day
+    bars "cramped" (`month.rs`).
+  - *Small icons* (Opus #19): Token Pool's flat server and tower glyphs
+    ("build", "This Computer") and To-Do's outline note, clip and bell:
+    Olo's 16-point isometric icons, or words.
+  - *Token Pool*: "3d 16h" and "1 failed" near the row's edge, and
+    uneven rows on Machines (the layout review's notes).
+
 ## Done, waiting for Ben to try or confirm
 
 - **Olo's Rex hosts on Fedora 44, all of it** (Ben, 2026-11-25: "make

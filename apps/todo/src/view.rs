@@ -31,14 +31,19 @@ pub const DETAILS: f32 = 292.0;
 /// "Every tiling layout").
 const MAIN_BESIDE: f32 = 340.0;
 const BOARD_BESIDE: f32 = 2.0 * board::LANE_LEAST + board::GAP + 2.0 * BOARD_INSET;
-/// The window's least: a third of the smallest screen, either way.
-pub const MIN_WIDTH: f32 = 400.0;
+/// The window's least: a third of the smallest screen, either way, as
+/// tiling has it beside Deskbar (349 points of content across).
+pub const MIN_WIDTH: f32 = 346.0;
 pub const MIN_HEIGHT: f32 = 220.0;
 /// The place's header over its to-dos, and where its name's baseline is
 /// in it; the chosen to-do's title starts so its first line sits on the
 /// same line.
 pub const HEADER: f32 = 46.0;
-const TITLE_BASE: f32 = 31.0;
+/// The title's baseline in the header: its capitals centred in it, as
+/// the switch beside it is (at 31, the title stood a point low and the
+/// switch, set on its baseline, nearly four, twice the room over them as
+/// under: Neon's review, 2026-11-28).
+const TITLE_BASE: f32 = HEADER / 2.0 + (style::LEAD_SIZE + 4.0) * style::CAP_HEIGHT / 2.0;
 pub const TITLE_TOP: f32 = 15.0;
 /// A board's inset in its pane: the list's own, so a list's lanes end
 /// where its rows' rules and dues do, and the header's switch with them
@@ -388,11 +393,16 @@ fn header(v: &mut ToDoApp, width: f32, cx: &mut Cx<ToDoApp>) -> Element {
 /// halves, a line between them; the half in force sunken on the
 /// selection's ground (which way is on must be plain in every look: a
 /// pressed grey beside a raised grey wasn't, by night least of all), the
-/// other a raised face to press.
+/// other a raised face to press. A control's height, centred in the
+/// header as the title is, its words centred in it; it hears the pointer
+/// only there (drawn in the header's whole height, it took presses and
+/// lit in the empty band over and under it: Astra's and Neon's reviews,
+/// 2026-11-28).
 fn layout_switch(layout: Layout, half: f32, cx: &mut Cx<ToDoApp>) -> Element {
     control_canvas(move |g, b, state| {
         let p = theme::palette();
         let b = style::snap(g, b);
+        let baseline = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
         let line = style::hairline(g);
         let mid = style::snap_coord(g, b.center().x);
         style::frame_rect(g, b, style::shade(&p, p.panel_background, 1.55));
@@ -414,7 +424,7 @@ fn layout_switch(layout: Layout, half: f32, cx: &mut Cx<ToDoApp>) -> Element {
                 style::bevel(g, part, style::c(p.shine), style::shade(&p, base, 1.2));
                 style::c(p.panel_text)
             };
-            style::label(g, part.center().x, part.center().y, style::Align::Center, said, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+            style::label_on_baseline(g, part.center().x, baseline, style::Align::Center, said, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
             g.agent(agent::Node { role: "RadioButton", name: Some(said.into()), bounds: part, enabled: true, clickable: true, checked: Some(on), ..Default::default() });
         }
         style::vline(g, mid, b.top(), b.bottom(), style::shade(&p, p.panel_background, 1.55));

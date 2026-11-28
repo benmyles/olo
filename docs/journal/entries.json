@@ -5680,5 +5680,29 @@
   "title": "Rex Activity disabled Tracker and mixed-child Collapse",
   "caption": "Fail-closed disabled Open in Tracker when unreachable over SSH, Collapse for mixed screens and subagents, and Stop 1 Subagent...",
   "image": "2026-11-28/155529-rex-activity-disabled-tracker-and-mixed-child-co.png"
+ },
+ {
+  "time": "2026-11-28T17:10:57",
+  "title": "Speed Test vertical-third stacked facts and flush scrollbar",
+  "caption": "Single inner scrollbar flush against results well and stacked label-over-value metrics with zero truncation",
+  "image": "2026-11-28/171057-speed-test-vertical-third-stacked-facts-and-flus.png"
+ },
+ {
+  "time": "2026-11-28T17:10:58",
+  "title": "Screenshot vertical-third responsive layout",
+  "caption": "Dynamic content-width layout, 2x2 button grid, title-case buttons, and flush 3 pt Save outer default ring",
+  "image": "2026-11-28/171058-screenshot-vertical-third-responsive-layout.png"
+ },
+ {
+  "time": "2026-11-28T17:10:59",
+  "title": "Token Pool compact Activity table alignment",
+  "caption": "Dynamic height budgeting, span-filtered Recent Requests, right-aligned compact Status column, and untruncated Model names",
+  "image": "2026-11-28/171059-token-pool-compact-activity-table-alignment.png"
+ },
+ {
+  "time": "2026-11-28T17:11:00",
+  "title": "Calendar vertical-third Week view polish",
+  "caption": "Folded full date title, widened chosen day, symmetrically centered narrow blocks, and 4.5:1 light-mode event fills",
+  "image": "2026-11-28/171100-calendar-vertical-third-week-view-polish.png"
  }
 ]

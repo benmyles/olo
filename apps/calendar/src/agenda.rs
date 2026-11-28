@@ -18,6 +18,16 @@ const ROW: f32 = 22.0;
 /// The times' column.
 const TIMES: f32 = 132.0;
 
+/// How much room after the times an event's row needs for its
+/// calendar's name at the right as well as its title.
+const NAMES_FROM: f32 = 240.0;
+
+/// Whether the calendars' names show at the rows' right, `room` after
+/// the times (its mark's colour says the calendar where they don't).
+fn names_shown(room: f32) -> bool {
+    room >= NAMES_FROM
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Line {
     Day(Date),
@@ -189,9 +199,17 @@ fn list(v: &mut Calendar, cx: &mut Cx<Calendar>, all: Vec<Line>, found: bool) ->
                             style::fill_rect(g, mark, style::c(p.hue(s.hue)));
                         }
                         let x = x0 + px(TIMES + 8.0 + m::TIGHT + 2.0);
-                        // The calendar's name at the right; the title and where, as far as there's room.
+                        // The calendar's name at the right, where there's
+                        // room for it and a title; the title and where, as
+                        // far as there's room. (A third of a screen cut the
+                        // titles to "Sa…" for names the mark's colour says
+                        // already: Opus's and Neon's reviews, 2026-11-28.)
                         let calendar = v.book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
-                        let c = style::label(g, right, mid, style::Align::Right, calendar.clone(), style::SMALL_SIZE, regular.clone(), dim);
+                        let c = if names_shown(f32::from(right - x)) {
+                            style::label(g, right, mid, style::Align::Right, calendar.clone(), style::SMALL_SIZE, regular.clone(), dim)
+                        } else {
+                            Bounds { origin: point(right + px(m::SPACING), mid), size: olo_kit::size(px(0.0), px(0.0)) }
+                        };
                         let room = (c.left() - px(m::SPACING) - x).max(px(0.0));
                         let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::PLAIN_SIZE, regular.clone(), ink, room);
                         crate::view::struck(g, s, t, ink);
@@ -242,4 +260,18 @@ fn list(v: &mut Calendar, cx: &mut Cx<Calendar>, all: Vec<Line>, found: bool) ->
     let p = theme::palette();
     let scroll = if found { &v.found_scroll } else { &v.agenda_scroll };
     div().size_full().child(ScrollView::new(scroll).border(false).auto_hide(true).background(p.document_background).child(rows)).into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The calendars' names where a title has room beside them: not in a
+    /// third of a screen (about 120 points after the times), in a quarter
+    /// (about 320).
+    #[test]
+    fn names_only_where_titles_keep_their_room() {
+        assert!(!names_shown(120.0));
+        assert!(names_shown(320.0));
+    }
 }

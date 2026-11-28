@@ -280,5 +280,5 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
     }));
     let fit = (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h));
     let resizing = cx.commit_is_held() || (cx.resize_pending() && !cx.held_state().held() && cx.root_view::<Frame>().is_some_and(Frame::awaiting_fit));
-    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, resizing, findings }, fit)
+    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, surface: cx.surface_id(), resizing, findings }, fit)
 }

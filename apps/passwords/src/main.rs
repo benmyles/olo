@@ -66,9 +66,10 @@ use crate::{
 };
 
 const APP_ID: &str = "olo.passwords";
-/// The main window's least: a third of the smallest screen, either way
-/// (CLAUDE.md, "Every tiling layout"; it asked for 680 × 420).
-const MIN_WIDTH: f32 = 400.0;
+/// The main window's least: a third of the smallest screen, either way,
+/// as tiling has it beside Deskbar (349 points of content across;
+/// CLAUDE.md, "Every tiling layout"; it asked for 680 × 420).
+const MIN_WIDTH: f32 = 346.0;
 const MIN_HEIGHT: f32 = 220.0;
 
 /// A 1Password account Passwords syncs with.

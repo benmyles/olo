@@ -2458,7 +2458,7 @@ Cliquez sur Sauvegarder maintenant pour faire la première.
 Click a graph to see what was busy then
 Cliquez sur un graphique pour voir ce qui était occupé à ce moment
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Cliquez sur un anneau pour ouvrir un dossier, sur le centre pour remonter ; glissez les fichiers à écarter dans le Collecteur.
 
 Click a shortcut to give it other keys.
@@ -2908,7 +2908,7 @@ Copier un code qu’aucun onglet n’attend
 Copy the Code That Just Came
 Copier le code qui vient d’arriver
 
-Copy to clipboard
+Copy to Clipboard
 Copier dans le presse-papiers
 
 Copy-on-write
@@ -3355,7 +3355,7 @@ Supprimer cette sauvegarde ? L’espace qu’elle seule occupait est libéré�
 Delete to the line's start
 Supprimer jusqu’au début de la ligne
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 Supprimer {} ({}) définitivement ? Ils n’iront pas à la corbeille, et c’est irréversible.
 
 Delete {} Backups…
@@ -3367,7 +3367,7 @@ Supprimer {} discussions…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 Supprimer {} discussions ? Leurs messages disparaissent de ce compte{}. Action irréversible.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 Supprimer « {} » ({}) définitivement ? Il n’ira pas à la corbeille, et c’est irréversible.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7370,7 +7370,7 @@ Les nouveaux vont dans
 New ones go in:
 Les nouveaux vont dans :
 
-New screenshot
+New Screenshot
 Nouvelle capture
 
 New shells can't start until it's running again.
@@ -14993,7 +14993,7 @@ connecté, {} calendriers
 slots of the pool in use
 emplacements du pool utilisés
 
-some of it couldn't be read
+some of it couldn’t be read
 une partie n’a pas pu être lue
 
 something else is called “{}” there now
@@ -15269,7 +15269,7 @@ hier à {}
 you
 vous
 
-you don't have permission
+you don’t have permission
 vous n’avez pas l’autorisation
 
 your cloud storage
@@ -15361,7 +15361,7 @@ other: {n} fichiers à copier
 one: {n} film en lecture sur un récepteur AirPlay. Cliquez pour le mettre en pause ou l’arrêter.
 other: {n} films en lecture sur des récepteurs AirPlay. Cliquez pour les mettre en pause ou les arrêter.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: {n} dossier n’a pas pu être lu
 other: {n} dossiers n’ont pas pu être lus
 

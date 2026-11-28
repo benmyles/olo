@@ -6,6 +6,8 @@
 //! graphics (APC `G`), Sixel (DCS `q`) and iTerm2 images (OSC 1337) out of
 //! the stream and hands them to `graphics` with the terminal locked, so
 //! they land exactly where the cursor is at that point in the output.
+//! Where the shell says it is (OSC 7, which vte doesn't keep either) is
+//! lifted out too, for `said`.
 //!
 //! Synchronized updates (DEC mode 2026, used by TUIs to avoid flicker) are
 //! buffered by vte's processor; the window is only told to redraw once a
@@ -42,6 +44,8 @@ pub enum Piece<'a> {
         data: Vec<u8>,
     },
     Iterm(Vec<u8>),
+    /// Where the shell is, as it says (OSC 7: `file://HOST/PATH`).
+    Cwd(Vec<u8>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -50,15 +54,18 @@ enum Kind {
     Apc,
     /// ESC P seen: reading parameters until the final byte.
     DcsHeader,
-    /// ESC ] seen: checking for "1337;".
+    /// ESC ] seen: checking for "1337;" or "7;".
     OscHeader,
     Kitty,
     Sixel,
     Iterm,
+    Cwd,
 }
 
 /// Longest image sequence accepted (anything longer is dropped).
 const MAX_SEQUENCE: usize = 128 * 1024 * 1024;
+/// Longest OSC 7 accepted: a path at its longest, %-encoded.
+const MAX_CWD: usize = 3 * 4096 + 256;
 
 #[derive(Default)]
 pub struct Scanner {
@@ -147,19 +154,71 @@ impl Scanner {
                     },
                     Kind::OscHeader => {
                         buf.push(b);
-                        const PREFIX: &[u8] = b"1337;";
-                        if !PREFIX.starts_with(buf) {
+                        // iTerm2's images, and where the shell is; any
+                        // other is vte's.
+                        const ITERM: &[u8] = b"1337;";
+                        const CWD: &[u8] = b"7;";
+                        if buf.as_slice() == ITERM {
+                            buf.clear();
+                            *kind = Kind::Iterm;
+                        } else if buf.as_slice() == CWD {
+                            buf.clear();
+                            *kind = Kind::Cwd;
+                        } else if !ITERM.starts_with(buf) && !CWD.starts_with(buf) {
                             let mut pass = vec![0x1b, b']'];
                             pass.extend_from_slice(buf);
                             out.push(Piece::Held(pass));
                             self.capture = None;
                             text_start = i;
-                        } else if buf.len() == PREFIX.len() {
-                            buf.clear();
-                            *kind = Kind::Iterm;
                         }
                     }
-                    Kind::Kitty | Kind::Sixel | Kind::Iterm => {
+                    // Where the shell is, cancelled (CAN, SUB): dropped,
+                    // the cancel with it, and what follows is the
+                    // terminal's again (it was kept off the screen until
+                    // a BEL or ST came: Astra's review, 2026-11-28).
+                    Kind::Cwd if b == 0x18 || b == 0x1a => {
+                        self.capture_esc = false;
+                        self.capture = None;
+                        text_start = i;
+                    }
+                    // Cut off by the next sequence (ESC, then anything but
+                    // `\`): dropped, and that ESC and this byte start what
+                    // they start, as any ESC does: the next folder's report
+                    // or an image is still this scanner's (handed to the
+                    // terminal's parser, a replacement report was lost:
+                    // Astra's and Neon's reviews, 2026-11-28).
+                    Kind::Cwd if self.capture_esc && b != b'\\' => {
+                        self.capture_esc = false;
+                        self.capture = None;
+                        match b {
+                            b'_' => self.capture = Some((Kind::Apc, Vec::new())),
+                            b'P' => {
+                                self.capture = Some((Kind::DcsHeader, Vec::new()));
+                                self.params.clear();
+                            }
+                            b']' => self.capture = Some((Kind::OscHeader, Vec::new())),
+                            _ => {
+                                // (A CSI: light/dark reports noted on the
+                                // way, as anywhere.)
+                                if b == b'[' {
+                                    let rest = &input[i - 1..];
+                                    if rest.starts_with(&REPORTS_ON[1..]) {
+                                        self.reports = Some(true);
+                                    } else if rest.starts_with(&REPORTS_OFF[1..]) {
+                                        self.reports = Some(false);
+                                    } else if rest.starts_with(&LIGHT_OR_DARK[1..]) {
+                                        self.asked = true;
+                                    }
+                                }
+                                // The ESC the terminal's, and this byte
+                                // read again as output (another ESC too).
+                                out.push(Piece::Held(vec![0x1b]));
+                                i -= 1;
+                            }
+                        }
+                        text_start = i;
+                    }
+                    Kind::Kitty | Kind::Sixel | Kind::Iterm | Kind::Cwd => {
                         let end = if self.capture_esc {
                             self.capture_esc = false;
                             if b == b'\\' {
@@ -172,25 +231,27 @@ impl Scanner {
                         } else if b == 0x1b {
                             self.capture_esc = true;
                             false
-                        } else if b == 0x07 && *kind == Kind::Iterm {
+                        } else if b == 0x07 && matches!(*kind, Kind::Iterm | Kind::Cwd) {
                             true
                         } else {
                             buf.push(b);
                             false
                         };
+                        let most = if *kind == Kind::Cwd { MAX_CWD } else { MAX_SEQUENCE };
                         if end {
                             let (kind, data) = self.capture.take().unwrap();
-                            if data.len() <= MAX_SEQUENCE {
+                            if data.len() <= most {
                                 out.push(match kind {
                                     Kind::Kitty => Piece::Kitty(data),
                                     Kind::Sixel => Piece::Sixel { params: std::mem::take(&mut self.params), data },
+                                    Kind::Cwd => Piece::Cwd(data),
                                     _ => Piece::Iterm(data),
                                 });
                             }
                             text_start = i;
-                        } else if buf.len() > MAX_SEQUENCE + 16 {
+                        } else if buf.len() > most + 16 {
                             // Runaway: stop growing, keep skipping to the end.
-                            buf.truncate(MAX_SEQUENCE + 1);
+                            buf.truncate(most + 1);
                         }
                     }
                 }
@@ -294,6 +355,11 @@ pub struct Shared {
     /// The program wants to hear when the colours turn light or dark
     /// (DEC mode 2031).
     pub reports: AtomicBool,
+    /// Where the shell says it is (`said`).
+    pub said: Mutex<crate::said::Said>,
+    /// What's fed is olo-termd's replay ([`Feeder::feed_replay`]): its
+    /// folder report is the daemon's word for the shell, checked there.
+    pub replaying: AtomicBool,
 }
 
 impl Shared {
@@ -306,7 +372,40 @@ impl Shared {
             pid: AtomicI32::new(0),
             pty: Mutex::new(None),
             reports: AtomicBool::new(false),
+            said: Mutex::default(),
+            replaying: AtomicBool::new(false),
         }
+    }
+
+    /// Where the shell's process is now (`/proc/PID/cwd`, read there and
+    /// nowhere else: never a `stat` of the folder itself).
+    pub fn shell_cwd(&self) -> Option<std::path::PathBuf> {
+        let path = std::fs::read_link(format!("/proc/{}/cwd", self.shell()?)).ok()?;
+        (!path.as_os_str().is_empty() && !path.as_os_str().as_encoded_bytes().ends_with(b" (deleted)")).then_some(path)
+    }
+
+    /// Whether the shell itself has the terminal (its process group in
+    /// front: at its prompt), what's printed then its own; unknown, not.
+    pub fn shell_in_front(&self) -> bool {
+        self.shell().is_some_and(|shell| self.foreground() == Some(shell))
+    }
+
+    /// The shell said where it is with OSC 7 (`uri`): kept only if it's
+    /// the shell's (`said`), with where its process is now.
+    pub fn said_osc7(&self, uri: &[u8]) {
+        // (Replayed by olo-termd: its word for the shell, whoever has the
+        // terminal now; a program in front at attach had it dropped, and
+        // the tab's folder was where the shell started: Astra's and
+        // Neon's reviews, 2026-11-28.)
+        let its = self.replaying.load(Ordering::Relaxed) || self.shell_in_front();
+        let cwd = self.shell_cwd();
+        self.said.lock().unwrap().osc7(uri, its, crate::said::here(), cwd.as_deref());
+    }
+
+    /// The title changed (None: reset): kept only if it's the shell's.
+    pub fn said_title(&self, title: Option<&str>) {
+        let (its, cwd) = (self.shell_in_front(), self.shell_cwd());
+        self.said.lock().unwrap().title(title, its, crate::said::here(), cwd.as_deref());
     }
 
     pub fn set_sizes(&self, size: Size, cell: (u16, u16)) {
@@ -350,6 +449,18 @@ impl Feeder {
         self.parser.stop_sync(term);
     }
 
+    /// [`Self::feed`] for olo-termd's replay (a Terminal attaching, the
+    /// daemon back from an upgrade): the folder it ends with, as OSC 7,
+    /// is the daemon's word for the shell, checked there
+    /// (`Said::report`), kept whatever program has the terminal now; its
+    /// title, as ever, only if the shell's.
+    pub fn feed_replay<T: EventListener>(&mut self, term: &mut Term<T>, shared: &Shared, bytes: &[u8], reply: &mut Vec<u8>) -> bool {
+        shared.replaying.store(true, Ordering::Relaxed);
+        let drawn = self.feed(term, shared, bytes, reply);
+        shared.replaying.store(false, Ordering::Relaxed);
+        drawn
+    }
+
     /// Parse `bytes` into `term`; anything to tell the program (image
     /// replies) goes in `reply`. True when there's something new to draw.
     pub fn feed<T: EventListener>(&mut self, term: &mut Term<T>, shared: &Shared, bytes: &[u8], reply: &mut Vec<u8>) -> bool {
@@ -365,6 +476,7 @@ impl Feeder {
             match piece {
                 Piece::Text(text) => self.parser.advance(term, text),
                 Piece::Held(text) => self.parser.advance(term, &text),
+                Piece::Cwd(uri) => shared.said_osc7(&uri),
                 image => {
                     // Apply any synchronized output first so the image
                     // lands after it.
@@ -379,7 +491,7 @@ impl Feeder {
                         Piece::Kitty(body) => graphics::kitty(term, &mut ctx, &body),
                         Piece::Sixel { params, data } => graphics::sixel(term, &mut ctx, &params, &data, bg),
                         Piece::Iterm(body) => graphics::iterm(term, &mut ctx, &body),
-                        Piece::Text(_) | Piece::Held(_) => {}
+                        Piece::Text(_) | Piece::Held(_) | Piece::Cwd(_) => {}
                     }
                 }
             }
@@ -405,6 +517,7 @@ mod tests {
                     Piece::Kitty(b) => format!("K:{}", String::from_utf8_lossy(&b)),
                     Piece::Sixel { params, data } => format!("S:{}|{}", String::from_utf8_lossy(&params), String::from_utf8_lossy(&data)),
                     Piece::Iterm(b) => format!("I:{}", String::from_utf8_lossy(&b)),
+                    Piece::Cwd(b) => format!("C:{}", String::from_utf8_lossy(&b)),
                 });
             }
         }
@@ -417,6 +530,46 @@ mod tests {
         assert_eq!(run(&[b"a\x1b_Ga=T;AAAA\x1b\\b"]), ["T:a", "K:a=T;AAAA", "T:b"]);
         assert_eq!(run(&[b"\x1bP0;1;0q#1~~\x1b\\"]), ["S:0;1;0|#1~~"]);
         assert_eq!(run(&[b"\x1b]1337;File=inline=1:QQ==\x07z"]), ["I:File=inline=1:QQ==", "T:z"]);
+    }
+
+    /// Where the shell is (OSC 7) is lifted out, ended by BEL or ST and
+    /// across reads; a title (OSC 0, 2) and other OSCs pass to vte.
+    #[test]
+    fn lifts_where_the_shell_is() {
+        assert_eq!(run(&[b"\x1b]7;file://olo-box/tmp/a%20b\x07$ "]), ["C:file://olo-box/tmp/a%20b", "T:$ "]);
+        assert_eq!(run(&[b"x\x1b]7;file:///srv\x1b\\y"]), ["T:x", "C:file:///srv", "T:y"]);
+        assert_eq!(run(&[b"\x1b]", b"7;file:", b"///home\x07"]), ["C:file:///home"]);
+        assert_eq!(run(&[b"\x1b]2;ada@olo-box:~\x07"]).concat(), "T:\x1b]2T:;ada@olo-box:~\x07");
+        assert_eq!(run(&[b"\x1b]777;notify\x07"]).concat(), "T:\x1b]77T:7;notify\x07");
+        // Longer than any path: dropped.
+        let long = [b"\x1b]7;file://".as_slice(), &vec![b'a'; MAX_CWD + 64], b"\x07z"].concat();
+        assert_eq!(run(&[&long]), ["T:z"]);
+    }
+
+    /// One cancelled (CAN, SUB) or cut off by the next sequence is
+    /// dropped, and what follows reaches the screen, across reads too.
+    #[test]
+    fn a_cancelled_report_never_hides_what_follows() {
+        assert_eq!(run(&[b"\x1b]7;file:///tm\x18$ prompt"]), ["T:$ prompt"]);
+        assert_eq!(run(&[b"\x1b]7;file:///tm", b"\x1a$ "]), ["T:$ "]);
+        assert_eq!(run(&[b"\x1b]7;file:///x\x1b[1mbold"]).concat(), "T:\x1bT:[1mbold");
+        assert_eq!(run(&[b"\x1b]7;file:///x\x1b", b"[1mz"]).concat(), "T:\x1bT:[1mz");
+        // (Ended as it should be, by ST across reads: still taken.)
+        assert_eq!(run(&[b"\x1b]7;file:///x\x1b", b"\\y"]), ["C:file:///x", "T:y"]);
+        // Cut off by the next folder's report: that one is taken, in one
+        // read and with the reads split at its ESC.
+        assert_eq!(run(&[b"\x1b]7;file:///old\x1b]7;file:///new\x07$ "]), ["C:file:///new", "T:$ "]);
+        assert_eq!(run(&[b"\x1b]7;file:///old\x1b", b"]7;file:///new\x07$ "]), ["C:file:///new", "T:$ "]);
+        // Or by an image: still the scanner's.
+        assert!(run(&[b"\x1b]7;file:///old\x1b_Ga=T;AAAA\x1b\\"]).iter().any(|p| p.starts_with("K:")));
+        // A cancel straight after an ESC: no ESC left over, the cancel
+        // gone.
+        assert_eq!(run(&[b"\x1b]7;file:///x\x1b\x18after"]), ["T:after"]);
+        assert_eq!(run(&[b"\x1b]7;file:///x\x1b", b"\x1aafter"]), ["T:after"]);
+        // And a light/dark report asked for right after one cut off: noted.
+        let mut s = Scanner::default();
+        s.feed(b"\x1b]7;file:///x\x1b[?996n", &mut Vec::new());
+        assert!(s.asked);
     }
 
     #[test]

@@ -4614,3 +4614,12 @@ prompts while staying sandboxed to its scratch cwd.
   does not call as that client. A headless Rex connected to a scratch server
   spawns an `olo-rex-link agent --server … serve` child that outlives
   `tsession stop` until its scratch server stops.
+
+**Exact 349 pt vertical-third tiling checks & `OLO_DATA`** (2026-11-28):
+- `ui-lint` sessions run without Deskbar, so passing
+  `--screens 2560x1600@2,2208x1600@2` adds an `1104×800` pt screen matching
+  `1280×800` minus Deskbar (exact `363 pt` tile / `349 pt` content vertical
+  third).
+- When running `ui-lint` or `tsession` against binaries built in a
+  `CARGO_TARGET_DIR` outside the repo tree, set `OLO_DATA=<tree>/data` (or
+  place a `data` symlink beside the target dir) so icons render.

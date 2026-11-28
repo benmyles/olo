@@ -2458,7 +2458,7 @@ Klik op Nu back-up maken voor de eerste back-up.
 Click a graph to see what was busy then
 Klik op een grafiek om te zien wat er toen druk was
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Klik op een ring om een map te openen, of in het midden om terug te gaan. Sleep wat weg mag naar het verzamelvak.
 
 Click a shortcut to give it other keys.
@@ -2908,7 +2908,7 @@ Code kopiëren als geen tabblad erop wacht
 Copy the Code That Just Came
 Zojuist ontvangen code kopiëren
 
-Copy to clipboard
+Copy to Clipboard
 Naar klembord kopiëren
 
 Copy-on-write
@@ -3355,7 +3355,7 @@ Deze back-up verwijderen? Ruimte die alleen daarvoor is gebruikt komt vrij. Best
 Delete to the line's start
 Wissen tot het begin van de regel
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 {} ({}) definitief verwijderen? De onderdelen gaan niet naar de prullenbak en kunnen niet worden teruggezet.
 
 Delete {} Backups…
@@ -3367,7 +3367,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 {} chats verwijderen? Hun berichten verdwijnen uit dit account{}. Dit kan niet ongedaan worden gemaakt.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 ‘{}’ ({}) definitief verwijderen? Het onderdeel gaat niet naar de prullenbak en kan niet worden teruggezet.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7370,7 +7370,7 @@ Nieuwe werkbomen in
 New ones go in:
 Nieuwe werkbomen in:
 
-New screenshot
+New Screenshot
 Nieuwe schermafdruk
 
 New shells can't start until it's running again.
@@ -14993,7 +14993,7 @@ aangemeld, {} agenda’s
 slots of the pool in use
 plaatsen van de pool bezet
 
-some of it couldn't be read
+some of it couldn’t be read
 een deel kon niet worden gelezen
 
 something else is called “{}” there now
@@ -15269,7 +15269,7 @@ gisteren om {}
 you
 u
 
-you don't have permission
+you don’t have permission
 u hebt geen toestemming
 
 your cloud storage
@@ -15361,7 +15361,7 @@ other: {n} bestanden te kopiëren
 one: {n} film op AirPlay. Klik om te pauzeren of te stoppen.
 other: {n} films op AirPlay. Klik om te pauzeren of te stoppen.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: {n} map kon niet worden gelezen
 other: {n} mappen konden niet worden gelezen
 

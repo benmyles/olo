@@ -588,6 +588,7 @@ impl Weather {
                 .app_items(&["ai"])
                 .item("Add Place…", "add-place")
                 .key("n")
+                .enabled(!self.needs_key())
                 .item("Rename Place…", "rename-place")
                 .enabled(has)
                 .item("Remove Place", "remove-place")
@@ -780,6 +781,11 @@ impl View for Weather {
 
     fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
         match command {
+            // (Off with no key yet, as its menu item says: the key first,
+            // Data Provider… or the window's Give a Key…. Opening the key's
+            // dialog, it said yes to a command its menu said was off;
+            // Neon's review, 2026-11-28.)
+            "add-place" if self.needs_key() => return false,
             "add-place" => self.open_add_place(cx),
             "remove-place" => self.remove_place(self.settings.chosen, cx),
             "rename-place" => self.open_rename(self.settings.chosen, cx),

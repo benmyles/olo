@@ -2446,7 +2446,7 @@ Click Back Up Now to make the first.
 Click a graph to see what was busy then
 點按圖表查看當時哪些工作最繁忙
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 點按圓環進入資料夾，點按中心返回上一層；不需要的項目可以拖到收集器中。
 
 Click a shortcut to give it other keys.
@@ -2893,7 +2893,7 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 複製剛收到的驗證碼
 
-Copy to clipboard
+Copy to Clipboard
 複製到剪貼簿
 
 Copy-on-write
@@ -3340,7 +3340,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 刪除至行首
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 永久刪除 {}（{}）嗎？這些項目不會移入垃圾桶，此操作無法復原。
 
 Delete {} Backups…
@@ -3352,7 +3352,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 刪除這 {} 個聊天嗎？此帳號中的聊天訊息將被刪除{}。此操作無法復原。
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 永久刪除「{}」（{}）嗎？此項不會移入垃圾桶，此操作無法復原。
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7342,7 +7342,7 @@ New ones go in
 New ones go in:
 新項目存放位置：
 
-New screenshot
+New Screenshot
 新螢幕截圖
 
 New shells can't start until it's running again.
@@ -14944,7 +14944,7 @@ signed in, {} calendars
 slots of the pool in use
 池中已用插槽
 
-some of it couldn't be read
+some of it couldn’t be read
 部分內容無法讀取
 
 something else is called “{}” there now
@@ -15214,7 +15214,7 @@ yesterday at {}
 you
 您
 
-you don't have permission
+you don’t have permission
 您沒有權限
 
 your cloud storage
@@ -15286,7 +15286,7 @@ other: 有 {n} 個檔案待複製
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 接收器正在播放 {n} 部影片。點按暫停或停止。
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 other: 有 {n} 個資料夾無法讀取
 
 {n} folders taken

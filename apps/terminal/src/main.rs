@@ -23,6 +23,7 @@ mod groups;
 mod io;
 mod links;
 mod repos;
+mod said;
 mod session;
 mod sudo;
 mod sudo_wire;

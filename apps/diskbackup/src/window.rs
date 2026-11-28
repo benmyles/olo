@@ -43,6 +43,10 @@ use crate::{
 
 /// The tabs, in order.
 const TABS: [&str; 5] = ["Schedule", "Files", "Backups", "Speed & Resources", "Destination"];
+/// Narrower than this, the welcome's two places for backups go one over
+/// the other: each box's button ("Connect Google Drive…") needs about
+/// 200 points.
+const CHOICES_SIDE_BY_SIDE: f32 = 480.0;
 const DESTINATION: usize = 4;
 
 /// Busy with something that can be stopped (a backup, a tidy, erasing,
@@ -65,6 +69,19 @@ const MONTHLY: &[(u32, &str)] = &[(0, "None"), (6, "6 months"), (12, "12 months"
 
 /// The header's picture, points.
 const ICON: f32 = 48.0;
+/// From the welcome's picture to its words: they start where the boxes'
+/// words do under them (a box's inset, its 32-point picture, a spacing).
+const HERO_GAP: f32 = m::BOX_INSET + 32.0 + m::SPACING - ICON;
+// (Room after the picture: a label's from its field at least.)
+const _: () = assert!(HERO_GAP >= m::LABEL_GAP);
+/// The welcome's heading where the title's size doesn't fit its line.
+const HEADING_NARROW: f32 = 20.0;
+
+/// The welcome's heading's size: the title's (`style::TITLE_SIZE`)
+/// where it's `wide` at that size fits the `room`, else smaller.
+fn welcome_heading_size(wide: f32, room: f32) -> f32 {
+    if wide <= room { style::TITLE_SIZE } else { HEADING_NARROW }
+}
 /// A label column, points.
 const DIVIDER: f32 = 140.0;
 
@@ -912,6 +929,13 @@ impl MainWindow {
     /// Not set up: the one question, where backups go.
     fn welcome(&self, cx: &mut Cx<Self>) -> Element {
         let busy = self.busy;
+        let width = f32::from(cx.viewport_size().width);
+        let side_by_side = width >= CHOICES_SIDE_BY_SIDE;
+        // (Its heading on one line: smaller where the title's size would
+        // wrap it, "computer" alone on a line of its own in a third of a
+        // screen; Opus's and Neon's reviews, 2026-11-28.)
+        let room = width - 2.0 * m::WINDOW_INSET - ICON - HERO_GAP;
+        let heading = welcome_heading_size(f32::from(style::text_width(olo_kit::words::tr("Back up this computer").to_owned(), style::TITLE_SIZE, style::ui_font(olo_kit::FontWeight::BOLD))), room);
         let dim = |t: &'static str| StringView::new(t).wrap(true).dim(true);
         // (Side by side, as tall as the taller, each button at its box's
         // foot: their buttons level whatever their words' lengths. They
@@ -928,14 +952,19 @@ impl MainWindow {
             .flex_col()
             .gap(px(m::SPACING))
             .child(
-                div().flex().flex_row().items_center().gap(px(m::SPACING * 2.0)).child(picture("diskbackup", ICON)).child(
+                // (The picture level with the heading's top, its words where
+                // the boxes' are under it: centred on the whole, it floated
+                // low beside the paragraph, the words 14 points right of the
+                // boxes'; Opus's and Neon's reviews, 2026-11-28.)
+                div().flex().flex_row().items_start().gap(px(HERO_GAP)).child(picture("diskbackup", ICON)).child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .flex()
                         .flex_col()
                         .gap(px(m::TIGHT))
-                        .child(StringView::new("Back up this computer").bold(true).size(style::TITLE_SIZE).height(style::line_row(style::TITLE_SIZE)))
+                        // (Wrapped beside the picture where even that's too narrow.)
+                        .child(StringView::new("Back up this computer").bold(true).size(heading).wrap(true))
                         .child(
                             StringView::new("DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?")
                                 .wrap(true),
@@ -943,9 +972,14 @@ impl MainWindow {
                 ),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_row()
+                // (One over the other where two side by side would be too
+                // narrow for their buttons: a third of a screen, held so by
+                // tiling, ran Connect Google Drive… out of its box.)
+                // (A tight spacing more over them: a box's name stands over
+                // its frame, and the paragraph's last line sat nearer it
+                // than the boxes are to each other.)
+                if side_by_side { div().flex().flex_row() } else { div().flex().flex_col() }
+                    .pt(px(m::TIGHT))
                     .gap(px(m::SPACING))
                     .child(div().flex_1().min_w_0().flex().flex_col().child(choice(
                         "disk",
@@ -1522,6 +1556,16 @@ impl MainWindow {
 mod tests {
     use super::*;
     use olo_protocol::diskbackup::{Keep, Last};
+
+    /// The welcome's words start where the boxes' do (a box's inset, its
+    /// picture and a spacing), and its heading keeps to one line: the
+    /// title's size where it fits, smaller where it doesn't.
+    #[test]
+    fn the_welcome_lines_up_with_its_boxes() {
+        assert_eq!(ICON + HERO_GAP, m::BOX_INSET + 32.0 + m::SPACING);
+        assert_eq!(welcome_heading_size(250.0, 400.0), style::TITLE_SIZE);
+        assert_eq!(welcome_heading_size(270.0, 259.0), HEADING_NARROW);
+    }
 
     #[test]
     fn words_for_times() {

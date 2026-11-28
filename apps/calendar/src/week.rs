@@ -139,11 +139,120 @@ fn days(v: &Calendar) -> (Date, usize) {
     }
 }
 
-/// The columns' edges across `b`, right of the hours' names.
-fn columns(g: &olo_kit::Painter, b: Bounds<Pixels>, n: usize) -> Vec<Pixels> {
+/// Narrower than this, a week's days are too narrow for an event's
+/// title to be read (a letter and "…"), and the day chosen is widened
+/// ([`widths`]).
+const READ_BELOW: f32 = 48.0;
+/// The day chosen's width then: a short title, or a word and its time.
+const READABLE: f32 = 96.0;
+
+/// The columns' edges across `b`, right of the hours' names
+/// ([`widths`]; `focus`, the day chosen's column).
+fn columns(g: &olo_kit::Painter, b: Bounds<Pixels>, n: usize, focus: Option<usize>) -> Vec<Pixels> {
     let left = b.left() + px(GUTTER);
-    let w = f32::from(b.right() - left);
-    (0..=n).map(|i| style::snap_coord(g, left + px(w * i as f32 / n as f32))).collect()
+    let mut x = 0.0;
+    let mut edges = vec![style::snap_coord(g, left)];
+    for w in widths(f32::from(b.right() - left), n, focus) {
+        x += w;
+        edges.push(style::snap_coord(g, left + px(x)));
+    }
+    edges
+}
+
+/// The days' widths across `w`: each the same; or, where that's too
+/// narrow for a title to be read (seven in a third of a screen beside
+/// Deskbar, 34 points each, every event "…": QA, 2026-11-28), the day
+/// chosen (`focus`) `READABLE` wide and the others sharing the rest,
+/// still there to see when things are, and to click (a click, or an
+/// arrow, chooses another day, which widens in its turn).
+fn widths(w: f32, n: usize, focus: Option<usize>) -> Vec<f32> {
+    let even = w / n.max(1) as f32;
+    match focus {
+        Some(f) if n > 1 && f < n && even < READ_BELOW && w > 2.0 * READABLE => {
+            let rest = (w - READABLE) / (n - 1) as f32;
+            (0..n).map(|i| if i == f { READABLE } else { rest }).collect()
+        }
+        _ => vec![even; n],
+    }
+}
+
+/// Whether an event's block has `room` for its title: a letter and "…"
+/// at least, as wide as they are in its words' font (a lone "…" said
+/// nothing, in the narrow days beside the one chosen).
+/// A day's heading's number, centred in its column `col_w` wide: its
+/// left, `number_w` the number's width (today's, its pill's, the number
+/// a point into it); on a whole point.
+fn number_left(col_w: f32, number_w: f32, today: bool) -> f32 {
+    ((col_w - number_w) / 2.0).round() + if today { 1.0 } else { 0.0 }
+}
+
+/// Today's pill, round its number `number_w` wide: 5 points each side,
+/// 18 at least, and never wider than its column (`col_w`), a point in
+/// from each of its lines.
+fn pill_width(number_w: f32, col_w: f32) -> f32 {
+    (number_w + 10.0).max(18.0).min(col_w - 2.0)
+}
+
+/// What says how many more a day has than its whole-day strip shows,
+/// and whether it's the short form (centred in its day): "+2 more" where
+/// that `fits` after the day's inset, else "+2" where that fits its
+/// day (`fits_short`), else nothing.
+fn more_said(more: usize, fits: impl Fn(&str) -> bool, fits_short: impl Fn(&str) -> bool) -> Option<(String, bool)> {
+    let long = format!("+{more} more");
+    let short = format!("+{more}");
+    if fits(&long) {
+        Some((long, false))
+    } else if fits_short(&short) {
+        Some((short, true))
+    } else {
+        None
+    }
+}
+
+/// An event's block's insets from its day's lines, left and right: in a
+/// day as wide as its words want, a point and room at its right to click
+/// the day itself; in a narrow one (a third of a screen's days beside the
+/// one chosen), 2 points clear each side, the block under its day's
+/// number (left by 2 and right by 7, it stood off to the left: Neon's
+/// review, 2026-11-28): its day's line takes the first point at the
+/// left ([`DAY_LINE`]), and the block leaves [`BLOCK_GAP`] at its right.
+fn block_insets(col_w: f32) -> (f32, f32) {
+    if col_w < READ_BELOW { (2.0 + DAY_LINE, 2.0 - BLOCK_GAP) } else { (1.0, 7.0) }
+}
+
+/// A day's line, drawn at its left edge (`style::vline`), a point wide.
+const DAY_LINE: f32 = 1.0;
+/// What a block leaves at its right, to the next beside it.
+const BLOCK_GAP: f32 = 1.0;
+
+/// The baseline of a line of `size` words in a thin bar `r` (an event
+/// shorter than two lines): its capitals centred, as a label's are;
+/// where that leaves no room under them for a descender (a quarter
+/// hour's, 11 points), the capitals and descenders centred together.
+/// ("Standup"'s p touched the bar's foot, two points of it clear over
+/// the capitals: Neon's review, 2026-11-28.)
+fn bar_baseline(g: &olo_kit::Painter, r: Bounds<Pixels>, size: f32) -> Pixels {
+    let capped = style::baseline_at(g, r.center().y, size);
+    if f32::from(r.bottom() - capped) - size * DESCENDER >= 1.5 { capped } else { style::snap_coord(g, r.center().y + px(bar_lift(size))) }
+}
+
+/// A descender's depth (Noto Sans's p and g), of the size.
+const DESCENDER: f32 = 0.21;
+
+/// How far under a thin bar's middle its words' baseline is, their
+/// capitals and descenders centred together ([`bar_baseline`]).
+fn bar_lift(size: f32) -> f32 {
+    size * (style::CAP_HEIGHT - DESCENDER) / 2.0
+}
+
+fn titled(room: Pixels) -> bool {
+    room > style::text_width(olo_kit::SharedString::from("W…"), style::DETAIL_SIZE, style::ui_font(FontWeight::BOLD))
+}
+
+/// The day chosen's column among the `n` from `first`, if it shows.
+fn focus(v: &Calendar, first: Date, n: usize) -> Option<usize> {
+    let i = layout::day_number(v.cursor) - layout::day_number(first);
+    (0..n as i32).contains(&i).then_some(i as usize)
 }
 
 /// A press on the days' names and whole-day strip (`hours` false) or
@@ -223,7 +332,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let (regular, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
             let (first, n) = days(v);
             // (As wide as the hours under it: not over their scroll bar.)
-            let xs = columns(g, Bounds::from_corners(b.origin, point(b.right() - px(SCROLL_BAR), b.bottom())), n);
+            let xs = columns(g, Bounds::from_corners(b.origin, point(b.right() - px(SCROLL_BAR), b.bottom())), n, focus(v, first, n));
             let mut parts: Vec<(Bounds<Pixels>, Part)> = Vec::new();
             olo_kit::review::own_grid(g, b);
             let mid = b.top() + px(NAMES / 2.0);
@@ -271,11 +380,23 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     Heading::Initial => (full[..1].to_owned(), if day == v.today { 4.0 } else { 2.0 }),
                     Heading::Number => (String::new(), 0.0),
                 };
+                let col_w = f32::from(xs[col + 1] - xs[col]);
+                let pill_w = pill_width(f32::from(style::text_width(number.clone(), style::PLAIN_SIZE, bold.clone())), col_w);
                 let x = match heading {
                     Heading::Initial if n > 1 => {
                         let name_w = f32::from(style::text_width(name.clone(), style::DETAIL_SIZE, regular.clone()));
                         let number_w = f32::from(style::text_width(number.clone(), style::PLAIN_SIZE, bold.clone())) + if day == v.today { 10.0 } else { 0.0 };
-                        xs[col] + px(((f32::from(xs[col + 1] - xs[col]) - name_w - gap - number_w) / 2.0).round())
+                        xs[col] + px(((col_w - name_w - gap - number_w) / 2.0).round())
+                    }
+                    // (The number alone, centred in its column as "W 18"
+                    // is, today's pill with it: at the column's left,
+                    // today's stood against the day before's number, the
+                    // rest of its wide column empty, and the narrow
+                    // columns' numbers ran over their lines; Neon's
+                    // review, 2026-11-28.)
+                    Heading::Number if n > 1 => {
+                        let number_w = if day == v.today { pill_w } else { f32::from(style::text_width(number.clone(), style::PLAIN_SIZE, bold.clone())) };
+                        xs[col] + px(number_left(col_w, number_w, day == v.today))
                     }
                     _ => xs[col] + px(EDGE + PAD),
                 };
@@ -287,8 +408,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 };
                 let nx = r.right() + px(gap);
                 let shown = if day == v.today {
-                    let width = (f32::from(style::text_width(number.clone(), style::PLAIN_SIZE, bold.clone())) + 10.0).max(18.0);
-                    let pill = style::snap(g, Bounds { origin: point(nx - px(1.0), mid - px(9.0)), size: size(px(width), px(18.0)) });
+                    let pill = style::snap(g, Bounds { origin: point(nx - px(1.0), mid - px(9.0)), size: size(px(pill_w), px(18.0)) });
                     g.paint_quad(olo_kit::fill(pill, style::c(p.control_mark)).corner_radii(px(9.0)));
                     style::label(g, pill.center().x, mid, style::Align::Center, number, style::PLAIN_SIZE, bold.clone(), style::c(p.ink_on(p.control_mark)))
                 } else {
@@ -333,18 +453,16 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     style::frame_rect(g, r, style::c(hue));
                 }
                 let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
-                let t = style::label_fit(
-                    g,
-                    xs[piece.from] + px(EDGE + PAD),
-                    r.center().y,
-                    style::Align::Left,
-                    said,
-                    style::DETAIL_SIZE,
-                    regular.clone(),
-                    style::c(p.ink_on(fill)),
-                    (r.size.width - px(2.0 * PAD)).max(px(0.0)),
-                );
-                crate::view::struck(g, s, t, style::c(p.ink_on(fill)));
+                // (Its room from where its words start to `PAD` before its
+                // end: one going on from a day before starts at the day's
+                // edge, its words `EDGE` further in, and its words ran to a
+                // point of its end.)
+                let x = xs[piece.from] + px(EDGE + PAD);
+                let room = (r.right() - px(PAD) - x).max(px(0.0));
+                if titled(room) {
+                    let t = style::label_fit(g, x, r.center().y, style::Align::Left, said, style::DETAIL_SIZE, regular.clone(), style::c(p.ink_on(fill)), room);
+                    crate::view::struck(g, s, t, style::c(p.ink_on(fill)));
+                }
                 let calendar = v.book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
                 let name = format!("{}, {}, {calendar}{}", s.title, words::when(s.start, s.end, s.all_day, v.h24), crate::view::going_said(s));
                 g.agent(agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
@@ -352,7 +470,19 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             }
             for (col, more) in laid.more.iter().enumerate().filter(|(_, more)| **more > 0) {
                 let y = top + px((strip - 1) as f32 * LANE + 1.0 + BAR / 2.0);
-                style::label(g, xs[col] + px(EDGE + PAD), y, style::Align::Left, format!("+{more} more"), style::DETAIL_SIZE, regular.clone(), quiet);
+                // ("+2" where "+2 more" is wider than its day, centred in
+                // it; nothing where even that is: it ran over the next;
+                // Neon's and Astra's reviews, 2026-11-28. The whole count
+                // to agents however it's said.)
+                let col_w = f32::from(xs[col + 1] - xs[col]);
+                let fits = |t: &str, room: f32| f32::from(style::text_width(t.to_owned(), style::DETAIL_SIZE, regular.clone())) <= room;
+                let said = more_said(*more, |t| fits(t, col_w - EDGE - 2.0 * PAD), |t| fits(t, col_w - 2.0));
+                let at = match &said {
+                    Some((text, false)) => style::label(g, xs[col] + px(EDGE + PAD), y, style::Align::Left, text.clone(), style::DETAIL_SIZE, regular.clone(), quiet),
+                    Some((text, true)) => style::label(g, xs[col] + px(col_w / 2.0), y, style::Align::Center, text.clone(), style::DETAIL_SIZE, regular.clone(), quiet),
+                    None => Bounds { origin: point(xs[col], y - px(BAR / 2.0)), size: size(px(col_w), px(BAR)) },
+                };
+                g.agent(agent::Node::label(format!("+{more} more"), at));
             }
             // One being dragged to other days: where it would be, on those
             // of them that show.
@@ -367,7 +497,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     let left = xs[a as usize] + if a > from { px(0.0) } else { px(EDGE) };
                     let right = xs[z as usize + 1] - if z < from + drag.days - 1 { px(0.0) } else { px(EDGE) };
                     let r = style::snap(g, Bounds::from_corners(point(left, y), point(right, y + px(BAR))));
-                    let fill = p.hue(s.hue);
+                    let fill = crate::view::solid(&p, p.hue(s.hue));
                     style::fill_rect(g, r, style::c(fill));
                     style::frame_rect(g, r, text);
                     let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
@@ -399,7 +529,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let faint = style::c(olo_theme::mix(p.document_text, p.document_background, 0.95));
             let (regular, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
             let (first, n) = days(v);
-            let xs = columns(g, b, n);
+            let xs = columns(g, b, n, focus(v, first, n));
             let mut parts: Vec<(Bounds<Pixels>, Part)> = Vec::new();
             let mut grips: Vec<(Bounds<Pixels>, Key, Date)> = Vec::new();
             olo_kit::review::own_grid(g, b);
@@ -428,11 +558,12 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             // Each day's events, side by side where they overlap.
             for col in 0..n {
                 let day = layout::day_of(layout::day_number(first) + col as i32);
-                let (left, right) = (xs[col] + px(1.0), xs[col + 1] - px(7.0));
+                let (inset_l, inset_r) = block_insets(f32::from(xs[col + 1] - xs[col]));
+                let (left, right) = (xs[col] + px(inset_l), xs[col + 1] - px(inset_r));
                 let width = f32::from(right - left);
                 for slot in layout::day(&v.shown, day) {
                     let s = &v.shown[slot.item];
-                    let r = style::snap(g, Bounds::from_corners(point(left + px(width * slot.left), y_at(slot.from) + px(1.0)), point(left + px(width * slot.right) - px(1.0), y_at(slot.to))));
+                    let r = style::snap(g, Bounds::from_corners(point(left + px(width * slot.left), y_at(slot.from) + px(1.0)), point(left + px(width * slot.right) - px(BLOCK_GAP), y_at(slot.to))));
                     let chosen = v.selected.as_ref().is_some_and(|key| *key == s.key());
                     let hue = p.hue(s.hue);
                     // (Being dragged elsewhere: where it was, faint.)
@@ -458,17 +589,21 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                         if moving && v.drag.as_ref().is_some_and(|d| d.end.is_some()) {
                             // (Its end being dragged: how long it was, faint,
                             // without its words; they're on what it would be.)
+                        } else if !titled(room) {
+                            // (A day too narrow for a letter of it: the
+                            // block alone, its name to agents and in the
+                            // preview once chosen.)
                         } else if tall < 30.0 {
                             // One line, in its middle: its title, then its start.
-                            let mid = r.center().y;
-                            let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
+                            let baseline = bar_baseline(g, r, style::DETAIL_SIZE);
+                            let t = style::label_on_baseline_fit(g, x, baseline, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
                             crate::view::struck(g, s, t, ink);
                             // (Its start after it only whole: cut, "9:3…"
                             // said nothing the hours beside it don't.)
                             let after = t.right() + px(6.0);
                             let start = words::time(s.start.time(), v.h24);
                             if style::text_width(start.clone(), style::DETAIL_SIZE, regular.clone()) <= r.right() - after - px(PAD) {
-                                style::label(g, after, mid, style::Align::Left, start, style::DETAIL_SIZE, regular.clone(), ink);
+                                style::label_on_baseline(g, after, baseline, style::Align::Left, start, style::DETAIL_SIZE, regular.clone(), ink);
                             }
                         } else {
                             let t = style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
@@ -506,7 +641,8 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 let col = layout::day_number(day) - layout::day_number(first);
                 if (0..n as i32).contains(&col) {
                     let col = col as usize;
-                    let (left, right) = (xs[col] + px(1.0), xs[col + 1] - px(7.0));
+                    let (inset_l, inset_r) = block_insets(f32::from(xs[col + 1] - xs[col]));
+                    let (left, right) = (xs[col] + px(inset_l), xs[col + 1] - px(inset_r));
                     // (Its end dragged: from where it starts on that day
                     // to where it would end; the cursor its edge's, held.)
                     let (top, bottom) = match drag.end {
@@ -516,8 +652,8 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     if drag.end.is_some() {
                         g.set_cursor_style(olo_kit::CursorStyle::ResizeUpDown, b.dilate(px(4096.0)));
                     }
-                    let r = style::snap(g, Bounds::from_corners(point(left, y_at(top) + px(1.0)), point(right - px(1.0), y_at(bottom))));
-                    let fill = p.hue(s.hue);
+                    let r = style::snap(g, Bounds::from_corners(point(left, y_at(top) + px(1.0)), point(right - px(BLOCK_GAP), y_at(bottom))));
+                    let fill = crate::view::solid(&p, p.hue(s.hue));
                     style::fill_rect(g, r, style::c(fill));
                     style::frame_rect(g, r, text);
                     style::frame_rect(g, style::inset(g, r, 1.0), text);
@@ -538,7 +674,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                         if f32::from(r.size.height) < 30.0 {
                             let both = format!("{}  {}", s.title, words::time(from.time(), v.h24));
                             let said = if whole(&both, style::DETAIL_SIZE, &bold) { both } else { s.title.to_string() };
-                            style::label_fit(g, x, r.center().y, style::Align::Left, said, style::DETAIL_SIZE, bold.clone(), ink, room);
+                            style::label_on_baseline_fit(g, x, bar_baseline(g, r, style::DETAIL_SIZE), style::Align::Left, said, style::DETAIL_SIZE, bold.clone(), ink, room);
                         } else {
                             style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
                             let when = words::when(from, to, false, v.h24);
@@ -605,6 +741,46 @@ pub fn starting_offset(now_hour: i8) -> f32 {
 mod tests {
     use super::*;
 
+    /// A number alone is centred in its column, today's pill with it and
+    /// never wider than its column; "+N more" says "+N" where it's wider
+    /// than its day; a thin bar's words have room for a descender.
+    #[test]
+    fn day_headings_fit_their_columns() {
+        // (A narrow day, 27 points; "15", 14.)
+        assert_eq!(number_left(27.0, 14.0, false), 7.0);
+        // Today's in the wide day chosen (96): its pill (24, a point
+        // before its number) centred.
+        let pill = pill_width(14.0, 96.0);
+        assert_eq!(pill, 24.0);
+        let left = number_left(96.0, pill, true) - 1.0;
+        assert_eq!((left, 96.0 - (left + pill)), (36.0, 36.0), "the pill centred");
+        assert_eq!(pill_width(14.0, 20.0), 18.0, "never wider than its column");
+        assert_eq!(pill_width(4.0, 96.0), 18.0);
+        let fits = |room: f32| move |t: &str| t.chars().count() as f32 * 6.0 <= room;
+        assert_eq!(more_said(2, fits(60.0), fits(60.0)), Some(("+2 more".into(), false)));
+        assert_eq!(more_said(2, fits(30.0), fits(30.0)), Some(("+2".into(), true)));
+        // (A narrow day, 24.5 points, its words inset 7 and 4 after:
+        // "+12" fits its whole day only; "+12345" not even that.)
+        assert_eq!(more_said(12, fits(24.5 - 7.0 - 4.0), fits(24.5 - 2.0)), Some(("+12".into(), true)));
+        assert_eq!(more_said(12345, fits(10.0), fits(22.5)), None);
+        // Blocks in a narrow day as far from each line, as drawn: clear
+        // of the day's own line (its first point) at the left, and of the
+        // next with the block's gap at its right. (Insets of 2 and 2 drew
+        // it 1 point from one and 3 from the other: the final pictures,
+        // 2026-11-28.) In a wide one, room at the right to click the day.
+        let (left, right) = block_insets(27.0);
+        let clear = (left - DAY_LINE, right + BLOCK_GAP);
+        assert_eq!(clear, (2.0, 2.0));
+        assert_eq!(block_insets(96.0), (1.0, 7.0));
+        // A quarter hour's bar (11 points): capitals and descender
+        // centred, half a point clear each side.
+        let size = style::DETAIL_SIZE;
+        let (cap, descender) = (size * style::CAP_HEIGHT, size * DESCENDER);
+        let baseline = 5.5 + bar_lift(size);
+        assert!((baseline - cap - (11.0 - baseline - descender)).abs() < 0.01, "as much over the capitals as under the descender");
+        assert!(11.0 - baseline - descender > 0.0);
+    }
+
     /// A dragged event starts on the quarter hour nearest its top, never
     /// before the day begins nor so late that it starts the next.
     #[test]
@@ -625,5 +801,23 @@ mod tests {
         let day = jiff::civil::date(2026, 11, 18);
         assert_eq!(time_on(day, 645), day.at(10, 45, 0, 0));
         assert_eq!(time_on(day, 1440), jiff::civil::date(2026, 11, 19).at(0, 0, 0, 0));
+    }
+
+    /// Seven days as wide as each other where a title can be read in
+    /// each (a quarter's 60 points); too narrow for that (a third's 34),
+    /// the day chosen wide enough to read and the rest sharing what's
+    /// left; one day, or none chosen, as it was.
+    #[test]
+    fn the_day_chosen_widens_in_a_narrow_week() {
+        let sum = |w: &[f32]| w.iter().sum::<f32>();
+        let quarter = widths(425.0, 7, Some(3));
+        assert!(quarter.iter().all(|&w| (w - 425.0 / 7.0).abs() < 0.01));
+        let third = widths(243.0, 7, Some(3));
+        assert_eq!(third[3], READABLE);
+        assert!((sum(&third) - 243.0).abs() < 0.01 && third.iter().enumerate().all(|(i, &w)| i == 3 || (w - (243.0 - READABLE) / 6.0).abs() < 0.01));
+        assert!(widths(243.0, 7, None).iter().all(|&w| (w - 243.0 / 7.0).abs() < 0.01));
+        assert_eq!(widths(243.0, 1, Some(0)), vec![243.0]);
+        // (Too narrow even for that: as wide as each other.)
+        assert!(widths(150.0, 7, Some(0)).iter().all(|&w| (w - 150.0 / 7.0).abs() < 0.01));
     }
 }

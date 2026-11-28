@@ -20,12 +20,12 @@ use std::{
 };
 
 use olo_kit::{
-    Cx, Element, IntoElement as _, Menu, MenuBar, ParentElement as _, SharedString, Styled as _, View, WindowOptions, div, metrics as m,
+    Cx, Element, IntoElement as _, Menu, MenuBar, ParentElement as _, ScrollHandle, SharedString, Styled as _, View, WindowOptions, div, metrics as m,
     palette::Hue,
     px, style,
     widgets::{
-        Button, Graph, Series, StatusBar, StringView,
-        dashboard::{self, Card, Facts},
+        Button, Graph, ScrollView, Series, StatusBar, StringView,
+        dashboard::{self, Card, Facts, facts_label_width},
         open_alert,
     },
 };
@@ -38,14 +38,69 @@ use crate::{
 };
 
 const WIDTH: f32 = 760.0;
+/// Narrower than this, the four cards go one under another, not two by
+/// two: a card's facts need about 280 points, their values whole. (At
+/// 500, a quarter of a screen had 13 of the 16 values cut: Opus's and
+/// Neon's reviews, 2026-11-28.)
+const TWO_ACROSS: f32 = 600.0;
+
+/// The strip over the cards: as tall as the progress bar with its words
+/// over it, whether or not a test runs (nothing under it moves as one
+/// starts).
+const STRIP: f32 = m::LABEL_ROW + m::TIGHT + 14.0;
 
 /// The window: as wide and as tall as what it shows, and no larger: it
 /// floats over tiled windows and is never a tile or a tab, where it was
 /// stretched to a size its four cards don't fill (Ben, 2026-11-16: "should
 /// be floating with max size so it doesn't look broken").
 pub fn options() -> WindowOptions {
-    WindowOptions { fixed: true, ..WindowOptions::new("Speed Test", WIDTH, 700.0).fits_content().floating() }
+    // (220 points its least: as tall as its cards where it's let be,
+    // what tiling gives it where held. Designed at 700, held shorter it
+    // was measured at 700 all the same, and the window scrolled, its
+    // menus with it, beside its cards' own bar: Astra's, Neon's and
+    // Opus's reviews, 2026-11-28.)
+    WindowOptions { fixed: true, ..WindowOptions::new("Speed Test", WIDTH, DESIGN_HEIGHT).fits_content().floating() }
 }
+/// The height it's designed at: its least (a horizontal third's); let
+/// be, it's as tall as its cards.
+const DESIGN_HEIGHT: f32 = 220.0;
+
+/// Narrower than this inside, a card's facts each have their label over
+/// their value, the value whole on as many lines as it takes: beside its
+/// label it was cut ("4.1 ms least, 55 m…": Astra's, Opus's and Neon's
+/// reviews, 2026-11-28).
+const FACTS_STACK_BELOW: f32 = 300.0;
+
+/// A card's room inside, in a window `vw` wide: one column or two;
+/// `held`, its cards beside their scroll bar.
+fn card_inner(vw: f32, held: bool) -> f32 {
+    let mut w = vw - 2.0 * m::WINDOW_INSET - 2.0 * dashboard::GAP - if held { olo_kit::widgets::SCROLL_BAR } else { 0.0 };
+    if vw >= TWO_ACROSS {
+        w = (w - dashboard::GAP) / 2.0;
+    }
+    w - 2.0 * m::CARD_INSET
+}
+
+/// A narrow card's facts: each label in the small size and the card's
+/// quiet ink over its value, 2 points apart, the value wrapped to the
+/// card (never cut), a tight spacing between one and the next.
+fn stacked_facts(facts: Vec<(&'static str, String)>, p: &olo_kit::palette::Palette) -> Element {
+    let ink = style::card_ink(p);
+    let mut col = div().w_full().flex().flex_col().gap(px(m::TIGHT));
+    for (label, value) in facts {
+        col = col.child(
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .gap(px(2.0))
+                .child(StringView::new(olo_kit::words::tr(label)).size(style::SMALL_SIZE).color(ink.dim))
+                .child(StringView::new(value).size(style::DETAIL_SIZE).wrap(true).color(ink.text)),
+        );
+    }
+    col.into_element()
+}
+
 /// A card's graph.
 const GRAPH: f32 = 64.0;
 /// How long a test is taken to last, for how far along it is: opening
@@ -152,6 +207,8 @@ pub struct Speed {
     /// it took, once it has answered.
     place: Option<(String, engine::Place, Opening)>,
     error: Option<String>,
+    /// The cards' scroll, held shorter than they are (`body`).
+    scroll: ScrollHandle,
 }
 
 #[derive(Clone)]
@@ -194,7 +251,19 @@ impl Speed {
     }
 
     fn of(saved: Saved, demo: bool) -> Speed {
-        let mut speed = Speed { config: Config::default(), demo, runs: 0, asking: false, running: None, results: None, link: saved.link, shown: Shown::default(), place: None, error: None };
+        let mut speed = Speed {
+            config: Config::default(),
+            demo,
+            runs: 0,
+            asking: false,
+            running: None,
+            results: None,
+            link: saved.link,
+            shown: Shown::default(),
+            place: None,
+            error: None,
+            scroll: ScrollHandle::new(),
+        };
         if let Some(results) = saved.results {
             speed.show(results, saved.latency.iter().map(|(t, v)| (*t as f64, *v as f64)).collect());
         }
@@ -636,7 +705,11 @@ impl View for Speed {
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let button = if running { Button::new("Stop").on_click(cx.msg(Msg::Stop)) } else { Button::new("Start Test").default(true).enabled(!self.asking).on_click(cx.msg(Msg::Start)) };
         let (fraction, doing) = self.progress();
-        let top = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StatusBar::new(fraction).label(doing))).child(button);
+        // (The bar only while a test runs: empty, it read as a field to
+        // type in; its words then on the button's line. Opus's review,
+        // 2026-11-28.)
+        let progress = if running { StatusBar::new(fraction).label(doing).into_element() } else { StringView::new(doing).cut(true).into_element() };
+        let top = div().h(px(STRIP)).flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(progress)).child(button);
 
         // Each way's graph is its own phase, start to end; the round
         // trip's is the whole test.
@@ -658,30 +731,77 @@ impl View for Speed {
             None,
         ];
         let mut cards = Vec::new();
-        for ((title, figure, caption, facts), graph) in self.cards().into_iter().zip(graphs) {
-            let rows: Vec<(SharedString, SharedString)> = facts.into_iter().map(|(label, value)| (label.into(), value.into())).collect();
+        let all = self.cards();
+        // (Download's and Upload's values from one line, as Latency's and
+        // Connection's are: each card its own, they stood 12 points apart
+        // one over the other; Opus's and Neon's reviews, 2026-11-28.)
+        let shared: Vec<f32> = all.chunks(2).map(|pair| facts_label_width(pair.iter().flat_map(|(.., facts)| facts.iter().map(|(label, _)| olo_kit::words::tr(label))))).collect();
+        let held = cx.held_state().held();
+        let narrow = card_inner(f32::from(cx.viewport_size().width), held) < FACTS_STACK_BELOW;
+        for (i, ((title, figure, caption, facts), graph)) in all.into_iter().zip(graphs).enumerate() {
             let mut card = Card::new(title, title).figure(figure).caption(caption);
             if let Some(graph) = graph {
                 card = card.child(graph);
             }
-            cards.push(card.child(Facts::new(rows)).into_element());
+            if narrow {
+                cards.push(card.child(stacked_facts(facts, &p)).into_element());
+            } else {
+                let rows: Vec<(SharedString, SharedString)> = facts.into_iter().map(|(label, value)| (label.into(), value.into())).collect();
+                cards.push(card.child(Facts::new(rows).label_width(shared[i / 2])).into_element());
+            }
         }
         // Two rows of two: the cards of a row are as tall as each other.
-        let mut cards = cards.into_iter();
-        let half = |card: Element| div().flex_1().min_w_0().flex().child(card);
-        let mut row = || div().flex().gap(px(dashboard::GAP)).child(half(cards.next().expect("four"))).child(half(cards.next().expect("four")));
-        let board = div().flex().flex_col().gap(px(dashboard::GAP)).p(px(dashboard::GAP)).bg(style::c(dashboard::gutter(&p))).child(row()).child(row());
+        // Narrower (held so by tiling, a third of a screen: their facts'
+        // words were cut a third short, QA 2026-11-28), one under another.
+        let mut board = div().flex().flex_col().gap(px(dashboard::GAP)).p(px(dashboard::GAP)).bg(style::c(dashboard::gutter(&p)));
+        if f32::from(cx.viewport_size().width) < TWO_ACROSS {
+            board = board.children(cards);
+        } else {
+            let mut cards = cards.into_iter();
+            let half = |card: Element| div().flex_1().min_w_0().flex().child(card);
+            let mut row = || div().flex().gap(px(dashboard::GAP)).child(half(cards.next().expect("four"))).child(half(cards.next().expect("four")));
+            board = board.child(row()).child(row());
+        }
         let note = "Against Cloudflare’s speed test servers: four connections each way, eight seconds each.";
-        let content = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(top).child(board).child(StringView::new(note).dim(true));
+        // (Wrapped to the window: one line, it ran past a narrow one.)
+        let note = StringView::new(note).dim(true).wrap(true);
+        if held {
+            // Held at a size of another's choosing (shorter than the
+            // cards, a tile's): the menu bar and the strip with Start Test
+            // stay, the cards and the note scroll under them, their bar
+            // against the cards, its right edge Start Test's (the window's
+            // own scroll ran up beside the menus, Start Test scrolled away;
+            // then the bar stood 16 points off the cards, at the window's
+            // edge: Opus's reviews, 2026-11-28).
+            let strip = div().px(px(m::WINDOW_INSET)).pt(px(m::WINDOW_INSET)).pb(px(m::SPACING)).child(top);
+            let scrolled = div().flex().flex_col().gap(px(m::SPACING)).child(board).child(note);
+            let cards = ScrollView::new(&self.scroll).border(false).background(p.panel_background).child(scrolled);
+            // (As tall as the window, said: laid out at its own height, a
+            // third of a screen had 55 points empty under the cards.)
+            let tall = f32::from(cx.viewport_size().height);
+            return div().w_full().h(px(tall)).flex().flex_col().child(bar).child(strip).child(div().flex_1().min_h_0().px(px(m::WINDOW_INSET)).pb(px(m::WINDOW_INSET)).child(cards)).into_element();
+        }
+        let content = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(top).child(board).child(note);
         // (As wide as its window, which is `WIDTH`: a window given
         // another width has its bar and cards across all of it.)
-        div().w_full().flex().flex_col().child(bar).child(content)
+        div().w_full().flex().flex_col().child(bar).child(content).into_element()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A card's facts stacked, label over value, where it's narrow: a
+    /// third of a screen; beside each other at its own width and in a
+    /// quarter (one column there, its cards the window's width).
+    #[test]
+    fn narrow_cards_stack_their_facts() {
+        assert!(card_inner(349.0, true) < FACTS_STACK_BELOW, "a third");
+        assert!(card_inner(530.0, true) >= FACTS_STACK_BELOW, "a quarter");
+        assert!(card_inner(WIDTH, false) >= FACTS_STACK_BELOW, "its own width, two across");
+        assert_eq!(DESIGN_HEIGHT, 220.0, "measured, held, at what it's given, never 700");
+    }
 
     #[test]
     fn small_things_are_said() {

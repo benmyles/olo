@@ -302,6 +302,10 @@ const AXIS: f32 = 34.0;
 pub const AXIS_HEIGHT: f32 = AXIS;
 /// Room each side for the scales' values.
 const GUTTER: f32 = 44.0;
+/// A guide's name's ground ([`Panel::guide`]): its height, and how far
+/// in from its ends its word is.
+const GUIDE_TALL: f32 = 16.0;
+const GUIDE_IN: f32 = 4.0;
 
 /// A span named across the chart: a time to go out, a storm.
 #[derive(Clone)]
@@ -692,11 +696,16 @@ impl IntoElement for Timeline {
                             }
                         });
                         for (gy, name) in guide_ys {
-                            // (On a ground of its own: a line may pass behind it.)
+                            // (On a ground of its own: a line may pass behind
+                            // it. `GUIDE_TALL` tall, its word `GUIDE_IN` in from
+                            // each end: 13 and 2, "Freezing" was cramped in
+                            // it. Over its line, or under it where that would
+                            // go past the plot's top.)
                             let w = style::text_width(name.clone(), style::SMALL_SIZE, small.clone());
-                            let ground = style::snap(g, Bounds::from_corners(point(area.right() - px(6.0) - w, gy - px(14.0)), point(area.right() - px(2.0), gy - px(1.0))));
+                            let Some((top, bottom)) = guide_place(f32::from(gy), f32::from(area.top()), f32::from(area.bottom())) else { continue };
+                            let ground = style::snap(g, Bounds::from_corners(point(area.right() - px(2.0 + 2.0 * GUIDE_IN) - w, px(top)), point(area.right() - px(2.0), px(bottom))));
                             style::fill_rect(g, ground, style::c(p.document_background).opacity(0.85));
-                            style::label(g, area.right() - px(4.0), gy - px(7.0), style::Align::Right, name.clone(), style::SMALL_SIZE, small.clone(), dim);
+                            style::label(g, area.right() - px(2.0 + GUIDE_IN), ground.center().y, style::Align::Right, name.clone(), style::SMALL_SIZE, small.clone(), dim);
                         }
                         // What agents read: each track's first value, its
                         // lowest and highest and when.
@@ -874,6 +883,29 @@ fn plots_of(rect: Bounds<Pixels>) -> Bounds<Pixels> {
     Bounds { origin: point(rect.left() + px(GUTTER), rect.top()), size: size((rect.size.width - px(2.0 * GUTTER)).max(px(1.0)), rect.size.height) }
 }
 
+/// A day's name over its stretch of the axis, `room` wide: whole ("Sun
+/// 29", "Today"); else its weekday alone ("Sun"); else nothing. Never cut
+/// short: "Su…" at the strip's end said less than "Sun" (Neon's review,
+/// 2026-11-28).
+fn day_said(name: &str, weekday: &str, room: f32, width: impl Fn(&str) -> f32) -> Option<String> {
+    [name, weekday].into_iter().find(|t| width(t) <= room).map(str::to_owned)
+}
+
+/// Where a guide's word goes, its ground's top and bottom, for its line
+/// at `gy` in a plot from `top` to `bottom`: over its line; under it where
+/// that would go past the plot's top; nowhere where the plot is too short
+/// for it either side (under it, it went past the plot's foot: Astra's
+/// review, 2026-11-28). The line itself is drawn all the same.
+fn guide_place(gy: f32, top: f32, bottom: f32) -> Option<(f32, f32)> {
+    if gy - (GUIDE_TALL + 1.0) >= top {
+        Some((gy - GUIDE_TALL - 1.0, gy - 1.0))
+    } else if gy + GUIDE_TALL + 1.0 <= bottom {
+        Some((gy + 1.0, gy + GUIDE_TALL + 1.0))
+    } else {
+        None
+    }
+}
+
 /// The axis at `top` (its [`AXIS`] rows) for the plots `plots`, from
 /// `start` to `end`: the hours, ticked toward the plots, and the days
 /// named over their stretches. Over the plots (`on_top`): the days, then
@@ -927,8 +959,9 @@ fn paint_axis(g: &mut Painter, top: Pixels, plots: Bounds<Pixels>, start: f64, e
         let (_, _, wd, day) = parts(local(d + 1.0));
         let name = if d == start && now.is_some_and(|n| (n - start).abs() < 3.0 * 3600.0) { crate::words::tr("Today").to_owned() } else { format!("{} {day}", WEEKDAYS[wd]) };
         let room = x_of(next) - x_of(d);
-        if f32::from(room) >= 34.0 {
-            let named = style::label_fit(g, x_of(d) + px(4.0), day_y, style::Align::Left, name, style::SMALL_SIZE, bold.clone(), text, room - px(6.0));
+        let width = |t: &str| f32::from(style::text_width(t.to_owned(), style::SMALL_SIZE, bold.clone()));
+        if let Some(said) = day_said(&name, WEEKDAYS[wd], f32::from(room) - 6.0, width) {
+            let named = style::label(g, x_of(d) + px(4.0), day_y, style::Align::Left, said, style::SMALL_SIZE, bold.clone(), text);
             if record {
                 crate::agent::record(g, agent::Node::label(format!("{} {day}", WEEKDAYS[wd]), named));
             }
@@ -954,6 +987,27 @@ fn arrow(g: &mut Painter, c: Point<Pixels>, from: f64, color: Hsla) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A day's name whole or its weekday alone, never cut; a guide's word
+    /// over its line, under it near the plot's top, nowhere where neither
+    /// fits inside the plot.
+    #[test]
+    fn axis_words_are_whole_and_inside() {
+        let width = |t: &str| t.chars().count() as f32 * 6.0;
+        assert_eq!(day_said("Sun 29", "Sun", 40.0, width).as_deref(), Some("Sun 29"));
+        assert_eq!(day_said("Sun 29", "Sun", 30.0, width).as_deref(), Some("Sun"));
+        assert_eq!(day_said("Sun 29", "Sun", 12.0, width), None);
+        assert_eq!(guide_place(50.0, 0.0, 100.0), Some((50.0 - GUIDE_TALL - 1.0, 49.0)));
+        assert_eq!(guide_place(5.0, 0.0, 100.0), Some((6.0, 6.0 + GUIDE_TALL)));
+        // A plot shorter than a guide's word either side of its line.
+        let short = GUIDE_TALL + 4.0;
+        assert_eq!(guide_place(short / 2.0, 0.0, short), None);
+        for gy in [0.0, 3.0, 10.0, 20.0, 40.0] {
+            if let Some((t, b)) = guide_place(gy, 0.0, 40.0) {
+                assert!(t >= 0.0 && b <= 40.0, "{gy}: inside the plot");
+            }
+        }
+    }
 
     #[test]
     fn local_times_read_as_the_places_clock() {

@@ -6,6 +6,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Calendar vertical-third Week view polish
+
+*17:11* — Folded full date title, widened chosen day, symmetrically centered narrow blocks, and 4.5:1 light-mode event fills
+
+![Calendar vertical-third Week view polish](2026-11-28/171100-calendar-vertical-third-week-view-polish.png)
+
+### Token Pool compact Activity table alignment
+
+*17:10* — Dynamic height budgeting, span-filtered Recent Requests, right-aligned compact Status column, and untruncated Model names
+
+![Token Pool compact Activity table alignment](2026-11-28/171059-token-pool-compact-activity-table-alignment.png)
+
+### Screenshot vertical-third responsive layout
+
+*17:10* — Dynamic content-width layout, 2x2 button grid, title-case buttons, and flush 3 pt Save outer default ring
+
+![Screenshot vertical-third responsive layout](2026-11-28/171058-screenshot-vertical-third-responsive-layout.png)
+
+### Speed Test vertical-third stacked facts and flush scrollbar
+
+*17:10* — Single inner scrollbar flush against results well and stacked label-over-value metrics with zero truncation
+
+![Speed Test vertical-third stacked facts and flush scrollbar](2026-11-28/171057-speed-test-vertical-third-stacked-facts-and-flus.png)
+
 ### Rex Activity disabled Tracker and mixed-child Collapse
 
 *15:55* — Fail-closed disabled Open in Tracker when unreachable over SSH, Collapse for mixed screens and subagents, and Stop 1 Subagent...

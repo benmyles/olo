@@ -114,8 +114,14 @@ pub struct Listener {
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
         let e = match event {
-            Event::Title(t) => TermEvent::Title(Some(t)),
-            Event::ResetTitle => TermEvent::Title(None),
+            Event::Title(t) => {
+                self.shared.said_title(Some(&t));
+                TermEvent::Title(Some(t))
+            }
+            Event::ResetTitle => {
+                self.shared.said_title(None);
+                TermEvent::Title(None)
+            }
             Event::Bell => TermEvent::Bell,
             Event::ClipboardStore(_, text) => TermEvent::Clipboard(text),
             // Answers to the program go straight back, not via the UI.
@@ -395,18 +401,54 @@ impl Session {
     }
 
     /// The shell's working directory (used for layout persistence and Undo
-    /// Close Tab), falling back to the requested spawn directory only until
-    /// `olo-termd` attaches and supplies a live shell PID.
+    /// Close Tab): where it last said it is, where its process doesn't
+    /// follow it (`said`: its word stands while a program of its runs,
+    /// an editor during a save), else its `/proc/{shell}/cwd`, falling
+    /// back to the requested spawn directory only until `olo-termd`
+    /// attaches and supplies a live shell PID. No foreground probe: it's
+    /// the shell's own.
     pub fn cwd(&self) -> Option<PathBuf> {
-        resolve_shell_cwd(self.shared.shell(), self.exited.is_some(), self.spawn_cwd.as_deref(), proc_cwd)
+        let shell = self.shared.shell().filter(|&p| p > 0);
+        // (Its process's folder read once, for both: a window of shells
+        // is walked twice a burst of output, for its agents and its
+        // layout.)
+        let now = shell.and_then(|_| self.shared.shell_cwd());
+        // (Only a folder that can be handed on and kept: `representable`.)
+        self.said_cwd(now.as_deref()).or_else(|| resolve_shell_cwd(shell, self.exited.is_some(), self.spawn_cwd.as_deref(), |_| now.clone())).filter(|p| crate::said::representable(p))
     }
 
-    /// The tab's active working directory: prefers its foreground process
-    /// group's `/proc/{fg}/cwd` when readable, falling back to its shell's
-    /// `/proc/{shell}/cwd` (and to the requested spawn directory while waiting
-    /// for `olo-termd` to attach). Never calls `stat(2)` on user mounts.
+    /// The tab's active working directory (where Cmd+T and Cmd+N open):
+    /// at the shell's prompt, where it says it is, where its process
+    /// doesn't follow it (`said`: brush's stays where it started); else
+    /// its foreground process group's `/proc/{fg}/cwd` when readable,
+    /// falling back to its shell's `/proc/{shell}/cwd` (and to the
+    /// requested spawn directory while waiting for `olo-termd` to
+    /// attach). Never calls `stat(2)` on user mounts.
     pub fn foreground_cwd(&self) -> Option<PathBuf> {
-        resolve_foreground_cwd(self.shared.foreground(), self.shared.shell(), self.exited.is_some(), self.spawn_cwd.as_deref(), proc_cwd)
+        let (fg, shell) = (self.shared.foreground(), self.shared.shell().filter(|&p| p > 0));
+        // (Read once each: the shell's folder is wanted by both.)
+        let now = shell.and_then(|_| self.shared.shell_cwd());
+        let at_prompt = shell.is_some() && fg == shell;
+        if at_prompt && let Some(dir) = self.said_cwd(now.as_deref()) {
+            return Some(dir);
+        }
+        resolve_foreground_cwd(fg, shell, self.exited.is_some(), self.spawn_cwd.as_deref(), |pid| if Some(pid) == shell { now.clone() } else { proc_cwd(pid) })
+            .filter(|p| crate::said::representable(p))
+    }
+
+    /// Where the shell says it is (`said::Said`), where that's to be
+    /// followed: its process read (`now`) where it was when it first said,
+    /// never seen elsewhere. Only the shell's own word is kept, so it
+    /// stands while a program of its runs (the shell can't move then).
+    fn said_cwd(&self, now: Option<&std::path::Path>) -> Option<PathBuf> {
+        if self.exited.is_some() {
+            return None;
+        }
+        let mut said = self.shared.said.lock().unwrap();
+        if !said.has_word() {
+            return None;
+        }
+        said.followed(now)
     }
 
     /// The foreground program's name, when it isn't the shell.
@@ -488,9 +530,12 @@ fn spawn_feeder(
                         shared.pid.store(pid, Ordering::Relaxed);
                         *shared.pty.lock().unwrap() = pty;
                         *shared.images.lock().unwrap() = Default::default();
+                        // (What it says of where it is, said again by
+                        // the replay's title and its next prompt.)
+                        *shared.said.lock().unwrap() = Default::default();
                         feeder = io::Feeder::default();
                         // Rebuilding the screen asks nothing of the program.
-                        feeder.feed(&mut *term.lock(), &shared, &replay, &mut Vec::new());
+                        feeder.feed_replay(&mut *term.lock(), &shared, &replay, &mut Vec::new());
                         printed();
                         wake();
                     }

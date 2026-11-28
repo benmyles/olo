@@ -556,9 +556,10 @@ impl Hub {
         }
         let existed = self.win.is_some();
         let (shared, hosts, port, told) = (self.shared.clone(), self.hosts.clone(), self.proxy_port, self.told());
-        // (At least 400 wide, where the footer's three buttons fit, Cancel
-        // Sign-In's too: at 380, Refresh Quota ran 16 points out of it.)
-        let options = WindowOptions::new("Token Pool", WIDTH, OPENS_TALL).min_size(400.0, 220.0).keep_size("main");
+        // (At least a vertical third of the smallest screen beside
+        // Deskbar, 349 points of content: narrower than its footers' three
+        // buttons, which take two rows there, `footer_rows`.)
+        let options = WindowOptions::new("Token Pool", WIDTH, OPENS_TALL).min_size(MIN_WIDTH, 220.0).keep_size("main");
         olo_kit::open_or_raise(&mut self.win, options, move |cx| PoolWindow::new(shared, hosts, port, told, initial, cx));
         self.open.open.store(true, Ordering::Relaxed);
         if existed
@@ -1104,6 +1105,162 @@ const NOTE_GAP: f32 = 4.0;
 
 /// The window's width when it opens.
 const WIDTH: f32 = 640.0;
+
+/// The narrowest it goes: a vertical third of the smallest screen
+/// beside Deskbar (349 points of content), and a little more.
+const MIN_WIDTH: f32 = 346.0;
+
+/// The room round the tab view, less in a narrow or short window.
+fn outer_pad(vp: olo_kit::Size<Pixels>) -> f32 {
+    if f32::from(vp.height) < 340.0 || f32::from(vp.width) < 460.0 { 6.0 } else { 10.0 }
+}
+
+/// How wide a tab's page is in a window `vp` big: inside the room round
+/// the tab view and the tab view's own inset.
+fn page_width(vp: olo_kit::Size<Pixels>) -> f32 {
+    f32::from(vp.width) - 2.0 * outer_pad(vp) - 2.0 * m::WINDOW_INSET
+}
+
+/// How tall a tab's page is in a window `vp` big: under the menu bar,
+/// inside the room round the tab view, its tabs and its inset.
+fn page_height(vp: olo_kit::Size<Pixels>) -> f32 {
+    f32::from(vp.height) - olo_kit::menu::BAR_HEIGHT - 2.0 * outer_pad(vp) - widgets::TAB_HEIGHT - 2.0 * m::WINDOW_INSET
+}
+
+/// Activity's Recent Requests at least, short: its heading and the
+/// table's head and two rows.
+const RECENT_LEAST: f32 = m::LABEL_ROW + 6.0 + 3.0 * (DETAIL_ROW + 6.0) + 2.0;
+
+/// A finished request's status as its row says it: how long it took,
+/// "Failed · 503", or what came of it.
+fn status_said(r: &RecentReq) -> String {
+    match r.request.outcome {
+        Outcome::Completed => duration(r.request.ms),
+        Outcome::Failed if r.request.status != 0 => format!("Failed · {}", r.request.status),
+        other => other.label().to_owned(),
+    }
+}
+
+/// A stepped series (each stretch's start and end at its count, as
+/// `Activity::series` makes it) as one point a stretch, at its middle:
+/// drawn the same at every scale. (The kit's graph keeps a point a
+/// device pixel; a step's two corners a thousandth of a second apart,
+/// it kept the higher at 1× and 1.5×, sloped, and both at 2×, square:
+/// Opus's and Neon's reviews, 2026-11-28.)
+fn midpoints(steps: &VecDeque<(f64, f64)>) -> VecDeque<(f64, f64)> {
+    // (Each stretch's start, then its end.)
+    let (starts, ends) = (steps.iter().step_by(2), steps.iter().skip(1).step_by(2));
+    starts.zip(ends).map(|(start, end)| ((start.0 + end.0) / 2.0, start.1)).collect()
+}
+
+/// Activity's chart at least, short: its heading, its plot (`plot`
+/// tall) and its legend (`legend`), 6 apart.
+fn chart_least(plot: f32, legend: f32) -> f32 {
+    m::LABEL_ROW + 6.0 + plot + 6.0 + legend
+}
+
+/// The plot's least, short: a sparkline's.
+const PLOT_LEAST: f32 = 40.0;
+
+/// Whether Activity's chart has room in one column `page_h` tall, its
+/// legend `legend` tall, over Recent Requests' least, the Machine and
+/// Span pop-ups over both, 8 apart. (Shorter, from 306 points to its
+/// least of 220, the table went past the window's foot: Astra's and
+/// Neon's reviews, 2026-11-28.)
+fn activity_chart_fits(page_h: f32, legend: f32, recent: f32) -> bool {
+    m::CONTROL_HEIGHT + 8.0 + chart_least(PLOT_LEAST, legend) + 8.0 + recent <= page_h
+}
+
+/// What Recent Requests keeps at least, short and in one column: what it
+/// `needs`, but never more than the page has under the pop-ups.
+fn recent_kept(needs: f32, page_h: f32) -> f32 {
+    needs.min(page_h - m::CONTROL_HEIGHT - 8.0).max(0.0)
+}
+
+/// A request chosen in Recent Requests: its details' row under the
+/// table, and the gap over it.
+const PICKED_ROW: f32 = m::CONTROL_HEIGHT + 2.0 + 6.0;
+
+/// The gateway's "stopped" box before it's first laid out: about its
+/// height with a line of words (and the gap under it).
+const ALERT_GUESS: f32 = 112.0;
+
+/// What Activity's page has, its window `vp` big: its tab's page less
+/// the gateway's "stopped" box over the tabs (`alert`, as tall as it
+/// was laid out; None where the gateway runs) and its gap. (Budgeted
+/// against the whole page, the chart and the table's least went past
+/// the window's foot under the box: Astra's and Neon's reviews,
+/// 2026-11-28.)
+fn activity_page(vp: olo_kit::Size<Pixels>, alert: Option<f32>) -> f32 {
+    page_height(vp) - alert.map_or(0.0, |h| (if h > 0.5 { h } else { ALERT_GUESS }) + 10.0)
+}
+
+/// The chart's plot at least, short and in one column, `page_h` tall,
+/// its legend `legend`: as tall as the kit's `Graph` needs to draw its
+/// axes and scale to what it shows (`GRAPH_AXES`) where Recent Requests
+/// keeps its least under it; else as short as it goes. (At 64 points, a
+/// quarter's, it was a bare line, its peak at half its height, its zeros
+/// on the well's edge: Opus's and Neon's reviews, 2026-11-28.)
+fn activity_plot_least(page_h: f32, legend: f32, recent: f32) -> f32 {
+    let room = page_h - (m::CONTROL_HEIGHT + 8.0 + chart_least(0.0, legend) + 8.0 + recent);
+    if room >= GRAPH_AXES { GRAPH_AXES } else { PLOT_LEAST }
+}
+
+/// How tall a row of items `widths` wide is, wrapped in `room`, `gap`
+/// between them across and down, each a detail's row tall: Activity's
+/// legend in one column, on one line or more.
+fn wrapped_height(widths: &[f32], room: f32, gap: f32) -> f32 {
+    let (mut lines, mut x) = (1usize, 0.0f32);
+    for &w in widths {
+        if x > 0.0 && x + gap + w > room {
+            lines += 1;
+            x = w;
+        } else {
+            x += if x > 0.0 { gap + w } else { w };
+        }
+    }
+    lines as f32 * DETAIL_ROW + (lines - 1) as f32 * gap
+}
+
+/// The height from which the kit's `Graph` draws its axes and labels
+/// (shorter, a sparkline).
+const GRAPH_AXES: f32 = 76.0;
+
+/// A tab's footer, as Accounts' and Machines' are: `lead` (Add …,
+/// Edit/Remove …) from the left, `status` (what's said between) filling
+/// the rest, and `last` (the global action) at the right, `gap` apart.
+/// On one row where they fit in the `width` they have, as they always
+/// were; else `last` on a row of its own under the others, `status`
+/// before it (at 349 points, a vertical third beside Deskbar, Refresh
+/// Quota ran 47 points out of the window; at 530, a quarter, Sync All
+/// 48 out of its column: QA, 2026-11-28).
+fn footer_rows(lead: Vec<Element>, status: Element, last: Element, gap: f32, two_rows: bool) -> Element {
+    let row = || div().w_full().flex().flex_row().items_center().gap(px(gap)).h(px(m::CONTROL_HEIGHT));
+    let mut first = row();
+    for b in lead {
+        first = first.child(b);
+    }
+    if !two_rows {
+        return first.child(status).child(last).into_element();
+    }
+    div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(first).child(row().child(status).child(last)).into_element()
+}
+
+/// Machines' This Computer beside its Remote Rex Hosts (a window `w` by
+/// `h`): in a short window wide enough for both columns, the hosts' at
+/// least a list's least; else one over the other.
+fn machines_two_col(w: f32, h: f32) -> bool {
+    h < 520.0 && w >= 500.0
+}
+
+/// Whether a footer's buttons (`labels`, the first at least
+/// `first_least` wide) are too wide for one row `width` wide: `gap`
+/// between each two, and one more for the status between the last two
+/// ([`footer_rows`]).
+fn footer_wraps(labels: &[&str], first_least: f32, gap: f32, width: f32) -> bool {
+    let buttons: f32 = labels.iter().enumerate().map(|(i, l)| if i == 0 { button_width(l, false).max(first_least) } else { button_width(l, false) }).sum();
+    buttons + gap * labels.len() as f32 > width
+}
 
 /// Its height when it opens: with its tab and frame on the smallest
 /// screen, 800 points, with room below (740 ran its bottom off it at 2×),
@@ -1699,24 +1856,87 @@ fn shared_quota_label_width(accounts: &[Account], narrow: bool) -> f32 {
         })
         .fold(0.0f32, f32::max);
     let max_cap = if narrow { 92.0 } else { 124.0 };
-    (max_w + 12.0).ceil().clamp(48.0, max_cap)
+    // (Narrow, the longest a gap's width from its bar, as every column
+    // is: its bars as wide as they can be, about 100 points in a third,
+    // not 61; Opus's review, 2026-11-28.)
+    let slack = if narrow { QUOTA_GAP_NARROW } else { 12.0 };
+    (max_w + slack).ceil().clamp(48.0, max_cap)
+}
+
+/// The gap between a quota line's columns, narrow (else 8).
+const QUOTA_GAP_NARROW: f32 = 6.0;
+
+/// A quota's reset, as its line says it: when (and how long until),
+/// narrow how long only; "not started" where unused; else nothing.
+fn quota_reset_text(w: &QuotaWindow, t: i64, narrow: bool) -> String {
+    if let Some(r) = w.resets_at.filter(|&r| r > t) {
+        if narrow { span(r - t) } else { format!("resets {} ({})", clock(r), span(r - t)) }
+    } else if w.used <= 0.0 {
+        "not started".to_owned()
+    } else {
+        String::new()
+    }
+}
+
+/// The resets' column, one for every account as the labels' is
+/// ([`shared_quota_label_width`]): narrow, as wide as the widest reset
+/// it shows (62 points held "not started" where none did); else the
+/// whole "resets Thu 00:09 (2h 10m)".
+fn shared_quota_reset_width(accounts: &[Account], t: i64, narrow: bool) -> f32 {
+    if !narrow {
+        return 158.0;
+    }
+    let font = style::ui_font(FontWeight::NORMAL);
+    let widest = accounts.iter().flat_map(|a| a.windows.iter()).map(|w| f32::from(style::text_width(quota_reset_text(w, t, true), style::SMALL_SIZE, font.clone()))).fold(0.0f32, f32::max);
+    widest.ceil().clamp(36.0, 62.0)
+}
+
+/// An account's facts (its address, its plan, its banked resets), " · "
+/// between: all of them where they fit `room` (measured by `width`);
+/// else as many whole ones from the first as fit, "…" after them; else
+/// all (the first then cut where a word ends). Never a fact cut in two:
+/// "· 2 banked re…" in a third (Neon's review, 2026-11-28; CLAUDE.md,
+/// whole trailing segments dropped, not cut).
+fn facts_shown(facts: &[String], room: f32, width: impl Fn(&str) -> f32) -> String {
+    let all = facts.join(" · ");
+    if width(&all) <= room {
+        return all;
+    }
+    (1..facts.len()).rev().map(|n| format!("{}…", facts[..n].join(" · "))).find(|t| width(t) <= room).unwrap_or(all)
+}
+
+/// [`facts_shown`] on a line of their own, in `ink`, as wide as it's
+/// given; whole to agents, and in a tip (`key`) where some are left off
+/// in the `room` it's laid out for.
+fn facts_line(key: String, facts: Vec<String>, room: f32, ink: Hsla) -> Element {
+    let all = SharedString::from(facts.join(" · "));
+    let measure = |t: &str| f32::from(style::text_width(t.to_owned(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL)));
+    let left_off = facts_shown(&facts, room, measure) != all.as_ref();
+    let paint_key = style::key((&facts, style::ink_key(Some(ink))));
+    let whole = all.clone();
+    let line = canvas(move |g, b| {
+        let font = style::ui_font(FontWeight::NORMAL);
+        let shown = facts_shown(&facts, f32::from(b.size.width), |t| f32::from(style::text_width(t.to_owned(), style::SMALL_SIZE, font.clone())));
+        let at = style::label_fit_words(g, b.left(), b.center().y, style::Align::Left, shown, style::SMALL_SIZE, font, ink, b.size.width);
+        g.agent(olo_kit::agent::Node::label(whole.clone(), at));
+    })
+    .paint_key(paint_key)
+    .w_full()
+    .min_w_0()
+    .h(px(DETAIL_ROW))
+    .into_element();
+    if left_off { olo_kit::tip::on(line, key, all) } else { line }
 }
 
 /// Compact inline single-row quota meter with fixed right-aligned percentage column
 /// and left-aligned reset text (`5-hour | [====] |  42%  resets Thu 00:09 (2h 10m)`).
 /// Bar colour uses neutral slate (<80%) or warning amber (≥80% / exhausted); failure red
 /// is reserved strictly for actionable errors (`Signed out`, `failed`, `Can't sync`).
-fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, label_w: f32, narrow: bool) -> Element {
+fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, (label_w, reset_w): (f32, f32), narrow: bool) -> Element {
     let label = if w.label.is_empty() { plan_name(w.name.trim_end_matches("_window")) } else { w.label.clone() };
     let pct = w.used.clamp(0.0, 999.0);
     let pct_text = format!("{pct:.0}%");
-    let reset_text = if let Some(r) = w.resets_at.filter(|&r| r > t) {
-        if narrow { span(r - t) } else { format!("resets {} ({})", clock(r), span(r - t)) }
-    } else if w.used <= 0.0 {
-        "not started".to_owned()
-    } else {
-        String::new()
-    };
+    let reset_text = quota_reset_text(w, t, narrow);
     let (bar_color, pct_color) = if w.exhausted(t) || pct >= 80.0 { (style::c([0xe3, 0xa0, 0x08, 0xff]), style::c(p.warning)) } else { (neutral_bar_color(p), style::c(p.panel_text)) };
     let fraction = (w.used / 100.0) as f32;
     let bar_key = style::key((fraction.to_bits(), style::ink_key(Some(bar_color))));
@@ -1731,14 +1951,13 @@ fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, labe
     .h(px(10.0));
 
     let sec = secondary_ink(p, p.list_background);
-    let reset_w = if narrow { 62.0 } else { 158.0 };
     div()
         .w_full()
         .h(px(18.0))
         .flex()
         .flex_row()
         .items_center()
-        .gap(px(8.0))
+        .gap(px(if narrow { QUOTA_GAP_NARROW } else { 8.0 }))
         .child(div().w(px(label_w)).flex_shrink_0().child(StringView::new(label).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)))
         .child(bar_el)
         .child(div().w(px(32.0)).flex_shrink_0().flex().justify_end().child(StringView::new(pct_text).size(style::SMALL_SIZE).color(pct_color).height(DETAIL_ROW)))
@@ -1800,6 +2019,9 @@ enum Reveal {
 const REVEAL_FOR: Duration = Duration::from_millis(1500);
 
 pub struct PoolWindow {
+    /// The gateway's "stopped" box over the tabs, as tall as it was last
+    /// laid out (0 before it is): what Activity has less of its page.
+    alert_h: f32,
     shared: Arc<Shared>,
     hosts: Arc<Hosts>,
     proxy_port: u16,
@@ -1865,6 +2087,7 @@ impl PoolWindow {
             activity_picked: None,
             activity_scroll: ScrollHandle::new(),
             hosts_scroll: ScrollHandle::new(),
+            alert_h: 0.0,
             selected_host: None,
             running: None,
             scanning: None,
@@ -2080,7 +2303,7 @@ impl PoolWindow {
         let first_account_id = providers.first().and_then(|&prov| sorted_accounts(&pool.saved.accounts, prov, t).first().map(|a| a.id.as_str()));
         let sel_id = self.selected_account.as_deref().filter(|id| pool.account(id).is_some()).or(first_account_id);
         let wide = ["Sign In…", "Retry Now", "Sync Now", "Install", "Try Again"].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
-        let shared_label_w = shared_quota_label_width(&pool.saved.accounts, narrow);
+        let shared_label_w = (shared_quota_label_width(&pool.saved.accounts, narrow), shared_quota_reset_width(&pool.saved.accounts, t, narrow));
 
         let group_bg = style::c(p.panel_background);
         let make_group_hdr = |prov: Provider, after_another: bool| {
@@ -2273,15 +2496,24 @@ impl PoolWindow {
                 cx.send(WinMsg::AddMenu(at));
             }))
         };
-        let mut footer = div().w_full().flex().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).child(first).child(
-            Button::new("Edit Account…").id("pool-account-details").enabled(can_edit).on_click(cx.listener(move |_, _: &ClickEvent, cx| {
-                if !edit_id.is_empty() {
-                    let at = cx.listener_bounds();
-                    cx.send(WinMsg::AccountMenu(edit_id.clone(), at));
-                }
-            })),
-        );
-        let note_row = f32::from(vp.width) < NOTE_ROW;
+        let edit = Button::new("Edit Account…").id("pool-account-details").enabled(can_edit).on_click(cx.listener(move |_, _: &ClickEvent, cx| {
+            if !edit_id.is_empty() {
+                let at = cx.listener_bounds();
+                cx.send(WinMsg::AccountMenu(edit_id.clone(), at));
+            }
+        }));
+        let two_rows = footer_wraps(&["Add Account…", "Edit Account…", "Refresh Quota"], slot, m::SPACING, page_width(vp));
+        // (The note's row of its own only where the buttons are one row
+        // and the window is tall enough for it: in a short window (a
+        // quarter) it took the list's room, and over two rows of buttons
+        // (a third) it made three, a staircase. There the note, or when
+        // quota was read, is on the row with Refresh Quota, as Machines'
+        // time is with Sync All: Opus's and Neon's reviews, 2026-11-28.)
+        let note_row = f32::from(vp.width) < NOTE_ROW && !two_rows && !compact_h;
+        // (The time where it fits whole: before Refresh Quota, after the
+        // others on its row.)
+        let lead_w = if two_rows { 0.0 } else { slot + m::SPACING + button_width("Edit Account…", false) + m::SPACING };
+        let time_room = page_width(vp) - lead_w - button_width("Refresh Quota", false) - m::SPACING - NOTE_GAP;
         let note_el = note.as_ref().map(|n| {
             let place = if note_row { NotePlace::Row } else { NotePlace::Beside };
             let invalidator = cx.invalidator();
@@ -2292,6 +2524,9 @@ impl PoolWindow {
             // (Too narrow for it beside the buttons: a row of its own, just
             // above them.)
             Some(el) if note_row => (div().flex_1().min_w_0(), Some(el)),
+            // (On Refresh Quota's row, alone: from the page's edge, ending
+            // as far from the button as the time does.)
+            Some(el) if two_rows => (div().flex_1().min_w_0().pr(px(NOTE_GAP)).child(el), None),
             Some(el) => (div().flex_1().min_w_0().pl(px(NOTE_GAP)).child(el), None),
             // (That row there with no note too: when quota was read, in a
             // note's place, from the left.)
@@ -2304,18 +2539,20 @@ impl PoolWindow {
             }
             None => {
                 let mut b = div().flex_1().min_w_0().pr(px(NOTE_GAP));
-                if let Some(text) = updated.filter(|_| !narrow) {
+                let fits = |t: &String| f32::from(style::text_width(t.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))) <= time_room;
+                if let Some(text) = updated.filter(fits) {
                     b = b.child(footer_time(text, note_ink(p, false)));
                 }
                 (b, None)
             }
         };
-        footer = footer.child(status_box).child(Button::new("Refresh Quota").id("pool-refresh").enabled(has_accounts).on_click(cx.listener(|v, _: &ClickEvent, _| {
+        let refresh = Button::new("Refresh Quota").id("pool-refresh").enabled(has_accounts).on_click(cx.listener(|v, _: &ClickEvent, _| {
             if !demo_enabled() {
                 v.shared.sync_soon(None);
                 v.hosts.refresh();
             }
-        })));
+        }));
+        let footer = footer_rows(vec![first.into_element(), edit.into_element()], status_box.into_element(), refresh.into_element(), m::SPACING, two_rows);
 
         match row_note {
             // (Its row set to its buttons: 10 from the list to its
@@ -2391,7 +2628,7 @@ impl PoolWindow {
         rollup: &AccountRollup,
         selected: bool,
         wide: f32,
-        label_w: f32,
+        label_w: (f32, f32),
         narrow: bool,
         revealing: bool,
         p: &olo_kit::palette::Palette,
@@ -2486,7 +2723,13 @@ impl PoolWindow {
 
         let mut body = div().w_full().pl(px(19.0)).flex().flex_col().gap(px(BODY_GAP));
         if !facts.is_empty() {
-            body = body.child(StringView::new(facts.join(" · ")).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW));
+            // (The room it has: the list's, less its frame and bar, the
+            // row's inset and this indent.)
+            // (Signed out: ending before Sign In… over it, never under it,
+            // 2 points from its frame: Neon's review, 2026-11-28.)
+            let beside_button = if is_signed_out { wide + m::SPACING } else { 0.0 };
+            let room = page_width(cx.viewport_size()) - 2.0 * 2.0 - widgets::SCROLL_BAR - 2.0 * 10.0 - 19.0 - beside_button;
+            body = body.child(div().w_full().pr(px(beside_button)).child(facts_line(format!("pool-facts-{}", account.id), facts, room, sec)));
             line(Some(FACT_LINE));
         }
         if let Some(why) = &account.signed_out {
@@ -2604,9 +2847,18 @@ impl PoolWindow {
         // Machine + Span popups onto the left column's top row aligned with "Recent Requests"
         // on the right so chart + table both keep generous vertical height!
         let merged_two_col = two_col && vp_h < 480.0;
+        // Short and too narrow for two columns (a quarter beside Deskbar,
+        // 530 × 357): the legend on one line, and the chart and the table
+        // sharing the height there is, each with a least of its own (the
+        // chart's 112 points and a legend of three rows first left the
+        // table nothing, its head past the window's foot: QA, 2026-11-28).
+        let short_one_col = compact_h && !two_col && vp_h < 420.0;
+        // (Shorter still, the table alone under the pop-ups: its Span
+        // still chooses the requests it lists.)
+        let page_h = activity_page(vp, pool.error.as_ref().map(|_| self.alert_h));
         // Quarter / narrow vertical: pair Machine + Span on the top bar so "Requests per Minute"
         // stands cleanly without colliding with the span popup.
-        let pair_top_popups = !two_col && vp_w < 500.0;
+        let pair_top_popups = !two_col && (vp_w < 500.0 || short_one_col);
         let sec_panel = secondary_ink(p, p.panel_background);
 
         let opts = Self::scope_options(hosts);
@@ -2654,7 +2906,7 @@ impl PoolWindow {
         let since = t - span_mins * 60;
         let combined = merged_activity(local_activity, hosts, &active_scope);
         let clients_list: Vec<String> = combined.clients();
-        let lines: Vec<VecDeque<(f64, f64)>> = clients_list.iter().map(|cl| combined.series(cl, t, span_mins, step_mins)).collect();
+        let lines: Vec<VecDeque<(f64, f64)>> = clients_list.iter().map(|cl| midpoints(&combined.series(cl, t, span_mins, step_mins))).collect();
         let totals: Vec<_> = clients_list.iter().map(|cl| combined.totals(cl, since)).collect();
         let shown: Vec<usize> = (0..clients_list.len()).filter(|&i| i < PROVIDERS.len() || totals[i].requests > 0).collect();
         let mut draw_order = shown.clone();
@@ -2678,19 +2930,33 @@ impl PoolWindow {
         // into an orphan 2+1 line; in wide+short horizontal-third (`two_col && left_w >= 380`)
         // use one concise horizontal row so the sparkline keeps full vertical breathing room.
         let left_w = (vp_w * 0.41).clamp(244.0, 480.0);
-        let stack_legend = if two_col { left_w < 380.0 } else { vp_w < 860.0 };
-        let compact_inline_legend = two_col && !stack_legend;
+        let stack_legend = if two_col { left_w < 380.0 } else { vp_w < 860.0 && !short_one_col };
+        let compact_inline_legend = (two_col && !stack_legend) || short_one_col;
         let mut legend_row = if stack_legend {
             div().w_full().pt(px(2.0)).flex().flex_col().gap(px(0.0))
+        } else if short_one_col {
+            // (Wrapping where even that is too wide.)
+            div().w_full().flex().flex_row().flex_wrap().items_center().gap(px(12.0))
         } else if compact_inline_legend {
             div().w_full().h(px(18.0)).flex().flex_row().items_center().gap(px(12.0))
         } else {
             div().w_full().pt(px(2.0)).flex().flex_row().flex_wrap().items_center().gap(px(16.0))
         };
+        // (Each item's width, as its words are laid out: how many lines
+        // the legend takes where it wraps.)
+        let small_w = |t: &str| f32::from(style::text_width(t.to_owned(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+        let mut legend_widths: Vec<f32> = Vec::new();
         for &i in &shown {
             let x = totals[i];
             let req_word = if compact_inline_legend { format!("{}", x.requests) } else { format!("{} request{}", x.requests, if x.requests == 1 { "" } else { "s" }) };
-            let tok_tail = if !two_col && x.input_tokens + x.output_tokens > 0 { format!(" · {} in · {} out", tokens(x.input_tokens), tokens(x.output_tokens)) } else { String::new() };
+            let tok_tail =
+                if !two_col && !short_one_col && x.input_tokens + x.output_tokens > 0 { format!(" · {} in · {} out", tokens(x.input_tokens), tokens(x.output_tokens)) } else { String::new() };
+            let stats_w = if x.failed > 0 {
+                small_w(&format!("{req_word} · ")) + small_w(&format!("{} failed", x.failed)) + if tok_tail.is_empty() { 0.0 } else { small_w(&tok_tail) }
+            } else {
+                small_w(&format!("{req_word}{tok_tail}"))
+            };
+            legend_widths.push(7.0 + 6.0 + small_w(&clients_list[i]) + 5.0 + stats_w);
             let name_el = div()
                 .flex()
                 .flex_row()
@@ -2720,6 +2986,16 @@ impl PoolWindow {
             }
             legend_row = legend_row.child(item);
         }
+        // (Short and in one column: the chart over the table where both
+        // have their least, its legend as many lines as it wraps to; else
+        // the table alone under the pop-ups, its Span still choosing the
+        // requests it lists.)
+        let legend_h = wrapped_height(&legend_widths, page_width(vp), 12.0);
+        // (A request chosen: its details' row under the table, in what
+        // the table keeps: it left the table less than a row; Neon's
+        // review, 2026-11-28.)
+        let recent_need = RECENT_LEAST + if picked_line.is_some() { PICKED_ROW } else { 0.0 };
+        let no_chart = short_one_col && !activity_chart_fits(page_h, legend_h, recent_need);
 
         let (top_bar_opt, chart_hdr) = if merged_two_col {
             // Horizontal-third: both popups share the left column's top row,
@@ -2747,8 +3023,17 @@ impl PoolWindow {
         };
 
         let mut chart_section = div().w_full().flex().flex_col().gap(px(6.0)).child(chart_hdr);
-        if two_col {
-            chart_section = chart_section.flex_1().min_h(px(56.0)).child(div().flex_1().min_h(px(40.0)).w_full().child(graph)).child(legend_row);
+        if two_col || short_one_col {
+            // (Its least all it holds, short and in one column: at 56, the
+            // plot and the legend ran over Recent Requests' heading, "123"
+            // 5 points from it; the layout lint, 2026-11-28.)
+            let (plot_least, least) = if short_one_col {
+                let plot = activity_plot_least(page_h, legend_h, recent_need);
+                (plot, chart_least(plot, legend_h))
+            } else {
+                (PLOT_LEAST, 56.0)
+            };
+            chart_section = chart_section.flex_1().min_h(px(least)).child(div().flex_1().min_h(px(plot_least)).w_full().child(graph)).child(legend_row);
         } else {
             let gh = if compact_h { 112.0 } else { GRAPH_HEIGHT };
             chart_section = chart_section.child(div().w_full().h(px(gh)).child(graph)).child(legend_row);
@@ -2758,10 +3043,11 @@ impl PoolWindow {
         // TabView inset, well border, vertical scrollbar, and row padding), drop Machine
         // FIRST when all 7 columns don't fit, and cap Model on wide/zoomed windows so
         // Account absorbs slack right beside Model instead of floating across a void.
-        let outer_pad = if vp_h < 340.0 || vp_w < 460.0 { 6.0 } else { 10.0 };
-        let well_w = if two_col { vp_w - left_w - 20.0 - 2.0 * outer_pad - 24.0 } else { vp_w - 2.0 * outer_pad - 24.0 };
+        // (The page's own width: 8 points more had a column the table
+        // hadn't room for; Astra's review, 2026-11-28.)
+        let well_w = if two_col { page_width(vp) - left_w - 20.0 } else { page_width(vp) };
         let inner_w = well_w - 4.0 - widgets::SCROLL_BAR - 2.0 * m::TIGHT;
-        let recent = recent_requests(pool, hosts, &active_scope, RECENT_TABLE_LIMIT);
+        let recent = recent_requests(pool, hosts, &active_scope, since, RECENT_TABLE_LIMIT);
         let has_hosts = hosts.iter().any(|h| h.wanted || h.status.is_some());
         let recent_well = self.recent_requests_well(&live, &recent, &active_scope, has_hosts, inner_w, t_ms, span_name, p, cx);
 
@@ -2804,7 +3090,10 @@ impl PoolWindow {
             };
         }
 
-        let mut recent_section = div().flex_1().min_h_0().flex().flex_col().gap(px(6.0)).child(recent_hdr).child(recent_well);
+        // (Short: its heading, and the table's head and two rows, at
+        // least; never more than the page has under the pop-ups.)
+        let recent_least = if short_one_col { recent_kept(recent_need, page_h) } else { 0.0 };
+        let mut recent_section = div().flex_1().min_h(px(recent_least)).flex().flex_col().gap(px(6.0)).child(recent_hdr).child(recent_well);
         if let Some(bar) = picked_bar {
             recent_section = recent_section.child(bar);
         }
@@ -2813,7 +3102,10 @@ impl PoolWindow {
         if let Some(top_bar) = top_bar_opt {
             root = root.child(top_bar);
         }
-        root.child(chart_section).child(recent_section).into_element()
+        if !no_chart {
+            root = root.child(chart_section);
+        }
+        root.child(recent_section).into_element()
     }
 
     #[inline(never)]
@@ -2837,7 +3129,23 @@ impl PoolWindow {
         let account_w = 88.0;
         let in_w = 42.0;
         let out_w = 38.0;
-        let status_w = 96.0;
+        // (As wide as what it says, "Status" and the widest status shown,
+        // a running one's as it could count up to a minute: 96 points kept
+        // 25 empty beside "gemini-4-neon-hi…" cut short; Opus's and
+        // Neon's reviews, 2026-11-28.)
+        let small = style::ui_font(FontWeight::NORMAL);
+        let said_w = |t: &str| f32::from(style::text_width(t.to_owned(), style::SMALL_SIZE, small.clone())).ceil();
+        let mut status_w = f32::from(style::text_width("Status".to_owned(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD))).ceil();
+        if !live.is_empty() {
+            status_w = status_w.max(said_w("Running · 88.8s"));
+        }
+        for o in live.iter().filter(|o| o.started_ms > 0) {
+            status_w = status_w.max(said_w(&format!("Running · {}", duration((t_ms - o.started_ms).max(0) as u64))));
+        }
+        for r in recent {
+            status_w = status_w.max(said_w(&status_said(r)));
+        }
+        let status_w = status_w.min(96.0);
         // Exact column sums (including 1pt divider + 10pt gaps per boundary, model_min = 128pt):
         // 7 cols: 592pt; 6 cols (no Machine): 485pt; 4 cols (no Machine/In/Out): 383pt; 3 cols: 284pt.
         let show_machine_col = *active_scope == MachineScope::All && has_hosts && inner_w >= 596.0;
@@ -2962,10 +3270,23 @@ impl PoolWindow {
             let selected = matches!(&self.activity_picked, Some(Pick::Recent(pk)) if pk.key == r.key);
             let fg = if selected { sel_fg } else { style::c(p.panel_text) };
             let dim_fg = if selected { sel_fg } else { sec_list };
-            let (status_text, status_fg) = match r.request.outcome {
-                Outcome::Completed => (duration(r.request.ms), dim_fg),
-                Outcome::Failed if r.request.status != 0 => (format!("Failed · {}", r.request.status), if selected { sel_fg } else { style::c(p.failure) }),
-                other => (other.label().to_owned(), if selected { sel_fg } else { outcome_color(p, other) }),
+            let status_text = status_said(r);
+            let status_fg = match r.request.outcome {
+                Outcome::Completed => dim_fg,
+                Outcome::Failed if r.request.status != 0 => {
+                    if selected {
+                        sel_fg
+                    } else {
+                        style::c(p.failure)
+                    }
+                }
+                other => {
+                    if selected {
+                        sel_fg
+                    } else {
+                        outcome_color(p, other)
+                    }
+                }
             };
             let picked = r.clone();
             let mut line = div()
@@ -3074,7 +3395,21 @@ impl PoolWindow {
         let sel_stands = sel_host.and_then(|id| ordered_hosts.iter().find(|h| h.id == id));
 
         let left_w = if vp_w >= 860.0 { (vp_w * 0.34).clamp(240.0, 360.0) } else { (vp_w * 0.38).clamp(212.0, 300.0) };
-        let hosts_col_w = if compact_h { vp_w - left_w - 44.0 } else { vp_w - 28.0 };
+        // This Computer beside the hosts in a short window wide enough for
+        // both (a quarter, a horizontal third); else over them. (Beside
+        // them in a short third, 346 points, the hosts had 70: Astra's and
+        // Neon's reviews, 2026-11-28.)
+        let two_col = machines_two_col(vp_w, vp_h);
+        // (Short and too narrow for two columns: This Computer and the
+        // hosts scroll as one, the bar beside them.)
+        let one_scroll = compact_h && !two_col;
+        let hosts_col_w = if two_col {
+            vp_w - left_w - 44.0
+        } else if one_scroll {
+            vp_w - 28.0 - widgets::SCROLL_BAR
+        } else {
+            vp_w - 28.0
+        };
 
         // Remote Rex Hosts heading + red error count matching Activity's red failures
         let err_n = ordered_hosts.iter().filter(|h| h.error.is_some()).count();
@@ -3134,7 +3469,6 @@ impl PoolWindow {
                 host_list = host_list.child(if idx > 0 { under_rule(p, row) } else { row });
             }
         }
-        let hosts_well = div().flex_1().min_h_0().child(ScrollView::new(&self.hosts_scroll).background(p.list_background).child(host_list));
 
         // Consistent footer matching Accounts order & labels: [Add Host…] [Remove Host…] … Updated HH:MM [Sync All]
         let any_syncable = ordered_hosts.iter().any(|h| h.wanted && h.doing.is_none());
@@ -3143,27 +3477,67 @@ impl PoolWindow {
         let rm_id = sel_stands.map(|h| h.id.clone()).unwrap_or_default();
         let checked_text = last_checked_at(&ordered_hosts).map(|at| format!("Updated {}", clock(at))).unwrap_or_default();
 
+        // (Its column's own width: beside This Computer in a short window,
+        // the 20-point gutter between.)
+        let gap = if two_col { 6.0 } else { m::SPACING };
+        let footer_w = if two_col { page_width(vp) - left_w - 20.0 } else { page_width(vp) };
+        let two_rows = footer_wraps(&["Add Host…", "Remove Host…", "Sync All"], 0.0, gap, footer_w);
         let mut status_box = div().flex_1().min_w_0().flex().justify_end();
-        if !checked_text.is_empty() && hosts_col_w >= 440.0 {
+        // (Whole, beside Sync All, where it fits in what its row leaves:
+        // never past the buttons beside it; Astra's and Neon's reviews,
+        // 2026-11-28.)
+        let lead_w = if two_rows { 0.0 } else { ["Add Host…", "Remove Host…"].iter().map(|l| button_width(l, false) + gap).sum() };
+        let checked_room = footer_w - lead_w - button_width("Sync All", false) - gap;
+        let checked_w = f32::from(style::text_width(checked_text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL)));
+        if !checked_text.is_empty() && checked_w <= checked_room && (hosts_col_w >= 440.0 || two_rows) {
             status_box = status_box.child(StringView::new(checked_text).color(sec_panel).height(m::CONTROL_HEIGHT));
         }
 
-        let footer = div()
-            .w_full()
-            .h(px(m::CONTROL_HEIGHT))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(if compact_h { 6.0 } else { m::SPACING }))
-            .child(Button::new("Add Host…").id("pool-add-host").on_click(|_: &ClickEvent, _| olo_kit::app_menu::open_settings("rex")))
-            .child(Button::new("Remove Host…").id("pool-remove-host").enabled(can_remove).on_click(cx.msg::<ClickEvent>(WinMsg::HostAskRemove(Some(rm_id)))))
-            .child(status_box)
-            .child(Button::new("Sync All").id("pool-sync-all").enabled(any_syncable).on_click(cx.msg::<ClickEvent>(WinMsg::SyncAllHosts)));
+        let footer = footer_rows(
+            vec![
+                Button::new("Add Host…").id("pool-add-host").on_click(|_: &ClickEvent, _| olo_kit::app_menu::open_settings("rex")).into_element(),
+                Button::new("Remove Host…").id("pool-remove-host").enabled(can_remove).on_click(cx.msg::<ClickEvent>(WinMsg::HostAskRemove(Some(rm_id)))).into_element(),
+            ],
+            status_box,
+            Button::new("Sync All").id("pool-sync-all").enabled(any_syncable).on_click(cx.msg::<ClickEvent>(WinMsg::SyncAllHosts)).into_element(),
+            gap,
+            two_rows,
+        );
 
-        if compact_h {
+        if one_scroll {
+            // A short window too narrow for This Computer beside the hosts
+            // (a third of a screen, 349 × 357; the window's least, 346 ×
+            // 220): the two scroll as one over the footer, the hosts' list
+            // in a well of its own height. (Beside each other the hosts had
+            // 70 points: Astra's and Neon's reviews, 2026-11-28; one over
+            // the other, This Computer left the list no room at all, its
+            // footer past the window's foot: the layout lint.)
+            let ground = style::c(p.list_background);
+            let frame = canvas(move |g, b| {
+                let p = theme::palette();
+                let b = style::snap(g, b);
+                style::fill_rect(g, b, ground);
+                style::sunken(g, b, &p, false);
+            })
+            .paint_key(style::key(style::ink_key(Some(ground))))
+            .absolute()
+            .inset_0();
+            // (Inside the well's two lines, on device pixels.)
+            let scale = cx.scale_factor();
+            let e = 2.0 * style::line_pixels(scale) / scale;
+            let hosts_box = div().relative().w_full().child(frame).child(div().p(px(e)).child(host_list));
+            let both = div().w_full().flex().flex_col().gap(px(10.0)).pr(px(m::TIGHT)).child(local_section).child(div().w_full().flex().flex_col().gap(px(6.0)).child(hosts_hdr).child(hosts_box));
+            let page = ScrollView::new(&self.hosts_scroll).border(false).background(p.panel_background).child(both);
+            return div().flex_1().min_h_0().flex().flex_col().gap(px(10.0)).child(div().flex_1().min_h_0().child(page)).child(footer).into_element();
+        }
+
+        let hosts_well = div().flex_1().min_h_0().child(ScrollView::new(&self.hosts_scroll).background(p.list_background).child(host_list));
+        if two_col {
             // In short tiles (quarter / horizontal third), both columns share one top heading line
             // with a generous 20pt gutter, and host buttons sit right beneath Remote Rex Hosts!
-            let hosts_col = div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(6.0)).child(hosts_hdr).child(hosts_well).child(footer);
+            // (The footer a spacing under the list, as Accounts' is: at 6
+            // it sat on the list's frame; Neon's review, 2026-11-28.)
+            let hosts_col = div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(6.0)).child(hosts_hdr).child(hosts_well).child(div().pt(px(m::SPACING - 6.0)).child(footer));
             return div()
                 .flex_1()
                 .min_h_0()
@@ -3232,9 +3606,12 @@ impl PoolWindow {
                 && let Some((left, right)) = custody_line.split_once(" · ")
             {
                 let cap_right = sentence(right);
+                // (Two sentences: a tight spacing between them, more than
+                // between a sentence's lines; Opus's and Neon's reviews,
+                // 2026-11-28.)
                 gw_block = gw_block
                     .child(div().w_full().pl(px(INDENT)).child(StringView::new(left.to_owned()).size(style::SMALL_SIZE).color(sec).wrap(true)))
-                    .child(div().w_full().pl(px(INDENT)).child(StringView::new(cap_right).size(style::SMALL_SIZE).color(sec).wrap(true)));
+                    .child(div().w_full().pl(px(INDENT)).pt(px(m::TIGHT - 2.0)).child(StringView::new(cap_right).size(style::SMALL_SIZE).color(sec).wrap(true)));
             } else {
                 gw_block = gw_block.child(div().w_full().pl(px(INDENT)).child(StringView::new(custody_line).size(style::SMALL_SIZE).color(sec).wrap(true)));
             }
@@ -3808,11 +4185,18 @@ impl View for PoolWindow {
             .child(page);
 
         let vp = cx.viewport_size();
-        let outer_pad = if f32::from(vp.height) < 340.0 || f32::from(vp.width) < 460.0 { 6.0 } else { 10.0 };
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
-        let mut content = div().flex_1().min_h_0().p(px(outer_pad)).flex().flex_col().gap(px(10.0));
+        let mut content = div().flex_1().min_h_0().p(px(outer_pad(vp))).flex().flex_col().gap(px(10.0));
         if let Some(err) = pool.error.as_deref() {
-            content = content.child(gateway_stopped_alert(p, self.effective_port(), err, cx));
+            // (Its height kept: Activity's page is its tab's less it.)
+            let alert = gateway_stopped_alert(p, self.effective_port(), err, cx);
+            content = content.child(div().w_full().child(alert).on_bounds_changed(cx.listener(|v: &mut PoolWindow, b: &Bounds<Pixels>, cx| {
+                let h = f32::from(b.size.height);
+                if (v.alert_h - h).abs() > 0.5 {
+                    v.alert_h = h;
+                    cx.invalidate();
+                }
+            })));
         }
         content = content.child(div().flex_1().min_h_0().child(tabs));
         div().size_full().flex().flex_col().child(bar).child(content)
@@ -3955,6 +4339,98 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Machines' two columns only where the hosts have a list's room: a
+    /// quarter (530 × 357) and a horizontal third, not a short third
+    /// (346 × 400, 349 × 357: the hosts were 70 points wide) or 450.
+    #[test]
+    fn machines_stack_where_two_columns_dont_fit() {
+        for (w, h) in [(346.0, 400.0), (349.0, 357.0), (450.0, 357.0), (346.0, 220.0), (640.0, 712.0), (1104.0, 760.0)] {
+            assert!(!machines_two_col(w, h), "{w} × {h}");
+        }
+        for (w, h) in [(530.0, 357.0), (1104.0, 233.0), (560.0, 400.0)] {
+            assert!(machines_two_col(w, h), "{w} × {h}");
+        }
+    }
+
+    /// Activity, short and in one column: the chart over Recent Requests
+    /// where both have their least (a quarter, 530 × 357, the plot tall
+    /// enough for its axes); shorter, down to the window's least of 220,
+    /// the table alone, its least inside the page. The gateway's
+    /// "stopped" box and a chosen request's details are budgeted too.
+    #[test]
+    fn activity_fits_a_short_window() {
+        let vp = |w: f32, h: f32| olo_kit::size(px(w), px(h));
+        let quarter = page_height(vp(530.0, 357.0));
+        assert_eq!(quarter, 357.0 - 26.0 - 20.0 - 22.0 - 32.0);
+        let (one_line, table) = (DETAIL_ROW, RECENT_LEAST);
+        let fits = |page: f32, plot: f32, legend: f32, recent: f32| m::CONTROL_HEIGHT + 8.0 + chart_least(plot, legend) + 8.0 + recent <= page;
+        assert!(activity_chart_fits(quarter, one_line, table));
+        assert_eq!(activity_plot_least(quarter, one_line, table), GRAPH_AXES, "a quarter's plot has its axes");
+        // Everything inside the page: the pop-ups, the chart at its least
+        // with its axes, the table at its least, 8 apart.
+        assert!(fits(quarter, GRAPH_AXES, one_line, table));
+        let least = page_height(vp(346.0, 220.0));
+        assert!(!activity_chart_fits(least, one_line, table), "220 tall: the table alone");
+        assert!(m::CONTROL_HEIGHT + 8.0 + table <= least, "the table's least inside the page");
+        // Where the chart just fits, its plot as short as it goes.
+        let just = m::CONTROL_HEIGHT + 8.0 + chart_least(PLOT_LEAST, one_line) + 8.0 + table;
+        assert!(activity_chart_fits(just, one_line, table) && !activity_chart_fits(just - 1.0, one_line, table));
+        assert_eq!(activity_plot_least(just, one_line, table), PLOT_LEAST);
+        // A narrow third, its legend on two lines: the plot gives way first.
+        let two = wrapped_height(&[120.0, 150.0, 110.0], 305.0, 12.0);
+        assert_eq!(two, 2.0 * DETAIL_ROW + 12.0);
+        let third = page_height(vp(349.0, 357.0));
+        let plot = activity_plot_least(third, two, table);
+        assert!(fits(third, plot, two, table) || !activity_chart_fits(third, two, table));
+        assert_eq!(wrapped_height(&[120.0, 150.0], 300.0, 12.0), DETAIL_ROW, "one line where they fit");
+        // The page's width and height as the window's parts leave them.
+        assert_eq!(page_width(vp(349.0, 357.0)), 349.0 - 12.0 - 32.0);
+
+        // A request chosen in a quarter: its details' row kept under the
+        // table, the plot shorter for it (not the table under a row).
+        let picked = table + PICKED_ROW;
+        assert!(activity_chart_fits(quarter, one_line, picked));
+        let plot = activity_plot_least(quarter, one_line, picked);
+        assert_eq!(plot, PLOT_LEAST);
+        assert!(fits(quarter, plot, one_line, picked), "the chart and the table with its details inside a quarter");
+        // The gateway stopped, its box over the tabs (112 points as first
+        // guessed, or as laid out): in a quarter, the table alone, inside
+        // what's left; at the window's least, nothing past the page.
+        for alert in [Some(0.0), Some(130.0)] {
+            let page = activity_page(vp(530.0, 357.0), alert);
+            assert!(page < quarter - 100.0);
+            assert!(!activity_chart_fits(page, one_line, table), "{alert:?}: no chart under the box");
+            for needs in [table, picked] {
+                assert!(m::CONTROL_HEIGHT + 8.0 + recent_kept(needs, page) <= page, "{alert:?}: the table inside what's under the box");
+            }
+        }
+        assert_eq!(recent_kept(table, activity_page(vp(530.0, 357.0), Some(0.0))), table, "a line's box: the table's whole least");
+        assert_eq!(activity_page(vp(530.0, 357.0), None), quarter);
+        let squeezed = activity_page(vp(346.0, 220.0), Some(0.0));
+        assert!(!activity_chart_fits(squeezed, one_line, picked));
+        assert_eq!(recent_kept(picked, squeezed), 0.0, "the table's least never more than the page");
+    }
+
+    /// One point a stretch, at its middle: the same at every scale.
+    #[test]
+    fn a_series_is_drawn_by_its_stretches_middles() {
+        let steps: VecDeque<(f64, f64)> = [(0.0, 1.0), (59.999, 1.0), (60.0, 3.0), (119.999, 3.0)].into_iter().collect();
+        assert_eq!(midpoints(&steps), VecDeque::from([(29.9995, 1.0), (89.9995, 3.0)]));
+    }
+
+    /// An account's facts drop whole from the end, never cut in two.
+    #[test]
+    fn facts_drop_whole() {
+        let facts: Vec<String> = ["alex@gmail.example", "AI Ultra plan", "2 banked resets"].map(str::to_owned).into();
+        let width = |t: &str| t.chars().count() as f32 * 6.0;
+        let all = facts.join(" · ");
+        assert_eq!(facts_shown(&facts, width(&all), width), all);
+        assert_eq!(facts_shown(&facts, width(&all) - 1.0, width), "alex@gmail.example · AI Ultra plan…");
+        assert_eq!(facts_shown(&facts, 20.0 * 6.0, width), "alex@gmail.example…");
+        // Not even the first: all, for the line to cut where a word ends.
+        assert_eq!(facts_shown(&facts, 30.0, width), all);
+    }
 
     /// A separate sign-in's result is taken only while it's the one waited
     /// for (as `Msg::SignedIn` asks, before anything of it is used: no

@@ -340,7 +340,12 @@ pub fn live_requests(pool: &Pool, hosts: &[Stands], scope: &MachineScope) -> Vec
 
 /// Recent completed/failed requests across the selected [`MachineScope`],
 /// ordered **newest first**, capped at `limit`.
-pub fn recent_requests(pool: &Pool, hosts: &[Stands], scope: &MachineScope, limit: usize) -> Vec<RecentReq> {
+/// The newest requests of the machines `scope` takes, made at `since`
+/// (seconds) or later, `limit` at most: the span chosen, as the chart's
+/// and as the table says it ("No requests in the last hour"). (With no
+/// bound, a request two hours old was listed under Last Hour: Astra's
+/// review, 2026-11-28.)
+pub fn recent_requests(pool: &Pool, hosts: &[Stands], scope: &MachineScope, since: i64, limit: usize) -> Vec<RecentReq> {
     let mut out = Vec::new();
     let this_computer = olo_kit::words::tr("This Computer").to_string();
     if scope.matches_local() {
@@ -380,6 +385,7 @@ pub fn recent_requests(pool: &Pool, hosts: &[Stands], scope: &MachineScope, limi
             });
         }
     }
+    out.retain(|r| r.request.at >= since);
     out.sort_by(|a, b| b.request.at.cmp(&a.request.at).then_with(|| b.key.cmp(&a.key)));
     out.truncate(limit);
     out
@@ -1118,7 +1124,7 @@ mod tests {
         let live_build = live_requests(&d.pool, &d.hosts, &MachineScope::Host("build".into()));
         assert_eq!(live_build.len(), 3);
 
-        let recent_all = recent_requests(&d.pool, &d.hosts, &MachineScope::All, 50);
+        let recent_all = recent_requests(&d.pool, &d.hosts, &MachineScope::All, i64::MIN, 50);
         assert_eq!(recent_all.len(), 14);
         assert!(recent_all.windows(2).all(|w| w[0].request.at >= w[1].request.at));
 

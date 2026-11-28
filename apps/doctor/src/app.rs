@@ -7,9 +7,10 @@
 //! shows it as one list, most pressing first, each item tagged with its
 //! kind (Critical, Problem, Recommended, Suggestion) and fixed or applied
 //! with its button, or with the others checked (`olo_kit::chosen`: the
-//! problems checked to begin with, the suggestions when the person
-//! wants them; Choose All, Problems, Suggestions, None; one button saying
-//! what it will do, "Fix 2 and Apply 3"). Any of it can be ignored. What
+//! problems and recommendations checked to begin with, the suggestions
+//! when the person wants them; Choose All, Problems, Suggestions,
+//! Recommendations, None; one button saying what it will do, "Fix 3
+//! Problems", "Fix 10 and Apply 3"). Any of it can be ignored. What
 //! needs root is done by the program run again as root (helper.rs),
 //! asked for once.
 //!
@@ -34,16 +35,17 @@ use olo_kit::{
     div, icons,
     instance::{self, Launch},
     metrics as m, px, style, theme,
-    widgets::{Button, CheckBox, LinkButton, PaneSwitch, ScrollView, StringView, Tag, button_width},
+    widgets::{Button, CheckBox, LinkButton, MENU_MARK_ROOM, PaneSwitch, ScrollView, StringView, Tag, button_width, link_button_width},
 };
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.doctor";
 const TITLE: &str = "Olo Doctor";
 const PROGRAM: &str = "olo-doctor";
-/// The window's least: a third of the smallest screen, either way
-/// (CLAUDE.md, "Every tiling layout").
-const MIN_WIDTH: f32 = 400.0;
+/// The window's least: a third of the smallest screen, either way, as
+/// tiling has it beside Deskbar (349 points of content across;
+/// CLAUDE.md, "Every tiling layout").
+const MIN_WIDTH: f32 = 346.0;
 const MIN_HEIGHT: f32 = 220.0;
 /// In a window less tall than this (a third of a screen's height), the
 /// summary is one line, without the icon: the list has the room.
@@ -135,16 +137,136 @@ struct Doctor {
     notes: Option<olo_kit_base::notify::Notifier>,
 }
 
-/// What's fixed: the critical, the problems and what's recommended,
-/// checked to begin with (all but the suggestions, as Fix All was).
-const NEEDED: Kind = Kind { verb: "Fix", one: "Problem", many: "Problems", by_default: true };
+/// What's fixed: the critical and the problems, and what's recommended,
+/// checked to begin with (all but the suggestions, as Fix All was). Two
+/// kinds of one verb, so the button names what it fixes: "Fix 3
+/// Problems", "Fix 7 Recommendations", or both together "Fix 10" (one
+/// kind, its button said "Fix 10 Problems" under "3 problems, 8
+/// recommendations and 8 suggestions": QA, 2026-11-28).
+const PROBLEMS: Kind = Kind { verb: "Fix", one: "Problem", many: "Problems", by_default: true };
+const RECOMMENDED: Kind = Kind { verb: "Fix", one: "Recommendation", many: "Recommendations", by_default: true };
 /// What's applied, checked when the person wants it (Ben, 2026-11-14:
 /// "the fix all button only fixes all problems but there's no way to
 /// apply all suggestions. we need a way to do both and either/or").
 const SUGGESTED: Kind = Kind { verb: "Apply", one: "Suggestion", many: "Suggestions", by_default: false };
+/// The kinds, in the order the Choose links and the button have them.
+/// (Suggestions second, as they always were: `choose-kind-1`, a
+/// command and a control agents use, is still them; Astra's review,
+/// 2026-11-28. Recommendations, new, come last.)
+const KINDS: [&Kind; 3] = [&PROBLEMS, &SUGGESTED, &RECOMMENDED];
+
+/// How the footer is set out ([`footer`]): the Choose links over the
+/// buttons, or beside them, or folded into "Choose ▾"; and whether, even
+/// so, the button (with what's beside it) has a row of its own under
+/// Check Again.
+#[derive(Debug, PartialEq)]
+struct FooterFit {
+    links_over: bool,
+    links_beside: bool,
+    menu: bool,
+    under: bool,
+}
+
+/// A default button's ring, outside its face: the face is set in by it
+/// at the footer's end, so the ring ends where everything else does
+/// (Opus's review, 2026-11-28).
+const DEFAULT_RING: f32 = 3.0;
+
+/// [`FooterFit`] for a footer `room` wide, `beside` of it beside Check
+/// Again; the links `links_w` wide, Choose ▾ `menu_w`, the button `act`
+/// (its own width, by the rule every button has, its ring's room after
+/// it). One row where it can be: "Fix 10" sized for "Fix 8
+/// Recommendations" put it under Check Again in a third, a row of its
+/// own; and wider than Check Again by half at the window's own width
+/// (Opus's and Neon's reviews, 2026-11-28).
+fn footer_fit(room: f32, beside: f32, links_w: f32, menu_w: f32, act: f32) -> FooterFit {
+    let (links_over, links_beside, menu) = if links_w + m::SPACING + act <= beside {
+        (false, true, false)
+    } else if links_w <= room {
+        (true, false, false)
+    } else {
+        (false, false, true)
+    };
+    let with = act
+        + if menu {
+            menu_w + m::SPACING
+        } else if links_beside {
+            links_w + m::SPACING
+        } else {
+            0.0
+        };
+    FooterFit { links_over, links_beside, menu, under: with > beside }
+}
+
+/// The footer: Check Again at the left; the Choose links (or Choose ▾)
+/// and the counted default button at the right, as [`footer_fit`] sets
+/// them out. The counts in the order shown ([`SHOWN`]).
+fn footer(
+    counts: &[chosen::Count<'static>],
+    enabled: bool,
+    room: f32,
+    check_again: Button,
+    on_choice: impl Fn(&Choice, &mut olo_kit::WindowCx) + 'static,
+    on_act: impl Fn(&ClickEvent, &mut olo_kit::WindowCx) + 'static,
+) -> Element {
+    let checked: Vec<(&Kind, usize)> = counts.iter().map(|&(k, n, _)| (k, n)).collect();
+    let label = chosen::label(&checked);
+    let any = counts.iter().any(|(_, n, _)| *n > 0);
+    let beside = room - button_width("Check Again", false) - m::SPACING;
+    let menu_w = link_button_width(olo_kit::words::tr("Choose")) + MENU_MARK_ROOM;
+    let fit = footer_fit(room, beside, chosen::choose_width(counts), menu_w, button_width(&label, false) + DEFAULT_RING);
+    let act = div().mr(px(DEFAULT_RING)).child(Button::new(label).id("chosen-act").default(any && enabled).enabled(any && enabled).on_click(on_act));
+    let choose = if fit.menu { chosen::choose_menu("chosen", counts, enabled, on_choice) } else { chosen::choose("chosen", counts, enabled, on_choice) };
+    let (over, beside_act) = if fit.links_over { (Some(div().flex().justify_end().child(choose).into_element()), None) } else { (None, Some(choose)) };
+    let group = div().flex().items_center().gap(px(m::SPACING)).children(beside_act).child(act);
+    // (The links a stack's spacing over the buttons: a default
+    // button's ring takes some of a tight one.)
+    let rows = div().flex().flex_col().gap(px(m::STACK)).children(over);
+    if fit.under {
+        rows.child(div().flex().child(check_again)).child(div().flex().justify_end().child(group)).into_element()
+    } else {
+        rows.child(div().flex().items_center().gap(px(m::SPACING)).child(check_again).child(div().flex_1()).child(group)).into_element()
+    }
+}
+
+/// The kinds in the order the window shows them, most pressing first, as
+/// its summary says them ("3 problems, 8 recommendations and 8
+/// suggestions"): each one's place in [`KINDS`], whose order the
+/// commands keep (`choose-kind-1` is still the suggestions'). Shown in
+/// that order, the chooser said "Problems · Suggestions ·
+/// Recommendations" (Opus's and Neon's reviews, 2026-11-28).
+const SHOWN: [usize; 3] = [0, 2, 1];
+
+/// A choice made among the kinds as shown ([`SHOWN`]), as the commands
+/// have it.
+fn as_command(choice: Choice) -> Choice {
+    match choice {
+        Choice::Kind(i) => Choice::Kind(SHOWN.get(i).copied().unwrap_or(i)),
+        other => other,
+    }
+}
+
+/// The Fix menu: the button's command (its words as the button's), then
+/// Choose All (⌘A), each kind in the order shown, by its command
+/// ([`SHOWN`]), and None: `chosen::menu`'s, its kinds' commands by their
+/// place in [`KINDS`], not in what's shown.
+fn fix_menu(counts: &[chosen::Count<'static>], enabled: bool) -> Menu {
+    let checked: Vec<(&Kind, usize)> = counts.iter().map(|&(k, n, _)| (k, n)).collect();
+    let any = counts.iter().any(|(_, n, _)| *n > 0);
+    let mut m = Menu::new("Fix").item(chosen::label(&checked), "fix-all").enabled(any && enabled).separator();
+    m = m.item("Choose All", "choose-all").key("a").enabled(enabled);
+    for (shown, (kind, ..)) in counts.iter().enumerate() {
+        m = m.item(format!("Choose {}", kind.many), format!("choose-kind-{}", SHOWN[shown])).enabled(enabled);
+    }
+    m.item("Choose None", "choose-none").enabled(enabled)
+}
 
 fn kind_of(f: &Finding) -> &'static Kind {
-    if f.severity == Severity::Suggestion { &SUGGESTED } else { &NEEDED }
+    match f.severity {
+        Severity::Suggestion => &SUGGESTED,
+        Severity::Advice => &RECOMMENDED,
+        _ => &PROBLEMS,
+    }
 }
 
 /// A kind's tag colour: critical red, a problem orange, what's
@@ -382,27 +504,27 @@ impl Doctor {
         self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.as_ref().is_some_and(|fix| fix.batchable()) && self.outcomes.get(&f.id) != Some(&Outcome::Fixing))
     }
 
-    /// How many of each kind are checked, of how many: the button's
-    /// words, and its width.
-    fn counts(&self) -> [chosen::Count<'static>; 2] {
+    /// How many of each kind are checked, of how many, in the order shown
+    /// ([`SHOWN`]): the button's words, and its width.
+    fn counts(&self) -> [chosen::Count<'static>; 3] {
         let n = |kind: &Kind| self.choosable().filter(|f| kind_of(f) == kind && self.chosen.is(&f.id, kind)).count();
         // (Of all there are, those being fixed too: the button keeps its
         // width while they run.)
         let of = |kind: &Kind| self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.as_ref().is_some_and(|fix| fix.batchable()) && kind_of(f) == kind).count();
-        [(&NEEDED, n(&NEEDED), of(&NEEDED)), (&SUGGESTED, n(&SUGGESTED), of(&SUGGESTED))]
+        SHOWN.map(|i| (KINDS[i], n(KINDS[i]), of(KINDS[i])))
     }
 
-    /// The button (Fix 2 and Apply 3): what's checked, fixed and applied.
+    /// The button ("Fix 3 Problems", "Fix 10 and Apply 3"): what's
+    /// checked, fixed and applied.
     fn act(&mut self, cx: &mut Cx<Self>) {
         let ids: Vec<String> = self.choosable().filter(|f| self.chosen.is(&f.id, kind_of(f))).map(|f| f.id.clone()).collect();
         self.fix(&ids, cx);
     }
 
-    /// Choose: All, Problems, Suggestions or None.
+    /// Choose: All, Problems, Suggestions, Recommendations or None.
     fn choose(&mut self, choice: Choice, cx: &mut Cx<Self>) {
-        let kinds = [NEEDED, SUGGESTED];
         let items: Vec<(String, &'static Kind)> = self.choosable().map(|f| (f.id.clone(), kind_of(f))).collect();
-        self.chosen.choose(items.iter().map(|(id, k)| (id.as_str(), *k)), |k| kinds.iter().position(|o| o == k).is_some_and(|i| choice.picks(i)));
+        self.chosen.choose(items.iter().map(|(id, k)| (id.as_str(), *k)), |k| KINDS.iter().position(|o| *o == k).is_some_and(|i| choice.picks(i)));
         cx.invalidate();
     }
 
@@ -493,9 +615,10 @@ impl Doctor {
         vec![
             // (What it checks most: the power modes and the scheduler.)
             Menu::new("File").app_items(&["performance", "power"]).item("Check Again", "check").key("r").enabled(!self.scanning).close_quit(),
-            // The button's command ("Fix 2 and Apply 3", ⇧⌘F), and
-            // Choose All (⌘A), Problems, Suggestions, None.
-            chosen::menu(Menu::new("Fix"), "fix-all", &self.counts(), self.report.is_some()),
+            // The button's command ("Fix 10 and Apply 3", ⇧⌘F), and
+            // Choose All (⌘A), Problems, Suggestions, Recommendations,
+            // None.
+            fix_menu(&self.counts(), self.report.is_some()),
         ]
     }
 
@@ -565,7 +688,7 @@ impl Doctor {
             // waits behind another; how long it has been at it.)
             Some(Outcome::Fixing) => Some(StringView::new(said).wrap(true).color(going)),
             Some(Outcome::Fixed) => Some(StringView::new(done).color(style::c(p.hue_text(olo_theme::Hue::Green)))),
-            Some(Outcome::Failed(e)) => Some(StringView::new(e.clone()).wrap(true).color(style::c(p.failure))),
+            Some(Outcome::Failed(e)) => Some(StringView::new(curled(e)).wrap(true).color(style::c(p.failure))),
             None => None,
         };
         // Checked to be done with the others (the button under the list),
@@ -574,7 +697,7 @@ impl Doctor {
         let choose = match &f.fix {
             Some(fix) if fix.batchable() => {
                 let id = f.id.clone();
-                CheckBox::new(f.title.clone(), self.chosen.is(&f.id, kind_of(f)))
+                CheckBox::new(curled(&f.title), self.chosen.is(&f.id, kind_of(f)))
                     .id(format!("choose-{}", f.id))
                     .mark_only()
                     .height(style::line_row(style::PLAIN_SIZE))
@@ -586,7 +709,7 @@ impl Doctor {
             // its mark is there, not to be checked, and says why. (Left
             // empty, the place read as a mark that had failed to draw:
             // Opus's look, 2026-11-21.)
-            Some(_) => CheckBox::new(f.title.clone(), false)
+            Some(_) => CheckBox::new(curled(&f.title), false)
                 .id(format!("choose-{}", f.id))
                 .mark_only()
                 .height(style::line_row(style::PLAIN_SIZE))
@@ -601,7 +724,7 @@ impl Doctor {
             .gap(px(m::MARK_GAP))
             .child(choose)
             .child(Tag::new(f.severity.label()).fill(tag_fill(f.severity, &p)).beside_paragraph(style::PLAIN_SIZE))
-            .child(div().flex_1().min_w_0().child(StringView::new(f.title.clone()).bold(true).wrap(true).color(ink.text)));
+            .child(div().flex_1().min_w_0().child(StringView::new(curled(&f.title)).bold(true).wrap(true).color(ink.text)));
         let mut buttons = div().flex().items_center().gap(px(m::SPACING));
         let status = if inline {
             status
@@ -622,7 +745,7 @@ impl Doctor {
         }
         if let Some(fix) = &f.fix {
             let id = f.id.clone();
-            let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { fix.label.clone() };
+            let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { curled(&fix.label) };
             buttons = buttons.child(
                 Button::new(label)
                     .id(format!("fix-{}", f.id))
@@ -633,22 +756,53 @@ impl Doctor {
         // (Its paragraphs, a blank line between them in the text, set
         // half a line apart: a whole empty line was as much as the room
         // over the buttons, and the card fell into equal blocks.)
-        let detail = div().flex().flex_col().gap(px(m::TIGHT)).children(f.detail.split("\n\n").map(|paragraph| StringView::new(paragraph.to_owned()).wrap(true).color(ink.text)));
+        let detail = div().flex().flex_col().gap(px(m::TIGHT)).children(f.detail.split("\n\n").map(|paragraph| StringView::new(curled(paragraph)).wrap(true).color(ink.text)));
         if inline {
             // (The title's first line on the buttons' middle, as a row of
             // controls reads.)
             let top = top.items_center().child(buttons.flex_shrink_0());
-            return card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).children(status).children(still).into_element();
+            return card(Some(curled(&f.title))).gap(px(m::TIGHT)).child(top).child(detail).children(status).children(still).into_element();
         }
         // (That a fix may never end is said on a line of its own, the
         // card's whole width, over the row of buttons: beside them it
         // wrapped to three short lines and pushed them off their row.)
-        card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).children(still).child(div().pt(px(m::TIGHT)).child(buttons))
+        card(Some(curled(&f.title))).gap(px(m::TIGHT)).child(top).child(detail).children(still).child(div().pt(px(m::TIGHT)).child(buttons))
     }
 }
 
 /// A card (a finding, or a group of lines), on the list's gutter; named
 /// for agents by `name` (a finding's title).
+/// Words as the window shows them: an apostrophe between two letters
+/// curled (Olo’s, isn’t), and one closing a plural’s (readers’), as on the
+/// rest of the desktop. Only what the window draws: the checks' words
+/// stay as they are where they are read or written (the files a fix
+/// installs, their own errors matched again, `--report` for agents and
+/// scripts). (Straight, Doctor's were the only ones left: Opus's review,
+/// 2026-11-28.)
+pub(crate) fn curled(text: &str) -> String {
+    // (Never a word of the catalogs: its translation is found by its
+    // English as it is.)
+    static KEYS: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
+    if !text.contains('\'') || KEYS.get_or_init(|| olo_kit::words::english().iter().copied().collect()).contains(text) {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut word_start = 0;
+    let mut out = String::with_capacity(text.len() + 8);
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_whitespace() {
+            word_start = i + 1;
+        }
+        let before = i.checked_sub(1).map(|b| chars[b]);
+        let after = chars.get(i + 1).copied();
+        let between = before.is_some_and(char::is_alphabetic) && after.is_some_and(char::is_alphabetic);
+        // (A plural's: "readers' " — not the end of a word quoted 'so'.)
+        let plural = before == Some('s') && after.is_none_or(|a| a.is_whitespace() || ",.;:)".contains(a)) && chars[word_start] != '\'';
+        out.push(if c == '\'' && (between || plural) { '’' } else { c });
+    }
+    out
+}
+
 fn card(name: Option<String>) -> Element {
     let paper = canvas(move |g, b| {
         style::card(g, b, &theme::palette(), false, false);
@@ -753,6 +907,7 @@ impl View for Doctor {
         let ink = style::card_ink(&p);
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let (title, detail) = self.summary();
+        let (title, detail) = (curled(&title), curled(&detail));
         let counts = self.counts();
         let icon = canvas(|g, b| {
             icons::paint(g, style::snap_centred(g, b.center(), 32.0, 32.0), "doctor");
@@ -791,26 +946,14 @@ impl View for Doctor {
         // What's checked, done together: Choose All, a kind, None, and the
         // button saying what it will do (olo_kit::chosen); the links over
         // the row where it hasn't room for them beside the buttons.
-        let beside = room - button_width("Check Again", false) - m::SPACING;
-        let (over, act) = chosen::bar_within(
-            "chosen",
+        let check_again = Button::new("Check Again").enabled(!self.scanning).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.scan(cx)));
+        let footer = footer(
             &counts,
             self.report.is_some(),
-            beside,
             room,
-            cx.listener(|d: &mut Doctor, c: &Choice, cx| d.choose(*c, cx)),
+            check_again,
+            cx.listener(|d: &mut Doctor, c: &Choice, cx| d.choose(as_command(*c), cx)),
             cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.act(cx)),
-        );
-        // (The links a stack's spacing over the buttons: a default
-        // button's ring takes some of a tight one.)
-        let footer = div().flex().flex_col().gap(px(m::STACK)).children(over).child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(m::SPACING))
-                .child(Button::new("Check Again").enabled(!self.scanning).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.scan(cx))))
-                .child(div().flex_1())
-                .child(act),
         );
         let mut list = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING));
         if let Some(r) = &self.report {
@@ -836,9 +979,9 @@ impl View for Doctor {
                         let label = match outcome {
                             Some(Outcome::Fixing) => "Undoing…".to_owned(),
                             Some(Outcome::Failed(_)) => "Try Again".to_owned(),
-                            _ => u.fix.label.clone(),
+                            _ => curled(&u.fix.label),
                         };
-                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(u.title.clone()).wrap(true).color(ink.text));
+                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(curled(&u.title)).wrap(true).color(ink.text));
                         if let Some(a) = crate::applied::of(&u.id).and_then(|finding| kept.iter().find(|a| a.id == finding)) {
                             text = text.child(StringView::new(a.line()).wrap(true).color(ink.dim));
                         }
@@ -849,12 +992,12 @@ impl View for Doctor {
                                 .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
                         );
                         if let Some(Outcome::Failed(e)) = outcome {
-                            side = side.child(StringView::new(e.clone()).color(style::c(p.failure)));
+                            side = side.child(StringView::new(curled(e)).color(style::c(p.failure)));
                         }
                         lines = lines.child(row(mark(fine_ink), text, Some(side)));
                     }
                     for t in plain {
-                        lines = lines.child(row(mark(fine_ink), StringView::new(t.clone()).wrap(true).color(ink.text).into_element(), None));
+                        lines = lines.child(row(mark(fine_ink), StringView::new(curled(t)).wrap(true).color(ink.text).into_element(), None));
                     }
                     list = list.child(lines);
                 }
@@ -868,9 +1011,9 @@ impl View for Doctor {
                     let mut lines = card(None).gap(px(m::STACK));
                     for f in &r.fine {
                         // (Its detail a step under it: a pair, not one block.)
-                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(f.title.clone()).wrap(true).color(ink.text));
+                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(curled(&f.title)).wrap(true).color(ink.text));
                         if !f.detail.is_empty() {
-                            text = text.child(StringView::new(f.detail.clone()).wrap(true).color(ink.dim));
+                            text = text.child(StringView::new(curled(&f.detail)).wrap(true).color(ink.dim));
                         }
                         // What's applied can be undone.
                         let side = r.undo.iter().find(|u| u.title == f.title).map(|u| {
@@ -879,7 +1022,7 @@ impl View for Doctor {
                             let label = match outcome {
                                 Some(Outcome::Fixing) => "Undoing…".to_owned(),
                                 Some(Outcome::Failed(_)) => "Try Again".to_owned(),
-                                _ => u.fix.label.clone(),
+                                _ => curled(&u.fix.label),
                             };
                             let mut side = div().flex().flex_col().items_end().gap(px(m::TIGHT)).child(
                                 Button::new(label)
@@ -888,7 +1031,7 @@ impl View for Doctor {
                                     .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
                             );
                             if let Some(Outcome::Failed(e)) = outcome {
-                                side = side.child(StringView::new(e.clone()).color(style::c(p.failure)));
+                                side = side.child(StringView::new(curled(e)).color(style::c(p.failure)));
                             }
                             side
                         });
@@ -910,12 +1053,12 @@ impl View for Doctor {
                     let tags = r.ignored.iter().map(|f| style::tag_width(f.severity.label(), style::DETAIL_SIZE, &style::ui_font(olo_kit::FontWeight::BOLD))).fold(0.0, f32::max);
                     for f in &r.ignored {
                         let outcome = self.outcomes.get(&f.id);
-                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(f.title.clone()).wrap(true).color(ink.dim));
+                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(curled(&f.title)).wrap(true).color(ink.dim));
                         match outcome {
                             Some(Outcome::Fixing) => {
                                 text = text.child(StringView::new(self.progress.get(&f.id).cloned().unwrap_or_else(|| words(Some(f.severity)).0.to_owned())).wrap(true).color(ink.dim))
                             }
-                            Some(Outcome::Failed(e)) => text = text.child(StringView::new(e.clone()).wrap(true).color(style::c(p.failure))),
+                            Some(Outcome::Failed(e)) => text = text.child(StringView::new(curled(e)).wrap(true).color(style::c(p.failure))),
                             _ => {}
                         }
                         // (Back among the rest with a link, as Ignore set
@@ -931,7 +1074,7 @@ impl View for Doctor {
                         );
                         let side = f.fix.as_ref().map(|fix| {
                             let id = f.id.clone();
-                            let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { fix.label.clone() };
+                            let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { curled(&fix.label) };
                             Button::new(label)
                                 .id(format!("fix-{}", f.id))
                                 .enabled(outcome != Some(&Outcome::Fixing))
@@ -1261,5 +1404,66 @@ mod tests {
         assert_eq!(r.fixable().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["backup", "rtkit", "advice"]);
         assert_eq!(r.applicable().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["tool:just"]);
         assert_eq!(r.problems(), 2);
+    }
+
+    /// The button names what it fixes as the summary does: problems
+    /// (the critical with them), recommendations, or both together as
+    /// many as they are, never recommendations called problems.
+    #[test]
+    fn the_button_names_what_it_fixes() {
+        let kinds = |severities: &[Severity]| -> Vec<(&'static Kind, usize)> { KINDS.iter().map(|&k| (k, severities.iter().filter(|s| kind_of(&finding("x", **s)) == k).count())).collect() };
+        assert_eq!(chosen::label(&kinds(&[Severity::Critical, Severity::Problem, Severity::Problem])), "Fix 3 Problems");
+        assert_eq!(chosen::label(&kinds(&[Severity::Advice; 7])), "Fix 7 Recommendations");
+        assert_eq!(chosen::label(&kinds(&[Severity::Advice])), "Fix 1 Recommendation");
+        let mixed = [[Severity::Problem; 3].as_slice(), &[Severity::Advice; 7]].concat();
+        assert_eq!(chosen::label(&kinds(&mixed)), "Fix 10");
+        let all = [mixed.as_slice(), &[Severity::Suggestion; 2]].concat();
+        assert_eq!(chosen::label(&kinds(&all)), "Fix 10 and Apply 2");
+        // `choose-kind-1` (a command and a control agents use) is still
+        // the suggestions', while the window shows the kinds most
+        // pressing first: Problems, Recommendations, Suggestions, each
+        // choosing its own (by kind, not by where a constant is kept).
+        assert_eq!(Choice::of_command("choose-kind-1"), Some(Choice::Kind(1)));
+        assert_eq!((*KINDS[0], *KINDS[1], *KINDS[2]), (PROBLEMS, SUGGESTED, RECOMMENDED));
+        let shown: Vec<Kind> = SHOWN.iter().map(|&i| *KINDS[i]).collect();
+        assert_eq!(shown, [PROBLEMS, RECOMMENDED, SUGGESTED]);
+        for (at, kind) in shown.iter().enumerate() {
+            let Choice::Kind(i) = as_command(Choice::Kind(at)) else { panic!("a kind") };
+            assert_eq!(*KINDS[i], *kind, "the link shown {at} chooses its own kind");
+        }
+        assert_eq!(as_command(Choice::All), Choice::All);
+        // The menu's items, as shown, each by its kind's command.
+        let counts = SHOWN.map(|i| (KINDS[i], 1, 1));
+        let commands: Vec<String> = SHOWN.iter().map(|i| format!("choose-kind-{i}")).collect();
+        assert_eq!(commands, ["choose-kind-0", "choose-kind-2", "choose-kind-1"]);
+        let _ = fix_menu(&counts, true);
+    }
+
+    /// The footer on one row where it can be: in a third (317 points,
+    /// 207 beside Check Again) Choose ▾ and "Fix 10" sized to what it
+    /// says; wider, the links over the row, the button as wide as the
+    /// widest it can say; wider still, all on one row.
+    #[test]
+    fn the_footer_keeps_one_row() {
+        // ("Fix 10", 80 points, and its ring's 3 after it.)
+        let act = 80.0 + DEFAULT_RING;
+        let third = footer_fit(317.0, 207.0, 330.0, 54.0, act);
+        assert_eq!(third, FooterFit { links_over: false, links_beside: false, menu: true, under: false });
+        // (Its own width: at 560 all of it on one row, the links beside.)
+        assert_eq!(footer_fit(560.0, 450.0, 330.0, 54.0, act), FooterFit { links_over: false, links_beside: true, menu: false, under: false });
+        assert_eq!(footer_fit(450.0, 340.0, 330.0, 54.0, act), FooterFit { links_over: true, links_beside: false, menu: false, under: false });
+        assert_eq!(footer_fit(900.0, 790.0, 330.0, 54.0, act), FooterFit { links_over: false, links_beside: true, menu: false, under: false });
+        // Narrower than even that: a row of its own, under Check Again.
+        assert!(footer_fit(220.0, 110.0, 330.0, 54.0, act).under);
+    }
+
+    /// What the window shows has its apostrophes curled; a quoted word
+    /// and a catalog's words are left as they are.
+    #[test]
+    fn words_are_shown_curled() {
+        assert_eq!(curled("Olo's threads can't be realtime"), "Olo’s threads can’t be realtime");
+        assert_eq!(curled("the readers' group"), "the readers’ group");
+        assert_eq!(curled("set 'rtkit' up"), "set 'rtkit' up");
+        assert_eq!(curled("nothing to curl"), "nothing to curl");
     }
 }

@@ -112,7 +112,7 @@ fn tell_suggestions(notes: &Notifier, findings: &[Finding]) {
     }
     write_told(&told);
     let summary = if new.len() == 1 { "Olo has a suggestion".to_owned() } else { format!("Olo has {} suggestions", new.len()) };
-    let body = new.iter().map(|f| f.title.as_str()).collect::<Vec<_>>().join("\n");
+    let body = new.iter().map(|f| crate::app::curled(&f.title)).collect::<Vec<_>>().join("\n");
     notes.show(None, Note::new(summary).body(body).icon("suggestions").action("default", "Show").action("show", "Show in Olo Doctor"));
 }
 
@@ -157,7 +157,7 @@ fn look(notes: &Notifier, suggestions: bool) -> bool {
         (1, false) => "Olo Doctor found a problem".to_owned(),
         (n, _) => format!("Olo Doctor found {n} problems"),
     };
-    let body = new.iter().map(|f| f.title.as_str()).collect::<Vec<_>>().join("\n");
+    let body = new.iter().map(|f| crate::app::curled(&f.title)).collect::<Vec<_>>().join("\n");
     notes.show(None, Note::new(summary).body(body).icon("doctor").action("default", "Show").action("show", "Show in Olo Doctor"));
     true
 }
@@ -220,10 +220,10 @@ fn tell_heals(notes: &Notifier) {
     for h in report.heals.iter().filter(|h| h.at > since) {
         let bluetooth = h.interface.starts_with("hci");
         let note = match (&h.rejoined, &h.error) {
-            (Some(_), _) if bluetooth => Note::new("Olo fixed Bluetooth").body(format!("Bluetooth's hardware had stopped answering ({}). Olo started it again: devices connect again.", h.why)),
+            (Some(_), _) if bluetooth => Note::new("Olo fixed Bluetooth").body(format!("Bluetooth’s hardware had stopped answering ({}). Olo started it again: devices connect again.", h.why)),
             (Some(network), _) => Note::new("Olo fixed the Wi-Fi").body(format!("The Wi-Fi chip had stopped joining networks ({}). Olo started it again and joined {network}.", h.why)),
-            (None, Some(e)) if bluetooth => Note::new("Bluetooth isn't answering").body(format!("{e}.")),
-            (None, Some(e)) => Note::new("Wi-Fi couldn't join").body(format!("{e}.")),
+            (None, Some(e)) if bluetooth => Note::new("Bluetooth isn’t answering").body(format!("{e}.")),
+            (None, Some(e)) => Note::new("Wi-Fi couldn’t join").body(format!("{e}.")),
             // Under way: told once it has come to something.
             (None, None) => return,
         };

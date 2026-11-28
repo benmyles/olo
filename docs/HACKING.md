@@ -3268,8 +3268,10 @@ it.
   agents: an address among facts, Calendar's preview),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it; its
-  line in `secondary_text`, its detail quieter: both in the disabled
-  colour, a view with nothing in it looked turned off),
+  line semibold in the text's own colour, its detail in
+  `secondary_text`: both in the disabled colour, a view with nothing in
+  it looked turned off, and a secondary line barely stood out from its
+  detail),
   `Tag` (a word in a pill saying what kind a thing is, Olo Doctor's
   Critical, Problem, Recommended or Suggestion: bold, in the detail
   size, black or white on its `fill`, from the palette's hues, else

@@ -216,16 +216,10 @@ fn answer(query: Query) {
             let _ = reply.send(menus(Some(surface)));
         }
         Query::Invoke(command, reply) => {
-            // The window with the keyboard takes it, else the first that
-            // does.
-            let taken = olo_interface::ask_windows(WAIT, move |cx| Some((cx.is_window_active(), cx.window_id(), command.clone())));
-            let _ = reply.send(invoke(taken, None));
+            let _ = reply.send(invoke(command, None));
         }
         Query::InvokeIn(ask, reply) => {
-            let surface = ask.surface;
-            let command = ask.command.clone();
-            let taken = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(surface)).then(|| (true, cx.window_id(), command.clone())));
-            let _ = reply.send(invoke(taken, Some(surface)));
+            let _ = reply.send(invoke(ask.command, Some(ask.surface)));
         }
         // A test of a driver reset (debug builds only): the device is
         // marked lost.
@@ -292,10 +286,23 @@ fn menus(surface: Option<u32>) -> Menus {
     Menus { app_id, entries }
 }
 
-/// Gives `command` to the window in front among those that answered.
-fn invoke(mut windows: Vec<(bool, olo_interface::WindowId, String)>, _surface: Option<u32>) -> bool {
+/// Which window takes a menu command, of the windows that answered
+/// (whether each has the keyboard, it, its surface): the one with
+/// `surface` alone where one is named (`invoke_in`: never another of
+/// the app's windows, the one in front least of all); else the one with
+/// the keyboard, else the first.
+fn taker<W>(mut windows: Vec<(bool, W, Option<u32>)>, surface: Option<u32>) -> Option<W> {
+    if let Some(surface) = surface {
+        return windows.into_iter().find(|(.., s)| *s == Some(surface)).map(|(_, w, _)| w);
+    }
     windows.sort_by_key(|(active, ..)| !*active);
-    let Some((_, id, command)) = windows.into_iter().next() else { return false };
+    windows.into_iter().next().map(|(_, w, _)| w)
+}
+
+/// Gives `command` to the window that takes it ([`taker`]).
+fn invoke(command: String, surface: Option<u32>) -> bool {
+    let windows = olo_interface::ask_windows(WAIT, |cx| Some((cx.is_window_active(), cx.window_id(), cx.surface_id())));
+    let Some(id) = taker(windows, surface) else { return false };
     olo_interface::ask_windows(WAIT, move |cx| {
         (cx.window_id() == id).then(|| {
             INVOKING.with(|i| i.set(true));
@@ -355,5 +362,21 @@ mod tests {
         assert!(!cuts[1].2);
         assert_eq!(whole_name(Some("Unclaimed and long".into()), b(210.0, 10.0), &mut cuts).as_deref(), Some("Unclaimed and long"));
         assert!(cuts[1].2);
+    }
+
+    /// A command for one window (`invoke_in`, by its surface) is that
+    /// window's alone, another of the app's in front or not; one for the
+    /// app goes to the window with the keyboard, else the first.
+    #[test]
+    fn a_command_for_one_window_is_its_alone() {
+        // (Two documents of one app: sample.txt behind, empty.txt in
+        // front. Asked to close sample.txt, empty.txt closed: QA,
+        // 2026-11-28.)
+        let windows = || vec![(false, "sample.txt", Some(5)), (true, "empty.txt", Some(7))];
+        assert_eq!(taker(windows(), Some(5)), Some("sample.txt"));
+        assert_eq!(taker(windows(), Some(7)), Some("empty.txt"));
+        assert_eq!(taker(windows(), Some(9)), None, "a surface it hasn't: no window");
+        assert_eq!(taker(windows(), None), Some("empty.txt"), "the app's: the one in front");
+        assert_eq!(taker(vec![(false, "a", None), (false, "b", None)], None), Some("a"), "none in front: the first");
     }
 }

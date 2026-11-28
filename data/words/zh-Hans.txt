@@ -2446,7 +2446,7 @@ Click Back Up Now to make the first.
 Click a graph to see what was busy then
 点击图表查看当时哪些任务最繁忙
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 点击圆环进入文件夹，点击中心返回上级；不需要的项目可以拖到收集器中。
 
 Click a shortcut to give it other keys.
@@ -2893,7 +2893,7 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 复制刚收到的验证码
 
-Copy to clipboard
+Copy to Clipboard
 复制到剪贴板
 
 Copy-on-write
@@ -3340,7 +3340,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 删除至行首
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 永久删除 {}（{}）吗？这些项目不会移入废纸篓，此操作无法撤销。
 
 Delete {} Backups…
@@ -3352,7 +3352,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 删除这 {} 个聊天吗？此账户中的聊天消息将被删除{}。此操作无法撤销。
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 永久删除“{}”（{}）吗？此项不会移入废纸篓，此操作无法撤销。
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7342,7 +7342,7 @@ New ones go in
 New ones go in:
 新项目存放位置：
 
-New screenshot
+New Screenshot
 新截图
 
 New shells can't start until it's running again.
@@ -14944,7 +14944,7 @@ signed in, {} calendars
 slots of the pool in use
 池中已用插槽
 
-some of it couldn't be read
+some of it couldn’t be read
 部分内容无法读取
 
 something else is called “{}” there now
@@ -15214,7 +15214,7 @@ yesterday at {}
 you
 您
 
-you don't have permission
+you don’t have permission
 您没有权限
 
 your cloud storage
@@ -15286,7 +15286,7 @@ other: 待复制 {n} 个文件
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 接收器正在播放 {n} 部影片。点击暂停或停止。
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 other: 有 {n} 个文件夹无法读取
 
 {n} folders taken

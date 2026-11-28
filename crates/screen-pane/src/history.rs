@@ -1099,6 +1099,35 @@ pub struct Stats {
     pub failed: usize,
 }
 
+/// `run`'s own options, before its program: `olo-screen run NAME
+/// [--quick] [--] PROGRAM [ARGS…]`.
+pub const RUN_OPTIONS: &[&str] = &["--quick"];
+
+/// What a `run` starts, from what follows the screen's name (`args`):
+/// past `run`'s own options ([`RUN_OPTIONS`]) and one `--` that ends
+/// them, so a program named "-report" is run as itself after `--`. One
+/// rule for olo-screen, which starts it, and for its stats, which count
+/// it ([`run_program`]): they disagreed (Astra's review, 2026-11-28).
+pub fn run_argv(args: &[String]) -> &[String] {
+    let mut at = 0;
+    while args.get(at).is_some_and(|a| RUN_OPTIONS.contains(&a.as_str())) {
+        at += 1;
+    }
+    if args.get(at).is_some_and(|a| a == "--") {
+        at += 1;
+    }
+    &args[at..]
+}
+
+/// The program a `run` started (its file's name), from the arguments its
+/// history keeps ([`run_argv`]: kept with `--quick` before olo-screen
+/// left it out, a screen's every program was counted as one named
+/// "--quick": QA, 2026-11-28).
+pub fn run_program(args: &[String]) -> Option<&str> {
+    let program = run_argv(args).first()?;
+    Some(Path::new(program).file_name().and_then(|n| n.to_str()).unwrap_or(program))
+}
+
 /// `history`'s stats, `running` saying whether the screen is up now.
 pub fn stats(name: &str, history: &[Action], running: bool, now: u64) -> Stats {
     let mut s = Stats { name: name.to_owned(), ..Default::default() };
@@ -1114,11 +1143,14 @@ pub fn stats(name: &str, history: &[Action], running: bool, now: u64) -> Stats {
             }
         }
         s.failed += usize::from(a.error.is_some());
+        // (A program counted only where it started: a run that failed, a
+        // program not found, was counted as run once; Astra's review,
+        // 2026-11-28.)
         if a.kind == "run"
-            && let Some(p) = a.args.first()
+            && a.error.is_none()
+            && let Some(program) = run_program(&a.args)
         {
-            let program = std::path::Path::new(p).file_name().and_then(|n| n.to_str()).unwrap_or(p).to_owned();
-            *s.programs.entry(program).or_default() += 1;
+            *s.programs.entry(program.to_owned()).or_default() += 1;
         }
         match a.kind.as_str() {
             "start" if a.error.is_none() => {
@@ -1195,6 +1227,31 @@ mod tests {
         assert_eq!(s.actions["click"], 2);
         assert_eq!(s.programs["olo-styled-edit"], 1);
         assert_eq!(s.failed, 1);
+        // `run NAME --quick env …` and `run NAME env …` are the same
+        // program, however the history kept the run's own options.
+        let runs = vec![
+            act(1_000, 10, "run", &["--quick", "env", "OLO_X=1", "olo-tracker"], None),
+            act(2_000, 10, "run", &["env", "OLO_X=1", "olo-tracker"], None),
+            act(3_000, 10, "run", &["--", "/usr/bin/env", "olo-tracker"], None),
+            act(4_000, 10, "run", &["--quick"], Some("no program to run")),
+            // (Not found: not counted as run.)
+            act(4_500, 10, "run", &["olo-no-such-program"], Some("olo-no-such-program wasn't found")),
+            act(4_600, 10, "run", &["env", "OLO_X=1"], Some("it couldn't be started")),
+        ];
+        let ran = stats("agent", &runs, false, 5_000);
+        assert_eq!(ran.programs.get("env"), Some(&3), "the failed env run not counted");
+        assert!(!ran.programs.contains_key("olo-no-such-program"), "{:?}", ran.programs);
+        assert_eq!(ran.failed, 3);
+        assert!(!ran.programs.contains_key("--quick") && !ran.programs.contains_key("--"), "{:?}", ran.programs);
+        assert_eq!(run_program(&["olo-styled-edit".to_owned()]), Some("olo-styled-edit"));
+        assert_eq!(run_program(&[]), None);
+        // Only run's own options are skipped: a program named "-report"
+        // is that program (as olo-screen starts it), and after `--` too.
+        let a = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(run_argv(&a(&["-report", "--x"])), a(&["-report", "--x"]));
+        assert_eq!(run_program(&a(&["-report"])), Some("-report"));
+        assert_eq!(run_argv(&a(&["--quick", "--", "-report"])), a(&["-report"]));
+        assert_eq!(run_argv(&a(&["--", "--", "x"])), a(&["--", "x"]), "one `--` ends the options");
         // The actions' own time and the short gaps between them, not the
         // ten minutes.
         assert_eq!(s.active_ms, 900 + 100 + 50 + 30 + 40 + 10 + (5_000 - 1_900) + (6_000 - 5_100) + (7_000 - 6_050) + (608_000 - 607_040));

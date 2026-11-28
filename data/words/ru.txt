@@ -2482,7 +2482,7 @@ Click Back Up Now to make the first.
 Click a graph to see what was busy then
 Нажмите на график, чтобы увидеть, что создавало нагрузку в тот момент
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 Кольцо открывает папку, центр возвращает на уровень выше. Перетащите ненужное в подборку.
 
 Click a shortcut to give it other keys.
@@ -2938,7 +2938,7 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 Скопировать только что полученный код
 
-Copy to clipboard
+Copy to Clipboard
 Копировать в буфер обмена
 
 Copy-on-write
@@ -3385,7 +3385,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 Удалить до начала строки
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 Удалить {} ({}) навсегда? Они не попадут в корзину, и восстановить их будет нельзя.
 
 Delete {} Backups…
@@ -3397,7 +3397,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 Удалить выбранные чаты ({})? Их сообщения исчезнут из этой учётной записи{}. Это действие необратимо.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 Удалить «{}» ({}) навсегда? Объект не попадёт в корзину, и восстановить его будет нельзя.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7426,7 +7426,7 @@ New ones go in
 New ones go in:
 Куда добавлять новые:
 
-New screenshot
+New Screenshot
 Новый снимок экрана
 
 New shells can't start until it's running again.
@@ -15091,7 +15091,7 @@ signed in, {} calendars
 slots of the pool in use
 занято слотов пула
 
-some of it couldn't be read
+some of it couldn’t be read
 часть данных прочитать не удалось
 
 something else is called “{}” there now
@@ -15379,7 +15379,7 @@ yesterday at {}
 you
 вы
 
-you don't have permission
+you don’t have permission
 у вас нет прав доступа
 
 your cloud storage
@@ -15511,7 +15511,7 @@ few: На приёмниках AirPlay воспроизводится видео
 many: На приёмниках AirPlay воспроизводится видео: {n}. Нажмите, чтобы приостановить или остановить показ.
 other: На приёмниках AirPlay воспроизводится видео: {n}. Нажмите, чтобы приостановить или остановить показ.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: Не удалось прочитать {n} папку
 few: Не удалось прочитать {n} папки
 many: Не удалось прочитать {n} папок

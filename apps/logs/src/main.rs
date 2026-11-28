@@ -61,8 +61,9 @@ const DETAIL: f32 = 112.0;
 /// (CLAUDE.md, "Every tiling layout"). The line is still the list's, and
 /// Show in Context's.
 const DETAIL_ROOM: f32 = 480.0;
-/// The window's least: a third of the smallest screen, either way.
-const MIN_WIDTH: f32 = 400.0;
+/// The window's least: a third of the smallest screen, either way, as
+/// tiling has it beside Deskbar (349 points of content across).
+const MIN_WIDTH: f32 = 346.0;
 const MIN_HEIGHT: f32 = 220.0;
 /// The least the Message column is given (the last: it fills the rest).
 const MESSAGE_LEAST: f32 = 200.0;
@@ -197,6 +198,49 @@ enum Msg {
     Opened(Option<PathBuf>),
     /// Launched again: the search to show and the log to read.
     Launch(Option<String>, Option<PathBuf>),
+}
+
+/// Log Viewer's commands: its menus', its list's context menu's and its
+/// buttons'. Anything else isn't one, and `View::command` says so: an
+/// agent's `invoke` of a command it hasn't, or of a menu's label
+/// ("Live"), was taken and nothing done, said done (QA, 2026-11-28),
+/// where a label is looked up and an unknown command refused.
+#[derive(Debug, PartialEq)]
+enum Command {
+    Copy,
+    SelectAll,
+    Find,
+    Live,
+    Context,
+    Back,
+    OnlyProgram,
+    End,
+    Journal,
+    OpenFile,
+    Close,
+    Quit,
+    /// A log to read (`file:PATH`: an Agent Screen's, from its menu).
+    File(PathBuf),
+}
+
+impl Command {
+    fn parse(command: &str) -> Option<Command> {
+        Some(match command {
+            "copy" => Command::Copy,
+            "select-all" => Command::SelectAll,
+            "find" => Command::Find,
+            "live" => Command::Live,
+            "context" => Command::Context,
+            "back" => Command::Back,
+            "only-program" => Command::OnlyProgram,
+            "end" => Command::End,
+            "journal" => Command::Journal,
+            "open-file" => Command::OpenFile,
+            "close" => Command::Close,
+            "quit" => Command::Quit,
+            c => Command::File(PathBuf::from(c.strip_prefix("file:").filter(|p| !p.is_empty())?)),
+        })
+    }
 }
 
 /// The Agent Screens' logs (`$XDG_RUNTIME_DIR/olo-screens/logs`, and
@@ -597,21 +641,24 @@ impl Logs {
         }
     }
 
-    fn do_command(&mut self, command: &str, cx: &mut Cx<Self>) {
+    /// Does menu command `command`; whether it is one of Log Viewer's
+    /// ([`Command`]).
+    fn do_command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        let Some(command) = Command::parse(command) else { return false };
         match command {
-            "copy" => {
+            Command::Copy => {
                 let text = self.selected_text();
                 if !text.is_empty() {
                     clipboard::write(ClipboardItem::new_string(text));
                 }
             }
-            "select-all" => {
+            Command::SelectAll => {
                 let n = self.view.len();
                 self.list.state_mut().select_all(n);
                 cx.invalidate();
             }
-            "find" => self.search.update(cx, |s, cx| s.focus(cx)),
-            "live" => {
+            Command::Find => self.search.update(cx, |s, cx| s.focus(cx)),
+            Command::Live => {
                 self.settings.live = !self.settings.live;
                 if self.settings.live {
                     self.at_end = true;
@@ -622,9 +669,9 @@ impl Logs {
                 self.store();
                 cx.invalidate();
             }
-            "context" => self.show_in_context(cx),
-            "back" => self.back_from_context(cx),
-            "only-program" => {
+            Command::Context => self.show_in_context(cx),
+            Command::Back => self.back_from_context(cx),
+            Command::OnlyProgram => {
                 if let Some(sel) = self.selected {
                     let program = self.lines[sel].program.to_string();
                     let mut text = self.settings.search.clone();
@@ -633,17 +680,17 @@ impl Logs {
                     self.query_changed(cx);
                 }
             }
-            "end" => {
+            Command::End => {
                 self.at_end = true;
                 if !self.view.is_empty() {
                     self.list.scroll_to_end(cx);
                 }
                 cx.invalidate();
             }
-            "journal" => self.read(None, cx),
-            "open-file" => {
+            Command::Journal => self.read(None, cx),
+            Command::OpenFile => {
                 if olo_kit::raise(self.panel.as_ref()) {
-                    return;
+                    return true;
                 }
                 let dir = self.source.as_ref().and_then(|p| p.parent()).map_or_else(|| std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from), PathBuf::from);
                 let panel = FilePanel::open(dir).filters(vec![file_panel::Filter::new("Log Files").glob("*.log").glob("*.txt").glob("*.out"), file_panel::Filter::new("All Files").glob("*")], 0);
@@ -657,20 +704,17 @@ impl Logs {
                     }));
                 }));
             }
-            "close" => {
+            Command::Close => {
                 self.store();
                 cx.close_window();
             }
-            "quit" => {
+            Command::Quit => {
                 self.store();
                 olo_kit::quit();
             }
-            c => {
-                if let Some(path) = c.strip_prefix("file:") {
-                    self.read(Some(PathBuf::from(path)), cx);
-                }
-            }
+            Command::File(path) => self.read(Some(path), cx),
         }
+        true
     }
 
     /// The search's filters: Program (Olo's first, each with its lines in
@@ -898,7 +942,9 @@ impl View for Logs {
                 let chose = cx.msg_with(|command: &str| Msg::Command(command.to_owned()));
                 menu::context_menu(cx, menu, at, chose);
             }
-            Msg::Command(command) => self.do_command(&command, cx),
+            Msg::Command(command) => {
+                self.do_command(&command, cx);
+            }
             Msg::Opened(path) => {
                 self.panel = None;
                 if let Some(path) = path {
@@ -921,8 +967,7 @@ impl View for Logs {
     }
 
     fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
-        self.do_command(command, cx);
-        true
+        self.do_command(command, cx)
     }
 
     /// Its settings kept as it ends, by hand or for an upgrade.
@@ -1171,6 +1216,21 @@ mod tests {
     #[test]
     fn iso_times() {
         assert_eq!(super::iso_time(1_793_085_657_797_247), "2026-10-27T07:20:57.797Z");
+    }
+
+    /// Its commands are taken; a menu's label, an unknown command or an
+    /// empty one isn't, so `invoke` looks a label up and refuses the
+    /// rest rather than saying it did them.
+    #[test]
+    fn only_its_commands_are_taken() {
+        use super::Command;
+        for c in ["copy", "select-all", "find", "live", "context", "back", "only-program", "end", "journal", "open-file", "close", "quit"] {
+            assert!(Command::parse(c).is_some(), "{c}");
+        }
+        assert_eq!(Command::parse("file:/var/tmp/screens/qa.log"), Some(Command::File("/var/tmp/screens/qa.log".into())));
+        for c in ["Live", "qa-no-such-menu", "", "file:", "about"] {
+            assert_eq!(Command::parse(c), None, "{c:?}");
+        }
     }
 
     /// A log file is read whole, then followed as it grows.

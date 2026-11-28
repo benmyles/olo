@@ -2446,7 +2446,7 @@ Click Back Up Now to make the first.
 Click a graph to see what was busy then
 グラフをクリックすると、その時点で負荷の高かった項目がわかります
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 リングをクリックするとフォルダーが開き、中央をクリックすると戻ります。不要なものはコレクターにドラッグしてください。
 
 Click a shortcut to give it other keys.
@@ -2893,7 +2893,7 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 今届いたコードをコピー
 
-Copy to clipboard
+Copy to Clipboard
 クリップボードにコピー
 
 Copy-on-write
@@ -3340,7 +3340,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 行の先頭まで削除
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 {}（{}）を完全に削除しますか？ ゴミ箱には入らず、削除は取り消せません。
 
 Delete {} Backups…
@@ -3352,7 +3352,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 {}件のチャットを削除しますか？ このアカウント{}からメッセージが消えます。削除は取り消せません。
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 「{}」（{}）を完全に削除しますか？ ゴミ箱には入らず、削除は取り消せません。
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7342,7 +7342,7 @@ New ones go in
 New ones go in:
 新しいワークツリーの保存先:
 
-New screenshot
+New Screenshot
 新しいスクリーンショット
 
 New shells can't start until it's running again.
@@ -14944,7 +14944,7 @@ signed in, {} calendars
 slots of the pool in use
 プールの使用中の枠
 
-some of it couldn't be read
+some of it couldn’t be read
 一部のデータを読み取れませんでした
 
 something else is called “{}” there now
@@ -15214,7 +15214,7 @@ yesterday at {}
 you
 自分
 
-you don't have permission
+you don’t have permission
 権限がありません
 
 your cloud storage
@@ -15286,7 +15286,7 @@ other: コピー対象 {n}ファイル
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlayで{n}本の動画を再生中です。クリックで一時停止または停止。
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 other: {n}個のフォルダーを読み取れませんでした
 
 {n} folders taken

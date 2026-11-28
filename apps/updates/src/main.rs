@@ -63,8 +63,9 @@ const SIDEBAR: f32 = 172.0;
 /// the sidebar gives way to a menu of the sections over the section
 /// (CLAUDE.md, "Every tiling layout").
 const CONTENT_LEAST: f32 = 360.0;
-/// The window's least: a third of the smallest screen, either way.
-pub const MIN_WIDTH: f32 = 400.0;
+/// The window's least: a third of the smallest screen, either way, as
+/// tiling has it beside Deskbar (349 points of content across).
+pub const MIN_WIDTH: f32 = 346.0;
 pub const MIN_HEIGHT: f32 = 220.0;
 /// What's selected in a section's list, beside it.
 const DETAILS: f32 = 300.0;
@@ -237,6 +238,13 @@ impl OsUpdates {
     /// Read everything again, on a worker (`fresh`: the repositories'
     /// metadata fetched now, not only when it's out of date).
     pub fn load(&mut self, fresh: bool, cx: &mut Cx<Self>) {
+        // (Nothing read yet: what went wrong before is old news once it's
+        // tried again; kept, the window said it over "Checking…", and its
+        // search and details came back for the try: Neon's review,
+        // 2026-11-28.)
+        if self.session.is_none() {
+            self.error = None;
+        }
         self.loads += 1;
         let n = self.loads;
         self.loading =
@@ -360,11 +368,7 @@ impl OsUpdates {
                 .into_element();
         }
         let _ = cx;
-        let (text, failed) = match (&self.note, &self.error) {
-            (Some((t, f)), _) => (t.clone(), *f),
-            (None, Some(e)) => (e.clone(), true),
-            (None, None) => (self.checked_words(), false),
-        };
+        let (text, failed) = status_words(self.note.as_ref(), self.error.as_deref(), self.session.is_some(), self.section, || self.checked_words());
         let p = theme::palette();
         let mut s = StringView::new(text).cut(true);
         s = if failed { s.color(style::c(p.failure)) } else { s.dim(true) };
@@ -423,11 +427,49 @@ impl OsUpdates {
     }
 }
 
+/// The status line's words, and whether they say what went wrong: the
+/// last word (`note`); else what went wrong (`error`), but where nothing
+/// was `read` not on Updates, whose list's place says it, once (the other
+/// sections say it here, or it was said nowhere on them: Astra's review,
+/// 2026-11-28); else when it was checked.
+fn status_words(note: Option<&(String, bool)>, error: Option<&str>, read: bool, section: Section, checked: impl FnOnce() -> String) -> (String, bool) {
+    match (note, error) {
+        (Some((t, f)), _) => (t.clone(), *f),
+        (None, Some(_)) if !read && section == Section::Updates => (String::new(), false),
+        (None, Some(e)) => (e.to_owned(), true),
+        (None, None) => (checked(), false),
+    }
+}
+
+/// What went wrong reading from the package service, said plainly: what
+/// can't be done and why, in words, not D-Bus's (its errors' names, its
+/// specification's address, which wrapped mid-word in the list's place:
+/// QA, 2026-11-28). What it said itself goes to the log.
+fn plainly(e: &olo_system::Error) -> String {
+    let said = dnf::error_text(e);
+    tracing::warn!("the package service: {said}");
+    plain_words(&said, matches!(e, olo_system::Error::InputOutput(_) | olo_system::Error::Address(_) | olo_system::Error::Handshake(_)))
+}
+
+/// [`plainly`]'s words for what the package service said (`said`), and
+/// whether the bus itself couldn't be reached (`unreachable`).
+fn plain_words(said: &str, unreachable: bool) -> String {
+    const MISSING: [&str; 4] = ["ServiceUnknown", "NameHasNoOwner", "was not provided by any .service files", "not activatable"];
+    if MISSING.iter().any(|m| said.contains(m)) {
+        return "The package service (dnf5daemon) isn’t installed, or couldn’t be started.".into();
+    }
+    if unreachable {
+        return "The system’s message bus can’t be reached, so the package service can’t be asked.".into();
+    }
+    // (Its own words, less any address in them.)
+    said.split_whitespace().filter(|w| !w.contains("://")).collect::<Vec<_>>().join(" ")
+}
+
 /// Read everything: the repositories (fetching what's out of date, or
 /// everything when `fresh`), the updates, repositories, history and what
 /// waits for the next start.
 fn load(fresh: bool, progress: &mut dyn FnMut(String, Option<f32>)) -> Result<Loaded, String> {
-    let text = |e: olo_system::Error| dnf::error_text(&e);
+    let text = |e: olo_system::Error| plainly(&e);
     let s = Session::open(&Open::default()).map_err(text)?;
     if fresh {
         // (Not allowed to expire the cache, it's read as it is.)
@@ -661,3 +703,38 @@ fn main() -> std::process::ExitCode {
 /// How often what's waiting is looked at again while the window is open
 /// (the metadata's own expiry decides whether anything is fetched).
 pub const LOOK_AGAIN: Duration = Duration::from_secs(6 * 3600);
+
+#[cfg(test)]
+mod tests {
+    use super::{Section, plain_words, status_words};
+
+    /// Nothing read: Updates' list says why, the other sections' status
+    /// lines do; read, every section's says what went wrong.
+    #[test]
+    fn what_went_wrong_is_said_once_on_every_section() {
+        let checked = || "Checked just now.".to_owned();
+        let said = "The package service (dnf5daemon) isn’t installed, or couldn’t be started.";
+        let e = Some(said);
+        assert_eq!(status_words(None, e, false, Section::Updates, checked), (String::new(), false));
+        for section in [Section::Repos, Section::History, Section::Upgrade] {
+            assert_eq!(status_words(None, e, false, section, checked), (said.to_owned(), true), "{section:?}");
+        }
+        assert_eq!(status_words(None, e, true, Section::Updates, checked), (said.to_owned(), true));
+        assert_eq!(status_words(None, None, true, Section::History, checked), (checked(), false));
+        let note = ("Updated 3 packages.".to_owned(), false);
+        assert_eq!(status_words(Some(&note), e, false, Section::Updates, checked), note);
+    }
+
+    /// The package service's failures in words: missing, the bus out of
+    /// reach, or its own words without an address in them.
+    #[test]
+    fn errors_are_said_plainly() {
+        let missing = "The name org.rpm.dnf.v0 was not provided by any .service files";
+        assert_eq!(plain_words(missing, false), "The package service (dnf5daemon) isn’t installed, or couldn’t be started.");
+        assert_eq!(plain_words("org.freedesktop.DBus.Error.ServiceUnknown", false), plain_words(missing, false));
+        let bus = "Address error: see https://dbus.freedesktop.org/doc/dbus-specification.html#addresses";
+        assert_eq!(plain_words(bus, true), "The system’s message bus can’t be reached, so the package service can’t be asked.");
+        assert_eq!(plain_words(bus, false), "Address error: see");
+        assert_eq!(plain_words("Failed to download metadata for repo 'updates'", false), "Failed to download metadata for repo 'updates'");
+    }
+}

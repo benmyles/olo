@@ -2446,7 +2446,7 @@ Click Back Up Now to make the first.
 Click a graph to see what was busy then
 그래프를 클릭해 그때 무엇이 바빴는지 확인하세요
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 고리를 클릭하면 폴더가 열리고 가운데를 누르면 위로 갑니다. 필요 없는 항목은 수집기에 끌어다 놓으세요.
 
 Click a shortcut to give it other keys.
@@ -2893,7 +2893,7 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 방금 받은 코드 복사
 
-Copy to clipboard
+Copy to Clipboard
 클립보드에 복사
 
 Copy-on-write
@@ -3340,7 +3340,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 줄의 처음까지 삭제
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 {0}({1}) 항목을 영구 삭제할까요? 휴지통을 거치지 않으며 되돌릴 수 없습니다.
 
 Delete {} Backups…
@@ -3352,7 +3352,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 채팅 {}개를 삭제할까요? 이 계정{}에서 메시지가 지워집니다. 되돌릴 수 없습니다.
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 ‘{}’({}) 항목을 영구 삭제할까요? 휴지통을 거치지 않으며 되돌릴 수 없습니다.
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7342,7 +7342,7 @@ New ones go in
 New ones go in:
 새 항목의 위치:
 
-New screenshot
+New Screenshot
 새 스크린샷
 
 New shells can't start until it's running again.
@@ -14944,7 +14944,7 @@ signed in, {} calendars
 slots of the pool in use
 사용 중인 풀 슬롯
 
-some of it couldn't be read
+some of it couldn’t be read
 일부 내용을 읽을 수 없음
 
 something else is called “{}” there now
@@ -15214,7 +15214,7 @@ yesterday at {}
 you
 나
 
-you don't have permission
+you don’t have permission
 권한이 없습니다
 
 your cloud storage
@@ -15286,7 +15286,7 @@ other: 복사할 파일 {n}개
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 수신기에서 동영상 {n}개를 재생 중입니다. 클릭해 일시 정지하거나 중지하세요.
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 other: 폴더 {n}개를 읽을 수 없음
 
 {n} folders taken

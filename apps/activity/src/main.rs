@@ -62,8 +62,9 @@ const SPANS: [(u32, &str); 4] = [(60, "1 Minute"), (300, "5 Minutes"), (900, "15
 const SIDEBAR_WIDTH: f32 = 176.0;
 /// The space a section keeps beside the sidebar before it gives way to a menu.
 const CONTENT_LEAST: f32 = 360.0;
-/// The least window width fits a vertical third of the smallest screen.
-const MIN_WIDTH: f32 = 400.0;
+/// The least window width fits a vertical third of the smallest screen
+/// beside Deskbar (349 points of content).
+const MIN_WIDTH: f32 = 346.0;
 /// The least window height fits a horizontal third of the smallest screen.
 const MIN_HEIGHT: f32 = 220.0;
 
@@ -1904,7 +1905,7 @@ mod layout_tests {
         assert_eq!(section_layout(threshold), (true, CONTENT_LEAST));
         assert_eq!(section_layout(threshold - 1.0), (false, threshold - 1.0 - 2.0 * m::WINDOW_INSET));
         assert_eq!(section_layout(417.0), (false, 385.0));
-        assert_eq!(section_layout(MIN_WIDTH), (false, 368.0));
+        assert_eq!(section_layout(MIN_WIDTH), (false, MIN_WIDTH - 2.0 * m::WINDOW_INSET));
     }
 
     #[test]

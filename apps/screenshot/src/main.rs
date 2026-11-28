@@ -40,7 +40,7 @@ use olo_kit::{
     instance::{self, Launch},
     menu::{self, Menu},
     metrics as m, point, px, size, style, theme,
-    widgets::{Button, CheckBox, MenuField, StringView, TextControl, TextField, TextFieldEvent, open_alert, separator, text_field},
+    widgets::{Button, CheckBox, MenuField, StringView, TextControl, TextField, TextFieldEvent, button_width, open_alert, separator, text_field},
 };
 use serde::{Deserialize, Serialize};
 
@@ -48,17 +48,31 @@ const APP_ID: &str = "olo.screenshot";
 
 /// The window's width; it is as tall as its form needs (`Layout::height`).
 const WIDTH: f32 = 580.0;
-/// The preview's share of the window.
+/// The preview's share of the window, beside the form.
 const PREVIEW_W: f32 = 240.0;
+/// The preview's height over the form, in a window too narrow for the
+/// two side by side: as wide as the window at the picture's shape, so
+/// tall at least and at most.
+const PREVIEW_OVER_LEAST: f32 = 120.0;
+/// A screen's shape, before a picture's taken (16 by 10).
+const DEFAULT_ASPECT: f32 = 1.6;
+const PREVIEW_OVER_MOST: f32 = 260.0;
 /// Labels' column in the form.
 const DIVIDER: f32 = 66.0;
+/// The least room the form takes beside the preview (its fields a
+/// popup's longest choice wide): narrower, the preview goes over it.
+const FORM_LEAST: f32 = 214.0;
+/// The buttons' widths: Copy to Clipboard and New Screenshot (Record…
+/// and Save are `BUTTON_MIN_WIDTH`).
+const COPY_W: f32 = 130.0;
+const NEW_W: f32 = 120.0;
 
 enum Msg {
     /// A picture, or why not.
     Taken(Result<Shot, String>),
     /// The picture made small for the preview: which picture, the size in
-    /// device pixels it was made for, and it.
-    Preview(u64, (u32, u32), Arc<RenderImage>),
+    /// device pixels it was made for, and it (None: it couldn't be).
+    Preview(u64, (u32, u32), Option<Arc<RenderImage>>),
     /// Saved: where, and the file written (its notification's receipt).
     Saved(Result<(PathBuf, olo_protocol::notifications::FileId), String>),
     Copied(Result<Vec<u8>, String>),
@@ -129,10 +143,10 @@ struct Screenshot {
     taken: u64,
     /// The preview: the picture it's of (`taken`), its size in device
     /// pixels and the image. (A new picture the same size is another
-    /// preview: New screenshot kept showing the one before.)
+    /// preview: New Screenshot kept showing the one before.)
     preview: Option<(u64, (u32, u32), Arc<RenderImage>)>,
-    /// The preview size last asked for (picture, size).
-    asked: Option<(u64, (u32, u32))>,
+    /// Which preview is wanted, and which is being made ([`Previews`]).
+    previews: Previews,
     name: Child<TextField>,
     delay: Child<TextField>,
     /// The name as we proposed it; typing over it keeps the user's.
@@ -175,37 +189,209 @@ fn preview_of(image: &image::RgbaImage, w: u32, h: u32) -> Option<Arc<RenderImag
     Some(Arc::new(RenderImage::new([image::Frame::new(buffer)])))
 }
 
+/// A preview: the picture it's of and its size in device pixels.
+type Wanted = (u64, (u32, u32));
+
+/// Which preview is wanted now, and its making: one worker at a time, so
+/// sizes passed through on the way (a window being resized) aren't each
+/// made, and one made late never takes the place of the one wanted.
+#[derive(Default)]
+struct Previews {
+    /// The one wanted now: the one drawn, and the one made next.
+    asked: Option<Wanted>,
+    /// A worker is making one.
+    making: bool,
+    /// One that couldn't be made: not asked for again.
+    unmade: Option<Wanted>,
+}
+
+impl Previews {
+    /// `wanted` is wanted now (`have`, the one made last): Some where a
+    /// worker should make it now; None where it's made, or one is being
+    /// made (the next made for what's wanted then, as that one's in), or
+    /// it couldn't be.
+    fn want(&mut self, wanted: Wanted, have: Option<Wanted>) -> Option<Wanted> {
+        self.asked = Some(wanted);
+        if have == Some(wanted) || self.making || self.unmade == Some(wanted) {
+            return None;
+        }
+        self.making = true;
+        Some(wanted)
+    }
+
+    /// The worker's `made` is in (`ok`: it could be): whether it's kept,
+    /// the one wanted now.
+    fn made(&mut self, made: Wanted, ok: bool) -> bool {
+        self.making = false;
+        if !ok {
+            self.unmade = Some(made);
+            return false;
+        }
+        self.asked == Some(made)
+    }
+}
+
 /// The window's parts (logical points, in the window).
 struct Layout {
+    /// The content's width it's laid out for.
+    width: f32,
     /// Where the preview may go.
     area: Bounds<Pixels>,
-    /// The form's left and width.
+    /// The preview beside the form (else over it).
+    beside: bool,
+    /// The form's rows ([`form_rows`]), its left and width.
+    rows: [(f32, f32); 8],
     form_x: f32,
     form_w: f32,
-    /// The bottom row of buttons' top.
+    /// The buttons' widths ([`button_widths`]), and how many rows they
+    /// take: one, two by two, or one a row.
+    widths: [f32; 4],
+    button_rows: usize,
+    /// The first row of buttons' top, and the last's: the same where all
+    /// four fit on one.
     buttons_y: f32,
+    last_row: f32,
     /// The window's content's height: the form, then the buttons a
     /// spacing below it (a fixed height let "Save in:" go under them).
     height: f32,
 }
 
-fn layout() -> Layout {
-    let w = WIDTH;
-    let inset = m::WINDOW_INSET;
-    let (last_top, last_h) = form_rows()[7];
-    let buttons_y = last_top + last_h + m::SPACING;
-    let height = buttons_y + m::CONTROL_HEIGHT + inset;
-    let top_h = buttons_y - inset - inset;
-    let area = Bounds { origin: point(px(inset), px(inset)), size: size(px(PREVIEW_W), px(top_h - m::LABEL_ROW - m::TIGHT)) };
-    let form_x = inset + PREVIEW_W + inset + m::SPACING;
-    Layout { area, form_x, form_w: w - inset - form_x, buttons_y, height }
+/// The buttons' least widths, their words' in the language shown (the
+/// kit measures them so: Copy to Clipboard, Record…, New Screenshot,
+/// Save), the first and third no narrower than the design's own.
+fn button_widths() -> [f32; 4] {
+    [button_width("Copy to Clipboard", false).max(COPY_W), button_width("Record…", false), button_width("New Screenshot", false).max(NEW_W), button_width("Save", false)]
 }
 
-/// The form's rows: each one's top and height, from the window's top.
-/// Check boxes, then the delay; a rule; the name, the format and the
-/// folder.
-fn form_rows() -> [(f32, f32); 8] {
-    let mut y = m::WINDOW_INSET;
+/// The window's parts at content width `width`: its own width
+/// (`WIDTH`), or what tiling holds it at; the picture `aspect` (its width
+/// over its height) and the buttons `widths` ([`button_widths`]). The
+/// preview beside the form where the form has its least room there, its
+/// first check box level with the preview's top; else over it, as wide
+/// as the window at the picture's shape. The buttons on one row where
+/// they fit; else two by two in columns, Save last at the right; else
+/// one a row (words longer than English's). Rows of buttons a spacing
+/// apart: room for Save's ring. (Laid out for `WIDTH` whatever its
+/// width, a third of the smallest screen had Save and the form's fields
+/// past the window's edge: QA, 2026-11-28.)
+fn layout(width: f32, aspect: f32, widths: [f32; 4]) -> Layout {
+    let over_h = ((width - 2.0 * m::WINDOW_INSET) / aspect.max(0.1)).clamp(PREVIEW_OVER_LEAST, PREVIEW_OVER_MOST).round();
+    layout_over(width, over_h, widths)
+}
+
+/// [`layout`] with the preview over the form `over_h` tall (where it's
+/// over it).
+fn layout_over(width: f32, over_h: f32, widths: [f32; 4]) -> Layout {
+    let inset = m::WINDOW_INSET;
+    let beside = width - inset - PREVIEW_W - inset - m::SPACING - inset >= FORM_LEAST;
+    let (form_x, form_top) = if beside { (inset + PREVIEW_W + inset + m::SPACING, inset - (m::MARK_ROW - m::MARK_SIZE) / 2.0) } else { (inset, inset + over_h + m::TIGHT + m::LABEL_ROW + m::SPACING) };
+    let rows = form_rows(form_top);
+    let (last_top, last_h) = rows[7];
+    let buttons_y = last_top + last_h + m::SPACING;
+    let [copy, record, new, save] = widths;
+    let column = ((width - 2.0 * inset - m::SPACING) / 2.0).floor();
+    // (Save's ring takes room on one row too, after its face: inside the
+    // window's inset. Between it and New Screenshot, a spacing face to
+    // face as between any two, its ring drawn into it, as the kit's
+    // alerts have it.)
+    let button_rows = if 2.0 * inset + copy + record + new + save + 3.0 * m::SPACING + DEFAULT_RING <= width {
+        1
+    } else if copy.max(new) <= column && record.max(save + 2.0 * DEFAULT_RING) <= column {
+        2
+    } else {
+        4
+    };
+    let last_row = buttons_y + (button_rows - 1) as f32 * (m::CONTROL_HEIGHT + m::SPACING);
+    let height = last_row + m::CONTROL_HEIGHT + inset;
+    let area = if beside {
+        let top_h = buttons_y - inset - inset;
+        Bounds { origin: point(px(inset), px(inset)), size: size(px(PREVIEW_W), px(top_h - m::LABEL_ROW - m::TIGHT)) }
+    } else {
+        Bounds { origin: point(px(inset), px(inset)), size: size(px(width - 2.0 * inset), px(over_h)) }
+    };
+    Layout { width, area, beside, rows, form_x, form_w: width - inset - form_x, widths, button_rows, buttons_y, last_row, height }
+}
+
+/// Held by tiling `width` by `height`: its own layout where it fits;
+/// else its preview (over the form) shorter by what's over, to its least;
+/// else, taller even so, laid out beside the scroll bar the Frame shows
+/// then, its preview at its least. (Laid out narrower whenever the wider
+/// was taller, a height the narrower then fitted showed no bar and 14
+/// points empty at its right: Neon's review, 2026-11-28.)
+fn layout_held(width: f32, height: f32, aspect: f32, widths: [f32; 4]) -> Layout {
+    let l = layout(width, aspect, widths);
+    if l.height <= height + 0.5 {
+        return l;
+    }
+    if !l.beside {
+        let over = (f32::from(l.area.size.height) - (l.height - height)).floor();
+        if over >= PREVIEW_OVER_LEAST {
+            return layout_over(width, over, widths);
+        }
+    }
+    layout_over(width - olo_kit::widgets::SCROLL_BAR, PREVIEW_OVER_LEAST, widths)
+}
+
+/// The width it lays out at in a window `vw` wide: its own; less the scroll
+/// bar where the Frame, scrolling it (taller than the screen), widened
+/// the window by it. (Laid out at the widened width, Save's ring ran into
+/// the bar: Neon's review, 2026-11-28.)
+fn unheld_width(vw: f32) -> f32 {
+    if vw >= WIDTH + olo_kit::widgets::SCROLL_BAR - 0.5 { vw - olo_kit::widgets::SCROLL_BAR } else { vw }
+}
+
+/// A default button's ring, outside its face: Save's face is set in by it
+/// so the ring ends where the fields over it do, and under Record…'s
+/// edges in two columns (Opus's and Neon's reviews, 2026-11-28).
+const DEFAULT_RING: f32 = 3.0;
+
+impl Layout {
+    /// Held `extra` taller than it by tiling: its buttons at the window's
+    /// foot, a window's inset over it, as a BeOS dialog's are (they
+    /// floated mid-window, a third of it empty under them: Opus's review,
+    /// 2026-11-28).
+    fn pinned(mut self, extra: f32) -> Layout {
+        if extra > 0.5 {
+            self.buttons_y += extra;
+            self.last_row += extra;
+            self.height += extra;
+        }
+        self
+    }
+
+    /// The buttons' places (left, top) and widths: Copy to Clipboard,
+    /// Record…, New Screenshot, Save. On one row, Copy and Record… at the
+    /// left and the others at the right; two by two, in two columns as
+    /// wide as the window allows, edge to edge with the form, Save at the
+    /// bottom right; or one a row, as wide as the form.
+    fn buttons(&self) -> [(f32, f32, f32); 4] {
+        let inset = m::WINDOW_INSET;
+        let [copy, record, new, save] = self.widths;
+        match self.button_rows {
+            1 => {
+                let save_x = self.width - inset - DEFAULT_RING - save;
+                let new_x = save_x - m::SPACING - new;
+                [(inset, self.buttons_y, copy), (inset + copy + m::SPACING, self.buttons_y, record), (new_x, self.last_row, new), (save_x, self.last_row, save)]
+            }
+            2 => {
+                let column = ((self.width - 2.0 * inset - m::SPACING) / 2.0).floor();
+                let right = self.width - inset - column;
+                [(inset, self.buttons_y, column), (right, self.buttons_y, column), (inset, self.last_row, column), (right + DEFAULT_RING, self.last_row, column - 2.0 * DEFAULT_RING)]
+            }
+            _ => {
+                let w = self.width - 2.0 * inset;
+                let row = |i: f32| self.buttons_y + i * (m::CONTROL_HEIGHT + m::SPACING);
+                [(inset, row(0.0), w), (inset, row(1.0), w), (inset, row(2.0), w), (inset + DEFAULT_RING, row(3.0), w - 2.0 * DEFAULT_RING)]
+            }
+        }
+    }
+}
+
+/// The form's rows: each one's top and height, from the window's top,
+/// the first at `top`. Check boxes, then the delay; a rule; the name,
+/// the format and the folder.
+fn form_rows(top: f32) -> [(f32, f32); 8] {
+    let mut y = top;
     let mut rows = [(0.0, 0.0); 8];
     let heights = [m::MARK_ROW, m::MARK_ROW, m::MARK_ROW, m::CONTROL_HEIGHT, 6.0, m::CONTROL_HEIGHT, m::CONTROL_HEIGHT, m::CONTROL_HEIGHT];
     // The space before each row, after the gap between them all.
@@ -274,7 +460,7 @@ impl Screenshot {
             shot: None,
             taken: 0,
             preview: None,
-            asked: None,
+            previews: Previews::default(),
             name,
             delay,
             proposed: String::new(),
@@ -532,11 +718,17 @@ impl Screenshot {
         });
     }
 
-    /// The preview's frame for the picture, on device pixels at `scale`:
-    /// its outer bounds (the sunken frame two lines round it) and the
-    /// picture's size inside, in device pixels.
-    fn frame(&self, scale: f32) -> (Bounds<Pixels>, Option<(u32, u32)>) {
-        let area = layout().area;
+    /// The picture's shape, its width over its height (before one's
+    /// taken, a screen's).
+    fn aspect(&self) -> f32 {
+        self.shot.as_ref().map_or(DEFAULT_ASPECT, |s| s.image.width().max(1) as f32 / s.image.height().max(1) as f32)
+    }
+
+    /// The preview's frame for the picture, on device pixels at `scale`,
+    /// in layout `l`: its outer bounds (the sunken frame two lines round
+    /// it) and the picture's size inside, in device pixels.
+    fn frame(&self, scale: f32, l: &Layout) -> (Bounds<Pixels>, Option<(u32, u32)>) {
+        let area = l.area;
         let Some(shot) = &self.shot else { return (area, None) };
         let dev = |v: f32| (v * scale).round();
         // The sunken frame's two lines, in device pixels (as style::inset
@@ -552,7 +744,9 @@ impl Screenshot {
         // beside it: the picture a little smaller, so the caption is level
         // with that row (`body` lines it up with one just below).
         let caption = (top + ph + edge) / scale + m::TIGHT + m::LABEL_ROW / 2.0;
-        if let Some(r) = form_rows().iter().map(|(t, h)| t + h / 2.0).find(|r| (caption - m::LABEL_ROW / 2.0..caption).contains(r)) {
+        if l.beside
+            && let Some(r) = l.rows.iter().map(|(t, h)| t + h / 2.0).find(|r| (caption - m::LABEL_ROW / 2.0..caption).contains(r))
+        {
             ph = (ph - ((caption - r) * scale).ceil()).max(1.0);
             pw = (w * ph / h).round().max(1.0);
         }
@@ -563,19 +757,25 @@ impl Screenshot {
 
     /// Asks for a preview the size the frame wants now (once per picture
     /// and size: a new scale, a new picture).
-    fn want_preview(&mut self, scale: f32, cx: &mut Cx<Self>) {
-        let (_, Some(want)) = self.frame(scale) else { return };
-        if self.preview.as_ref().is_some_and(|(of, s, _)| *of == self.taken && *s == want) || self.asked == Some((self.taken, want)) {
+    fn want_preview(&mut self, scale: f32, l: &Layout, cx: &mut Cx<Self>) {
+        let (_, Some(want)) = self.frame(scale, l) else { return };
+        let wanted = (self.taken, want);
+        let Some(shot) = self.shot.clone() else { return };
+        let have = self.preview.as_ref().map(|(of, s, _)| (*of, *s));
+        if self.previews.want(wanted, have).is_none() {
             return;
         }
-        let Some(shot) = self.shot.clone() else { return };
-        self.asked = Some((self.taken, want));
-        let (taken, to) = (self.taken, cx.messenger());
+        let to = cx.messenger();
         std::thread::spawn(move || {
-            if let Some(image) = preview_of(&shot.image, want.0, want.1) {
-                to.send(Msg::Preview(taken, want, image));
-            }
+            to.send(Msg::Preview(wanted.0, wanted.1, preview_of(&shot.image, wanted.1.0, wanted.1.1)));
         });
+    }
+
+    /// The preview to draw: the one wanted now only (one of another size
+    /// would be scaled, never drawn: Astra's review, 2026-11-28, an older
+    /// size made late stayed for good).
+    fn shown_preview(&self) -> Option<Arc<RenderImage>> {
+        self.preview.as_ref().filter(|(of, s, _)| Some((*of, *s)) == self.previews.asked).map(|(_, _, image)| image.clone())
     }
 }
 
@@ -599,7 +799,10 @@ impl View for Screenshot {
                 }
             }
             Msg::Preview(taken, size, image) => {
-                if taken == self.taken {
+                // Kept where it's the one wanted now; else the next is made
+                // for what is (the body asks, drawn again below).
+                let kept = self.previews.made((taken, size), image.is_some());
+                if let Some(image) = image.filter(|_| kept) {
                     self.preview = Some((taken, size, image));
                 }
             }
@@ -693,14 +896,25 @@ impl View for Screenshot {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let scale = cx.scale_factor();
-        self.want_preview(scale, cx);
-        let l = layout();
-        let rows = form_rows();
+        // (Its own width, or what tiling holds it at.)
+        // (Its own width, or what tiling holds it at: held shorter than
+        // it, the Frame scrolls it, its bar taking `SCROLL_BAR` of the
+        // width, laid out for what's left (its controls ran under the bar:
+        // Neon's review, 2026-11-28); held taller, its buttons at the foot.)
+        let vs = cx.viewport_size();
+        let (vw, vh) = (f32::from(vs.width), f32::from(vs.height));
+        let held = cx.held_state().held();
+        let (aspect, widths) = (self.aspect(), button_widths());
+        let l = if held { layout_held(vw, vh, aspect, widths) } else { layout(unheld_width(vw), aspect, widths) };
+        let extra = vh - l.height;
+        let l = if held { l.pinned(extra) } else { l };
+        self.want_preview(scale, &l, cx);
+        let rows = l.rows;
         let at = |x: f32, y: f32, w: f32| div().absolute().left(px(x)).top(px(y)).w(px(w));
 
         // The preview, framed at the picture's shape, its size under it.
-        let (frame, _) = self.frame(scale);
-        let preview = self.preview.as_ref().map(|(_, _, image)| image.clone());
+        let (frame, _) = self.frame(scale, &l);
+        let preview = self.shown_preview();
         let caption = match (self.busy, &self.shot) {
             (Some(Busy::Taking), _) => "Taking a screenshot…".to_owned(),
             (Some(Busy::Saving), _) => "Saving…".to_owned(),
@@ -713,7 +927,7 @@ impl View for Screenshot {
         // little further from the picture); else it's on a grid of its
         // own, level with the form only at some shapes.
         let caption_y = f32::from(frame.bottom()) + m::TIGHT + m::LABEL_ROW / 2.0;
-        let caption_y = rows.iter().map(|(top, h)| top + h / 2.0).find(|r| (0.0..=m::LABEL_ROW / 2.0).contains(&(r - caption_y))).unwrap_or(caption_y);
+        let caption_y = rows.iter().map(|(top, h)| top + h / 2.0).find(|r| l.beside && (0.0..=m::LABEL_ROW / 2.0).contains(&(r - caption_y))).unwrap_or(caption_y);
         let area = l.area;
         let look = style::key((
             self.taken,
@@ -787,30 +1001,23 @@ impl View for Screenshot {
                 }
             }))));
 
-        // Buttons.
+        // Buttons ([`Layout::buttons`]).
         let idle = self.busy.is_none() && self.shot.is_some();
         let can_save = self.can_save(cx);
-        let w = WIDTH;
-        let bw = m::BUTTON_MIN_WIDTH;
-        let save_x = w - m::WINDOW_INSET - bw;
-        let new_x = save_x - m::SPACING - 120.0;
+        let [copy, record, new, save] = l.buttons();
         let buttons = div()
-            .child(
-                at(m::WINDOW_INSET, l.buttons_y, 130.0)
-                    .child(Button::new("Copy to clipboard").min_width(130.0).enabled(idle).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.copy(cx)))),
-            )
-            .child(at(m::WINDOW_INSET + 130.0 + m::SPACING, l.buttons_y, bw).child(Button::new("Record…").id("record").min_width(bw).enabled(self.busy.is_none()).on_click(cx.listener(
+            .child(at(copy.0, copy.1, copy.2).child(Button::new("Copy to Clipboard").min_width(copy.2).enabled(idle).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.copy(cx)))))
+            .child(at(record.0, record.1, record.2).child(Button::new("Record…").id("record").min_width(record.2).enabled(self.busy.is_none()).on_click(cx.listener(
                 |_: &mut Screenshot, _: &ClickEvent, cx| {
                     let at = cx.listener_bounds();
                     cx.send(Msg::RecordMenu(at));
                 },
             ))))
             .child(
-                at(new_x, l.buttons_y, 120.0)
-                    .child(Button::new("New screenshot").min_width(120.0).enabled(self.busy.is_none()).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.take(cx)))),
+                at(new.0, new.1, new.2).child(Button::new("New Screenshot").min_width(new.2).enabled(self.busy.is_none()).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.take(cx)))),
             )
             // (Return saves: Save is the default button.)
-            .child(at(save_x, l.buttons_y, bw).child(Button::new("Save").default(true).min_width(bw).enabled(can_save).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.save(cx)))));
+            .child(at(save.0, save.1, save.2).child(Button::new("Save").default(true).min_width(save.2).enabled(can_save).on_click(cx.listener(|s: &mut Screenshot, _: &ClickEvent, cx| s.save(cx)))));
 
         div().w_full().h(px(l.height)).relative().child(picture).child(form).child(buttons)
     }
@@ -1025,7 +1232,7 @@ fn main() -> std::process::ExitCode {
                 olo_kit::raise(window.as_ref());
             } else if let Ok(first) = message.downcast::<AppMsg>() {
                 let AppMsg::First(shot, name) = *first;
-                let mut options = WindowOptions::new("Screenshot", WIDTH, layout().height).fits_content();
+                let mut options = WindowOptions::new("Screenshot", WIDTH, layout(WIDTH, DEFAULT_ASPECT, button_widths()).height).fits_content();
                 options.fixed = true;
                 window = Some(olo_kit::open_window(options, move |cx| Screenshot::new(Settings::load(), shot, name, cx)));
             }
@@ -1043,5 +1250,138 @@ fn sound_parts(sound: &str) -> (bool, bool) {
         "microphone" => (false, true),
         "none" => (false, false),
         _ => (true, false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Held by tiling: its whole width where its preview can give way
+    /// (349 × 565, a 16:10 picture: no bar and no 14 points empty);
+    /// beside the bar only where even its least preview is too tall.
+    /// Let be, but scrolled by the Frame (widened by the bar): laid out
+    /// without the bar's width.
+    #[test]
+    fn held_or_scrolled_its_width_is_what_shows() {
+        let l = layout_held(349.0, 565.0, 1.6, ENGLISH);
+        assert_eq!(l.width, 349.0, "no phantom gutter");
+        assert!(l.height <= 565.5, "it fits: no scroll bar");
+        assert!(f32::from(l.area.size.height) >= PREVIEW_OVER_LEAST);
+        let tall = layout_held(349.0, 760.0, 1.6, ENGLISH);
+        assert_eq!((tall.width, tall.height), (layout(349.0, 1.6, ENGLISH).width, layout(349.0, 1.6, ENGLISH).height), "room to spare: as it is");
+        let short = layout_held(349.0, 300.0, 1.6, ENGLISH);
+        assert_eq!(short.width, 349.0 - olo_kit::widgets::SCROLL_BAR, "scrolled: beside the bar");
+        assert!(short.height > 300.0);
+        assert_eq!(unheld_width(WIDTH), WIDTH);
+        assert_eq!(unheld_width(WIDTH + olo_kit::widgets::SCROLL_BAR), WIDTH);
+    }
+
+    /// The preview wanted, then another while the first is being made,
+    /// then the first again: the first, made, is kept and drawn; nothing
+    /// else is made meanwhile, and one made for a size not wanted any
+    /// more is never kept.
+    #[test]
+    fn the_preview_wanted_is_the_one_kept() {
+        let (a, b) = ((1, (400, 300)), (1, (300, 200)));
+        let mut q = Previews::default();
+        assert_eq!(q.want(a, None), Some(a), "A made");
+        assert_eq!(q.want(b, None), None, "B waits: A is being made");
+        assert_eq!(q.want(a, None), None, "back to A: still being made");
+        assert!(q.made(a, true), "A in, A wanted: kept");
+        assert_eq!(q.want(a, Some(a)), None, "made already");
+        // A size wanted, then left: the one made late isn't kept, and the
+        // one wanted then is made next.
+        assert_eq!(q.want(b, Some(a)), Some(b));
+        assert_eq!(q.want(a, Some(a)), None);
+        assert!(!q.made(b, true), "B, made late, not kept");
+        // One that couldn't be made isn't asked for again.
+        assert_eq!(q.want(b, Some(a)), Some(b));
+        assert!(!q.made(b, false));
+        assert_eq!(q.want(b, Some(a)), None);
+    }
+
+    /// English's buttons ([`button_widths`] at their least), and words
+    /// longer than English's (German's Copy to Clipboard is 210 points).
+    const ENGLISH: [f32; 4] = [130.0, 80.0, 120.0, 80.0];
+    const LONG: [f32; 4] = [210.0, 96.0, 150.0, 80.0];
+
+    /// At its own width: the preview beside the form, the first check
+    /// box's top level with the preview's, the buttons on one row.
+    #[test]
+    fn its_own_width_is_as_it_was() {
+        let l = layout(WIDTH, DEFAULT_ASPECT, ENGLISH);
+        assert!(l.beside && l.button_rows == 1);
+        assert_eq!((f32::from(l.area.origin.x), f32::from(l.area.origin.y), f32::from(l.area.size.width), f32::from(l.area.size.height)), (16.0, 16.0, 240.0, 204.0));
+        assert_eq!(l.rows[0].0 + (m::MARK_ROW - m::MARK_SIZE) / 2.0, f32::from(l.area.origin.y), "the check box level with the preview");
+        assert_eq!((l.form_x, l.form_w, l.buttons_y, l.last_row, l.height), (284.0, 280.0, 258.0, 258.0, 298.0));
+    }
+
+    /// Held narrower by tiling (a quarter, 530 points; a third, 349, the
+    /// narrowest on the smallest screen; and narrower), everything is
+    /// inside the window: the form's fields, the preview and the four
+    /// buttons, each its words' width at least, Save at the bottom right,
+    /// no two over each other, rows of them a spacing apart (room for
+    /// Save's ring), in columns or one a row.
+    /// On one row, the buttons a spacing apart face to face, Save's ring
+    /// drawn into its gap as the kit's alerts and Doctor's footer have
+    /// it. (Its ring added to the gap, the review saw them 12 and 15 pt
+    /// apart in a quarter, an error: tilecheck, 2026-11-28.)
+    #[test]
+    fn one_rows_buttons_are_evenly_apart() {
+        let mut one_row = 0;
+        for widths in [ENGLISH, LONG] {
+            for width in [WIDTH, 590.0, 530.0, 500.0, 478.0] {
+                let l = layout(width, 1.38, widths);
+                if l.button_rows != 1 {
+                    continue;
+                }
+                one_row += 1;
+                let [copy, record, new, save] = l.buttons();
+                assert_eq!(record.0 - (copy.0 + copy.2), m::SPACING, "{width} {widths:?}: Copy to Record…");
+                assert_eq!(save.0 - (new.0 + new.2), m::SPACING, "{width} {widths:?}: New Screenshot to Save");
+                assert!(new.0 - (record.0 + record.2) >= m::SPACING, "{width} {widths:?}: Record… to New Screenshot");
+            }
+        }
+        assert!(one_row >= 3, "a quarter and wider on one row");
+    }
+
+    #[test]
+    fn everything_fits_a_quarter_and_a_third() {
+        let inset = m::WINDOW_INSET;
+        for widths in [ENGLISH, LONG] {
+            for width in [WIDTH, 530.0, 500.0, 478.0, 420.0, 349.0, 335.0, 317.0, 304.0] {
+                let l = layout(width, 1.38, widths);
+                assert!(l.form_x >= inset && l.form_x + l.form_w <= width - inset + 0.01, "{width}: the form");
+                assert!(l.form_w >= FORM_LEAST.min(width - 2.0 * inset), "{width}: the form's room");
+                assert!(f32::from(l.area.right()) <= width - inset, "{width}: the preview");
+                assert!(l.beside || f32::from(l.area.bottom()) + m::TIGHT + m::LABEL_ROW <= l.rows[0].0, "{width}: the caption over the form");
+                let b = l.buttons();
+                for (i, (x, y, w)) in b.iter().enumerate() {
+                    assert!(*x >= inset && x + w <= width - inset + 0.01, "{width} {widths:?}: button {i} at {x}, {w} wide");
+                    assert!(*w >= widths[i], "{width} {widths:?}: button {i} narrower than its words");
+                    assert!(*y >= l.rows[7].0 + l.rows[7].1 + m::SPACING, "{width}: button {i} under the form");
+                }
+                assert_eq!(b[3].0 + b[3].2, width - inset - DEFAULT_RING, "{width}: Save's ring at the right");
+                assert_eq!(b[3].1, l.last_row, "{width}: Save on the last row");
+                for i in 0..4 {
+                    for j in i + 1..4 {
+                        let ((xi, yi, wi), (xj, yj, wj)) = (b[i], b[j]);
+                        let apart = yi + m::CONTROL_HEIGHT + m::SPACING <= yj || yj + m::CONTROL_HEIGHT + m::SPACING <= yi || xi + wi + m::SPACING <= xj || xj + wj + m::SPACING <= xi;
+                        assert!(apart, "{width} {widths:?}: buttons {i} and {j} too close");
+                    }
+                }
+                assert_eq!(l.height, l.last_row + m::CONTROL_HEIGHT + inset);
+            }
+        }
+        let third = layout(349.0, 1.38, ENGLISH);
+        assert!(!third.beside && third.button_rows == 2, "a third: the preview over the form, two rows of buttons");
+        assert_eq!(f32::from(third.area.size.width), 317.0, "the preview as wide as the window");
+        assert_eq!(layout(349.0, 1.38, LONG).button_rows, 4, "longer words: one a row");
+        assert!(layout(530.0, 1.38, ENGLISH).beside && layout(530.0, 1.38, ENGLISH).button_rows == 1, "a quarter: as wide");
+        // Held taller (tiling): the buttons at the foot, a window's inset over it.
+        let pinned = layout(349.0, 1.38, ENGLISH).pinned(200.0);
+        assert_eq!(pinned.last_row - third.last_row, 200.0);
+        assert_eq!(pinned.height, third.height + 200.0);
     }
 }

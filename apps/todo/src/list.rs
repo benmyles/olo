@@ -201,6 +201,24 @@ pub fn due_said(v: &ToDoApp, item: &olo_todo::Item) -> Option<(String, bool)> {
     }
 }
 
+/// Narrower than this, a row's list hugs its own due ([`due_room`]).
+const HUG_BELOW: f32 = 420.0;
+
+/// Whether a row `width` wide has its list right before its own due.
+fn hugs(width: f32) -> bool {
+    width < HUG_BELOW
+}
+
+/// The room a row's due takes at its right end, and the gap before what's
+/// next: the column's (`due_col`, as wide as the widest due) where the
+/// row doesn't `hug`; else its own due's (`due_w`), none without one.
+fn due_room(hug: bool, due_col: f32, due_w: Option<f32>) -> f32 {
+    if !hug {
+        return due_col + COLUMN_GAP;
+    }
+    due_w.map_or(0.0, |w| w + COLUMN_GAP)
+}
+
 /// The columns at the rows' right end for the place as it is: how wide
 /// its dues are at the most, and its lists' names (none, in a list's own
 /// place).
@@ -350,19 +368,30 @@ fn paint_row(v: &ToDoApp, g: &mut Painter, r: Bounds<Pixels>, i: usize) {
             let base = style::baseline_at(g, r.center().y, style::PLAIN_SIZE);
             let mut right = r.right() - px(CHECK_X);
             let mut said = Vec::new();
+            // (In a narrow row, its list right before its own due, not the
+            // column's widest: a third of a screen cut "Call Ann abou…"
+            // with 40 points empty before "3 PM"; Opus's and Neon's
+            // reviews, 2026-11-28.)
+            let hug = hugs(f32::from(r.size.width));
             if v.due_col > 0.0 {
+                let mut due_w = None;
                 if let Some((words, late)) = due_said(v, item) {
                     let ink = if late && !selected { style::c(p.hue_text(olo_theme::Hue::Red)) } else { quiet };
-                    style::label_on_baseline(g, right, base, style::Align::Right, words, style::DETAIL_SIZE, plain.clone(), ink);
+                    let at = style::label_on_baseline(g, right, base, style::Align::Right, words, style::DETAIL_SIZE, plain.clone(), ink);
+                    due_w = Some(f32::from(at.size.width).ceil());
                 }
-                right -= px(v.due_col + COLUMN_GAP);
+                right -= px(due_room(hug, v.due_col, due_w));
             }
             if let Some(due) = &t.due {
                 let words = words::due_in_words(due, &v.now, v.h24);
                 said.push(if t.open() && overdue(due, &v.now) { olo_kit::tr!("overdue, {}", words) } else { olo_kit::tr!("due {}", words) });
             }
             if v.list_col > 0.0 {
-                let left = right - px(v.list_col);
+                // (Its name measured only in a narrow row: a wide row's
+                // column is the widest name's, measured once; Astra's
+                // review, 2026-11-28.)
+                let width = if hug { (v.book.list(&item.list).map_or(0.0, |l| style::text_width_app(&l.name, style::DETAIL_SIZE, &plain).ceil()) + DOT + DOT_GAP).min(v.list_col) } else { v.list_col };
+                let left = right - px(width);
                 if let Some(list) = v.book.list(&item.list) {
                     let dot = style::snap_centred(g, point(left + px(DOT / 2.0), r.center().y), DOT, DOT);
                     g.paint_quad(olo_kit::fill(dot, style::c(hue)).corner_radii(dot.size.width / 2.0));
@@ -609,5 +638,22 @@ pub fn reveal(v: &ToDoApp, n: usize) {
             }
             seen += 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A narrow row's due takes its own room, a wide row's the column's:
+    /// in a third of a screen (288 points of row) "3 PM" left no gap the
+    /// width of "Yesterday" before the list.
+    #[test]
+    fn a_narrow_rows_list_hugs_its_due() {
+        assert!(hugs(288.0) && !hugs(600.0));
+        assert_eq!(due_room(false, 62.0, Some(28.0)), 62.0 + COLUMN_GAP);
+        assert_eq!(due_room(true, 62.0, Some(28.0)), 28.0 + COLUMN_GAP);
+        assert_eq!(due_room(true, 62.0, None), 0.0, "no due, no gap");
+        assert_eq!(due_room(false, 62.0, None), 62.0 + COLUMN_GAP, "the column held where rows are wide");
     }
 }

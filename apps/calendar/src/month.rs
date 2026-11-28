@@ -246,7 +246,7 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 let left = xs[ca] + if a > from { px(0.0) } else { px(EDGE) };
                 let right = xs[cz + 1] - if z < from + drag.days - 1 { px(0.0) } else { px(EDGE) };
                 let r = style::snap(g, Bounds::from_corners(point(left, y), point(right, y + px(BAR))));
-                let fill = p.hue(s.hue);
+                let fill = crate::view::solid(&p, p.hue(s.hue));
                 style::fill_rect(g, r, style::c(fill));
                 style::frame_rect(g, r, text);
                 // (Its words where it starts: once.)

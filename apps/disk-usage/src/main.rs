@@ -39,20 +39,28 @@ use serde::{Deserialize, Serialize};
 use volumes::Volume;
 
 const APP_ID: &str = "olo.disk-usage";
-/// Fits a vertical third of the smallest screen, including the window frame.
-const MIN_WIDTH: f32 = 400.0;
+/// Fits a vertical third of the smallest screen beside Deskbar (349
+/// points of content), including the window frame.
+const MIN_WIDTH: f32 = 346.0;
 /// Fits a horizontal third of the smallest screen, including the window tab.
 const MIN_HEIGHT: f32 = 220.0;
 /// Below this side the rings give way (CLAUDE.md, "Every tiling layout").
 const CHART_LEAST: f32 = 200.0;
 /// Below this viewport height the hint and the Collector's chips give way.
 const SHORT: f32 = 360.0;
-const COLLECTOR_HEIGHT: f32 = 58.0;
+/// The Collector's well: as tall as its two buttons beside it, its edges
+/// level with theirs (2 points past them, top and bottom, it looked
+/// misplaced: Opus's review, 2026-11-28).
+const COLLECTOR_HEIGHT: f32 = 2.0 * m::CONTROL_HEIGHT + m::TIGHT;
 const CHIP_HEIGHT: f32 = 20.0;
 /// The list's name column at its least, and the room of the columns
 /// after it (size, its bar and files, with their gaps).
 const NAME_LEAST: f32 = 120.0;
 const OTHER_COLUMNS: f32 = 208.0;
+/// The files' column: it gives way first where the name would be left
+/// less than its least (a third of the smallest screen beside Deskbar:
+/// "Files" was cut to "Fi" over a sideways scroll bar).
+const FILES_COLUMN: f32 = 76.0;
 /// The middle's two lines of words, their middles this far apart.
 const HUB_LINES: f32 = 16.0;
 /// The box the middle's words go in, across and down, in its radius:
@@ -191,6 +199,76 @@ struct DiskUsage {
 
 fn home() -> PathBuf {
     std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
+}
+
+/// The list's columns in `room` (inside its border and scroll bar): the
+/// name takes what the others leave, at least `NAME_LEAST`, the files'
+/// column giving way where that's too little.
+fn list_columns(room: f32) -> Vec<Column> {
+    let files = room - OTHER_COLUMNS >= NAME_LEAST;
+    let others = if files { OTHER_COLUMNS } else { OTHER_COLUMNS - FILES_COLUMN };
+    let mut columns = vec![Column::new("Name", (room - others).max(NAME_LEAST)), Column::new("Size", 76.0).right(), Column::new("", 50.0)];
+    if files {
+        columns.push(Column::new("Files", FILES_COLUMN).right());
+    }
+    columns
+}
+
+/// The folder's path as it fits `room`, `width` measuring: whole; else
+/// "…/" and as many of its last folders as fit, the one shown last
+/// ("…/qa/fixtures": cut at its end, "/var…" said nothing of where it
+/// is); else that folder's name alone ("/" the root's, a trailing "/"
+/// no folder of its own). Each folder's name measured once, from the
+/// one shown up, the tail kept whole only once it's found: joined again
+/// and measured whole at every step, a deep path cost its depth squared
+/// (Astra's and Neon's reviews, 2026-11-28).
+fn path_fit(path: &str, room: f32, width: impl Fn(&str) -> f32) -> String {
+    let room = room.max(0.0);
+    if width(path) <= room {
+        return path.to_owned();
+    }
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_owned();
+    }
+    let parts: Vec<&str> = trimmed.split('/').collect();
+    let (lead, slash) = (width("…/"), width("/"));
+    let mut used = lead;
+    let mut from = parts.len();
+    for i in (1..parts.len()).rev() {
+        let more = width(parts[i]) + if i + 1 < parts.len() { slash } else { 0.0 };
+        if used + more > room {
+            break;
+        }
+        used += more;
+        from = i;
+    }
+    // (The sum a point off the whole as it's shaped, kerning and all: a
+    // folder fewer where so.)
+    while from < parts.len() {
+        let tail = format!("…/{}", parts[from..].join("/"));
+        if width(&tail) <= room {
+            return tail;
+        }
+        from += 1;
+    }
+    parts.last().copied().unwrap_or(trimmed).to_owned()
+}
+
+/// `text`'s lines wrapped to `width`, in `font` at `size`.
+fn wrapped(text: &str, width: f32, size: f32, font: &olo_kit::Font) -> Vec<String> {
+    let mut wrapper = olo_kit::text_system().line_wrapper(font.clone(), px(size));
+    let ends: Vec<usize> = wrapper.wrap_line(&[olo_kit::LineFragment::text(text)], px(width)).map(|b| b.ix).chain([text.len()]).collect();
+    let mut from = 0;
+    let mut lines = Vec::new();
+    for to in ends {
+        let line = text[from..to].trim();
+        if !line.is_empty() {
+            lines.push(line.to_owned());
+        }
+        from = to;
+    }
+    lines
 }
 
 /// `~` for the home folder.
@@ -389,7 +467,7 @@ impl DiskUsage {
                 match result {
                     Ok(()) => gone.push(id),
                     Err(e) if e.raw_os_error() == Some(libc::EXDEV) => failed.push((name, olo_kit::words::tr("it is on a different volume from the Trash, so it can only be deleted").into())),
-                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => failed.push((name, olo_kit::words::tr("you don't have permission").into())),
+                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => failed.push((name, olo_kit::words::tr("you don’t have permission").into())),
                     Err(e) => failed.push((name, e.to_string())),
                 }
             }
@@ -456,9 +534,9 @@ impl DiskUsage {
         let message = match items.as_slice() {
             [one] => {
                 let name = self.item(*one).map(|(_, _, name, _)| name).unwrap_or_default();
-                olo_kit::tr!("Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.", name, format_size(size))
+                olo_kit::tr!("Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.", name, format_size(size))
             }
-            _ => olo_kit::tr!("Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.", olo_kit::words::count(items.len() as u64, "1 item", "{n} items"), format_size(size)),
+            _ => olo_kit::tr!("Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.", olo_kit::words::count(items.len() as u64, "1 item", "{n} items"), format_size(size)),
         };
         let to = cx.messenger();
         open_alert(cx, "DiskUsage", "warning", &message, &["Cancel", "Delete"], move |choice, _| {
@@ -675,7 +753,7 @@ impl DiskUsage {
         }
         let lines: Vec<String> = failed.iter().take(5).map(|(name, why)| format!("“{name}”: {why}.")).collect();
         let more = if failed.len() > 5 { format!("\n…and {} more.", failed.len() - 5) } else { String::new() };
-        let message = format!("Some items couldn't be {what}.\n{}{more}", lines.join("\n"));
+        let message = format!("Some items couldn’t be {what}.\n{}{more}", lines.join("\n"));
         open_alert(cx, "DiskUsage", "stop", &message, &["OK"], |_, _| {});
     }
 
@@ -824,17 +902,20 @@ impl DiskUsage {
             .child(
                 olo_kit::canvas(move |g, b| {
                     let p = theme::palette();
-                    style::label_fit(
-                        g,
-                        b.left() + px(4.0),
-                        b.center().y,
-                        style::Align::Left,
-                        where_text.clone(),
-                        style::PLAIN_SIZE,
-                        style::ui_font(FontWeight::BOLD),
-                        style::c(p.panel_text),
-                        b.size.width - px(4.0),
-                    );
+                    let (font, room) = (style::ui_font(FontWeight::BOLD), b.size.width - px(4.0));
+                    let shown = path_fit(&where_text, f32::from(room), |t| f32::from(style::text_width(t.to_owned(), style::PLAIN_SIZE, font.clone())));
+                    // (Its folder's name cut too where even that's too
+                    // wide; then drawn, and its whole noted once: cut by
+                    // `label_fit` as well, it was two labels to agents;
+                    // Neon's review, 2026-11-28.)
+                    let shown = style::fit(g, shown.into(), style::PLAIN_SIZE, &font, room);
+                    let at = style::label(g, b.left() + px(4.0), b.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, font, style::c(p.panel_text));
+                    // (Whole in a tip where it's cut, and to agents.)
+                    if shown.as_ref() != where_text {
+                        g.note_cut(where_text.clone().into(), at);
+                    } else {
+                        g.agent(olo_kit::agent::Node::label(where_text.clone(), at));
+                    }
                 })
                 .paint_key(look)
                 .flex_1()
@@ -847,7 +928,7 @@ impl DiskUsage {
         let height = f32::from(viewport.height);
         let short = height < SHORT;
         let collector_h = if short { (!self.collected.is_empty()).then_some(m::CONTROL_HEIGHT) } else { Some(COLLECTOR_HEIGHT) };
-        let hint = olo_kit::words::tr("Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.");
+        let hint = olo_kit::words::tr("Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.");
         let stop_in_status = self.busy.is_some() && collector_h.is_none();
         // Keep the status still as the pointer moves from a ring to its neighbour.
         let status_h = if stop_in_status {
@@ -874,7 +955,7 @@ impl DiskUsage {
         };
         // The name takes what the others leave (inside the list's border and
         // scroll bar), the last filling to the edge.
-        let columns = [Column::new("Name", (list_w - 2.0 - SCROLL_BAR - OTHER_COLUMNS).max(NAME_LEAST)), Column::new("Size", 76.0).right(), Column::new("", 50.0), Column::new("Files", 76.0).right()];
+        let columns = list_columns(list_w - 2.0 - SCROLL_BAR);
         let want: Vec<usize> = self.selected.and_then(|s| rows.iter().position(|&r| r == s)).into_iter().collect();
         {
             let mut state = self.list.state_mut();
@@ -939,7 +1020,7 @@ impl DiskUsage {
             let n = &t.nodes[id as usize];
             let share = n.size as f64 / total as f64 * 100.0;
             let kind = if n.dir { format!(" — {}", plural(n.files, "1 file", "{n} files")) } else { String::new() };
-            let floor = if n.unreadable { format!(" ({})", olo_kit::words::tr("some of it couldn't be read")) } else { String::new() };
+            let floor = if n.unreadable { format!(" ({})", olo_kit::words::tr("some of it couldn’t be read")) } else { String::new() };
             (olo_kit::tr!("{} — {} ({}% of this folder){}{}", n.name, format_size(n.size), format!("{:.1}", share), kind, floor), display_path(&t.path(id)))
         } else if running {
             let files = progress.files.load(Ordering::Relaxed);
@@ -950,7 +1031,7 @@ impl DiskUsage {
             let t = tree.read().unwrap();
             let unreadable = progress.unreadable.load(Ordering::Relaxed);
             let n = &t.nodes[self.folder as usize];
-            let note = if unreadable > 0 { format!(" — {}", olo_kit::words::count(unreadable, "1 folder couldn't be read", "{n} folders couldn't be read")) } else { String::new() };
+            let note = if unreadable > 0 { format!(" — {}", olo_kit::words::count(unreadable, "1 folder couldn’t be read", "{n} folders couldn’t be read")) } else { String::new() };
             (format!("{}{note}", olo_kit::tr!("{} in {}", format_size(n.size), plural(n.files, "1 file", "{n} files"))), String::new())
         };
         let mut status = div().flex().h(px(status_h)).flex_shrink_0();
@@ -993,6 +1074,9 @@ impl DiskUsage {
         let Some(scan) = &self.scan else { return };
         let g = Self::geometry(b);
         CHART.with(|c| c.set(Some(g)));
+        // (The middle's words set by the rings, not level with the list's
+        // rows beside them: "2.5 MB" a few points off a row was chance.)
+        olo_kit::review::own_grid(gx, b);
         let (slices, folder, selected) = (&self.slices, self.folder, self.selected);
         let p = theme::palette();
         let hover = self.pointer.at.and_then(|pos| chart::hit(slices, &g, pos));
@@ -1147,10 +1231,31 @@ impl DiskUsage {
         let fill = if target { mix(p.document_background, p.list_selected_background, 0.25) } else { p.document_background };
         style::fill_rect(g, style::inset(g, b, 2.0), style::c(fill));
         style::sunken(g, b, &p, target);
-        // In line with the chips' icons; centred vertically when folded.
-        let y = if folded { b.center().y } else { b.top() + px(m::SPACING) };
+        // Level with Move to Trash beside it; centred vertically when
+        // folded.
+        let y = if folded { b.center().y } else { b.top() + px(m::CONTROL_HEIGHT / 2.0) };
         let inset = px(if folded { m::TEXT_INSET } else { 9.0 });
         let width = b.size.width - inset * 2.0;
+        if summary.is_none() && !folded {
+            // Nothing in it: what it's for, as a hint is, wrapped to the
+            // well (bold and cut, "…drag files and fol…", it read as
+            // something collected: Opus's and Neon's reviews, 2026-11-28).
+            let font = style::ui_font(FontWeight::NORMAL);
+            let ink = style::secondary_text(&p);
+            let lines = wrapped(&heading, f32::from(width), style::PLAIN_SIZE, &font);
+            let pitch = style::line_row(style::PLAIN_SIZE);
+            let mut at: Option<Bounds<Pixels>> = None;
+            for (i, line) in lines.iter().take(2).enumerate() {
+                // (A third line's words on the second, cut there.)
+                let text = if i == 1 { lines[1..].join(" ") } else { line.clone() };
+                let r = style::label_fit(g, b.left() + inset, y + px(i as f32 * pitch), style::Align::Left, text, style::PLAIN_SIZE, font.clone(), ink, width);
+                at = Some(at.map_or(r, |u| u.union(&r)));
+            }
+            if let Some(at) = at {
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(heading, at));
+            }
+            return;
+        }
         let bold = style::ui_font(FontWeight::BOLD);
         let mut shown = heading.clone();
         let mut font_size = style::PLAIN_SIZE;
@@ -1263,7 +1368,7 @@ impl DiskUsage {
             0.0
         } else {
             let w = ["Move to Trash", "Delete…", "Stop"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(112.0, f32::max);
-            buttons = buttons.w(px(w)).flex_col().pt(px(2.0));
+            buttons = buttons.w(px(w)).flex_col();
             w
         };
         if busy {
@@ -1511,5 +1616,46 @@ mod tests {
         assert_eq!(count(199_111), "199,111");
         assert_eq!(count(1_000_000), "1,000,000");
         assert_eq!(count(999), "999");
+    }
+
+    /// The files' column gives way where the name would have less than
+    /// its least (a third of the smallest screen beside Deskbar), the
+    /// columns then fitting the list without a sideways scroll bar.
+    #[test]
+    fn the_files_column_gives_way() {
+        let wide = list_columns(500.0);
+        assert_eq!(wide.len(), 4);
+        // (349 points of content: 317 inside the window's insets, less
+        // the list's border and scroll bar.)
+        let third = list_columns(317.0 - 2.0 - SCROLL_BAR);
+        assert_eq!(third.len(), 3);
+        assert!(third.iter().map(|c| c.width).sum::<f32>() <= 317.0 - 2.0 - SCROLL_BAR + 0.01);
+        assert!(third[0].width >= NAME_LEAST);
+    }
+
+    /// A path too long for its room keeps its end: the folder shown.
+    #[test]
+    fn a_long_path_keeps_its_end() {
+        let width = |t: &str| t.chars().count() as f32;
+        assert_eq!(path_fit("/var/tmp/qa/fixtures", 40.0, width), "/var/tmp/qa/fixtures");
+        assert_eq!(path_fit("/var/tmp/qa/fixtures", 14.0, width), "…/qa/fixtures");
+        assert_eq!(path_fit("~/Music/Albums", 10.0, width), "…/Albums");
+        assert_eq!(path_fit("/var/tmp/qa/fixtures", 4.0, width), "fixtures");
+        // The root, a trailing "/", no room at all.
+        assert_eq!(path_fit("/", 0.0, width), "/");
+        assert_eq!(path_fit("/var/tmp/", 7.0, width), "…/tmp");
+        assert_eq!(path_fit("/var/tmp/", 2.0, width), "tmp");
+        assert_eq!(path_fit("/var/tmp/qa/fixtures", -5.0, width), "fixtures");
+        // Each folder's name measured once, not the whole tail again at
+        // every folder: a path 400 folders deep, measured about as many
+        // times as it has folders.
+        let deep = "/a".repeat(400);
+        let measured = std::cell::Cell::new(0usize);
+        let counting = |t: &str| {
+            measured.set(measured.get() + t.chars().count());
+            t.chars().count() as f32
+        };
+        assert_eq!(path_fit(&deep, 21.0, counting), format!("…{}", "/a".repeat(10)));
+        assert!(measured.get() < 4 * deep.len(), "{} characters measured for a path of {}", measured.get(), deep.len());
     }
 }

@@ -49,8 +49,9 @@ const CHART_LEAST: f32 = 260.0;
 /// A card's height, and the next hour's line: what's above the chart.
 const CARD_H: f32 = 56.0;
 const NEXT_H: f32 = 44.0;
-/// The window's least: a third of the smallest screen, either way.
-pub const MIN_WIDTH: f32 = 400.0;
+/// The window's least: a third of the smallest screen, either way, as
+/// tiling has it beside Deskbar (349 points of content across).
+pub const MIN_WIDTH: f32 = 346.0;
 pub const MIN_HEIGHT: f32 = 220.0;
 /// The header's height.
 const HEADER: f32 = 116.0;
@@ -157,6 +158,7 @@ fn back(cx: &mut Cx<Weather>, assistant: bool) -> Element {
 fn sidebar(w: &mut Weather, alone: bool, cx: &mut Cx<Weather>) -> Element {
     let p = theme::palette();
     let now = provider::now();
+    let needs_key = w.needs_key();
     // (In front of the forecast, its title is beside the back arrow, not
     // a heading in the list: the rows start at 0.)
     let head = usize::from(!alone);
@@ -217,14 +219,21 @@ fn sidebar(w: &mut Weather, alone: bool, cx: &mut Cx<Weather>) -> Element {
         }))
         .build(cx);
     let e = edge(cx);
+    // (Its rows its own, not the forecast's beside it: Add Place… was a
+    // pixel off the range's pop-up, level only by chance, in a short
+    // window.)
     div()
         .size_full()
+        .relative()
         .flex()
         .flex_col()
         .gap(px(m::TIGHT))
+        .child(olo_kit::canvas(olo_kit::review::own_grid).paint_key(0).absolute().inset_0())
         .children(alone.then(|| div().flex().flex_row().items_center().gap(px(m::TIGHT)).h(px(m::CONTROL_HEIGHT)).child(back(cx, false)).child(StringView::new("Places").bold(true))))
         .child(div().flex_1().min_h_0().child(well(e, p.list_background, list)))
-        .child(div().flex().child(Button::new("Add Place…").id("add-place").on_click(cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.open_add_place(cx)))))
+        // (Off until there's a key: no place's forecast could come
+        // without one, and the key is what the window asks for first.)
+        .child(div().flex().child(Button::new("Add Place…").id("add-place").enabled(!needs_key).on_click(cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.open_add_place(cx)))))
         .into_element()
 }
 
@@ -305,7 +314,11 @@ fn main_area(w: &mut Weather, width: f32, height: f32, cx: &mut Cx<Weather>) -> 
             .pt(px(m::TIGHT))
             .child(MenuField::new("weather-range", tabs.to_vec(), tab).name("Range").on_change(cx.listener(|v: &mut Weather, i: &usize, cx| v.set_tab(*i, cx))));
         // (The next hour under the conditions, then the cards: what's
-        // coming first in a short window; Codex, 2026-11-19.)
+        // coming first in a short window; Codex, 2026-11-19. A spacing
+        // between them, as between the cards' rows: "Now" and "Rain
+        // stopping…" sat 3 points over the cards, read as theirs; Opus's
+        // and Neon's reviews, 2026-11-28.)
+        let next = div().w_full().pb(px(m::SPACING)).child(next).into_element();
         let top = vec![header, next, div().w_full().px(px(m::WINDOW_INSET)).pb(px(m::TIGHT)).child(cards).into_element(), range.into_element()];
         let n = top.len();
         sections.splice(0..0, top);
@@ -334,7 +347,10 @@ fn main_area(w: &mut Weather, width: f32, height: f32, cx: &mut Cx<Weather>) -> 
         .child(div().px(px(m::WINDOW_INSET)).pb(px(m::TIGHT)).child(cards))
         // (A gap under the next hour's scale: "Now" sat on the tabs.)
         .child(div().pb(px(m::TIGHT)).child(next))
-        .child(div().flex_1().min_h_0().px(px(m::TIGHT)).pb(px(m::TIGHT)).child(tab_view))
+        // (The tabs' box as wide as the cards over it: 10 points wider
+        // each side, the column had three left edges; Opus's and Neon's
+        // reviews, 2026-11-28.)
+        .child(div().flex_1().min_h_0().px(px(m::WINDOW_INSET)).pb(px(m::TIGHT)).child(tab_view))
         .into_element()
 }
 

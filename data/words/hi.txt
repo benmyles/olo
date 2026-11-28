@@ -2458,7 +2458,7 @@ Click Back Up Now to make the first.
 Click a graph to see what was busy then
 उस समय क्या व्यस्त था, यह देखने के लिए ग्राफ़ पर क्लिक करें
 
-Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+Click a ring to go into a folder, the middle to go back up; drag anything you don’t need into the Collector.
 फ़ोल्डर में जाने के लिए छल्ले पर और वापस जाने के लिए बीच में क्लिक करें। गैरज़रूरी आइटम संग्रह-पटल पर खींचें।
 
 Click a shortcut to give it other keys.
@@ -2908,7 +2908,7 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 अभी आया कोड कॉपी करें
 
-Copy to clipboard
+Copy to Clipboard
 क्लिपबोर्ड पर कॉपी करें
 
 Copy-on-write
@@ -3355,7 +3355,7 @@ Delete this backup? The space only it took is freed; files other backups hold to
 Delete to the line's start
 पंक्ति की शुरुआत तक मिटाएँ
 
-Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} ({}) for good? They won’t go to the Trash, and this can’t be undone.
 {} ({}) हमेशा के लिए मिटाएँ? ये रद्दी में नहीं जाएँगे और इन्हें वापस नहीं ला सकेंगे।
 
 Delete {} Backups…
@@ -3367,7 +3367,7 @@ Delete {} Chats…
 Delete {} chats? Their messages go from this account{}. This can’t be undone.
 {} चैट मिटाएँ? इनके संदेश इस खाते से हट जाएँगे{}। इसे पलटा नहीं जा सकता।
 
-Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” ({}) for good? It won’t go to the Trash, and this can’t be undone.
 “{}” ({}) हमेशा के लिए मिटाएँ? यह रद्दी में नहीं जाएगा और इसे वापस नहीं ला सकेंगे।
 
 Delete “{}” for good? Its attached files can’t come back.
@@ -7370,7 +7370,7 @@ New ones go in
 New ones go in:
 नए यहाँ जाएँगे:
 
-New screenshot
+New Screenshot
 नया स्क्रीनशॉट
 
 New shells can't start until it's running again.
@@ -14993,7 +14993,7 @@ signed in, {} calendars
 slots of the pool in use
 पूल के इस्तेमाल में स्लॉट
 
-some of it couldn't be read
+some of it couldn’t be read
 इसका कुछ हिस्सा पढ़ नहीं सके
 
 something else is called “{}” there now
@@ -15269,7 +15269,7 @@ yesterday at {}
 you
 आप
 
-you don't have permission
+you don’t have permission
 आपको अनुमति नहीं है
 
 your cloud storage
@@ -15361,7 +15361,7 @@ other: {n} फ़ाइलें कॉपी करनी हैं
 one: AirPlay रिसीवर पर {n} फ़िल्म चल रही है। थामने या बंद करने के लिए क्लिक करें।
 other: AirPlay रिसीवर पर {n} फ़िल्में चल रही हैं। थामने या बंद करने के लिए क्लिक करें।
 
-{n} folders couldn't be read
+{n} folders couldn’t be read
 one: {n} फ़ोल्डर नहीं पढ़ सके
 other: {n} फ़ोल्डर नहीं पढ़ सके
 

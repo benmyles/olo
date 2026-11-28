@@ -65,7 +65,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen stats [NAME] [--json]   when each screen was started and last used, how long it
                                              ran and was in use, its actions by kind, its programs
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
-       olo-screen run NAME [--quick] PROGRAM [ARGS…]
+       olo-screen run NAME [--quick] [--] PROGRAM [ARGS…]
                                              start a program on it; prints its pid and, under
                                              after, the screen once it shows (a window opens or
                                              the focused one changes; at most 5 s)
@@ -157,9 +157,20 @@ fn fail(message: impl std::fmt::Display) -> i32 {
     1
 }
 
-/// Every `--window ID` given.
+/// Every `--window ID` given, each with its id: one without (the last
+/// word, or another option after it) is an error, never "every window"
+/// (`give NAME --window` gave every window to the desktop: Astra's
+/// review, 2026-11-28).
 fn window_ids(args: &[String]) -> Result<Vec<u64>, String> {
-    args.windows(2).filter(|p| p[0] == "--window").map(|p| p[1].parse::<u64>().map_err(|_| format!("{} isn't a window's id", p[1]))).collect()
+    let mut ids = Vec::new();
+    for (at, a) in args.iter().enumerate() {
+        if a != "--window" {
+            continue;
+        }
+        let id = args.get(at + 1).filter(|v| !v.starts_with("--")).ok_or("--window needs a window's id after it (`windows` lists them)")?;
+        ids.push(id.parse::<u64>().map_err(|_| format!("{id} isn't a window's id"))?);
+    }
+    Ok(ids)
 }
 
 /// Why nothing moved.
@@ -1256,7 +1267,8 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             // (What it shows is waited for: a window that opens, or the
             // focused one changing, as Chrome's given a page in a tab.)
             let before = (!quick).then(|| seen(&s).map(|v| v.key).unwrap_or_default());
-            let pid = s.run(&rest[1..])?;
+            // (Past run's own options, as its history counts it.)
+            let pid = s.run(history::run_argv(&rest[1..]))?;
             let mut v = json!({ "pid": pid });
             if let Some(before) = before {
                 v["after"] = json!(afterwards(&s, false, Some(&before)));
@@ -1274,7 +1286,12 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 None => video_path(&s.name),
             };
             let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
-            for flag in ["--seconds", "--fps", "--window", "--encoder", "--codec", "--region", "--pointer-size", "--camera"] {
+            // (A window named without its id is an error, not the screen
+            // recorded: Astra's review, 2026-11-28.)
+            if let Some(id) = window_arg(rest)? {
+                argv.extend(["--window".to_owned(), id.to_string()]);
+            }
+            for flag in ["--seconds", "--fps", "--encoder", "--codec", "--region", "--pointer-size", "--camera"] {
                 if let Some(v) = option(rest, flag) {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
@@ -1540,8 +1557,9 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             Ok(())
         }),
         "menus" => screen().and_then(|s| {
-            let w = app_window(&s, window_arg(rest)?)?;
-            let menus = commands::menus(pid_of(&w)?).ok_or_else(|| format!("{} didn't give its menus", w.app_id))?;
+            let named = window_arg(rest)?;
+            let w = app_window(&s, named)?;
+            let menus = menus_of(&w, named.is_some())?.ok_or_else(|| format!("{} didn't give its menus", w.app_id))?;
             println!("{}", serde_json::to_string_pretty(&menus).unwrap_or_default());
             Ok(())
         }),
@@ -1553,22 +1571,22 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 return Err("invoke chooses one of the app's menu commands, by its command (`menus` lists them: `invoke NAME save`); to press a button or another control by its name, use `click NAME --role Button --name …`".into());
             }
             let command = positionals(rest).get(1).cloned().ok_or("invoke needs a menu command (`menus` lists them: `invoke NAME save`)")?;
-            let w = app_window(&s, window_arg(rest)?)?;
-            let pid = pid_of(&w)?;
-            if commands::invoke(pid, &command) {
+            let target = window_arg(rest)?;
+            let w = app_window(&s, target)?;
+            if invoke_in(&w, target.is_some(), &command)? {
                 if !quick {
                     print_json(&json!({ "invoked": command, "after": afterwards(&s, false, None) }));
                 }
                 return Ok(());
             }
             // Why not, and what there is like it.
-            let entries = commands::menus(pid).map(|m| m.entries).unwrap_or_default();
+            let entries = menus_of(&w, target.is_some())?.map(|m| m.entries).unwrap_or_default();
             // Its label (or its command but for case), the one item so
             // named: that item, chosen. (Agents write what the menu says.)
             let named: Vec<&commands::Entry> = entries.iter().filter(|e| e.command != command && (find::plain(&e.label) == find::plain(&command) || find::plain(&e.command) == find::plain(&command))).collect();
             if let [e] = named[..]
                 && e.enabled
-                && commands::invoke(pid, &e.command)
+                && invoke_in(&w, target.is_some(), &e.command)?
             {
                 let mut v = json!({ "invoked": e.command, "label": e.label });
                 if !quick {
@@ -1587,7 +1605,13 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         }),
         "review" => screen().and_then(|s| {
             let only = window_arg(rest)?;
-            let windows: Vec<WindowInfo> = s.windows()?.into_iter().filter(|w| w.content.is_some() && only.is_none_or(|id| w.id == id)).collect();
+            // (Every window, a minimized one too, to tell a review's
+            // window by: left out, an older app's review of its minimized
+            // notes.txt was taken for the one showing; Astra's review,
+            // 2026-11-28. What's shown, of those that show.)
+            let every: Vec<WindowInfo> = s.windows()?;
+            let all: Vec<&WindowInfo> = every.iter().filter(|w| w.content.is_some()).collect();
+            let windows: Vec<&WindowInfo> = all.iter().copied().filter(|w| only.is_none_or(|id| w.id == id)).collect();
             if let Some(id) = only.filter(|_| windows.is_empty()) {
                 return Err(format!("no window {id}"));
             }
@@ -1595,9 +1619,23 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let mut pids: Vec<u32> = windows.iter().filter_map(|w| w.pid.map(|p| p as u32)).collect();
             pids.sort_unstable();
             pids.dedup();
-            let asked: Vec<_> = pids.into_iter().map(|pid| std::thread::spawn(move || commands::review(pid))).collect();
-            let reviews: Vec<commands::WindowReview> =
-                asked.into_iter().flat_map(|r| r.join().ok().flatten().unwrap_or_default()).filter(|r| r.layer.is_none() && windows.iter().any(|w| w.title == r.title)).collect();
+            let asked: Vec<_> = pids.into_iter().map(|pid| (pid, std::thread::spawn(move || commands::review(pid)))).collect();
+            // Each app's reviews of the windows asked about: an app's
+            // other windows left out, one of the same title too; all of
+            // its windows' when none was named.
+            let mut reviews: Vec<commands::WindowReview> = Vec::new();
+            for (pid, r) in asked {
+                let answer = r.join().ok().flatten().unwrap_or_default();
+                let siblings: Vec<&WindowInfo> = every.iter().filter(|w| w.pid == Some(pid as i32)).collect();
+                match only {
+                    Some(id) => {
+                        if let Some(w) = siblings.iter().find(|w| w.id == id && w.content.is_some()) {
+                            reviews.extend(review_of(w, answer, &siblings)?);
+                        }
+                    }
+                    None => reviews.extend(answer.into_iter().filter(|r| r.layer.is_none() && all.iter().any(|w| w.pid == Some(pid as i32) && reviews_window(r, w)))),
+                }
+            }
             if has(rest, "--json") {
                 println!("{}", serde_json::to_string_pretty(&reviews).unwrap_or_default());
             } else if reviews.is_empty() {
@@ -1621,7 +1659,13 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     // invoked: Chrome's tabs, whose strip Chrome draws.)
                     if let Some(command) = f.command.clone().filter(|_| f.width < 1.0 || f.height < 1.0) {
                         let w = s.windows()?.into_iter().find(|w| w.id == f.window).ok_or_else(|| format!("its window {} has gone", f.window))?;
-                        if !commands::invoke(pid_of(&w)?, &command) {
+                        // (The command names its own target, a Chrome
+                        // tab's: asked of the app as a whole; but where a
+                        // window was named, only of that window, declined
+                        // where it can't be told (a tab moved to another
+                        // window took the click there: Astra's review,
+                        // 2026-11-28).)
+                        if !invoke_in(&w, q.window.is_some(), &command)? {
                             return Err(format!("the {} {:?} has no place to click, and {} didn't do {command:?}", f.role, f.name.as_deref().unwrap_or(""), w.app_id));
                         }
                         print_json(&json!({ "invoked": command, "matched": f, "after": afterwards(&s, quick, None) }));
@@ -2258,12 +2302,117 @@ fn point(rest: &[String], what: &str) -> Result<(f64, f64), String> {
     }
 }
 
+/// The window `--window` names, if it's given: given with no id after it
+/// (last, or before another option), refused, never taken for not given
+/// (the window in front would have been acted on: Astra's review,
+/// 2026-11-28).
 fn window_arg(args: &[String]) -> Result<Option<u64>, String> {
-    option(args, "--window").map(|w| w.parse::<u64>().map_err(|_| "--window is a window's id".to_owned())).transpose()
+    // (Every one checked, and one at most: `--window 35 --window` acted.)
+    match window_ids(args)?.as_slice() {
+        [] => Ok(None),
+        [id] => Ok(Some(*id)),
+        _ => Err("--window once: this acts in one window".to_owned()),
+    }
+}
+
+/// Why a command for window `w` alone can't be given: app_server doesn't
+/// say its surface, so its app can't be told which of its windows.
+fn untargetable(w: &WindowInfo) -> String {
+    format!(
+        "window {} ({}) can't be told from its app's others (app_server says no surface for it), so nothing is done in it alone; leave out --window to act in the app's window in front",
+        w.id, w.app_id
+    )
 }
 
 fn pid_of(w: &WindowInfo) -> Result<u32, String> {
     w.pid.map(|p| p as u32).ok_or_else(|| format!("window {} has no process", w.id))
+}
+
+/// Chooses menu command `command` in window `w` itself, by its surface
+/// (as its app knows it): never in another window of its app. Asked of
+/// the app as a whole, the window in front took it: `--window` named
+/// one document and the other, focused, closed (QA, 2026-11-28).
+/// `explicit`: the window was named (`--window`), and nothing is done
+/// anywhere else: not where app_server says no surface for it, nor where
+/// its program takes commands only as a whole (a served one's, Chrome's
+/// and Slack's), each an error. Unnamed (the window in front, or a
+/// command that names its own target, a Chrome tab's), those are asked
+/// of the app as a whole.
+fn invoke_in(w: &WindowInfo, explicit: bool, command: &str) -> Result<bool, String> {
+    let pid = pid_of(w)?;
+    // (Not named: the app's command, asked as it always was, of its window
+    // in front: asked of one window first, an app from before such asks
+    // never heard it at all; Astra's review, 2026-11-28.)
+    if !explicit {
+        return Ok(commands::invoke(pid, command));
+    }
+    let Some(surface) = w.surface else { return Err(untargetable(w)) };
+    match commands::invoke_window(pid, surface, command) {
+        commands::InWindow::Done(taken) => Ok(taken),
+        commands::InWindow::Unscoped => Err(whole_program(w)),
+        commands::InWindow::Unanswered => Err(older(w)),
+    }
+}
+
+/// Window `w`'s own menus, named by `--window` (`explicit`: as
+/// [`invoke_in`], its app's in front where not).
+fn menus_of(w: &WindowInfo, explicit: bool) -> Result<Option<commands::Menus>, String> {
+    let pid = pid_of(w)?;
+    if !explicit {
+        return Ok(commands::menus(pid));
+    }
+    let Some(surface) = w.surface else { return Err(untargetable(w)) };
+    match commands::menus_window(pid, surface) {
+        commands::InWindow::Done(menus) => Ok(Some(menus)),
+        commands::InWindow::Unscoped => Err(whole_program(w)),
+        commands::InWindow::Unanswered => Err(older(w)),
+    }
+}
+
+/// Why a command for window `w` alone isn't done: its program's commands
+/// are the whole program's (Chrome's, Slack's).
+fn whole_program(w: &WindowInfo) -> String {
+    format!("{} takes commands only as a whole, not in one of its windows; leave out --window", w.app_id)
+}
+
+/// Why a command for window `w` alone isn't done: its program didn't
+/// answer an ask for one window (older than such asks, or gone), so
+/// nothing was done in any of its windows.
+fn older(w: &WindowInfo) -> String {
+    format!("{} didn't answer for window {} alone (an older Olo, or it's gone), so nothing was done; leave out --window to act in its window in front", w.app_id, w.id)
+}
+
+/// Whether review `r`, from window `w`'s app, is `w`'s: by surface where
+/// both say it (two windows of one title are two reviews, each its
+/// window's: QA, 2026-11-28, two documents named notes.txt each got
+/// both), by title where either doesn't.
+fn reviews_window(r: &commands::WindowReview, w: &WindowInfo) -> bool {
+    match (r.surface, w.surface) {
+        (Some(a), Some(b)) => a == b,
+        _ => r.title == w.title,
+    }
+}
+
+/// The review of window `w` alone, of its app's (`reviews`), its app's
+/// windows being `siblings` (`w` among them): the one of its surface;
+/// where they don't say one (an older kit), by title, only where that
+/// names one window and one review; else an error saying it can't be
+/// told (the review of all its windows, unnamed, has them all). Two
+/// documents titled notes.txt each got both (Astra's review, 2026-11-28).
+fn review_of(w: &WindowInfo, reviews: Vec<commands::WindowReview>, siblings: &[&WindowInfo]) -> Result<Vec<commands::WindowReview>, String> {
+    let (exact, rest): (Vec<_>, Vec<_>) = reviews.into_iter().filter(|r| r.layer.is_none()).partition(|r| r.surface.is_some() && r.surface == w.surface);
+    if !exact.is_empty() {
+        return Ok(exact);
+    }
+    let legacy: Vec<_> = rest.into_iter().filter(|r| (r.surface.is_none() || w.surface.is_none()) && r.title == w.title).collect();
+    let titled = siblings.iter().filter(|o| o.title == w.title).count();
+    match legacy.len() {
+        0 => Ok(Vec::new()),
+        1 if titled <= 1 => Ok(legacy),
+        _ => {
+            Err(format!("window {} can't be told from another window of {} titled {:?} (it says no surface for them: an older Olo); review without --window for all of them", w.id, w.app_id, w.title))
+        }
+    }
 }
 
 /// Window `id`; or the focused one, or the only one showing.
@@ -2343,12 +2492,13 @@ fn with_popups(nodes: &mut Vec<commands::UiNode>, popups: &[Frame], rest: &mut V
 /// What the windows on `s` (or just window `only`) show. Windows of apps
 /// not built on the kit, or minimized, have none.
 fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, String> {
-    let windows: Vec<WindowInfo> = s.windows()?.into_iter().filter(|w| only.is_none_or(|id| w.id == id)).collect();
-    if let Some(id) = only.filter(|_| windows.is_empty()) {
+    let all: Vec<WindowInfo> = s.windows()?;
+    if let Some(id) = only.filter(|id| !all.iter().any(|w| w.id == *id)) {
         return Err(format!("no window {id}"));
     }
-    // One question per app, all at once: each can take a frame or two.
-    let mut pids: Vec<u32> = windows.iter().filter(|w| w.content.is_some()).filter_map(|w| w.pid.map(|p| p as u32)).collect();
+    // One question per app (of the windows asked about), all at once:
+    // each can take a frame or two.
+    let mut pids: Vec<u32> = all.iter().filter(|w| w.content.is_some() && only.is_none_or(|id| w.id == id)).filter_map(|w| w.pid.map(|p| p as u32)).collect();
     pids.sort_unstable();
     pids.dedup();
     // A program not on Olo's kit: its tree over AT-SPI (GTK, Qt).
@@ -2356,23 +2506,19 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
     // Windows only: Deskbar and other layer surfaces have no window here.
     let mut answers: Vec<(u32, Vec<commands::WindowTree>)> =
         asked.into_iter().map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default().into_iter().filter(|t| t.layer.is_none()).collect())).collect();
+    let taken = take_trees(&all, &mut answers, only)?;
+    // (A popup's tree is never one titled as a window of its app's that
+    // took no tree: only those, not every window's on the screen; a
+    // submenu "Tools" was dropped for another program's window "Tools":
+    // Astra's review, 2026-11-28.)
+    let resolved: Vec<u64> = taken.iter().map(|(w, ..)| w.id).collect();
+    let unresolved = |pid: Option<i32>| -> Vec<String> { all.iter().filter(|o| o.pid == pid && !resolved.contains(&o.id)).map(|o| o.title.clone()).collect() };
+    // Then each window asked about has its open menus from what's left
+    // of its app's: a sibling's tree is never one of them.
     let mut out = Vec::new();
-    let titles: Vec<String> = windows.iter().map(|w| w.title.clone()).collect();
-    for w in windows {
-        let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };
-        let Some((_, mine)) = answers.iter_mut().find(|(p, _)| *p == pid as u32) else { continue };
-        // An app's windows are told apart by title (and by size, if two share one).
-        // Chrome's are named by their page ("Page - Google Chrome").
-        let Some(i) = mine
-            .iter()
-            .position(|t| t.title == w.title && t.width as i32 == content.width && t.height as i32 == content.height)
-            .or_else(|| mine.iter().position(|t| t.title == w.title))
-            .or_else(|| mine.iter().position(|t| !t.title.is_empty() && w.title.starts_with(&t.title) && t.width as i32 == content.width))
-            .or_else(|| mine.iter().position(|t| t.width as i32 == content.width && t.height as i32 == content.height))
-        else {
-            continue;
-        };
-        let tree = mine.remove(i);
+    for (w, content, tree) in taken.into_iter().filter(|(w, ..)| only.is_none_or(|id| w.id == id)) {
+        let titles = unresolved(w.pid);
+        let Some((_, mine)) = answers.iter_mut().find(|(p, _)| Some(*p as i32) == w.pid) else { continue };
         let mut nodes: Vec<commands::UiNode> = tree
             .nodes
             .into_iter()
@@ -2383,9 +2529,105 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
             })
             .collect();
         let popups = with_popups(&mut nodes, &w.popups, mine, &titles);
-        out.push(ScreenTree { window: w.id, app_id: w.app_id, title: w.title, focused: w.focused, content, nodes, popups });
+        out.push(ScreenTree { window: w.id, app_id: w.app_id.clone(), title: w.title.clone(), focused: w.focused, content, nodes, popups });
     }
     Ok(out)
+}
+
+/// Each window's tree out of its app's (`answers`): every window of
+/// those apps takes its own, the ones not asked about too, before
+/// anything's left over for a popup (asked of one window, its sibling's
+/// tree, the size of its open menu, was taken for that menu: Astra's
+/// review, 2026-11-28). The trees of their surfaces first, then by title
+/// and size for those that don't say one, one way at a time. Every
+/// window that took one, in app_server's order, each with its content and
+/// tree (what's asked about is the caller's to pick: the others name
+/// which trees are no popup's); an error where the window named (`only`)
+/// can't be told from another.
+fn take_trees<'a>(all: &'a [WindowInfo], answers: &mut [(u32, Vec<commands::WindowTree>)], only: Option<u64>) -> Result<Vec<(&'a WindowInfo, Frame, commands::WindowTree)>, String> {
+    let mut taken: Vec<Option<commands::WindowTree>> = all.iter().map(|_| None).collect();
+    // (One strength of match at a time, across every window: a weaker
+    // match of one window never takes the tree a stronger one names for
+    // another; by size, A took B's tree before B came to it by title:
+    // Astra's review, 2026-11-28.)
+    for way in 0..WAYS {
+        for (i, w) in all.iter().enumerate() {
+            let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };
+            if taken[i].is_some() {
+                continue;
+            }
+            let Some((_, mine)) = answers.iter_mut().find(|(p, _)| *p == pid as u32) else { continue };
+            let siblings: Vec<&WindowInfo> = all.iter().filter(|o| o.pid == w.pid).collect();
+            let at = match tree_by(w, content, mine, &siblings, way) {
+                TreeMatch::Exact(at) => at,
+                TreeMatch::Fallback(at, unique) => {
+                    if !unique && only == Some(w.id) {
+                        return Err(format!(
+                            "window {} can't be told from another window of {} by its title and size (it says no surface for them: an older Olo); leave out --window to read them all",
+                            w.id, w.app_id
+                        ));
+                    }
+                    at
+                }
+                TreeMatch::None => continue,
+            };
+            taken[i] = Some(mine.remove(at));
+        }
+    }
+    Ok(all.iter().zip(taken).filter_map(|(w, t)| Some((w, w.content?, t?))).collect())
+}
+
+/// How a window's tree is found among its app's ([`tree_by`], one way
+/// at a time across every window in [`take_trees`]).
+#[derive(Debug, PartialEq)]
+enum TreeMatch {
+    /// The tree of its surface.
+    Exact(usize),
+    /// By title or size, where a tree or the window says no surface; and
+    /// whether that names it alone (no other tree, nor another of its
+    /// app's windows, as like it).
+    Fallback(usize, bool),
+    None,
+}
+
+/// How many ways a tree is found ([`tree_by`]), strongest first.
+const WAYS: usize = 5;
+
+/// Which of its app's trees (`mine`) is window `w`'s (its content at
+/// `content`; its app's windows `siblings`, it among them), by one way
+/// alone (`way`, strongest first). By its surface, where both say it:
+/// two windows of one title and size are never taken for each other, and
+/// a tree that says another surface is never `w`'s. Else by its title
+/// and size; its title; its page's title (Chrome's, "Page - Google
+/// Chrome"), as wide; its size. Where it isn't by surface, whether it
+/// names `w` alone: no other tree, nor another of its app's windows,
+/// that the same way takes as well (a page's title by every window whose
+/// title starts with it at its width: two Chrome windows "Mail …" took
+/// the one tree "Mail" each; Astra's and Neon's reviews, 2026-11-28).
+fn tree_by(w: &WindowInfo, content: Frame, mine: &[commands::WindowTree], siblings: &[&WindowInfo], way: usize) -> TreeMatch {
+    if way == 0 {
+        return mine.iter().position(|t| t.surface.is_some() && t.surface == w.surface).map_or(TreeMatch::None, TreeMatch::Exact);
+    }
+    let sized = |t: &commands::WindowTree| t.width as i32 == content.width && t.height as i32 == content.height;
+    let may_be = |t: &commands::WindowTree| t.surface.is_none() || w.surface.is_none() || t.surface == w.surface;
+    let same_size = |o: &WindowInfo| o.content.is_some_and(|c| c.width == content.width && c.height == content.height);
+    let others = |like: &dyn Fn(&WindowInfo) -> bool| siblings.iter().any(|o| o.id != w.id && like(o));
+    let matches = |t: &commands::WindowTree| match way {
+        1 => t.title == w.title && sized(t),
+        2 => t.title == w.title,
+        3 => !t.title.is_empty() && w.title.starts_with(&t.title) && t.width as i32 == content.width,
+        _ => sized(t),
+    };
+    let found: Vec<usize> = mine.iter().enumerate().filter(|(_, t)| may_be(t) && matches(t)).map(|(i, _)| i).collect();
+    let Some(&at) = found.first() else { return TreeMatch::None };
+    let t = &mine[at];
+    let like_another = match way {
+        1 => others(&|o| o.title == w.title && same_size(o)),
+        2 => others(&|o| o.title == w.title),
+        3 => others(&|o| o.title.starts_with(&t.title) && o.content.is_some_and(|c| c.width == t.width as i32)),
+        _ => others(&same_size),
+    };
+    TreeMatch::Fallback(at, !like_another && found.len() == 1)
 }
 
 /// What `tree` shows of the trees.
@@ -2789,6 +3031,12 @@ fn video_path(name: &str) -> std::path::PathBuf {
 mod tests {
     use super::*;
 
+    /// Window `w`'s tree among its app's by the strongest way that finds
+    /// one (as [`take_trees`] has it for a window alone).
+    fn tree_of(w: &WindowInfo, content: Frame, mine: &[commands::WindowTree], siblings: &[&WindowInfo]) -> TreeMatch {
+        (0..WAYS).map(|way| tree_by(w, content, mine, siblings, way)).find(|m| *m != TreeMatch::None).unwrap_or(TreeMatch::None)
+    }
+
     /// A field read back after `set`: what it holds empty, or as before,
     /// is a field that didn't keep it; formatted, kept; and nothing said
     /// where it can't be told (a password, no value, the keyboard gone on).
@@ -2842,6 +3090,169 @@ mod tests {
         let v = json!({ "clicked": [1, 2], "after": { "window": { "id": 1 }, "settled": true, "picture": "/p.png", "tree": ["window 1"], "windows": ["1 \"A\" (a) focused"], "ms": { "settling": 300, "picture": 5 } } });
         assert_eq!(for_history(v), json!({ "clicked": [1, 2], "after": { "window": { "id": 1 }, "settled": true, "ms": { "settling": 300, "picture": 5 } } }));
         assert_eq!(for_history(json!({ "pid": 4 })), json!({ "pid": 4 }));
+    }
+
+    /// Two windows of one app with one title (two documents named
+    /// notes.txt, from two folders): each window's review and tree is its
+    /// own, told apart by surface; by title where the app or app_server
+    /// doesn't say one.
+    #[test]
+    fn two_windows_of_one_title_are_told_apart() {
+        let window = |id: u64, surface: Option<u32>| -> WindowInfo {
+            serde_json::from_value(json!({ "id": id, "app_id": "olo.styled-edit", "title": "notes.txt", "pid": 10, "workspace": 0, "minimized": false, "focused": id == 2, "surface": surface,
+                "content": { "x": 0, "y": 0, "width": 600, "height": 400 } }))
+            .unwrap()
+        };
+        let review =
+            |surface: Option<u32>| commands::WindowReview { title: "notes.txt".into(), width: 600, height: 400, scale: 1.0, dark: false, layer: None, surface, resizing: false, findings: Vec::new() };
+        let (a, b) = (window(1, Some(5)), window(2, Some(7)));
+        assert!(reviews_window(&review(Some(5)), &a) && !reviews_window(&review(Some(5)), &b));
+        assert!(reviews_window(&review(Some(7)), &b) && !reviews_window(&review(Some(7)), &a));
+        // (Where either doesn't say: by title, as before.)
+        assert!(reviews_window(&review(None), &a) && reviews_window(&review(None), &b));
+        assert!(reviews_window(&review(Some(5)), &window(3, None)));
+        // Trees: the same, in whatever order the app answers.
+        let tree = |surface: Option<u32>, name: &str| commands::WindowTree {
+            title: "notes.txt".into(),
+            width: 600,
+            height: 400,
+            surface,
+            nodes: vec![commands::UiNode { id: 1, role: "Window".into(), name: Some(name.into()), ..Default::default() }],
+            ..Default::default()
+        };
+        let content = Frame { x: 0, y: 0, width: 600, height: 400 };
+        let mine = vec![tree(Some(7), "second"), tree(Some(5), "first")];
+        let both = [&a, &b];
+        assert_eq!(tree_of(&a, content, &mine, &both), TreeMatch::Exact(1));
+        assert_eq!(tree_of(&b, content, &mine, &both), TreeMatch::Exact(0));
+        // A tree that says another window's surface is never this one's,
+        // though its title and size are the same.
+        assert_eq!(tree_of(&a, content, &[tree(Some(7), "second")], &both), TreeMatch::None);
+        // Where a tree or the window says no surface (an older kit): by
+        // title, said alone only where nothing else is like it.
+        assert_eq!(tree_of(&a, content, &[tree(None, "unsaid")], &[&a]), TreeMatch::Fallback(0, true));
+        assert_eq!(tree_of(&a, content, &[tree(None, "unsaid")], &both), TreeMatch::Fallback(0, false), "a sibling of its title and size");
+        let c = window(3, None);
+        assert_eq!(tree_of(&c, content, &[tree(None, "x"), tree(None, "y")], &[&c]), TreeMatch::Fallback(0, false), "two trees as like it");
+    }
+
+    /// A window named (`--window`) is never taken for another: given
+    /// with no id, refused; a review of it, its own (by surface; by title
+    /// only where that names one window and one review); a command or
+    /// menus for it, never done elsewhere where its surface is unknown.
+    #[test]
+    fn a_window_named_is_the_one_acted_on() {
+        assert_eq!(window_arg(&args(&["qa", "close", "--window"])).unwrap_err(), "--window needs a window's id after it (`windows` lists them)");
+        assert!(window_arg(&args(&["qa", "--window", "--json"])).is_err());
+        assert_eq!(window_arg(&args(&["qa", "--window", "35"])), Ok(Some(35)));
+        assert_eq!(window_arg(&args(&["qa"])), Ok(None));
+        let window = |id: u64, title: &str, surface: Option<u32>| -> WindowInfo {
+            serde_json::from_value(json!({ "id": id, "app_id": "olo.styled-edit", "title": title, "pid": 10, "workspace": 0, "minimized": false, "focused": false, "surface": surface })).unwrap()
+        };
+        let review = |title: &str, surface: Option<u32>| commands::WindowReview {
+            title: title.into(),
+            width: 600,
+            height: 400,
+            scale: 1.0,
+            dark: false,
+            layer: None,
+            surface,
+            resizing: false,
+            findings: Vec::new(),
+        };
+        let (a, b) = (window(1, "notes.txt", Some(5)), window(2, "notes.txt", Some(7)));
+        let got = review_of(&a, vec![review("notes.txt", Some(7)), review("notes.txt", Some(5))], &[&a, &b]).unwrap();
+        assert_eq!(got.iter().map(|r| r.surface).collect::<Vec<_>>(), [Some(5)]);
+        // An older kit's reviews, no surface: two of one title can't be told.
+        assert!(review_of(&a, vec![review("notes.txt", None), review("notes.txt", None)], &[&a, &b]).is_err());
+        assert!(review_of(&a, vec![review("notes.txt", None)], &[&a, &b]).is_err(), "one review, two windows of its title");
+        let c = window(3, "todo.txt", Some(9));
+        assert_eq!(review_of(&c, vec![review("todo.txt", None), review("notes.txt", None)], &[&a, &b, &c]).unwrap().len(), 1, "one of its title: it");
+        // Its surface unknown to app_server: a command for it alone isn't
+        // given to its app's window in front.
+        let unknown = window(4, "notes.txt", None);
+        assert!(invoke_in(&unknown, true, "close").unwrap_err().contains("can't be told"));
+        assert!(menus_of(&unknown, true).is_err());
+    }
+
+    /// Every window of the app takes its own tree before any is left for
+    /// a popup: asked of one window, its sibling's tree (the size of its
+    /// open menu) is never taken for that menu, whichever answers first.
+    #[test]
+    fn a_siblings_tree_is_never_a_popup() {
+        let window = |id: u64, title: &str, surface: u32, popup: bool| -> WindowInfo {
+            let popups = if popup { json!([{ "x": 100, "y": 100, "width": 200, "height": 60 }]) } else { json!([]) };
+            serde_json::from_value(json!({ "id": id, "app_id": "olo.app", "title": title, "pid": 10, "workspace": 0, "minimized": false, "focused": id == 1, "surface": surface,
+                "content": { "x": 0, "y": 0, "width": 600, "height": 400 }, "popups": popups }))
+            .unwrap()
+        };
+        let tree = |title: &str, w: u32, h: u32, surface: Option<u32>| commands::WindowTree { title: title.into(), width: w, height: h, surface, ..Default::default() };
+        // (B is as big as A's open menu.)
+        let all = [window(1, "A", 5, true), window(2, "B", 7, false)];
+        let all = [all[0].clone(), WindowInfo { content: Some(Frame { x: 700, y: 0, width: 200, height: 60 }), ..all[1].clone() }];
+        for order in [[0, 1, 2], [2, 1, 0], [1, 2, 0]] {
+            let pool = [tree("A", 600, 400, Some(5)), tree("B", 200, 60, Some(7)), tree("", 200, 60, Some(11))];
+            let mut answers = vec![(10u32, order.iter().map(|&i| pool[i].clone()).collect::<Vec<_>>())];
+            let taken = take_trees(&all, &mut answers, Some(1)).unwrap();
+            let ids: Vec<(u64, &str)> = taken.iter().map(|(w, _, t)| (w.id, t.title.as_str())).collect();
+            assert_eq!(ids, [(1, "A"), (2, "B")], "each window its own tree, order {order:?}");
+            // What's left for A's menu: its menu, never B.
+            let left: Vec<&str> = answers[0].1.iter().map(|t| t.title.as_str()).collect();
+            assert_eq!(left, [""], "order {order:?}");
+        }
+    }
+
+    /// One strength of match at a time across an app's windows: A, first
+    /// in app_server's order, never takes B's tree by size before B takes
+    /// it by its title; and a page's title that two windows start with,
+    /// at its width, names neither alone.
+    #[test]
+    fn a_weaker_match_never_takes_a_siblings_tree() {
+        let window = |id: u64, title: &str, width: i32| -> WindowInfo {
+            serde_json::from_value(json!({ "id": id, "app_id": "olo.app", "title": title, "pid": 10, "workspace": 0, "minimized": false, "focused": false,
+                "content": { "x": 0, "y": 0, "width": width, "height": 400 } }))
+            .unwrap()
+        };
+        let tree = |title: &str| commands::WindowTree { title: title.into(), width: 600, height: 400, ..Default::default() };
+        let all = [window(1, "Inbox", 600), window(2, "Drafts", 600)];
+        let mut answers = vec![(10u32, vec![tree("Drafts")])];
+        let taken = take_trees(&all, &mut answers, Some(2)).unwrap();
+        let ids: Vec<(u64, &str)> = taken.iter().map(|(w, _, t)| (w.id, t.title.as_str())).collect();
+        assert_eq!(ids, [(2, "Drafts")], "Drafts by its title, not Inbox by its size");
+        // Two Chrome windows whose titles start "Mail", one tree "Mail".
+        let all = [window(3, "Mail - Inbox - Google Chrome", 600), window(4, "Mail - Google Chrome", 600)];
+        let siblings: Vec<&WindowInfo> = all.iter().collect();
+        let content = all[0].content.unwrap();
+        assert_eq!(tree_by(&all[0], content, &[tree("Mail")], &siblings, 3), TreeMatch::Fallback(0, false), "names neither alone");
+        let mut answers = vec![(10u32, vec![tree("Mail")])];
+        assert!(take_trees(&all, &mut answers, Some(3)).is_err(), "asked of one, it can't be told");
+    }
+
+    /// A popup's tree is never one titled as a window of its app's that
+    /// took no tree, but a window of another program's title doesn't
+    /// keep a submenu out.
+    #[test]
+    fn a_popup_is_kept_from_its_own_apps_windows_only() {
+        let menu = |title: &str| commands::WindowTree { title: title.into(), width: 200, height: 60, ..Default::default() };
+        let popup = [Frame { x: 10, y: 10, width: 200, height: 60 }];
+        let mut nodes = vec![commands::UiNode { id: 1, ..Default::default() }];
+        let mut rest = vec![menu("Tools")];
+        assert_eq!(with_popups(&mut nodes, &popup, &mut rest, &[]).len(), 1, "another program's \"Tools\" keeps nothing out");
+        let mut rest = vec![menu("Tools")];
+        assert!(with_popups(&mut nodes, &popup, &mut rest, &["Tools".to_owned()]).is_empty(), "its own window \"Tools\", which took no tree, is no popup");
+    }
+
+    /// Every `--window` has its id: one without is an error, never every
+    /// window; a command for one window takes it once.
+    #[test]
+    fn every_window_named_has_its_id() {
+        assert_eq!(window_ids(&args(&["qa", "--window", "3", "--window", "4"])), Ok(vec![3, 4]));
+        assert!(window_ids(&args(&["qa", "--window"])).is_err(), "give qa --window: not every window");
+        assert!(window_ids(&args(&["qa", "--window", "3", "--window"])).is_err());
+        assert_eq!(window_ids(&args(&["qa"])), Ok(vec![]));
+        assert!(window_arg(&args(&["qa", "close", "--window", "35", "--window"])).is_err(), "checked every time");
+        assert!(window_arg(&args(&["qa", "close", "--window", "35", "--window", "36"])).is_err(), "one window");
+        assert_eq!(window_arg(&args(&["qa", "close", "--window", "35"])), Ok(Some(35)));
     }
 
     /// The windows an action lists: id, title, app, and how each is.
@@ -3187,6 +3598,16 @@ mod tests {
         // Neon #9: `--quick` stripped from any arg position for non-run actions.
         let (stripped, quick) = strip_quick_flag("click", &args(&["--quick", "qa", "100", "200"]));
         assert!(quick && stripped.first().map(String::as_str) == Some("qa"), "got {stripped:?}");
+        // A run's history has its program first, `--quick` or not (its
+        // stats count both as one program).
+        let (stripped, quick) = strip_quick_flag("run", &args(&["qa", "--quick", "env", "--quick"]));
+        assert!(quick && stripped == args(&["qa", "env", "--quick"]), "got {stripped:?}");
+        assert_eq!(history::run_program(&stripped[1..]), Some("env"));
+        // What's started and what's counted are one: `--` ends run's
+        // options, and a program named "-report" is that program.
+        let (stripped, _) = strip_quick_flag("run", &args(&["qa", "--quick", "--", "-report", "now"]));
+        assert_eq!(history::run_argv(&stripped[1..]), args(&["-report", "now"]));
+        assert_eq!(history::run_program(&stripped[1..]), Some("-report"));
 
         // Astra #9: `run` child PID must NOT be extracted as screen session PID; `start`/`take` MUST.
         assert_eq!(answer_screen_gen("run", Some(&json!({"pid": 999999}))), (None, None));

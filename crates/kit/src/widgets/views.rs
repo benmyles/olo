@@ -432,13 +432,25 @@ pub struct EmptyState {
     icon: Option<SharedString>,
     detail: Option<SharedString>,
     action: Option<(SharedString, OnAction)>,
+    compact: bool,
 }
 
 type OnAction = std::rc::Rc<dyn Fn(&ClickEvent, &mut WindowCx)>;
 
 impl EmptyState {
     pub fn new(text: impl Into<SharedString>) -> EmptyState {
-        EmptyState { text: crate::words::of(text), icon: None, detail: None, action: None }
+        EmptyState { text: crate::words::of(text), icon: None, detail: None, action: None, compact: false }
+    }
+
+    /// For a short room (a window at its least height, or a third of a
+    /// screen high): no icon, and its button closer, so all of it fits.
+    /// Its whole height is about 157 points with a button and a detail
+    /// of three lines; compact, about 107. (Calendar at its least, 220
+    /// points high, cut the foot of its Add an Account… button: QA,
+    /// 2026-11-28.)
+    pub fn compact(mut self, compact: bool) -> Self {
+        self.compact = compact;
+        self
     }
 
     pub fn icon(mut self, name: impl Into<SharedString>) -> Self {
@@ -462,13 +474,12 @@ impl EmptyState {
 impl IntoElement for EmptyState {
     fn into_element(self) -> Element {
         let p = crate::theme::palette();
-        let dim = style::disabled_text(&p);
         let icon = self.icon.clone();
         // (As wide as it's given, 320 points at most, its lines wrapped
         // to that: one line each, a pane a third of a screen wide cut its
         // detail off.)
-        let mut col = div().w_full().max_w(px(320.0)).flex().flex_col().items_center().gap(px(m::TIGHT)).text_color(dim);
-        if let Some(name) = icon {
+        let mut col = div().w_full().max_w(px(320.0)).flex().flex_col().items_center().gap(px(m::TIGHT)).text_color(style::secondary_text(&p));
+        if let Some(name) = icon.filter(|_| !self.compact) {
             col = col.child(
                 canvas({
                     let name = name.clone();
@@ -482,15 +493,20 @@ impl IntoElement for EmptyState {
                 .mb(px(m::SPACING - m::TIGHT)),
             );
         }
-        // (Its line is what the view says: read, in the secondary colour;
-        // its detail quieter under it. Both were the disabled colour, and
-        // a view with nothing in it looked turned off.)
-        col = col.child(div().w_full().text_center().text_color(style::secondary_text(&p)).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(self.text.clone()));
+        // (Its line is what the view says: in the text's own colour,
+        // semibold; its detail under it in the secondary colour. Both
+        // were the disabled colour, and a view with nothing in it looked
+        // turned off; then its line secondary, barely brighter than its
+        // detail, and in dark the whole still looked off: Opus's review,
+        // 2026-11-28.)
+        col = col
+            .child(div().w_full().text_center().text_color(style::c(p.panel_text)).font_weight(FontWeight::SEMIBOLD).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(self.text.clone()));
         if let Some(d) = self.detail.clone() {
             col = col.child(div().w_full().text_center().text_size(px(style::DETAIL_SIZE)).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(d));
         }
         if let Some((label, f)) = self.action {
-            col = col.child(div().mt(px(m::SPACING * 1.5 - m::TIGHT)).child(super::Button::new(label).on_click(move |event, cx| f(event, cx))));
+            let above = if self.compact { 0.0 } else { m::SPACING * 1.5 - m::TIGHT };
+            col = col.child(div().mt(px(above)).child(super::Button::new(label).on_click(move |event, cx| f(event, cx))));
         }
         div().size_full().flex().items_center().justify_center().px(px(m::SPACING)).child(col)
     }

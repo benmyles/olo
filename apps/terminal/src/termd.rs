@@ -23,6 +23,8 @@ mod io;
 mod pty;
 mod replay;
 #[allow(dead_code)]
+mod said;
+#[allow(dead_code)]
 mod wire;
 
 use olo_sync::Mutex;
@@ -108,13 +110,24 @@ struct Listener {
     title: Arc<Mutex<Option<String>>>,
     attached: Attached,
     writer: mpsc::Sender<Vec<u8>>,
+    /// Its shell's, for where it says it is by its title (as Terminal's
+    /// own listener does: a newer title than its OSC 7, here only shown,
+    /// left the older replayed after it; Astra's and Neon's reviews,
+    /// 2026-11-28).
+    shared: Arc<io::Shared>,
 }
 
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
         match event {
-            Event::Title(t) => *self.title.lock().unwrap() = Some(t),
-            Event::ResetTitle => *self.title.lock().unwrap() = None,
+            Event::Title(t) => {
+                self.shared.said_title(Some(&t));
+                *self.title.lock().unwrap() = Some(t);
+            }
+            Event::ResetTitle => {
+                self.shared.said_title(None);
+                *self.title.lock().unwrap() = None;
+            }
             // The attached Terminal answers the program's questions; we do
             // while none is.
             Event::PtyWrite(text) if self.attached.lock().unwrap().is_none() => {
@@ -275,24 +288,42 @@ struct CarriedShell {
     replay: Vec<u8>,
 }
 
+/// What a Terminal attaching (or this daemon, back from an upgrade) is fed
+/// to have the shell as it is: its screen and title (`replay::snapshot`),
+/// then where it says it is, checked against its process now
+/// (`Said::report`), as OSC 7: fed as a replay (`Feeder::feed_replay`),
+/// kept whatever program is in front. (An idle shell that says so only
+/// kept its folder for Cmd+T until its next prompt.)
+fn replay_of<L: EventListener>(term: &mut Term<L>, title: Option<&str>, shared: &io::Shared) -> Vec<u8> {
+    let mut replay = replay::snapshot(term, title, &shared.images.lock().unwrap(), shared.reports.load(Ordering::Relaxed));
+    let cwd = shared.shell_cwd();
+    replay.extend(shared.said.lock().unwrap().report(cwd.as_deref()).unwrap_or_default());
+    replay
+}
+
 fn new_shell(st: &mut State, id: u64, pty: pty::Pty, grid: Grid, replay: Option<&[u8]>, title: Option<String>) {
     let pty::Pty { master, pid } = pty;
     let attached: Attached = Arc::new(Mutex::new(None));
     let title = Arc::new(Mutex::new(title));
     let writer = spawn_writer(&master);
     let output = Arc::new(AtomicU64::new(0));
-    let listener = Listener { title: title.clone(), attached: attached.clone(), writer: writer.clone() };
     let size = Size { cols: grid.cols.max(1) as usize, rows: grid.rows.max(1) as usize };
+    let shared = Arc::new(io::Shared::new((grid.cell_w, grid.cell_h), size, colors::Scheme::light()));
+    let listener = Listener { title: title.clone(), attached: attached.clone(), writer: writer.clone(), shared: shared.clone() };
     let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
     let mut term = Term::new(config, &size, listener);
-    let shared = Arc::new(io::Shared::new((grid.cell_w, grid.cell_h), size, colors::Scheme::light()));
+    // (Its shell and PTY known before anything's fed: what the shell says
+    // of where it is is kept only while it has the terminal, `said`, and
+    // the replay of a shell carried over an upgrade says it again. Hung
+    // up by signal, `hang_up`, never by closing this.)
+    shared.pid.store(pid, Ordering::Relaxed);
+    *shared.pty.lock().unwrap() = master.try_clone().ok();
     if let Some(replay) = replay {
-        // Images and all.
-        io::Feeder::default().feed(&mut term, &shared, replay, &mut Vec::new());
+        // Images and all; where the shell said it is, as it was.
+        io::Feeder::default().feed_replay(&mut term, &shared, replay, &mut Vec::new());
         shared.images.lock().unwrap().pack();
     }
     let term = Arc::new(FairMutex::new(term));
-    shared.pid.store(pid, Ordering::Relaxed);
     pty::resize(master.as_raw_fd(), window_size(grid));
     match master.try_clone() {
         Ok(fd) => spawn_reader(id, File::from(fd), pid, term.clone(), shared.clone(), attached.clone(), writer.clone(), output.clone(), st.events.clone()),
@@ -489,7 +520,7 @@ fn attach(st: &mut State, conn: u64, id: u64, grid: Grid) {
     shell.resize(grid);
     let mut term = shell.term.lock();
     let title = shell.title.lock().unwrap().clone();
-    let replay = replay::snapshot(&mut term, title.as_deref(), &shell.shared.images.lock().unwrap(), shell.shared.reports.load(Ordering::Relaxed));
+    let replay = replay_of(&mut term, title.as_deref(), &shell.shared);
     let alt = term.mode().contains(TermMode::ALT_SCREEN);
     let mut data = shell.pid.to_le_bytes().to_vec();
     data.extend_from_slice(&replay);
@@ -576,7 +607,15 @@ fn handle(st: &St, conn: u64, f: Frame) {
             let _ = s.events.send(Ev::Restart);
         }
         wire::SPAWN => {
-            let Some(spawn) = f.parse::<wire::Spawn>() else { return };
+            // (One that can't be read is answered, ended: unanswered, the
+            // tab waited for a shell for ever; Astra's review, 2026-11-28.)
+            let Some(spawn) = f.parse::<wire::Spawn>() else {
+                log(format!("shell {}: a spawn that can't be read", f.id));
+                if let Some(c) = s.clients.get(&conn) {
+                    c.outbox.send(Frame::json(wire::EXITED, f.id, &None::<i32>));
+                }
+                return;
+            };
             if s.shells.contains_key(&f.id) {
                 if let Some(c) = s.clients.get(&conn) {
                     c.outbox.send(Frame::json(wire::EXITED, f.id, &None::<i32>));
@@ -1241,7 +1280,7 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
     for (&id, sh) in &s.shells {
         let mut term = sh.term.lock();
         let title = sh.title.lock().unwrap().clone();
-        let replay = replay::snapshot(&mut term, title.as_deref(), &sh.shared.images.lock().unwrap(), sh.shared.reports.load(Ordering::Relaxed));
+        let replay = replay_of(&mut term, title.as_deref(), &sh.shared);
         carried.shells.push(CarriedShell { id, fd: sh.master.as_raw_fd(), pid: sh.pid, grid: sh.grid, title, replay });
     }
     let fds: Vec<RawFd> = carried.shells.iter().map(|c| c.fd).chain([carried.listener, carried.lock]).collect();
@@ -1695,5 +1734,147 @@ mod tests {
         // SAFETY: waiting on the child we just spawned.
         unsafe { libc::waitpid(p.pid, &mut status, 0) };
         assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0, "child failed with status {status}");
+    }
+
+    /// A shell in a PTY of its own for the tests below: `script` run by
+    /// sh in /var/tmp, in front; the daemon's side of it (its `Shared`,
+    /// and a Term with olo-termd's own listener, so its titles reach
+    /// `said` as they do there).
+    struct Shell {
+        pid: i32,
+        master: std::os::fd::OwnedFd,
+    }
+
+    impl Shell {
+        fn start(script: &str) -> Shell {
+            let cmd = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.to_owned()];
+            let size = alacritty_terminal::event::WindowSize { num_cols: 80, num_lines: 24, cell_width: 8, cell_height: 16 };
+            let env = vec![("PATH".to_owned(), "/usr/bin:/bin".to_owned()), ("HOME".to_owned(), "/var/tmp".to_owned())];
+            let p = super::pty::Pty::spawn(Some(&cmd), Some(std::path::Path::new("/var/tmp")), size, &env).expect("spawn");
+            let shell = Shell { pid: p.pid, master: p.master };
+            // (Once it's its own process group's, in front.)
+            let s = shell.shared();
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while !s.shell_in_front() {
+                assert!(std::time::Instant::now() < until, "the shell never had the terminal");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            shell
+        }
+
+        /// A `Shared` of this shell's (as olo-termd's, and as Terminal's
+        /// once attached).
+        fn shared(&self) -> super::io::Shared {
+            use std::sync::atomic::Ordering;
+            let s = super::io::Shared::new((8, 16), super::io::Size { cols: 80, rows: 24 }, super::colors::Scheme::light());
+            s.pid.store(self.pid, Ordering::Relaxed);
+            *s.pty.lock().unwrap() = self.master.try_clone().ok();
+            s
+        }
+
+        /// The daemon's emulator of it, with olo-termd's listener.
+        fn daemon(&self) -> (std::sync::Arc<super::io::Shared>, Term<super::Listener>) {
+            let shared = std::sync::Arc::new(self.shared());
+            let (writer, _) = std::sync::mpsc::channel();
+            let listener = super::Listener { title: Default::default(), attached: Default::default(), writer, shared: shared.clone() };
+            (shared, Term::new(Config::default(), &super::io::Size { cols: 80, rows: 24 }, listener))
+        }
+
+        /// What a Terminal attaching makes of the daemon's replay: where
+        /// it then has the shell, by its word.
+        fn attached(&self, replay: &[u8], client: &super::io::Shared) -> Option<std::path::PathBuf> {
+            let mut theirs = Term::new(Config::default(), &super::io::Size { cols: 80, rows: 24 }, VoidListener);
+            super::io::Feeder::default().feed_replay(&mut theirs, client, replay, &mut Vec::new());
+            let now = client.shell_cwd();
+            client.said.lock().unwrap().followed(now.as_deref())
+        }
+    }
+
+    impl Drop for Shell {
+        fn drop(&mut self) {
+            // SAFETY: ending and reaping the child we spawned.
+            unsafe {
+                libc::kill(self.pid, libc::SIGKILL);
+                libc::waitpid(self.pid, std::ptr::null_mut(), 0);
+            }
+        }
+    }
+
+    /// A title of this computer and user saying `dir`, as a shell's prompt
+    /// sets it.
+    fn title_of(dir: &str) -> Vec<u8> {
+        let here = super::said::here();
+        format!("\x1b]2;{}@{}:{dir}\x07", here.user, here.host).into_bytes()
+    }
+
+    /// What a shell says of where it is by OSC 7, while it has the
+    /// terminal, olo-termd keeps, and its replay says again to a Terminal
+    /// attaching (`replay_of`, as attach and upgrade make it): there it
+    /// has its folder again with no new prompt.
+    #[test]
+    fn an_osc_7_folder_survives_a_reattach() {
+        let shell = Shell::start("exec sleep 10");
+        let (daemon, mut term) = shell.daemon();
+        super::io::Feeder::default().feed(&mut term, &daemon, b"\x1b]7;file:///var/tmp/olo-said\x07$ ", &mut Vec::new());
+        let replay = super::replay_of(&mut term, None, &daemon);
+        assert_eq!(shell.attached(&replay, &shell.shared()), Some(std::path::PathBuf::from("/var/tmp/olo-said")));
+    }
+
+    /// A newer title than its OSC 7 (a brush prompt saying it by both, then
+    /// by its title): the replay says where it is now, never the older.
+    #[test]
+    fn a_newer_title_is_what_a_reattach_has() {
+        let shell = Shell::start("exec sleep 10");
+        if super::said::here().user.is_empty() || super::said::here().host.is_empty() {
+            return;
+        }
+        let (daemon, mut term) = shell.daemon();
+        let mut feeder = super::io::Feeder::default();
+        feeder.feed(&mut term, &daemon, b"\x1b]7;file:///var/tmp/olo-a\x07$ ", &mut Vec::new());
+        feeder.feed(&mut term, &daemon, &title_of("/var/tmp/olo-b"), &mut Vec::new());
+        let title = Some(format!("{}@{}:/var/tmp/olo-b", super::said::here().user, super::said::here().host));
+        let replay = super::replay_of(&mut term, title.as_deref(), &daemon);
+        assert_eq!(shell.attached(&replay, &shell.shared()), Some(std::path::PathBuf::from("/var/tmp/olo-b")));
+    }
+
+    /// A shell whose process follows its `cd` (bash's), moved since it
+    /// last said where it is: nothing replayed of it; the Terminal
+    /// attaching reads its process instead.
+    #[test]
+    fn a_moved_shell_has_no_old_word_replayed() {
+        let shell = Shell::start("sleep 0.3; cd /; exec sleep 10");
+        let (daemon, mut term) = shell.daemon();
+        super::io::Feeder::default().feed(&mut term, &daemon, b"\x1b]7;file:///var/tmp/olo-old\x07$ ", &mut Vec::new());
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while daemon.shell_cwd().as_deref() != Some(std::path::Path::new("/")) {
+            assert!(std::time::Instant::now() < until, "the shell never moved");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let replay = super::replay_of(&mut term, None, &daemon);
+        assert!(!replay.windows(4).any(|w| w == b"\x1b]7;"), "no folder said again");
+        assert_eq!(shell.attached(&replay, &shell.shared()), None);
+    }
+
+    /// A program in front of the shell as Terminal attaches (an editor):
+    /// the replay's folder is the daemon's word for the shell, kept all
+    /// the same; fed as live output, it would be the program's, dropped.
+    #[test]
+    fn a_reattach_with_a_program_in_front_keeps_the_shells_folder() {
+        use std::sync::atomic::Ordering;
+        let shell = Shell::start("exec sleep 10");
+        let (daemon, mut term) = shell.daemon();
+        super::io::Feeder::default().feed(&mut term, &daemon, b"\x1b]7;file:///var/tmp/olo-work\x07$ ", &mut Vec::new());
+        let replay = super::replay_of(&mut term, None, &daemon);
+        // (The client's shell not the one in front: its pid another's,
+        // this test's, whose folder it reads, as a program's in front.)
+        let client = shell.shared();
+        client.pid.store(std::process::id() as i32, Ordering::Relaxed);
+        assert!(!client.shell_in_front());
+        let mut theirs = Term::new(Config::default(), &super::io::Size { cols: 80, rows: 24 }, VoidListener);
+        super::io::Feeder::default().feed(&mut theirs, &client, &replay, &mut Vec::new());
+        assert!(!client.said.lock().unwrap().has_word(), "live output of a program in front: not the shell's");
+        let now = client.shell_cwd();
+        super::io::Feeder::default().feed_replay(&mut theirs, &client, &replay, &mut Vec::new());
+        assert_eq!(client.said.lock().unwrap().followed(now.as_deref()), Some(std::path::PathBuf::from("/var/tmp/olo-work")));
     }
 }

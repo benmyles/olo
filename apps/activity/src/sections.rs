@@ -2011,17 +2011,20 @@ mod tests {
 
     #[test]
     fn cards_and_facts_take_the_row_in_a_vertical_third() {
-        for viewport in [407.0, crate::MIN_WIDTH] {
+        // (A vertical third of the smallest screen, 407 points of
+        // content; beside Deskbar, 349; and the window's least.)
+        for viewport in [407.0, 349.0, crate::MIN_WIDTH] {
             let (_, section) = crate::section_layout(viewport);
             let card = section - SCROLL_BAR - 2.0 * GAP;
             let inner = card - 2.0 * m::CARD_INSET;
             assert_eq!(columns(card, 6, 250.0, 3), [card]); // Overview
             assert_eq!(columns(card, 2, 300.0, 2), [card]); // Memory and GPU
             assert_eq!(columns(inner, 2, FACTS_LEAST, 2), [inner]);
+            // (Two minis across where they fit, else one.)
             let minis = columns(inner, 8, MINI_MIN_WIDTH, 8);
-            assert_eq!(minis.len(), 2);
+            assert_eq!(minis.len(), if viewport >= 407.0 { 2 } else { 1 }, "{viewport}");
             assert!(minis.iter().all(|w| *w >= MINI_MIN_WIDTH));
-            assert_eq!(minis.iter().sum::<f32>() + GAP, inner);
+            assert_eq!(minis.iter().sum::<f32>() + GAP * (minis.len() - 1) as f32, inner);
         }
     }
 }
