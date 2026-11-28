@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::{
-    clients::{claude_dir, codex_dir},
+    clients::{agy_dir, claude_dir, codex_dir},
     model::{Credential, Provider},
     upstream::{jwt_claims, jwt_exp, timestamp},
 };
@@ -92,11 +92,31 @@ pub fn read_codex(dir: &Path) -> Result<Found, String> {
     })
 }
 
+/// Antigravity's sign-in in `dir` (`$HOME/.gemini/antigravity-cli`).
+pub fn read_agy(dir: &Path) -> Result<Found, String> {
+    let v = read(&dir.join("antigravity-oauth-token"))?;
+    let t = &v["token"];
+    let access = t["access_token"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or("Antigravity has no OAuth access token there: sign in first.")?;
+    Ok(Found {
+        provider: Provider::Antigravity,
+        credential: Credential {
+            access: access.to_owned(),
+            refresh: t["refresh_token"].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned),
+            expires_at: timestamp(&t["expiry"]),
+            account_id: None,
+        },
+        email: v["id_token_email"].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned),
+        plan: None,
+        org: None,
+    })
+}
+
 /// The sign-in the official client keeps on this computer.
 pub fn this_computer(p: Provider) -> Result<Found, String> {
     match p {
         Provider::Claude => read_claude(&claude_dir()),
         Provider::Codex => read_codex(&codex_dir()),
+        Provider::Antigravity => read_agy(&agy_dir()),
     }
 }
 
@@ -117,6 +137,7 @@ pub fn sign_in_command(p: Provider, dir: &Path) -> Vec<String> {
     match p {
         Provider::Claude => vec!["/usr/bin/env".into(), format!("CLAUDE_CONFIG_DIR={d}"), "claude".into(), "auth".into(), "login".into()],
         Provider::Codex => vec!["/usr/bin/env".into(), format!("CODEX_HOME={d}"), "codex".into(), "-c".into(), "cli_auth_credentials_store=\"file\"".into(), "login".into()],
+        Provider::Antigravity => vec!["/usr/bin/env".into(), format!("HOME={d}"), format!("XDG_CONFIG_HOME={d}/.config"), "DBUS_SESSION_BUS_ADDRESS=".into(), "agy".into()],
     }
 }
 
@@ -125,6 +146,7 @@ pub fn read_separate(p: Provider, dir: &Path) -> Result<Found, String> {
     match p {
         Provider::Claude => read_claude(dir),
         Provider::Codex => read_codex(dir),
+        Provider::Antigravity => read_agy(&dir.join(".gemini/antigravity-cli")),
     }
 }
 
@@ -157,5 +179,23 @@ mod tests {
         let f = read_codex(&x).unwrap();
         assert_eq!((f.credential.expires_at, f.credential.account_id.as_deref(), f.plan.as_deref()), (Some(1_800_000_000), Some("acc"), Some("pro")));
         assert!(read_codex(&c).is_err());
+
+        // Antigravity token file + separate sign-in command and reader.
+        let agy_home = dir.path().join("agy-home");
+        let agy_dir = agy_home.join(".gemini/antigravity-cli");
+        std::fs::create_dir_all(&agy_dir).unwrap();
+        std::fs::write(
+            agy_dir.join("antigravity-oauth-token"),
+            r#"{"token":{"access_token":"ya29.tok","token_type":"Bearer","refresh_token":"1//0ref","expiry":"2026-12-01T00:00:00Z"},"auth_method":"consumer","id_token_email":"dev@example.com"}"#,
+        )
+        .unwrap();
+        let fa = read_separate(Provider::Antigravity, &agy_home).unwrap();
+        assert_eq!(
+            (fa.provider, fa.credential.access.as_str(), fa.credential.refresh.as_deref(), fa.email.as_deref(), fa.name().as_str()),
+            (Provider::Antigravity, "ya29.tok", Some("1//0ref"), Some("dev@example.com"), "dev")
+        );
+        assert!(fa.credential.expires_at.is_some());
+        let cmd = sign_in_command(Provider::Antigravity, &agy_home);
+        assert!(cmd.iter().any(|a| a == "DBUS_SESSION_BUS_ADDRESS=") && cmd.last().map(String::as_str) == Some("agy"), "{cmd:?}");
     }
 }

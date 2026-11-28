@@ -2031,6 +2031,12 @@ impl Service {
             }
         }
         let path_prepend = inherited_path_prepend(&spec.desktop, &req.inherit, explicit_path);
+        // Route non-interactive `olo agent start --cli agy` children through
+        // Token Pool when `pool-agy.env` exists and the caller did not
+        // explicitly override or unset `HTTPS_PROXY` (bounded off-worker read).
+        if cli == AgentCli::Agy {
+            inject_pool_agy_env_async(&mut launch.env, &launch.unset_env).await;
+        }
         let argv = launch.wrap_with_env_isolation(raw_argv.clone());
         let mut opts = json!({ "command": argv, "interactive": true, "exit": { "on_completion": spec.close_on_exit } });
         if let Some(dir) = &cwd {
@@ -5204,5 +5210,187 @@ mod ops_tests {
         assert!(input_field_is_empty_or_placeholder(&agy_placeholder));
         let agy_user_draft = format!("{rule}\n> Accept-edits mode note: fix bug\n{rule}\n? for shortcuts\n");
         assert!(!input_field_is_empty_or_placeholder(&agy_user_draft));
+    }
+}
+
+/// Resolve the effective `<config>/olo/pool-agy.env` path for a child launch,
+/// strictly honoring `launch.env` and `launch.unset_env`: any key present in
+/// `launch.env` (even if empty or relative) shadows `agentd`'s own environment
+/// so setting `XDG_CONFIG_HOME=""` or `XDG_CONFIG_HOME=relative` falls back to
+/// the child's effective `$HOME/.config` instead of leaking parent `agentd`'s
+/// `XDG_CONFIG_HOME`.
+fn resolve_pool_agy_env_path(env: &[(String, String)], unset_env: &[String]) -> Option<std::path::PathBuf> {
+    let has_ci = |key: &str| env.iter().any(|(k, _)| k.eq_ignore_ascii_case(key));
+    let unset_ci = |key: &str| unset_env.iter().any(|k| k.eq_ignore_ascii_case(key));
+    if has_ci("HTTPS_PROXY") || unset_ci("HTTPS_PROXY") {
+        return None;
+    }
+    let effective = |key: &str| -> Option<std::path::PathBuf> {
+        if let Some((_, v)) = env.iter().rev().find(|(k, _)| k == key) {
+            let p = std::path::PathBuf::from(v);
+            return p.is_absolute().then_some(p);
+        }
+        if unset_ci(key) {
+            return None;
+        }
+        std::env::var_os(key).map(std::path::PathBuf::from).filter(|p| p.is_absolute())
+    };
+    let config_dir = effective("XDG_CONFIG_HOME").or_else(|| effective("HOME").map(|h| h.join(".config")))?;
+    Some(config_dir.join("olo/pool-agy.env"))
+}
+
+fn unquote_pool_env(raw: &str) -> String {
+    let v = raw.trim();
+    if v.len() >= 2 && v.starts_with('\'') && v.ends_with('\'') {
+        v[1..v.len() - 1].replace(r"'\''", "'")
+    } else if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+        v[1..v.len() - 1].replace(r#"\""#, "\"").replace(r"\\", r"\")
+    } else {
+        v.to_owned()
+    }
+}
+
+/// Read a regular `pool-agy.env` file safely (never blocking on a FIFO and
+/// capping read size at 16 KiB).
+fn read_regular_env_file(path: &std::path::Path) -> Option<String> {
+    use std::io::Read as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let mut f = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK).open(path).ok()?;
+    let meta = f.metadata().ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mut buf = Vec::new();
+    let _ = f.by_ref().take(16 * 1024).read_to_end(&mut buf).ok()?;
+    String::from_utf8(buf).ok()
+}
+
+fn apply_pool_agy_env_text(env: &mut Vec<(String, String)>, unset_env: &[String], text: &str) {
+    let has_ci = |list: &[(String, String)], key: &str| list.iter().any(|(k, _)| k.eq_ignore_ascii_case(key));
+    let unset_ci = |key: &str| unset_env.iter().any(|k| k.eq_ignore_ascii_case(key));
+    for raw in text.lines() {
+        let line = raw.trim();
+        let line = line.strip_prefix("export ").unwrap_or(line).trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else { continue };
+        let k = k.trim();
+        let v = unquote_pool_env(v);
+        if !matches!(k, "HTTPS_PROXY" | "AGY_CA_CERT" | "NO_PROXY") || v.is_empty() {
+            continue;
+        }
+        if !has_ci(env, k) && !unset_ci(k) {
+            env.push((k.to_owned(), v));
+        }
+    }
+}
+
+/// Async launch-path helper: reads `pool-agy.env` on a blocking worker with a
+/// bounded 2-second timeout and at most ONE in-flight blocking read per path
+/// so a stalled NFS/FUSE mount can never accumulate blocking workers across
+/// repeated agent launches.
+async fn inject_pool_agy_env_async(env: &mut Vec<(String, String)>, unset_env: &[String]) {
+    static IN_FLIGHT: std::sync::OnceLock<std::sync::Mutex<HashSet<PathBuf>>> = std::sync::OnceLock::new();
+    struct Permit(PathBuf);
+    impl Drop for Permit {
+        fn drop(&mut self) {
+            if let Some(set) = IN_FLIGHT.get() {
+                set.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+            }
+        }
+    }
+    let Some(path) = resolve_pool_agy_env_path(env, unset_env) else { return };
+    let set = IN_FLIGHT.get_or_init(|| std::sync::Mutex::new(HashSet::new()));
+    if !set.lock().unwrap_or_else(|e| e.into_inner()).insert(path.clone()) {
+        return;
+    }
+    let permit = Permit(path.clone());
+    let Ok(Ok(Some(text))) = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            read_regular_env_file(&path)
+        }),
+    )
+    .await
+    else {
+        return;
+    };
+    apply_pool_agy_env_text(env, unset_env, &text);
+}
+
+#[cfg(test)]
+fn inject_pool_agy_env(env: &mut Vec<(String, String)>, unset_env: &[String]) {
+    let Some(path) = resolve_pool_agy_env_path(env, unset_env) else { return };
+    let Some(text) = read_regular_env_file(&path) else { return };
+    apply_pool_agy_env_text(env, unset_env, &text);
+}
+
+#[cfg(test)]
+mod pool_agy_env_tests {
+    use super::{inject_pool_agy_env, resolve_pool_agy_env_path};
+
+    struct TempDir(std::path::PathBuf);
+    impl TempDir {
+        fn new(prefix: &str) -> Self {
+            let p = std::path::PathBuf::from("/var/tmp").join(format!("{prefix}{}-{}", std::process::id(), uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn injects_pool_agy_env_and_respects_overrides() {
+        let dir = TempDir::new("olo-pool-agy-env-");
+        let cfg = dir.path().join("O'Brien cfg");
+        std::fs::create_dir_all(cfg.join("olo")).unwrap();
+        std::fs::write(cfg.join("olo/pool-agy.env"), "# managed\nHTTPS_PROXY=http://127.0.0.1:17892\nAGY_CA_CERT='/var/tmp/O'\\''Brien/ca.pem'\nNO_PROXY=localhost,127.0.0.1,::1\nUNRELATED=ignored\n")
+            .unwrap();
+
+        // Injects managed keys from launch's XDG_CONFIG_HOME (unescaping POSIX single quotes).
+        let mut env = vec![("XDG_CONFIG_HOME".into(), cfg.display().to_string())];
+        inject_pool_agy_env(&mut env, &[]);
+        assert!(env.iter().any(|(k, v)| k == "HTTPS_PROXY" && v == "http://127.0.0.1:17892"));
+        assert!(env.iter().any(|(k, v)| k == "AGY_CA_CERT" && v == "/var/tmp/O'Brien/ca.pem"));
+        assert!(env.iter().any(|(k, v)| k == "NO_PROXY" && v == "localhost,127.0.0.1,::1"));
+        assert!(!env.iter().any(|(k, _)| k == "UNRELATED"));
+
+        // Explicit HTTPS_PROXY override prevents injection.
+        let mut overridden = vec![("XDG_CONFIG_HOME".into(), cfg.display().to_string()), ("https_proxy".into(), "http://127.0.0.1:9999".into())];
+        inject_pool_agy_env(&mut overridden, &[]);
+        assert!(!overridden.iter().any(|(k, _)| k == "AGY_CA_CERT"));
+
+        // Explicit unset of HTTPS_PROXY prevents injection.
+        let mut unset = vec![("XDG_CONFIG_HOME".into(), cfg.display().to_string())];
+        inject_pool_agy_env(&mut unset, &["HTTPS_PROXY".into()]);
+        assert!(!unset.iter().any(|(k, _)| k == "HTTPS_PROXY" || k == "AGY_CA_CERT"));
+
+        // Unsetting XDG_CONFIG_HOME + HOME resolves to None instead of inheriting host env.
+        assert!(resolve_pool_agy_env_path(&[], &["XDG_CONFIG_HOME".into(), "HOME".into()]).is_none());
+
+        // Isolated sandbox HOME without pool-agy.env does not fall back to host config.
+        let sandbox = dir.path().join("sandbox");
+        std::fs::create_dir_all(&sandbox).unwrap();
+        let mut isolated = vec![("HOME".into(), sandbox.display().to_string())];
+        inject_pool_agy_env(&mut isolated, &[]);
+        assert_eq!(isolated.len(), 1);
+
+        // Explicit empty or relative XDG_CONFIG_HOME in launch.env shadows
+        // agentd's own XDG_CONFIG_HOME and falls back to launch's HOME/.config.
+        let empty_xdg = vec![("XDG_CONFIG_HOME".into(), String::new()), ("HOME".into(), sandbox.display().to_string())];
+        assert_eq!(resolve_pool_agy_env_path(&empty_xdg, &[]), Some(sandbox.join(".config/olo/pool-agy.env")));
+        let rel_xdg = vec![("XDG_CONFIG_HOME".into(), "relative/cfg".into()), ("HOME".into(), sandbox.display().to_string())];
+        assert_eq!(resolve_pool_agy_env_path(&rel_xdg, &[]), Some(sandbox.join(".config/olo/pool-agy.env")));
+        let bad_both = vec![("XDG_CONFIG_HOME".into(), String::new()), ("HOME".into(), String::new())];
+        assert_eq!(resolve_pool_agy_env_path(&bad_both, &[]), None);
     }
 }

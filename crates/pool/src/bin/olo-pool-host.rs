@@ -46,7 +46,7 @@ fn main() -> std::process::ExitCode {
         }
         Some("put-back") => {
             let mut ok = true;
-            for p in [Provider::Claude, Provider::Codex] {
+            for p in Provider::ALL {
                 if let Err(e) = clients::put_back(p) {
                     eprintln!("olo-pool-host: {e}");
                     ok = false;
@@ -58,7 +58,9 @@ fn main() -> std::process::ExitCode {
         // its sealed accounts and their key among it.)
         Some("forget") => {
             let config = olo_xdg::config_dir();
-            for name in ["pool.vault", "pool.key", "pool.lock", "pool-ca.pem", "pool-ca.key", "pool-ca-bundle.pem", "pool-clients.json"] {
+            for name in
+                ["pool.vault", "pool.key", "pool.lock", "pool-ca.pem", "pool-ca.key", "pool-ca-bundle.pem", "pool-agy-ca.pem", "pool-agy-ca.key", "pool-clients.json", "pool-agy.env", "pool-agy.sh"]
+            {
                 let _ = std::fs::remove_file(config.join(name));
             }
             let _ = std::fs::remove_file(olo_xdg::state_dir().join("pool-activity.json"));
@@ -161,16 +163,62 @@ fn serve() -> std::process::ExitCode {
     // themselves send them (without a capture, Anthropic refuses cedar_ember
     // reads as the wrong surface).
     olo_token_pool::capture::follow(shared.clone(), std::time::Duration::from_secs(15));
-    // Claude Code and Codex on this host use the pool (their settings
-    // as they were are kept, for `put-back`), and Codex's daemon, which
-    // outlives its windows, is kept on them.
+    // Claude Code, Codex and Antigravity on this host use the pool (their
+    // settings as they were are kept, for `put-back`), and Codex's daemon,
+    // which outlives its windows, is kept on them.
+    // Wait for CA + TLS proxy initialization before pointing clients, and only
+    // point providers whose proxy path initialized cleanly (so a companion-CA
+    // write error never leaves Antigravity pointed at a missing cert while
+    // Claude Code and Codex keep working).
+    let ready = shared.wait_proxy_ready(std::time::Duration::from_secs(10));
     let proxy = intercept::port();
-    for p in [Provider::Claude, Provider::Codex] {
-        if !clients::pointed(p, proxy)
-            && let Err(e) = clients::set(p, true, proxy)
-        {
-            eprintln!("olo-pool-host: {e}");
+    let point_clients = |ready: &gateway::ProxyReady| {
+        if let Some(why) = &ready.agy_error {
+            eprintln!("olo-pool-host: Antigravity proxy unavailable: {why}");
         }
+        if ready.proxy_ok {
+            for p in Provider::ALL {
+                if p == Provider::Antigravity && !ready.agy_ok {
+                    continue;
+                }
+                if !clients::pointed(p, proxy)
+                    && let Err(e) = clients::set(p, true, proxy)
+                {
+                    eprintln!("olo-pool-host: {e}");
+                }
+            }
+        } else if let Some(why) = &ready.error {
+            eprintln!("olo-pool-host: proxy not ready; skipping client configuration: {why}");
+        }
+    };
+    if ready.finished {
+        point_clients(&ready);
+    } else {
+        // CA initialization is still running; finish client setup once it
+        // completes rather than abandoning configuration on slow startups.
+        let s = shared.clone();
+        let _ = std::thread::Builder::new().name("pool-host-clients".into()).spawn(move || {
+            let later = s.wait_proxy_ready(std::time::Duration::from_secs(300));
+            if later.finished {
+                if let Some(why) = &later.agy_error {
+                    eprintln!("olo-pool-host: Antigravity proxy unavailable: {why}");
+                }
+                if later.proxy_ok {
+                    for p in Provider::ALL {
+                        if p == Provider::Antigravity && !later.agy_ok {
+                            continue;
+                        }
+                        if !clients::pointed(p, proxy)
+                            && let Err(e) = clients::set(p, true, proxy)
+                        {
+                            eprintln!("olo-pool-host: {e}");
+                        }
+                    }
+                } else if let Some(why) = &later.error {
+                    eprintln!("olo-pool-host: proxy not ready; skipping client configuration: {why}");
+                }
+            }
+        });
     }
     codex_daemon::keep_following(std::time::Duration::from_secs(10));
     let mut got: libc::c_int = 0;

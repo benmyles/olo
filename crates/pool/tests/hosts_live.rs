@@ -32,6 +32,10 @@ use serde_json::json;
 #[ignore = "needs OLO_REX_TEST_HOST and OLO_POOL_HOST_BIN: the rig's far host"]
 async fn a_pool_is_put_on_a_host_kept_in_step_and_taken_away() {
     let (Ok(host), Ok(bin)) = (std::env::var("OLO_REX_TEST_HOST"), std::env::var("OLO_POOL_HOST_BIN")) else { return };
+    assert!(
+        std::env::var_os("XDG_CONFIG_HOME").is_some_and(|d| std::path::Path::new(&d).starts_with("/var/tmp")),
+        "hosts_live must run with XDG_CONFIG_HOME under /var/tmp so it never touches real ~/.config/olo"
+    );
     let provider: Option<u16> = std::env::var("OLO_POOL_TEST_UPSTREAM_PORT").ok().and_then(|p| p.parse().ok());
     let port = provider.unwrap_or(9);
     // A provider: each refresh token good once.
@@ -209,6 +213,10 @@ async fn a_pool_is_put_on_a_host_kept_in_step_and_taken_away() {
 #[ignore = "needs OLO_REX_TEST_HOST (the rig's far host) and a home that has never met it"]
 async fn a_host_never_met_is_said_plainly() {
     let Ok(host) = std::env::var("OLO_REX_TEST_HOST") else { return };
+    assert!(
+        std::env::var_os("XDG_CONFIG_HOME").is_some_and(|d| std::path::Path::new(&d).starts_with("/var/tmp")),
+        "hosts_live must run with XDG_CONFIG_HOME under /var/tmp so it never touches real ~/.config/olo"
+    );
     let desktop = Shared::new(Saved::default(), None, Upstreams::fake("http://127.0.0.1:9"), || {});
     desktop.set_runtime(tokio::runtime::Handle::current());
     let hosts = Hosts::start(desktop.clone(), vec![Build { machines: &["x86_64", "aarch64"], bytes: b"never sent" }], "test1", || {});

@@ -17,19 +17,37 @@ pub enum Provider {
     Claude,
     /// Codex, on a ChatGPT subscription.
     Codex,
+    /// Antigravity, on a Google subscription.
+    #[serde(rename = "agy", alias = "antigravity")]
+    Antigravity,
 }
 
 impl Provider {
+    /// Every provider the pool knows, in canonical display order.
+    pub const ALL: [Provider; 3] = [Provider::Claude, Provider::Codex, Provider::Antigravity];
+
+    /// Stable wire/protocol key ("claude", "codex", "agy").
+    pub fn key(self) -> &'static str {
+        match self {
+            Provider::Claude => "claude",
+            Provider::Codex => "codex",
+            Provider::Antigravity => "agy",
+        }
+    }
+
     pub fn client(self) -> &'static str {
         match self {
             Provider::Claude => "Claude Code",
             Provider::Codex => "Codex",
+            Provider::Antigravity => "Antigravity",
         }
     }
+
     pub fn parse(s: &str) -> Option<Provider> {
         match s.to_ascii_lowercase().as_str() {
             "claude" | "claude-code" | "anthropic" => Some(Provider::Claude),
             "codex" | "chatgpt" | "openai" => Some(Provider::Codex),
+            "agy" | "antigravity" | "gemini" | "google" => Some(Provider::Antigravity),
             _ => None,
         }
     }
@@ -43,7 +61,8 @@ pub struct Credential {
     pub refresh: Option<String>,
     /// When `access` stops working (seconds since the epoch), if known.
     pub expires_at: Option<i64>,
-    /// ChatGPT's account id, sent with Codex requests.
+    /// ChatGPT's account id (Codex) or Google Cloud Code's
+    /// `cloudaicompanionProject` (Antigravity).
     #[serde(default)]
     pub account_id: Option<String>,
 }
@@ -97,34 +116,43 @@ impl Window {
         if self.name == "seven_day_overage_included" {
             return family == "fable";
         }
-        self.models.is_empty() || self.models.iter().any(|m| m == family)
+        self.models.is_empty() || self.models.iter().any(|m| family_matches(m, family))
     }
     pub fn exhausted(&self, now: i64) -> bool {
         self.used >= 100.0 && self.resets_at.is_none_or(|r| r > now)
     }
 
     /// How long it runs, in seconds: by what it's called ("5-hour",
-    /// "Weekly", "GPT-5.3-Codex-Spark 5-hour", "3-day": Codex's primary
-    /// window is a week long on some plans), else by its name.
+    /// "Weekly", "Daily", "5h", "24h", "7d", "GPT-5.3-Codex-Spark 5-hour",
+    /// "3-day": Codex's primary window is a week long on some plans), else
+    /// by its name.
     pub fn length(&self) -> Option<i64> {
-        let label = self.label.as_str();
-        let words: Vec<&str> = label.split_whitespace().collect();
-        if words.contains(&"Weekly") {
+        let lower = self.label.to_ascii_lowercase();
+        let words: Vec<&str> = lower.split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == '/').filter(|w| !w.is_empty()).collect();
+        if words.contains(&"weekly") {
             return Some(7 * 86400);
         }
+        if words.contains(&"daily") {
+            return Some(86400);
+        }
         for w in &words {
-            if let Some(n) = w.strip_suffix("-hour").and_then(|n| n.parse::<i64>().ok()) {
+            if let Some(n) = w.strip_suffix("-hour").or_else(|| w.strip_suffix('h')).and_then(|n| n.parse::<i64>().ok()).filter(|&n| n > 0) {
                 return Some(n * 3600);
             }
-            if let Some(n) = w.strip_suffix("-day").and_then(|n| n.parse::<i64>().ok()) {
+            if let Some(n) = w.strip_suffix("-day").or_else(|| w.strip_suffix('d')).and_then(|n| n.parse::<i64>().ok()).filter(|&n| n > 0) {
                 return Some(n * 86400);
             }
+            if let Some(n) = w.strip_suffix("-week").or_else(|| w.strip_suffix('w')).and_then(|n| n.parse::<i64>().ok()).filter(|&n| n > 0) {
+                return Some(n * 7 * 86400);
+            }
         }
-        let n = self.name.as_str();
-        if n.contains("five_hour") || n.contains("primary") {
+        let n = self.name.to_ascii_lowercase();
+        if n.contains("five_hour") || n.contains("5h") || n.contains("primary") {
             Some(5 * 3600)
-        } else if n.contains("seven_day") || n.contains("secondary") {
+        } else if n.contains("seven_day") || n.contains("7d") || n.contains("weekly") || n.contains("secondary") {
             Some(7 * 86400)
+        } else if n.contains("daily") || n.contains("24h") || n.contains("1d") {
+            Some(86400)
         } else {
             None
         }
@@ -138,16 +166,23 @@ impl Window {
     }
 
     /// What claiming a reset of it at `at` gives back, in percent of its
-    /// quota, by how each provider's reset works. Claude's fills it up
-    /// again and leaves its reset as it was ("Your weekly limits still
-    /// reset on their usual day and time"): what's used then, as much of
-    /// it as there's time to use before it resets by itself, at the rate
+    /// quota, by how each provider's reset works. Claude's and Antigravity's
+    /// refill the bucket while keeping its reset cadence ("Your weekly limits
+    /// still reset on their usual day and time"): what's used then, as much
+    /// of it as there's time to use before it resets by itself, at the rate
     /// it's used. Codex's starts a new window at the next request and loses
     /// what was left (OpenAI's help: it "pulls your normal weekly allowance
     /// forward"): what's used then, less the part of the window that's
     /// gone. Either way next to nothing just before it resets by itself.
     pub fn reset_worth(&self, provider: Provider, now: i64, at: i64) -> f64 {
-        let (Some(reset), Some(len)) = (self.resets_at, self.length()) else { return 0.0 };
+        let Some(reset) = self.resets_at else { return 0.0 };
+        let Some(len) = self.length() else {
+            // Durationless Antigravity / Claude buckets (e.g. from
+            // `fetchAvailableModels` or buckets without a duration token)
+            // still qualify for an automatic refill when exhausted and not
+            // about to reset on their own.
+            return if matches!(provider, Provider::Claude | Provider::Antigravity) && self.used >= 100.0 && reset - at > RESET_MARGIN { 100.0 } else { 0.0 };
+        };
         if len <= 0 {
             return 0.0;
         }
@@ -163,7 +198,7 @@ impl Window {
             // left (Codex's review: "the gain is min(demand, 100) −
             // min(demand, remaining)"). Used up before it had a rate (in its
             // first minutes): all of it wanted.
-            Provider::Claude => {
+            Provider::Claude | Provider::Antigravity => {
                 let demand = match self.rate(now) {
                     Some(rate) => rate * (next - at) as f64,
                     None if used >= 100.0 => 100.0,
@@ -269,10 +304,17 @@ impl ResetCredit {
     /// Whether claiming it resets `w`: a Codex credit, any of the account's
     /// own windows; a Claude grant, the limits it `clears` (its week,
     /// `seven_day`; Fable's week, `seven_day_overage_included`; or by the
-    /// window's own name); one that doesn't say, the shared windows.
+    /// window's own name); an Antigravity banked reset, the `bucketIds` it
+    /// names; one that doesn't say, the shared windows.
     pub fn clears(&self, provider: Provider, w: &Window) -> bool {
         if provider == Provider::Codex || self.clears.is_empty() {
             return w.is_shared();
+        }
+        if provider == Provider::Antigravity {
+            // Match provider buckets strictly by exact `bucketId` so a 5-hour
+            // Gemini Pro reset never matches an exhausted weekly Gemini Pro
+            // bucket or an ambiguous synthetic `model:*` / `quota` observation.
+            return self.clears.contains(&w.name);
         }
         // (Fable's week: `seven_day_overage_included` is a weekly limit,
         // never a 5-hour one.)
@@ -286,6 +328,14 @@ impl ResetCredit {
     pub fn applies_to_family(&self, provider: Provider, family: &str) -> bool {
         if family.is_empty() || provider == Provider::Codex || self.clears.is_empty() || self.gives_back_weekly {
             return true;
+        }
+        if provider == Provider::Antigravity {
+            return self.clears.iter().any(|c| {
+                let scoped = infer_agy_models(c);
+                // Opaque/unmapped bucket IDs fall back to true so a valid
+                // banked reset is never wrongly skipped.
+                scoped.is_empty() || scoped.iter().any(|s| family_matches(s, family))
+            });
         }
         self.clears.iter().any(|c| {
             c == "five_hour"
@@ -307,10 +357,12 @@ impl ResetCredit {
 
     /// Usable once a limit it clears is reached: already usable now, or
     /// waiting for a limit (`use_requires_limit`, with `unavailable_reason`
-    /// either `"needs_limit"` or absent — matching Claude Code's `Gr()`,
-    /// while rejecting explicit blockers like `"cooldown"` or `"unavailable"`).
+    /// either `"needs_limit"`, Antigravity's `USAGE_BELOW_THRESHOLD`, or
+    /// absent — matching Claude Code's `Gr()`, while rejecting explicit
+    /// blockers like `"cooldown"` or `"unavailable"`).
     pub fn usable_at_limit(&self, now: i64) -> bool {
-        let ready = self.usable || (self.needs_limit && matches!(self.unavailable_reason.as_deref(), None | Some("needs_limit")));
+        let ready =
+            self.usable || (self.needs_limit && matches!(self.unavailable_reason.as_deref(), None | Some("needs_limit") | Some("QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD")));
         ready && self.remaining > 0 && self.starts_at.is_none_or(|s| s <= now) && self.expires_at.is_none_or(|e| e > now)
     }
 }
@@ -364,6 +416,16 @@ pub struct ResetCredit {
 pub struct PaidFor {
     pub until: i64,
     pub meter: String,
+    #[serde(default)]
+    pub at: i64,
+}
+
+impl PaidFor {
+    /// Timestamp when this paid mark was recorded, in milliseconds since the
+    /// Unix epoch (upgrading legacy second-resolution marks transparently).
+    pub fn at_ms(&self) -> i64 {
+        if self.at > 0 && self.at < 10_000_000_000 { self.at.saturating_mul(1000) } else { self.at }
+    }
 }
 
 /// Unexpired exhaustion evidence observed by a borrower pool for one of a
@@ -498,6 +560,14 @@ pub struct Account {
     /// The same, for one model family (its own meter ran out).
     #[serde(default)]
     pub model_cooldowns: BTreeMap<String, i64>,
+    /// Transient capacity / rate-limit backoff (separate from quota exhaustion
+    /// so claiming a quota reset never discards an active capacity cooldown).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity_until: Option<i64>,
+    /// Transient per-model capacity backoff (`MODEL_CAPACITY_EXHAUSTED`,
+    /// `RATE_LIMIT_EXCEEDED`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub capacity_cooldowns: BTreeMap<String, i64>,
     /// Its own allowance is out and its provider goes on answering it
     /// from usage credits (Claude's "overage": paid for beyond the
     /// plan), until the meter that ran out resets. Not chosen while
@@ -603,6 +673,12 @@ impl Account {
     /// `claim_for` ranks them (the first is its choice): one refused, the
     /// next.
     pub fn claims_for(&self, family: &str, now: i64) -> Vec<(&ResetCredit, f64)> {
+        // Never spend a quota reset on an account that is currently backed off
+        // for transient capacity / rate-limit pressure (it still wouldn't be
+        // eligible to serve the blocked request immediately).
+        if self.capacity_until.is_some_and(|c| c > now) || (!family.is_empty() && self.capacity_cooldowns.get(family).is_some_and(|&c| c > now)) {
+            return Vec::new();
+        }
         let out: Vec<&Window> = self.windows.iter().filter(|w| w.applies_to(family) && w.exhausted(now)).collect();
         if out.is_empty() {
             return Vec::new();
@@ -668,6 +744,8 @@ impl Account {
             windows: Vec::new(),
             cooldown_until: None,
             model_cooldowns: BTreeMap::new(),
+            capacity_until: None,
+            capacity_cooldowns: BTreeMap::new(),
             paid: None,
             model_paid: BTreeMap::new(),
             signed_out: None,
@@ -722,7 +800,7 @@ impl Account {
     /// It is answered from usage credits from now (what an answer's
     /// headers said: `upstream::Paid`), the account or `family` alone.
     pub fn now_paid(&mut self, family: &str, model_only: bool, until: i64, meter: &str) {
-        let mark = PaidFor { until, meter: meter.to_owned() };
+        let mark = PaidFor { until, meter: meter.to_owned(), at: now_ms() };
         if model_only {
             self.model_paid.insert(family.to_owned(), mark);
         } else {
@@ -735,9 +813,30 @@ impl Account {
     /// provider's own report (`reported`: the account's windows as just
     /// read) lists as not used up, an allowance come back (a reset
     /// credit claimed by another pool of the same accounts, or by the
-    /// person). A meter the report doesn't list is left to its time.
+    /// person). Synthetic Antigravity meters (`model:*`, `quota`) also settle
+    /// once real reported windows covering that scope are all healthy.
     pub fn paid_settled(&mut self, reported: Option<&[Window]>, now: i64) {
-        let holds = |p: &PaidFor| p.until > now && !reported.is_some_and(|ws| ws.iter().any(|w| w.name == p.meter && !w.exhausted(now)));
+        let holds = |p: &PaidFor| {
+            if p.until <= now {
+                return false;
+            }
+            let Some(ws) = reported else { return true };
+            if ws.iter().any(|w| w.name == p.meter && !w.exhausted(now)) {
+                return false;
+            }
+            if let Some(fam) = p.meter.strip_prefix("model:") {
+                let mut matching = ws.iter().filter(|w| !w.name.starts_with("model:") && w.name != "quota" && w.applies_to(fam)).peekable();
+                if matching.peek().is_some() && matching.all(|w| !w.exhausted(now)) {
+                    return false;
+                }
+            } else if p.meter == "quota" {
+                let mut real = ws.iter().filter(|w| !w.name.starts_with("model:") && w.name != "quota").peekable();
+                if real.peek().is_some() && real.all(|w| !w.exhausted(now)) {
+                    return false;
+                }
+            }
+            true
+        };
         if self.paid.as_ref().is_some_and(|p| !holds(p)) {
             self.paid = None;
         }
@@ -764,13 +863,94 @@ impl Account {
     }
 }
 
+/// Current Unix time in milliseconds (for sub-second ordering of resets,
+/// paid-credit marks, and pre-handover late observations).
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
 /// Today's date here, as the usage is kept by.
 pub fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// Whether a window's model scope (`scope`) covers a normalized request
+/// `family` (exact match, or broad Antigravity group scopes like `"claude"`,
+/// `"gemini"`, `"gemini-pro"`, `"gemini-flash"`, `"gemini-neon"`, `"gpt"`).
+pub fn family_matches(scope: &str, family: &str) -> bool {
+    if scope == family {
+        return true;
+    }
+    if family.is_empty() {
+        return false;
+    }
+    match scope {
+        "claude" => matches!(family, "opus" | "sonnet" | "haiku" | "fable") || family.starts_with("claude"),
+        "gemini" => family.starts_with("gemini"),
+        "gemini-pro" => family.starts_with("gemini") && family.contains("pro"),
+        "gemini-flash" => family.starts_with("gemini") && family.contains("flash"),
+        "gemini-neon" => family.starts_with("gemini") && family.contains("neon"),
+        "gpt" => family.starts_with("gpt"),
+        _ => false,
+    }
+}
+
+/// Infer scoped model families from an Antigravity bucket id or display name
+/// (empty if shared across all models).
+pub fn infer_agy_models(text: &str) -> Vec<String> {
+    let low = text.to_ascii_lowercase();
+    let tokens: Vec<&str> = low.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let has = |w: &str| tokens.contains(&w);
+    let mut out = Vec::new();
+    let mut push = |s: &str| {
+        if !out.iter().any(|x| x == s) {
+            out.push(s.to_owned());
+        }
+    };
+    let mut claude_sub = false;
+    for sub in ["opus", "sonnet", "haiku", "fable"] {
+        if has(sub) {
+            push(sub);
+            claude_sub = true;
+        }
+    }
+    if !claude_sub && (has("claude") || has("anthropic")) {
+        push("claude");
+    }
+    if has("gemini") {
+        let mut specific = false;
+        if has("neon") {
+            push("gemini-neon");
+            specific = true;
+        }
+        if has("pro") {
+            push("gemini-pro");
+            specific = true;
+        }
+        if has("flash") {
+            push("gemini-flash");
+            specific = true;
+        }
+        if !specific {
+            push("gemini");
+        }
+    } else {
+        if has("neon") {
+            push("gemini-neon");
+        }
+        if has("flash") {
+            push("gemini-flash");
+        }
+    }
+    if has("gpt") || has("openai") {
+        push("gpt");
+    }
+    out
+}
+
 /// A model's family, which per-model meters and stickiness go by:
-/// "claude-opus-5-5" is "opus", "gpt-6-astra[1m]" is "gpt-6-astra".
+/// "claude-opus-5-5" is "opus", "gpt-6-astra[1m]" is "gpt-6-astra",
+/// "gemini-4-neon-high" is "gemini-4-neon".
 pub fn model_family(model: &str) -> String {
     let m = model.to_ascii_lowercase();
     let m = m.split('[').next().unwrap_or("").trim();
@@ -781,10 +961,22 @@ pub fn model_family(model: &str) -> String {
     }
     // Drop a trailing date ("-20250929").
     let parts: Vec<&str> = m.split('-').collect();
-    match parts.split_last() {
+    let mut base = match parts.split_last() {
         Some((last, rest)) if !rest.is_empty() && last.len() == 8 && last.chars().all(|c| c.is_ascii_digit()) => rest.join("-"),
         _ => m.to_owned(),
+    };
+    // Drop trailing effort / preview suffixes on Gemini models so
+    // `gemini-4-neon-high` and `gemini-4-neon-low` share one family.
+    if base.starts_with("gemini") {
+        loop {
+            let trimmed = ["-high", "-low", "-medium", "-minimal", "-preview", "-thinking"].iter().find_map(|s| base.strip_suffix(s));
+            match trimmed {
+                Some(t) if !t.is_empty() => base = t.to_owned(),
+                _ => break,
+            }
+        }
     }
+    base
 }
 
 #[cfg(test)]
@@ -1017,5 +1209,66 @@ mod tests {
         assert_eq!(a.claim_for("opus", t).map(|(c, _)| c.id.as_str()), Some("weekly-only"));
         // Fable is also blocked by `seven_day_overage_included`, which `weekly-only` does not clear.
         assert!(a.claim_for("fable", t).is_none());
+    }
+
+    #[test]
+    fn antigravity_serde_families_windows_and_banked_resets() {
+        // Serde rename `"agy"` and alias `"antigravity"`.
+        assert_eq!(serde_json::to_string(&Provider::Antigravity).unwrap(), "\"agy\"");
+        assert_eq!(serde_json::from_str::<Provider>("\"agy\"").unwrap(), Provider::Antigravity);
+        assert_eq!(serde_json::from_str::<Provider>("\"antigravity\"").unwrap(), Provider::Antigravity);
+        assert_eq!(Provider::parse("agy"), Some(Provider::Antigravity));
+        assert_eq!(Provider::parse("antigravity"), Some(Provider::Antigravity));
+
+        // Effort/preview suffixes stripped for Gemini models.
+        assert_eq!(model_family("gemini-4-neon-high"), "gemini-4-neon");
+        assert_eq!(model_family("gemini-4-neon-low"), "gemini-4-neon");
+        assert_eq!(model_family("gemini-3.5-pro-preview-thinking"), "gemini-3.5-pro");
+        assert_eq!(model_family("gemini-3-flash-minimal"), "gemini-3-flash");
+
+        // Broad Antigravity model family matching & inference.
+        assert!(family_matches("gemini-pro", "gemini-3.5-pro"));
+        assert!(!family_matches("gemini-pro", "gemini-3-flash"));
+        assert!(family_matches("gemini-neon", "gemini-4-neon"));
+        assert!(family_matches("gemini", "gemini-4-neon"));
+        assert!(family_matches("claude", "opus"));
+        assert!(family_matches("gpt", "gpt-6.2-astra"));
+        assert_eq!(infer_agy_models("Gemini Pro 5-hour"), vec!["gemini-pro"]);
+        assert_eq!(infer_agy_models("Claude / GPT Weekly"), vec!["claude", "gpt"]);
+        assert!(infer_agy_models("5-hour").is_empty());
+
+        // Window lengths & refill reset_worth for Antigravity.
+        let t = 1_000_000;
+        let w5 = Window { name: "g_gemini_pro:5h".into(), label: "Gemini Pro 5-hour".into(), used: 100.0, resets_at: Some(t + 4 * H), models: vec!["gemini-pro".into()] };
+        assert_eq!(w5.length(), Some(5 * H));
+        assert!(w5.applies_to("gemini-3.5-pro") && !w5.applies_to("gemini-3-flash"));
+        assert!((w5.reset_worth(Provider::Antigravity, t, t) - 100.0).abs() < 0.01);
+        let w24 = Window { name: "g_daily:24h".into(), label: "Daily".into(), used: 80.0, resets_at: Some(t + 20 * H), models: vec![] };
+        assert_eq!(w24.length(), Some(24 * H));
+
+        // Banked quota resets: threshold-gated `USAGE_BELOW_THRESHOLD` becomes usable at limit,
+        // and scoped banked resets clear matching buckets/models only.
+        let mut a = Account::new("agy-1".into(), "Google One".into(), Provider::Antigravity);
+        a.windows = vec![w5.clone()];
+        let gated = ResetCredit {
+            id: "g_gemini_pro:5h".into(),
+            expires_at: Some(t + 14 * 24 * H),
+            remaining: 2,
+            usable: false,
+            needs_limit: true,
+            unavailable_reason: Some("QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD".into()),
+            clears: vec!["g_gemini_pro:5h".into()],
+            ..Default::default()
+        };
+        let other_scope = ResetCredit { id: "g_claude:7d".into(), expires_at: Some(t + 7 * 24 * H), remaining: 1, usable: true, clears: vec!["g_claude:7d".into()], ..Default::default() };
+        assert!(!gated.usable_at(t));
+        assert!(gated.usable_at_limit(t));
+        assert!(gated.clears(Provider::Antigravity, &w5));
+        assert!(!other_scope.clears(Provider::Antigravity, &w5));
+        assert!(gated.applies_to_family(Provider::Antigravity, "gemini-3.5-pro"));
+        assert!(!gated.applies_to_family(Provider::Antigravity, "opus"));
+        a.credits = vec![other_scope, gated];
+        assert_eq!(a.claim_for("gemini-3.5-pro", t).map(|(c, _)| c.id.as_str()), Some("g_gemini_pro:5h"));
+        assert!(a.claim_for("opus", t).is_none());
     }
 }

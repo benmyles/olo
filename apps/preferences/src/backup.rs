@@ -89,10 +89,24 @@ const SECRETS: &str = "secrets.json";
 const WIFI: &str = "wifi.json";
 /// Automatic backups made before an import that are kept.
 const KEEP: usize = 5;
-/// Never in a backup, nor put back from one: the automatic backups, and
+/// Never in a backup, nor put back from one: the automatic backups,
 /// Agent Screens' own homes (an agent's desktop on this computer: their
-/// apps' settings and files, gigabytes of them).
-const LEFT_OUT: &[&str] = &["state/backups", "state/screens"];
+/// apps' settings and files, gigabytes of them), and Token Pool's
+/// machine-local CA private keys / certificates / lock / shell helper files
+/// (each machine generates and manages its own local proxy trust material).
+const LEFT_OUT: &[&str] = &[
+    "state/backups",
+    "state/screens",
+    "config/pool-ca.key",
+    "config/pool-agy-ca.key",
+    "config/pool-ca.pem",
+    "config/pool-agy-ca.pem",
+    "config/pool-ca-bundle.pem",
+    "config/pool-ca.lock",
+    "config/pool-clients.lock",
+    "config/pool-agy.env",
+    "config/pool-agy.sh",
+];
 /// Beside the Token Pool's store, from a backup imported on another
 /// computer: the pool pauses its accounts as it next opens
 /// (`olo_token_pool::store::ARRIVED`).
@@ -2455,5 +2469,42 @@ mod tests {
         assert!(said[0].contains("“0000:01:00.0”") && said[0].ends_with("the GPU it started on instead."), "{said:?}");
         // All of it here: nothing to change.
         assert!(widgets_here(&serde_json::to_vec(&s).unwrap(), &here).is_none());
+    }
+
+    /// Token Pool's machine-local CA keys/certs/locks/shell helpers must never
+    /// be exported into a backup (so CA private keys cannot leak into open
+    /// backups or overwrite another machine's proxy trust), while pool.vault
+    /// and pool.json are still backed up.
+    #[test]
+    fn token_pool_ca_keys_and_local_helpers_are_left_out_of_backups() {
+        let (base, roots) = dirs("pool-ca-left-out");
+        std::fs::create_dir_all(&roots[0].1).unwrap();
+        std::fs::write(roots[0].1.join("pool.json"), b"{}").unwrap();
+        std::fs::write(roots[0].1.join("pool-ca.key"), b"PRIVATE-KEY").unwrap();
+        std::fs::write(roots[0].1.join("pool-agy-ca.key"), b"AGY-PRIVATE-KEY").unwrap();
+        std::fs::write(roots[0].1.join("pool-ca.pem"), b"CERT").unwrap();
+        std::fs::write(roots[0].1.join("pool-agy-ca.pem"), b"AGY-CERT").unwrap();
+        std::fs::write(roots[0].1.join("pool-ca-bundle.pem"), b"BUNDLE").unwrap();
+        std::fs::write(roots[0].1.join("pool-ca.lock"), b"").unwrap();
+        std::fs::write(roots[0].1.join("pool-clients.lock"), b"").unwrap();
+        std::fs::write(roots[0].1.join("pool-agy.env"), b"HTTPS_PROXY=x\n").unwrap();
+        std::fs::write(roots[0].1.join("pool-agy.sh"), b"agy() { :; }\n").unwrap();
+
+        let collected: Vec<String> = collect(&roots).into_iter().map(|(n, _)| n).collect();
+        assert!(collected.iter().any(|n| n == "config/pool.json"), "pool.json should be backed up: {collected:?}");
+        for forbidden in [
+            "config/pool-ca.key",
+            "config/pool-agy-ca.key",
+            "config/pool-ca.pem",
+            "config/pool-agy-ca.pem",
+            "config/pool-ca-bundle.pem",
+            "config/pool-ca.lock",
+            "config/pool-clients.lock",
+            "config/pool-agy.env",
+            "config/pool-agy.sh",
+        ] {
+            assert!(!collected.iter().any(|n| n == forbidden), "{forbidden} must never be backed up: {collected:?}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

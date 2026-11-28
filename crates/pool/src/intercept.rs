@@ -52,6 +52,14 @@ pub fn url(port: u16) -> String {
 const MAX_HEAD: usize = 16 << 10;
 
 /// What the pool serves on a provider's host: the model requests, as
+/// Whether `path` is one of Antigravity's four model-generation operations
+/// that the pool routes and authorizes (reused by `/agy/{*rest}` so auxiliary
+/// operations like `claimBankedQuotaReset` can never bypass keeper gates).
+pub fn is_agy_generation_path(path: &str) -> bool {
+    let normalized = path.trim_start_matches('/');
+    matches!(normalized, "v1internal:streamGenerateContent" | "v1internal:generateContent" | "v1internal:streamGenerateChat" | "v1internal:generateChat")
+}
+
 /// (provider, the path after the gateway's base, so `proxy` can build the
 /// upstream address the same way).
 pub fn pooled(host: &str, path: &str) -> Option<(Provider, String)> {
@@ -64,6 +72,7 @@ pub fn pooled(host: &str, path: &str) -> Option<(Provider, String)> {
             let rest = path.strip_prefix("/backend-api/codex/")?;
             (!rest.is_empty()).then(|| (Provider::Codex, rest.to_owned()))
         }
+        "daily-cloudcode-pa.googleapis.com" | "cloudcode-pa.googleapis.com" => is_agy_generation_path(path).then(|| (Provider::Antigravity, path.trim_start_matches('/').to_owned())),
         _ => None,
     }
 }
@@ -89,6 +98,7 @@ pub async fn serve(shared: Arc<Shared>, authority: Arc<Authority>, port: u16, se
     let listener = crate::drain::listen(port).and_then(TcpListener::from_std).map_err(|e| format!("Can’t listen on {addr}: {e}"))?;
     let bound = listener.local_addr().map_err(|e| e.to_string())?;
     shared.drain.keep(bound.port(), &listener);
+    let has_agy = authority.has_agy();
     let tls = tokio_rustls::TlsAcceptor::from(authority.server_config()?);
     tokio::spawn(async move {
         let mut stop = shared.drain.watch();
@@ -107,7 +117,7 @@ pub async fn serve(shared: Arc<Shared>, authority: Arc<Authority>, port: u16, se
             let Ok((stream, peer)) = accepted else { continue };
             let (shared, tls, serving) = (shared.clone(), tls.clone(), serving.clone());
             tokio::spawn(async move {
-                if let Err(e) = connection(stream, peer, shared, tls, serving, who).await {
+                if let Err(e) = connection(stream, peer, shared, tls, serving, who, has_agy).await {
                     tracing::debug!("pool proxy: {e}");
                 }
             });
@@ -116,9 +126,16 @@ pub async fn serve(shared: Arc<Shared>, authority: Arc<Authority>, port: u16, se
     Ok(bound)
 }
 
+/// Whether the proxy intercepts TLS for `host` given whether the active
+/// certificate authority covers Antigravity hosts (`has_agy`).
+pub fn intercepts_host(host: &str, has_agy: bool) -> bool {
+    let hosts = if has_agy { crate::authority::HOSTS } else { crate::authority::LEGACY_HOSTS };
+    hosts.contains(&host)
+}
+
 /// One client connection: a CONNECT, opened (a provider's host, for its
 /// client) or tunnelled (anything else).
-async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>, tls: tokio_rustls::TlsAcceptor, serving: Serving, who: Who) -> Result<(), String> {
+async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>, tls: tokio_rustls::TlsAcceptor, serving: Serving, who: Who, has_agy: bool) -> Result<(), String> {
     let _ = client.set_nodelay(true);
     let (head, rest) = read_head(&mut client).await?;
     let text = String::from_utf8_lossy(&head);
@@ -130,7 +147,7 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
     }
     let (host, port) = target.rsplit_once(':').map(|(h, p)| (h.trim_matches(['[', ']']).to_ascii_lowercase(), p.parse::<u16>().unwrap_or(443))).unwrap_or((target.to_ascii_lowercase(), 443));
     let provider = provider_of(&host);
-    let mut opened = port == 443 && crate::authority::HOSTS.contains(&host.as_str()) && serving(provider);
+    let mut opened = port == 443 && intercepts_host(&host, has_agy) && serving(provider);
     if opened && who == Who::Clients {
         // (Read from /proc, off the async threads.)
         let local = client.local_addr().map_err(|e| e.to_string())?;
@@ -286,7 +303,11 @@ impl tokio::io::AsyncWrite for Prefixed {
 }
 
 fn provider_of(host: &str) -> Provider {
-    if host == "chatgpt.com" { Provider::Codex } else { Provider::Claude }
+    match host {
+        "chatgpt.com" => Provider::Codex,
+        "daily-cloudcode-pa.googleapis.com" | "cloudcode-pa.googleapis.com" => Provider::Antigravity,
+        _ => Provider::Claude,
+    }
 }
 
 /// Read up to the end of the request head; what came after it too.
@@ -345,11 +366,17 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     // for it): then the client's own, passed through. Decided for each
     // request, so turning a client off or on needs no restart of it.
     let answer = match pooled(host, &path) {
-        Some((provider, rest)) if shared.routes(provider) => crate::gateway::serve(shared, provider, rest, query, parts.method, parts.headers, parts.extensions, body).await,
+        Some((provider, rest)) if shared.routes(provider) => {
+            crate::gateway::serve_host(shared, provider, Some(host.to_owned()), rest, query, parts.method, parts.headers, parts.extensions, body).await
+        }
         _ => {
             // (A usage report asked by a client the pool serves: what it
-            // is told of its usage, as its answers' headers are. `told`.)
-            let report = crate::told::is_report(host, &path).filter(|p| parts.method == Method::GET && shared.routes(*p));
+            // is told of its usage, as its answers' headers are. `told`.
+            // Antigravity's quota summary and model list are POSTs.)
+            let report = crate::told::is_report(host, &path).filter(|p| {
+                let expected = if *p == Provider::Antigravity { Method::POST } else { Method::GET };
+                parts.method == expected && shared.routes(*p)
+            });
             let answer = through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, parts.extensions, body).await;
             match report {
                 Some(provider) => told(&shared, provider, answer).await,
@@ -370,18 +397,38 @@ const REPORT_MOST: usize = 1 << 20;
 /// it isn't a report the pool can read (not a 2xx, too big, a coding or
 /// a shape it doesn't know), as it came.
 async fn told(shared: &Shared, provider: Provider, answer: Response) -> Response {
-    if !answer.status().is_success() || !shared.more_to_draw(provider, "", None) {
+    use futures_util::StreamExt as _;
+    if !answer.status().is_success() {
+        return answer;
+    }
+    if provider != Provider::Antigravity && !shared.more_to_draw(provider, "", None) {
         return answer;
     }
     let (mut parts, body) = answer.into_parts();
-    let Ok(bytes) = axum::body::to_bytes(body, REPORT_MOST).await else {
-        // (Cut short or past the most: nothing whole to hand on.)
-        return (StatusCode::BAD_GATEWAY, "The usage report didn’t arrive whole.").into_response();
-    };
+    // Read up to REPORT_MOST bytes; if the response exceeds that bound, stream
+    // the buffered prefix + remainder straight through untouched rather than
+    // failing with 502.
+    let mut stream = body.into_data_stream();
+    let mut buf = Vec::new();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(chunk) => {
+                if buf.len().saturating_add(chunk.len()) > REPORT_MOST {
+                    let prefix = futures_util::stream::iter(vec![Ok(Bytes::from(buf)), Ok(chunk)]);
+                    return Response::from_parts(parts, Body::from_stream(prefix.chain(stream)));
+                }
+                buf.extend_from_slice(&chunk);
+            }
+            Err(_) => {
+                return (StatusCode::BAD_GATEWAY, "The usage report didn’t arrive whole.").into_response();
+            }
+        }
+    }
+    let bytes = Bytes::from(buf);
     let coding = parts.headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
-    let said = crate::gateway::decoded(&coding, &bytes)
+    let said = crate::gateway::decoded_bounded(&coding, &bytes, REPORT_MOST)
         .and_then(|plain| serde_json::from_slice::<serde_json::Value>(&plain).ok())
-        .and_then(|mut report| crate::told::report(provider, &mut report).then(|| report.to_string()));
+        .and_then(|mut report| crate::told::report_for(provider, &mut report, |fam| shared.more_to_draw(provider, fam, None)).then(|| report.to_string()));
     match said {
         Some(text) => {
             // (Said plain: its coding and its length were the other's.)
@@ -401,6 +448,7 @@ fn hop(name: &str) -> bool {
 
 /// A request the pool doesn't serve, sent on as it came (the client's
 /// own sign-in, its encodings) and answered as it is.
+#[allow(clippy::too_many_arguments)]
 async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, method: Method, headers: HeaderMap, ext: hyper::http::Extensions, body: Bytes) -> Response {
     // Anthropic's: exactly as it came, each name in its case, over
     // HTTP/1.1 as Claude Code speaks it there, on connections of the

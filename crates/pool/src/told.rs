@@ -41,7 +41,23 @@ use crate::model::{Account, Provider};
 pub fn more(accounts: &[Account], provider: Provider, family: &str, serving: Option<&str>, now: i64, has_credential: impl Fn(&Account) -> bool) -> bool {
     let mut in_use = accounts.iter().filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && has_credential(a));
     in_use.any(|a| {
-        (Some(a.id.as_str()) != serving && crate::schedule::eligible(a, provider, family, now, true)) || a.credits.iter().any(|c| c.usable_at_limit(now) && c.applies_to_family(a.provider, family))
+        if Some(a.id.as_str()) != serving && crate::schedule::eligible(a, provider, family, now, true) {
+            return true;
+        }
+        // Capacity-backed-off accounts cannot be automatically claimed right now.
+        if a.capacity_until.is_some_and(|c| c > now) || (!family.is_empty() && a.capacity_cooldowns.get(family).is_some_and(|&c| c > now)) {
+            return false;
+        }
+        // Match the scheduler's claim predicate: when `a` has exhausted windows
+        // for `family`, a credit only counts as headroom if it actually clears
+        // EVERY exhausted window blocking `family` (e.g. a 5-hour credit does
+        // not unlock an exhausted weekly bucket).
+        let out: Vec<_> = a.windows.iter().filter(|w| w.applies_to(family) && w.exhausted(now)).collect();
+        if out.is_empty() {
+            a.credits.iter().any(|c| c.usable_at_limit(now) && c.applies_to_family(a.provider, family))
+        } else {
+            a.credits.iter().any(|c| c.usable_at_limit(now) && out.iter().all(|w| c.clears(a.provider, w)))
+        }
     })
 }
 
@@ -80,15 +96,32 @@ pub fn headers(provider: Provider, h: &mut HeaderMap) {
                 }
             }
         }
+        Provider::Antigravity => {
+            for name in names {
+                let low = name.as_str();
+                if low == "retry-after" || low.starts_with("x-ratelimit-") {
+                    h.remove(name);
+                }
+            }
+        }
     }
 }
 
 /// A usage report (Claude's `/api/oauth/usage`, ChatGPT's
-/// `/backend-api/wham/usage`) as one with all its allowance left reads:
-/// every meter's share used at nothing, each where the provider puts it
-/// (the fields `upstream::parse_usage` reads them from). Whether
-/// anything was changed.
+/// `/backend-api/wham/usage`, Antigravity's `/v1internal:retrieveUserQuotaSummary`
+/// and `/v1internal:fetchAvailableModels`) as one with all its allowance left
+/// reads: every meter's share used at nothing, each where the provider puts it
+/// (the fields `upstream::parse_usage` reads them from). Whether anything was
+/// changed.
 pub fn report(provider: Provider, d: &mut Value) -> bool {
+    report_for(provider, d, |_| true)
+}
+
+/// As [`report`], deciding headroom per bucket / model via `has_more(family)`
+/// so Antigravity reports never advertise capacity for a model family that is
+/// exhausted across every account in the pool, and never overwrite non-quota
+/// availability states (e.g. tier-restricted / disabled models).
+pub fn report_for(provider: Provider, d: &mut Value, has_more: impl Fn(&str) -> bool) -> bool {
     let mut changed = false;
     let mut nothing = |v: &mut Value| {
         if v.as_f64().is_some_and(|used| used != 0.0) {
@@ -98,6 +131,9 @@ pub fn report(provider: Provider, d: &mut Value) -> bool {
     };
     match provider {
         Provider::Claude => {
+            if !has_more("") {
+                return false;
+            }
             for row in d.get_mut("limits").and_then(Value::as_array_mut).into_iter().flatten() {
                 if let Some(v) = row.get_mut("percent") {
                     nothing(v);
@@ -113,6 +149,9 @@ pub fn report(provider: Provider, d: &mut Value) -> bool {
             }
         }
         Provider::Codex => {
+            if !has_more("") {
+                return false;
+            }
             let mut limit = |limit: Option<&mut Value>| {
                 let Some(limit) = limit else { return };
                 for kind in ["primary_window", "secondary_window"] {
@@ -133,17 +172,93 @@ pub fn report(provider: Provider, d: &mut Value) -> bool {
                 limit(extra.get_mut("rate_limit"));
             }
         }
+        Provider::Antigravity => {
+            let bucket_has_more = |obj: &serde_json::Map<String, Value>, group_name: &str| -> bool {
+                let mut fams: Vec<String> = Vec::new();
+                for key in ["models", "modelIds"] {
+                    if let Some(arr) = obj.get(key).and_then(Value::as_array) {
+                        for m in arr.iter().filter_map(Value::as_str) {
+                            let f = crate::model::model_family(m);
+                            if !f.is_empty() && !fams.contains(&f) {
+                                fams.push(f);
+                            }
+                        }
+                    }
+                }
+                if fams.is_empty() {
+                    let id = obj.get("bucketId").and_then(Value::as_str).unwrap_or("");
+                    let disp = obj.get("displayName").and_then(Value::as_str).unwrap_or("");
+                    fams = crate::model::infer_agy_models(&format!("{id} {group_name} {disp}"));
+                }
+                if fams.is_empty() { has_more("") } else { fams.iter().all(|f| has_more(f)) }
+            };
+            let mut refill_bucket = |b: &mut Value, group_name: &str| {
+                let Some(obj) = b.as_object_mut() else { return };
+                if obj.get("disabled").and_then(Value::as_bool) == Some(true) || !bucket_has_more(obj, group_name) {
+                    return;
+                }
+                let needs_refill = match obj.get("remainingFraction").and_then(Value::as_f64) {
+                    Some(frac) => frac < 1.0,
+                    // Proto3 omits `remainingFraction: 0.0` on exhausted buckets.
+                    None => obj.contains_key("resetTime") || obj.contains_key("bucketId") || obj.get("remainingAmount").and_then(Value::as_i64) == Some(0),
+                };
+                if needs_refill {
+                    obj.insert("remainingFraction".into(), Value::from(1.0));
+                    changed = true;
+                }
+            };
+            for b in d.get_mut("buckets").and_then(Value::as_array_mut).into_iter().flatten() {
+                refill_bucket(b, "");
+            }
+            for g in d.get_mut("groups").and_then(Value::as_array_mut).into_iter().flatten() {
+                let gname = g.get("displayName").and_then(Value::as_str).unwrap_or("").to_owned();
+                for b in g.get_mut("buckets").and_then(Value::as_array_mut).into_iter().flatten() {
+                    refill_bucket(b, &gname);
+                }
+            }
+            for (model_id, av) in d.get_mut("modelAvailabilities").and_then(Value::as_object_mut).into_iter().flatten() {
+                let fam = crate::model::model_family(model_id);
+                if has_more(&fam)
+                    && let Some(obj) = av.as_object_mut()
+                    && obj.get("state").and_then(Value::as_str).is_some_and(|s| {
+                        matches!(s.trim().to_ascii_uppercase().as_str(), "MODEL_AVAILABILITY_STATE_EXHAUSTED" | "MODEL_AVAILABILITY_STATE_QUOTA_EXHAUSTED" | "EXHAUSTED" | "QUOTA_EXHAUSTED")
+                    })
+                {
+                    obj.insert("state".into(), Value::from("MODEL_AVAILABILITY_STATE_AVAILABLE"));
+                    changed = true;
+                }
+            }
+            for (model_id, m) in d.get_mut("models").and_then(Value::as_object_mut).into_iter().flatten() {
+                let fam = crate::model::model_family(model_id);
+                if has_more(&fam)
+                    && let Some(qi) = m.get_mut("quotaInfo").and_then(Value::as_object_mut)
+                {
+                    let needs_refill = match qi.get("remainingFraction").and_then(Value::as_f64) {
+                        Some(frac) => frac < 1.0,
+                        None => qi.contains_key("resetTime"),
+                    };
+                    if needs_refill {
+                        qi.insert("remainingFraction".into(), Value::from(1.0));
+                        changed = true;
+                    }
+                }
+            }
+        }
     }
     changed
 }
 
 /// Which provider's usage report a request is for, by its host and path
 /// (as the clients ask: Claude Code's `/usage`, its status line and its
-/// near-limit notices; Codex's `/status`).
+/// near-limit notices; Codex's `/status`; Antigravity's quota summary and
+/// model list).
 pub fn is_report(host: &str, path: &str) -> Option<Provider> {
     match host {
         "api.anthropic.com" if path == "/api/oauth/usage" => Some(Provider::Claude),
         "chatgpt.com" if path == "/backend-api/wham/usage" => Some(Provider::Codex),
+        "daily-cloudcode-pa.googleapis.com" | "cloudcode-pa.googleapis.com" if matches!(path, "/v1internal:retrieveUserQuotaSummary" | "/v1internal:fetchAvailableModels") => {
+            Some(Provider::Antigravity)
+        }
         _ => None,
     }
 }
@@ -168,10 +283,10 @@ mod tests {
     fn what_more_there_is_to_draw_from() {
         let more = |accounts: &[Account], serving: Option<&str>| super::more(accounts, Provider::Claude, "opus", serving, 1000, |_| true);
         let (a, b) = (account("a", 97.0), account("b", 10.0));
-        assert!(!more(&[a.clone()], Some("a")), "the last account, alone");
+        assert!(!more(std::slice::from_ref(&a), Some("a")), "the last account, alone");
         assert!(more(&[a.clone(), b.clone()], Some("a")), "another with allowance");
         assert!(more(&[a.clone(), b.clone()], Some("b")), "a has 3% left: allowance still");
-        assert!(more(&[a.clone()], None), "a report asks of all of them");
+        assert!(more(std::slice::from_ref(&a), None), "a report asks of all of them");
         let mut out = account("b", 100.0);
         assert!(!more(&[a.clone(), out.clone()], Some("a")), "the other is out");
         out.credits = vec![ResetCredit { id: "g".into(), remaining: 1, usable: true, ..Default::default() }];
@@ -309,7 +424,81 @@ mod tests {
     fn which_requests_are_usage_reports() {
         assert_eq!(is_report("api.anthropic.com", "/api/oauth/usage"), Some(Provider::Claude));
         assert_eq!(is_report("chatgpt.com", "/backend-api/wham/usage"), Some(Provider::Codex));
+        assert_eq!(is_report("daily-cloudcode-pa.googleapis.com", "/v1internal:retrieveUserQuotaSummary"), Some(Provider::Antigravity));
+        assert_eq!(is_report("cloudcode-pa.googleapis.com", "/v1internal:fetchAvailableModels"), Some(Provider::Antigravity));
+        assert_eq!(is_report("daily-cloudcode-pa.googleapis.com", "/v1internal:streamGenerateContent"), None);
         assert_eq!(is_report("api.anthropic.com", "/v1/messages"), None);
         assert_eq!(is_report("chatgpt.com", "/api/oauth/usage"), None);
+    }
+
+    #[test]
+    fn antigravity_reports_say_full_quota_when_pool_has_more() {
+        let mut summary = json!({
+            "buckets": [
+                {"bucketId": "g_pro:5h", "displayName": "Gemini Pro 5-hour", "resetTime": "2026-12-01T10:00:00Z"}
+            ],
+            "groups": [
+                {"groupId": "g_all", "buckets": [{"bucketId": "g_all:7d", "remainingFraction": 0.12, "resetTime": "2026-12-05T00:00:00Z"}]}
+            ],
+            "modelAvailabilities": {
+                "gemini-4-neon-high": {"state": "MODEL_AVAILABILITY_STATE_EXHAUSTED", "explanation": "out"}
+            }
+        });
+        assert!(report(Provider::Antigravity, &mut summary));
+        assert_eq!(summary["buckets"][0]["remainingFraction"].as_f64(), Some(1.0));
+        assert_eq!(summary["groups"][0]["buckets"][0]["remainingFraction"].as_f64(), Some(1.0));
+        assert_eq!(summary["modelAvailabilities"]["gemini-4-neon-high"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_AVAILABLE"));
+        let (ws, _) = crate::upstream::parse_usage(Provider::Antigravity, &summary);
+        assert!(ws.len() == 2 && ws.iter().all(|w| w.used == 0.0), "{ws:?}");
+        assert!(!report(Provider::Antigravity, &mut summary), "idempotent once refilled");
+
+        let mut avail = json!({
+            "models": {
+                "gemini-4-neon-high": {"quotaInfo": {"resetTime": "2026-12-01T10:00:00Z"}},
+                "gemini-3-flash": {"quotaInfo": {"remainingFraction": 0.2, "resetTime": "2026-12-01T10:00:00Z"}}
+            }
+        });
+        assert!(report(Provider::Antigravity, &mut avail));
+        assert_eq!(avail["models"]["gemini-4-neon-high"]["quotaInfo"]["remainingFraction"].as_f64(), Some(1.0));
+        assert_eq!(avail["models"]["gemini-3-flash"]["quotaInfo"]["remainingFraction"].as_f64(), Some(1.0));
+    }
+
+    /// Round 2 `told` accuracy (Astra #15):
+    /// 1) A 5-hour credit does NOT report headroom when 7-day is also exhausted.
+    /// 2) An account in active capacity backoff does NOT report claimable headroom.
+    /// 3) Multi-model buckets require `.all()` families to have headroom.
+    /// 4) Non-quota `modelAvailabilities` states are preserved untouched.
+    #[test]
+    fn told_matches_scheduler_claim_predicate_and_multi_model_buckets() {
+        let mut a = Account::new("a".into(), "A".into(), Provider::Claude);
+        a.windows = vec![
+            Window { name: "five_hour".into(), label: "5-hour".into(), used: 100.0, resets_at: Some(9000), models: vec![] },
+            Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(90000), models: vec![] },
+        ];
+        a.credits = vec![ResetCredit { id: "c-5h".into(), remaining: 1, usable: true, clears: vec!["five_hour".into()], ..Default::default() }];
+        assert!(!super::more(std::slice::from_ref(&a), Provider::Claude, "opus", Some("a"), 1000, |_| true), "5h credit alone cannot unlock exhausted 7d window");
+        // Once the credit clears both windows, headroom exists — unless capacity-backed-off.
+        a.credits[0].clears.push("seven_day".into());
+        assert!(super::more(std::slice::from_ref(&a), Provider::Claude, "opus", Some("a"), 1000, |_| true));
+        a.capacity_until = Some(2000);
+        assert!(!super::more(std::slice::from_ref(&a), Provider::Claude, "opus", Some("a"), 1000, |_| true), "capacity-backed-off account must not advertise claimable headroom");
+
+        let mut summary = json!({
+            "buckets": [
+                {"bucketId": "shared:5h", "remainingFraction": 0.0, "resetTime": "2026-12-01T10:00:00Z", "models": ["gemini-4-neon-high", "gemini-3-pro"]}
+            ],
+            "modelAvailabilities": {
+                "gemini-4-neon-high": {"state": "MODEL_AVAILABILITY_STATE_QUOTA_EXHAUSTED"},
+                "gemini-3-pro": {"state": "MODEL_AVAILABILITY_STATE_DISABLED"},
+                "gemini-3-flash": {"state": "MODEL_AVAILABILITY_STATE_TIER_RESTRICTED"}
+            }
+        });
+        // Only gemini-4-neon has headroom; gemini-3-pro does not.
+        let changed = report_for(Provider::Antigravity, &mut summary, |fam| fam == "gemini-4-neon" || fam == "gemini-3-flash");
+        assert!(changed);
+        assert_eq!(summary["buckets"][0]["remainingFraction"].as_f64(), Some(0.0), "multi-model bucket must require ALL member families to have headroom");
+        assert_eq!(summary["modelAvailabilities"]["gemini-4-neon-high"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_AVAILABLE"));
+        assert_eq!(summary["modelAvailabilities"]["gemini-3-pro"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_DISABLED"));
+        assert_eq!(summary["modelAvailabilities"]["gemini-3-flash"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_TIER_RESTRICTED"));
     }
 }

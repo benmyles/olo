@@ -9,7 +9,6 @@ use std::{
 use olo_kit::{palette::Hue, widgets::Light};
 use olo_token_pool::{
     activity::{Activity, Minute},
-    codex_daemon::Thread,
     gateway::{Open, Pool, Served},
     hosts::Stands,
     model::{Account, Outcome, Provider, RECENT, Request, ResetCredit, Usage, Window as QuotaWindow, now, today},
@@ -109,15 +108,64 @@ pub fn custody(account: &Account, hosts: &[Stands], unaccepted_ids: &[String]) -
     if unaccepted_ids.iter().any(|id| id == &account.id) { Custody::PendingHandover(name) } else { Custody::OnHost(name) }
 }
 
+/// Whether `account` is out of quota at time `t`, returning `Some(resets_at)`
+/// when blocked. Handles shared-window accounts (`schedule::blocked_until`)
+/// AND Antigravity accounts with only model-scoped windows: a reported family
+/// is out of quota if ANY window covering it is exhausted (e.g. 5-hour 100%
+/// while weekly is 30%), and the account is out of quota when every reported
+/// family is blocked.
+pub fn account_out_of_quota(a: &Account, t: i64) -> Option<Option<i64>> {
+    if let Some(until) = schedule::blocked_until(a, "", t) {
+        return Some(Some(until));
+    }
+    let non_overage: Vec<&QuotaWindow> = a.windows.iter().filter(|w| w.name != "overage" && w.name != "seven_day_overage_included").collect();
+    if !non_overage.is_empty() && non_overage.iter().all(|w| !w.models.is_empty()) {
+        let mut families: Vec<&str> = Vec::new();
+        for w in &non_overage {
+            for m in &w.models {
+                if !families.contains(&m.as_str()) {
+                    families.push(m.as_str());
+                }
+            }
+        }
+        if !families.is_empty() && families.iter().all(|fam| a.model_cooldowns.get(*fam).is_some_and(|&c| c > t) || non_overage.iter().any(|w| w.applies_to(fam) && w.exhausted(t))) {
+            let earliest = non_overage.iter().filter(|w| w.exhausted(t)).filter_map(|w| w.resets_at.filter(|&r| r > t)).chain(a.model_cooldowns.values().copied().filter(|&c| c > t)).min();
+            return Some(earliest);
+        }
+    }
+    None
+}
+
+/// Whether `account` is currently serving from paid usage credits on either its
+/// shared quota or any model-scoped bucket.
+#[allow(dead_code)]
+pub fn account_any_paid(a: &Account, t: i64) -> bool {
+    account_paid_scope(a, t).is_some()
+}
+
+/// Active paid-usage-credits state for `account` at `t`: returns
+/// `Some((optional_family_label, resets_at))` when either account-wide `paid`
+/// or any model-scoped `model_paid` entry is active (even if another model
+/// family on the same account still has plan allowance).
+pub fn account_paid_scope(a: &Account, t: i64) -> Option<(Option<String>, i64)> {
+    if let Some(until) = a.paid.as_ref().filter(|p| p.until > t).map(|p| p.until) {
+        return Some((None, until));
+    }
+    a.model_paid.iter().filter(|(_, p)| p.until > t).min_by_key(|(_, p)| p.until).map(|(fam, p)| {
+        let label = a.windows.iter().find(|w| w.applies_to(fam) && !w.label.is_empty()).map(|w| w.label.clone()).unwrap_or_else(|| crate::plan_name(fam));
+        (Some(label), p.until)
+    })
+}
+
 /// Returns accounts for `prov` sorted with problems first (signed out, then
 /// exhausted/blocked, then enabled, then paused) so tab alert badges point at
 /// visible rows without scrolling.
-pub fn sorted_accounts<'a>(accounts: &'a [Account], prov: Provider, t: i64) -> Vec<&'a Account> {
+pub fn sorted_accounts(accounts: &[Account], prov: Provider, t: i64) -> Vec<&Account> {
     let mut out: Vec<&Account> = accounts.iter().filter(|a| a.provider == prov).collect();
     out.sort_by_key(|a| {
         if a.signed_out.is_some() {
             0u8
-        } else if a.enabled && schedule::blocked_until(a, "", t).is_some() {
+        } else if a.enabled && account_out_of_quota(a, t).is_some() {
             1u8
         } else if a.enabled {
             2u8
@@ -135,7 +183,8 @@ pub fn kept_names(pool: &Pool, host_id: Option<&str>) -> Vec<String> {
 }
 
 /// Groups remotely kept accounts by host display name for `This Computer`'s
-/// custody summary ("Keeps Personal, Sandbox · borrows Work Max, Team Plus from build").
+/// custody summary ("Keeps Personal, Sandbox · From build: Work Max, Team Plus"),
+/// placing the source host name first so wrapping never strands it at the tail.
 pub fn local_custody_summary(pool: &Pool, hosts: &[Stands]) -> Option<String> {
     let local = kept_names(pool, None);
     let mut by_host: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -150,8 +199,7 @@ pub fn local_custody_summary(pool: &Pool, hosts: &[Stands]) -> Option<String> {
         parts.push(format!("Keeps {}", local.join(", ")));
     }
     for (host_name, names) in by_host {
-        let verb = if parts.is_empty() { "Borrows" } else { "borrows" };
-        parts.push(format!("{verb} {} from {host_name}", names.join(", ")));
+        parts.push(format!("From {host_name}: {}", names.join(", ")));
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
@@ -207,7 +255,13 @@ fn parse_provider(v: &Value, model: &str, client: &str) -> Provider {
     }
     let ml = model.to_ascii_lowercase();
     let cl = client.to_ascii_lowercase();
-    if ml.contains("claude") || cl.contains("claude") { Provider::Claude } else { Provider::Codex }
+    if cl.contains("antigravity") || cl == "agy" || ml.contains("gemini") {
+        Provider::Antigravity
+    } else if ml.contains("claude") || cl.contains("claude") {
+        Provider::Claude
+    } else {
+        Provider::Codex
+    }
 }
 
 fn parse_outcome(v: &Value) -> Outcome {
@@ -280,7 +334,7 @@ pub fn live_requests(pool: &Pool, hosts: &[Stands], scope: &MachineScope) -> Vec
             });
         }
     }
-    out.sort_by(|a, b| b.started_ms.cmp(&a.started_ms));
+    out.sort_by_key(|a| std::cmp::Reverse(a.started_ms));
     out
 }
 
@@ -421,7 +475,7 @@ pub fn account_rollup(pool: &Pool, account: &Account, hosts: &[Stands]) -> Accou
     }
 
     // Newest first (leftmost tick = newest request).
-    recent.sort_by(|a, b| b.request.at.cmp(&a.request.at));
+    recent.sort_by_key(|a| std::cmp::Reverse(a.request.at));
     recent.truncate(RECENT);
 
     AccountRollup { total_today, local_requests, remote_requests, busy_machines, recent }
@@ -439,12 +493,12 @@ pub fn last_checked_at(hosts: &[Stands]) -> Option<i64> {
 
 /// Computes the optional status badge lights for `[Accounts, Activity, Machines]`.
 /// Only genuine attention states get badges (no permanent green dot on Activity).
-pub fn tab_lights(pool: &Pool, hosts: &[Stands], running: Option<&Running>, uses: Option<[bool; 2]>) -> [Option<Light>; 3] {
+pub fn tab_lights(pool: &Pool, hosts: &[Stands], running: Option<&Running>, uses: Option<[bool; 3]>) -> [Option<Light>; 3] {
     let t = now();
     let any_signed_out = pool.saved.accounts.iter().any(|a| a.signed_out.is_some());
     let any_provider_exhausted = crate::PROVIDERS.iter().any(|&prov| {
         let enabled: Vec<&Account> = pool.saved.accounts.iter().filter(|a| a.provider == prov && a.enabled && a.signed_out.is_none()).collect();
-        !enabled.is_empty() && enabled.iter().all(|a| schedule::blocked_until(a, "", t).is_some())
+        !enabled.is_empty() && enabled.iter().all(|a| account_out_of_quota(a, t).is_some())
     });
     let accounts_light = if pool.error.is_some() || any_signed_out {
         Some(Light::Down)
@@ -455,7 +509,7 @@ pub fn tab_lights(pool: &Pool, hosts: &[Stands], running: Option<&Running>, uses
     };
 
     let daemon_bad = running.and_then(|r| r.daemon.as_ref()).is_some_and(|d| {
-        let codex_on = uses.is_some_and(|u| u[1]);
+        let codex_on = uses.is_some_and(|u| u[crate::client_index(Provider::Codex)]);
         d.stale || (codex_on && d.connections.direct > 0 && d.connections.pool == 0)
     });
     let any_host_err = hosts.iter().any(|h| h.error.is_some());
@@ -489,11 +543,11 @@ pub fn host_stands(s: &Stands) -> (Option<Light>, String) {
         return (None, format!("{}…", olo_kit::words::of(doing.clone())));
     }
     match (s.wanted, s.in_step, &s.error, s.behind_since) {
-        (false, _, Some(_), _) => (Some(Light::Down), olo_kit::words::tr("Couldn’t install").into()),
+        (false, _, Some(_), _) => (Some(Light::Down), olo_kit::words::tr("Can’t install").into()),
         (false, _, None, _) => (Some(Light::Off), olo_kit::words::tr("Not installed").into()),
         (true, true, _, _) => (Some(Light::On), olo_kit::words::tr("Up to date").into()),
         (true, false, Some(_), _) => (Some(Light::Down), olo_kit::words::tr("Can’t sync").into()),
-        (true, false, None, Some(since)) => (Some(Light::Waiting), olo_kit::tr!("Behind since {}", crate::clock(since)).into()),
+        (true, false, None, Some(since)) => (Some(Light::Waiting), olo_kit::tr!("Behind since {}", crate::clock(since))),
         (true, false, None, None) => (Some(Light::Waiting), olo_kit::words::tr("Behind").into()),
     }
 }
@@ -603,6 +657,7 @@ pub fn hue(client: &str) -> Hue {
     match client {
         "Claude Code" => Hue::Orange,
         "Codex" => Hue::Blue,
+        "Antigravity" => Hue::Purple,
         _ => Hue::Gray,
     }
 }
@@ -611,6 +666,7 @@ pub fn provider_hue(p: Provider) -> Hue {
     match p {
         Provider::Claude => Hue::Orange,
         Provider::Codex => Hue::Blue,
+        Provider::Antigravity => Hue::Purple,
     }
 }
 
@@ -625,7 +681,7 @@ pub struct DemoData {
     pub activity: Activity,
     pub hosts: Vec<Stands>,
     pub running: Running,
-    pub uses: [bool; 2],
+    pub uses: [bool; 3],
     pub unaccepted: HashMap<String, Vec<String>>,
 }
 
@@ -634,7 +690,7 @@ pub fn demo_data() -> DemoData {
     if mode == "empty" {
         let mut pool = Pool::default();
         pool.loaded = true;
-        return DemoData { pool, activity: Activity::default(), hosts: Vec::new(), running: Running::default(), uses: [true, true], unaccepted: HashMap::new() };
+        return DemoData { pool, activity: Activity::default(), hosts: Vec::new(), running: Running::default(), uses: [true, true, true], unaccepted: HashMap::new() };
     }
 
     let t = now();
@@ -694,7 +750,7 @@ pub fn demo_data() -> DemoData {
         claude_personal.now_paid("", false, t + 3_120, "five_hour");
     }
 
-    // Account 3: Codex Team, sign-in kept on `build` (handover pending)
+    // Account 3: Codex Team, sign-in kept on `build`
     let mut codex_team = Account::new("acc-x1".into(), "Team Plus".into(), Provider::Codex);
     codex_team.email = Some("dev@team.example".into());
     codex_team.plan = Some("team".into());
@@ -709,16 +765,70 @@ pub fn demo_data() -> DemoData {
     codex_team.recent =
         VecDeque::from(vec![req(740, "gpt-5.4-codex", "Codex", Outcome::Completed, 200, 2_450, 32_000, 1_800), req(95, "gpt-5.4-codex", "Codex", Outcome::Completed, 200, 1_890, 62_000, 3_600)]);
 
-    // Account 4: Codex Sandbox, signed out (sorts to top of Codex + triggers alert strip!)
+    // Account 4: Codex Sandbox, signed out (sorts to top of Codex + triggers alert badge!)
     let mut codex_old = Account::new("acc-x2".into(), "Sandbox".into(), Provider::Codex);
     codex_old.email = Some("sandbox@team.example".into());
     codex_old.plan = Some("plus".into());
     codex_old.signed_out = Some("Refresh token was revoked by the provider.".into());
-    codex_old.today = (d_today, Usage::default());
+    codex_old.today = (d_today.clone(), Usage::default());
+
+    // Account 5: Antigravity Ultra, sign-in kept on `build`, with banked quota resets
+    let mut agy_ultra = Account::new("acc-g1".into(), "Google One AI".into(), Provider::Antigravity);
+    agy_ultra.email = Some("alex@gmail.example".into());
+    agy_ultra.plan = Some("AI Ultra".into());
+    agy_ultra.kept_on = Some("build".into());
+    agy_ultra.last_used = Some(t - 50);
+    agy_ultra.synced = Some(t - 25);
+    agy_ultra.today = (d_today.clone(), Usage { requests: 9, input_tokens: 112_000, output_tokens: 6_400 });
+    agy_ultra.windows = vec![
+        QuotaWindow { name: "bucket_5h".into(), label: "All models".into(), used: 54.0, resets_at: Some(t + 9_400), models: vec![] },
+        QuotaWindow { name: "bucket_gemini_pro".into(), label: "Gemini Pro".into(), used: 84.0, resets_at: Some(t + 9_400), models: vec!["gemini-pro".into()] },
+    ];
+    agy_ultra.credits = vec![ResetCredit {
+        id: "br-1".into(),
+        expires_at: Some(t + 86_400 * 5),
+        remaining: 2,
+        usable: true,
+        program: Some("banked_quota_reset".into()),
+        label: Some("Banked Quota Reset".into()),
+        kind: Some("banked_reset".into()),
+        clears: vec!["bucket_5h".into(), "bucket_gemini_pro".into()],
+        ..Default::default()
+    }];
+    agy_ultra.recent = VecDeque::from(vec![
+        req(340, "gemini-4-neon-high", "Antigravity", Outcome::Completed, 200, 2_980, 48_000, 2_600),
+        req(50, "gemini-4-neon-high", "Antigravity", Outcome::Completed, 200, 3_410, 64_000, 3_800),
+    ]);
+
+    // Account 6: Antigravity Pro, kept on This Computer, with a threshold-gated banked reset
+    let mut agy_dev = Account::new("acc-g2".into(), "Workspace Dev".into(), Provider::Antigravity);
+    agy_dev.email = Some("dev@work.example".into());
+    agy_dev.plan = Some("Pro".into());
+    agy_dev.last_used = Some(t - 610);
+    agy_dev.synced = Some(t - 35);
+    agy_dev.today = (d_today, Usage { requests: 6, input_tokens: 58_000, output_tokens: 3_100 });
+    agy_dev.windows = vec![
+        QuotaWindow { name: "bucket_5h".into(), label: "5-hour".into(), used: 19.0, resets_at: Some(t + 14_100), models: vec![] },
+        QuotaWindow { name: "bucket_weekly".into(), label: "Weekly".into(), used: 37.0, resets_at: Some(t + 380_000), models: vec![] },
+    ];
+    agy_dev.credits = vec![ResetCredit {
+        id: "br-2".into(),
+        expires_at: Some(t + 86_400 * 10),
+        remaining: 1,
+        usable: false,
+        needs_limit: true,
+        unavailable_reason: Some("QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD".into()),
+        program: Some("banked_quota_reset".into()),
+        label: Some("Banked Quota Reset".into()),
+        kind: Some("banked_reset".into()),
+        clears: vec!["bucket_5h".into()],
+        ..Default::default()
+    }];
+    agy_dev.recent = VecDeque::from(vec![req(610, "gemini-3-flash", "Antigravity", Outcome::Completed, 200, 1_140, 28_000, 1_450)]);
 
     let mut pool = Pool::default();
     pool.loaded = true;
-    pool.saved.accounts = vec![claude_work, claude_personal, codex_team, codex_old];
+    pool.saved.accounts = vec![claude_work, claude_personal, codex_team, codex_old, agy_ultra, agy_dev];
     pool.in_flight.insert("acc-c2".into(), 1);
     pool.open = vec![Open {
         id: 101,
@@ -742,12 +852,24 @@ pub fn demo_data() -> DemoData {
             provider: Provider::Claude,
             request: req(420, "claude-opus-5-5", "Claude Code", Outcome::Completed, 200, 3_400, 44_400, 2_050),
         },
+        Served {
+            account: "Google One AI".into(),
+            account_id: "acc-g1".into(),
+            provider: Provider::Antigravity,
+            request: req(340, "gemini-4-neon-high", "Antigravity", Outcome::Completed, 200, 2_980, 48_000, 2_600),
+        },
         Served { account: "Team Plus".into(), account_id: "acc-x1".into(), provider: Provider::Codex, request: req(95, "gpt-5.4-codex", "Codex", Outcome::Completed, 200, 1_890, 62_000, 3_600) },
         Served {
             account: "Work Max".into(),
             account_id: "acc-c1".into(),
             provider: Provider::Claude,
             request: req(65, "claude-opus-5-5", "Claude Code", Outcome::Completed, 200, 5_100, 80_500, 3_700),
+        },
+        Served {
+            account: "Google One AI".into(),
+            account_id: "acc-g1".into(),
+            provider: Provider::Antigravity,
+            request: req(50, "gemini-4-neon-high", "Antigravity", Outcome::Completed, 200, 3_410, 64_000, 3_800),
         },
     ]);
 
@@ -758,10 +880,14 @@ pub fn demo_data() -> DemoData {
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 2, 1, 1];
     let local_x: [u32; 61] =
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0];
+    let local_g: [u32; 61] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1];
     let build_c: [u32; 61] =
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 4, 8, 11, 9, 4, 2, 1, 1, 0, 0, 0, 0, 0, 2, 3, 1, 0, 0, 0, 0, 0, 1, 5, 6, 3, 1, 0, 0, 1, 2, 4, 7, 9, 6, 4, 3];
     let build_x: [u32; 61] =
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 1, 1, 2, 3, 2, 1, 1];
+    let build_g: [u32; 61] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 2, 3, 2, 1, 0, 0, 0, 1, 1, 2, 3, 2, 1, 0];
     let mut activity = Activity::default();
     for (idx, offset) in (0..=60).rev().enumerate() {
         let m = min_now - offset;
@@ -769,6 +895,8 @@ pub fn demo_data() -> DemoData {
         activity.minutes.push_back(Minute { minute: m, client: "Claude Code".into(), requests: c_reqs, failed: 0, input_tokens: c_reqs as u64 * 11_000, output_tokens: c_reqs as u64 * 540 });
         let x_reqs = local_x[idx];
         activity.minutes.push_back(Minute { minute: m, client: "Codex".into(), requests: x_reqs, failed: 0, input_tokens: x_reqs as u64 * 9_500, output_tokens: x_reqs as u64 * 520 });
+        let g_reqs = local_g[idx];
+        activity.minutes.push_back(Minute { minute: m, client: "Antigravity".into(), requests: g_reqs, failed: 0, input_tokens: g_reqs as u64 * 9_500, output_tokens: g_reqs as u64 * 510 });
     }
 
     let mut build_minutes = Vec::new();
@@ -785,6 +913,12 @@ pub fn demo_data() -> DemoData {
             "minute": m, "client": "Codex", "requests": x_reqs,
             "failed": u32::from(offset == 2),
             "input_tokens": x_reqs as u64 * 10_200, "output_tokens": x_reqs as u64 * 560,
+        }));
+        let g_reqs = build_g[idx];
+        build_minutes.push(serde_json::json!({
+            "minute": m, "client": "Antigravity", "requests": g_reqs,
+            "failed": 0u32,
+            "input_tokens": g_reqs as u64 * 9_200, "output_tokens": g_reqs as u64 * 480,
         }));
     }
     let j_req = |ago_s: i64, model: &str, client: &str, account: &str, account_id: &str, provider: &str, outcome: &str, status: u16, ms: u64, inp: u64, out: u64| {
@@ -819,19 +953,35 @@ pub fn demo_data() -> DemoData {
                     j_req(130, "gpt-5.4-codex", "Codex", "Team Plus", "acc-x1", "codex", "failed", 502, 1120, 0, 0),
                     j_req(28, "gpt-5.4-codex", "Codex", "Team Plus", "acc-x1", "codex", "completed", 200, 2750, 54_000, 2_800),
                 ]
+            },
+            {
+                "id": "acc-g1", "name": "Google One AI", "in_flight": 1,
+                "today": {"requests": 64, "input_tokens": 740_000, "output_tokens": 38_200},
+                "recent": [
+                    j_req(155, "gemini-4-neon-high", "Antigravity", "Google One AI", "acc-g1", "agy", "completed", 200, 3120, 96_000, 4_900),
+                    j_req(20, "gemini-3-pro", "Antigravity", "Google One AI", "acc-g1", "agy", "completed", 200, 2190, 72_000, 3_500),
+                ]
+            },
+            {
+                "id": "acc-g2", "name": "Workspace Dev", "in_flight": 0,
+                "today": {"requests": 12, "input_tokens": 135_000, "output_tokens": 7_200},
+                "recent": []
             }
         ],
         "open": [
             {"id": 501, "account": "Work Max", "account_id": "acc-c1", "provider": "claude", "model": "claude-opus-5-5", "client": "Claude Code", "started": t_ms - 8_700},
             {"id": 502, "account": "Team Plus", "account_id": "acc-x1", "provider": "codex", "model": "gpt-5.4-codex", "client": "Codex", "started": t_ms - 2_300},
+            {"id": 503, "account": "Google One AI", "account_id": "acc-g1", "provider": "agy", "model": "gemini-4-neon-high", "client": "Antigravity", "started": t_ms - 1_400},
         ],
         "served": [
             j_req(310, "claude-opus-5-5", "Claude Code", "Work Max", "acc-c1", "claude", "completed", 200, 4800, 92_000, 4_100),
             j_req(210, "claude-opus-5-5", "Claude Code", "Personal", "acc-c2", "claude", "completed", 200, 3100, 48_200, 1_900),
             j_req(180, "claude-opus-5-5", "Claude Code", "Work Max", "acc-c1", "claude", "completed", 200, 5200, 124_000, 5_300),
+            j_req(155, "gemini-4-neon-high", "Antigravity", "Google One AI", "acc-g1", "agy", "completed", 200, 3120, 96_000, 4_900),
             j_req(130, "gpt-5.4-codex", "Codex", "Team Plus", "acc-x1", "codex", "failed", 502, 1120, 0, 0),
             j_req(42, "claude-opus-5-5", "Claude Code", "Work Max", "acc-c1", "claude", "completed", 200, 6100, 181_000, 6_450),
             j_req(28, "gpt-5.4-codex", "Codex", "Team Plus", "acc-x1", "codex", "completed", 200, 2750, 54_000, 2_800),
+            j_req(20, "gemini-3-pro", "Antigravity", "Google One AI", "acc-g1", "agy", "completed", 200, 2190, 72_000, 3_500),
         ],
         "activity": build_minutes,
     });
@@ -851,17 +1001,13 @@ pub fn demo_data() -> DemoData {
         host("dev-box", "dev-box", "alex@dev-box.example"),
     ];
 
+    // Keep local running count (1: Claude Code) + build (3) = 4 running,
+    // matching Activity's 4 live requests while also showcasing Idle rows.
     let mut running = Running {
         claude: vec![Process { pid: 41208, started: t - 5_400, cwd: Some(PathBuf::from("/workspace/olo")), connections: Connections { pool: 2, direct: 0 } }],
         codex: vec![],
-        daemon: Some(Daemon {
-            pid: 38910,
-            started: t - 14_200,
-            version: Some("0.168.0".into()),
-            stale: false,
-            connections: Connections { pool: 1, direct: 0 },
-            threads: Ok(vec![Thread { id: "th-1".into(), title: "Refactor Token Pool window".into(), cwd: Some(PathBuf::from("/workspace/olo")), working: true, waiting: false }]),
-        }),
+        agy: vec![],
+        daemon: Some(Daemon { pid: 38910, started: t - 14_200, version: Some("0.168.0".into()), stale: false, connections: Connections { pool: 0, direct: 0 }, threads: Ok(vec![]) }),
     };
 
     if mode == "stopped" {
@@ -873,7 +1019,7 @@ pub fn demo_data() -> DemoData {
     // Keep Accounts custody consistent with `build` being "Up to date" on Machines.
     let unaccepted = HashMap::new();
 
-    DemoData { pool, activity, hosts, running, uses: [true, true], unaccepted }
+    DemoData { pool, activity, hosts, running, uses: [true, true, true], unaccepted }
 }
 
 #[cfg(test)]
@@ -910,12 +1056,12 @@ mod tests {
             ..Stands::default()
         };
 
-        let all = merged_activity(&local, &[host.clone()], &MachineScope::All);
+        let all = merged_activity(&local, std::slice::from_ref(&host), &MachineScope::All);
         assert_eq!(all.minutes.len(), 3);
         let m100 = all.minutes.iter().find(|m| m.minute == 100 && m.client == "Claude Code").unwrap();
         assert_eq!((m100.requests, m100.failed, m100.input_tokens, m100.output_tokens), (7, 1, 5000, 500));
 
-        let local_only = merged_activity(&local, &[host.clone()], &MachineScope::Local);
+        let local_only = merged_activity(&local, std::slice::from_ref(&host), &MachineScope::Local);
         assert_eq!(local_only.minutes.len(), 2);
 
         let host_only = merged_activity(&local, &[host], &MachineScope::Host("build".into()));
@@ -936,16 +1082,21 @@ mod tests {
         assert!(roll.recent.windows(2).all(|w| w[0].request.at >= w[1].request.at));
 
         let live_all = live_requests(&d.pool, &d.hosts, &MachineScope::All);
-        assert_eq!(live_all.len(), 3);
+        assert_eq!(live_all.len(), 4);
         assert!(live_all.windows(2).all(|w| w[0].started_ms >= w[1].started_ms));
         let live_local = live_requests(&d.pool, &d.hosts, &MachineScope::Local);
         assert_eq!(live_local.len(), 1);
         let live_build = live_requests(&d.pool, &d.hosts, &MachineScope::Host("build".into()));
-        assert_eq!(live_build.len(), 2);
+        assert_eq!(live_build.len(), 3);
 
         let recent_all = recent_requests(&d.pool, &d.hosts, &MachineScope::All, 50);
-        assert_eq!(recent_all.len(), 10);
+        assert_eq!(recent_all.len(), 14);
         assert!(recent_all.windows(2).all(|w| w[0].request.at >= w[1].request.at));
+
+        let g1 = d.pool.account("acc-g1").unwrap();
+        let groll = account_rollup(&d.pool, g1, &d.hosts);
+        assert_eq!((groll.local_requests, groll.remote_requests, groll.total_today.requests), (9, 64, 73));
+        assert_eq!(groll.busy_machines, vec!["build".to_owned()]);
     }
 
     #[test]
@@ -953,7 +1104,7 @@ mod tests {
         let base = Stands { id: "h".into(), name: "build".into(), ..Stands::default() };
         assert_eq!(host_stands(&base), (Some(Light::Off), "Not installed".into()));
         assert_eq!(host_stands(&Stands { doing: Some("Installing".into()), ..base.clone() }), (None, "Installing…".into()));
-        assert_eq!(host_stands(&Stands { error: Some("no room".into()), ..base.clone() }), (Some(Light::Down), "Couldn’t install".into()));
+        assert_eq!(host_stands(&Stands { error: Some("no room".into()), ..base.clone() }), (Some(Light::Down), "Can’t install".into()));
         assert_eq!(host_stands(&Stands { wanted: true, in_step: true, ..base.clone() }), (Some(Light::On), "Up to date".into()));
         assert_eq!(host_stands(&Stands { wanted: true, error: Some("no route".into()), ..base.clone() }), (Some(Light::Down), "Can’t sync".into()));
         assert_eq!(host_stands(&Stands { wanted: true, ..base }), (Some(Light::Waiting), "Behind".into()));
@@ -964,18 +1115,21 @@ mod tests {
         assert_eq!(middle_truncate("/workspace/very-long-directory/olo", 20), "/workspac…ectory/olo");
 
         let d = demo_data();
-        // Signed-out Codex account sorts to top of Codex group; sections stay in canonical order (Claude Code -> Codex)
+        // Signed-out Codex account sorts to top of Codex group; sections stay in canonical order (Claude Code -> Codex -> Antigravity)
         let codex = sorted_accounts(&d.pool.saved.accounts, Provider::Codex, now());
         assert_eq!(codex[0].name, "Sandbox");
-        assert_eq!(sorted_providers(&d.pool.saved.accounts, now()), vec![Provider::Claude, Provider::Codex]);
+        assert_eq!(sorted_providers(&d.pool.saved.accounts, now()), vec![Provider::Claude, Provider::Codex, Provider::Antigravity]);
         // Last-hour demo totals never exceed Today totals, and the 1 failure belongs to Codex
         let all_act = merged_activity(&d.activity, &d.hosts, &MachineScope::All);
         let c_tot = all_act.totals("Claude Code", now() - 3600);
         let x_tot = all_act.totals("Codex", now() - 3600);
+        let g_tot = all_act.totals("Antigravity", now() - 3600);
         assert_eq!(c_tot.failed, 0);
         assert_eq!(x_tot.failed, 1);
+        assert_eq!(g_tot.failed, 0);
         assert!(c_tot.requests <= 252 && c_tot.input_tokens <= 2_302_400);
         assert!(x_tot.requests <= 59 && x_tot.input_tokens <= 614_000);
+        assert!(g_tot.requests <= 91 && g_tot.input_tokens <= 1_045_000);
         // Severity-sorted hosts put error hosts first, installing next, healthy after
         let sh = sorted_hosts(&d.hosts);
         assert_eq!(sh[0].id, "nas");
@@ -984,7 +1138,46 @@ mod tests {
         assert_eq!(sh[3].id, "build");
         // Activity tab has no permanent green dot; Accounts & Machines carry real Down badges
         assert_eq!(tab_lights(&d.pool, &d.hosts, Some(&d.running), Some(d.uses)), [Some(Light::Down), None, Some(Light::Down)]);
-        assert_eq!(local_custody_summary(&d.pool, &d.hosts).as_deref(), Some("Keeps Personal, Sandbox · borrows Work Max, Team Plus from build"));
+        assert_eq!(local_custody_summary(&d.pool, &d.hosts).as_deref(), Some("Keeps Personal, Sandbox, Workspace Dev · From build: Work Max, Team Plus, Google One AI"));
         assert!(last_checked_at(&d.hosts).is_some());
+    }
+
+    #[test]
+    fn scoped_only_antigravity_out_of_quota_and_paid_surface_in_sort_and_tab_lights() {
+        let t = now();
+        let mut a = Account::new("g-scoped".into(), "Scoped AGY".into(), Provider::Antigravity);
+        a.windows = vec![
+            QuotaWindow { name: "b_pro".into(), label: "Gemini Pro".into(), used: 100.0, resets_at: Some(t + 1800), models: vec!["gemini-pro".into()] },
+            QuotaWindow { name: "b_flash".into(), label: "Gemini Flash".into(), used: 100.0, resets_at: Some(t + 3600), models: vec!["gemini-flash".into()] },
+        ];
+        a.now_paid("gemini-pro", false, t + 1800, "b_pro");
+        assert_eq!(account_out_of_quota(&a, t), Some(Some(t + 1800)));
+        assert!(account_any_paid(&a, t));
+
+        let mut healthy = Account::new("g-ok".into(), "Healthy AGY".into(), Provider::Antigravity);
+        healthy.windows = vec![QuotaWindow { name: "b_pro".into(), label: "Gemini Pro".into(), used: 10.0, resets_at: Some(t + 1800), models: vec!["gemini-pro".into()] }];
+        let accounts = vec![healthy.clone(), a.clone()];
+        let ordered = sorted_accounts(&accounts, Provider::Antigravity, t);
+        assert_eq!(ordered[0].id, "g-scoped");
+
+        let mut pool = Pool::default();
+        pool.saved.accounts = vec![a];
+        let lights = tab_lights(&pool, &[], None, None);
+        assert_eq!(lights[0], Some(Light::Waiting));
+
+        // Overlapping 5h (100%) + 7d (30%) on the same scoped family still
+        // counts that family as out of quota, and model-scoped paid credit
+        // surfaces via `account_paid_scope` even while another family is healthy.
+        let mut overlap = Account::new("g-overlap".into(), "Overlap AGY".into(), Provider::Antigravity);
+        overlap.windows = vec![
+            QuotaWindow { name: "pro_5h".into(), label: "Gemini Pro 5-hour".into(), used: 100.0, resets_at: Some(t + 1200), models: vec!["gemini-pro".into()] },
+            QuotaWindow { name: "pro_7d".into(), label: "Gemini Pro Weekly".into(), used: 30.0, resets_at: Some(t + 86_400), models: vec!["gemini-pro".into()] },
+        ];
+        assert_eq!(account_out_of_quota(&overlap, t), Some(Some(t + 1200)));
+
+        overlap.windows.push(QuotaWindow { name: "flash_5h".into(), label: "Gemini Flash".into(), used: 10.0, resets_at: Some(t + 1800), models: vec!["gemini-flash".into()] });
+        assert_eq!(account_out_of_quota(&overlap, t), None, "Flash is still healthy");
+        overlap.now_paid("gemini-pro", true, t + 1200, "pro_5h");
+        assert_eq!(account_paid_scope(&overlap, t), Some((Some("Gemini Pro 5-hour".into()), t + 1200)));
     }
 }

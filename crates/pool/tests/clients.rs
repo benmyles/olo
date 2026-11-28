@@ -382,3 +382,371 @@ async fn codex_daemon_follows_the_pool() {
     let seen = seen.lock().unwrap().clone();
     assert!(!seen.is_empty() && seen.iter().all(|a| a == "Bearer pool-account-token"), "{seen:?}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "runs the real Antigravity (AGY_BIN)"]
+async fn agy_on_its_subscription_through_the_proxy() {
+    let bin: std::ffi::OsString = std::env::var_os("AGY_BIN")
+        .or_else(|| std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join("agy")).find(|p| p.is_file()).map(std::ffi::OsString::from)))
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/bin/agy")).filter(|p| p.is_file()).map(std::ffi::OsString::from))
+        .expect("AGY_BIN not set and `agy` not found on PATH or $HOME/.local/bin");
+    // SAFETY: set before anything else in this test reads it.
+    unsafe { std::env::set_var("OLO_POOL_NO_TUNNEL", "1") };
+    // Record every generate request: (path, authorization, project) and every pass-through path.
+    let gen_seen: Arc<Mutex<Vec<(String, String, String)>>> = Default::default();
+    let other_seen: Arc<Mutex<Vec<String>>> = Default::default();
+    let (gs, os) = (gen_seen.clone(), other_seen.clone());
+    let reset_iso = chrono::DateTime::from_timestamp(now() + 3600, 0).unwrap().to_rfc3339();
+    let r_avail = reset_iso.clone();
+    let r_sum = reset_iso.clone();
+    let fake = Router::new()
+        .route(
+            "/v1internal:loadCodeAssist",
+            post({
+                let os = os.clone();
+                move |h: HeaderMap| {
+                    let os = os.clone();
+                    async move {
+                        let auth = h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+                        os.lock().unwrap().push(format!("/v1internal:loadCodeAssist ({auth})"));
+                        axum::Json(json!({
+                            "cloudaicompanionProject": "their-project",
+                            "currentTier": {"id": "g1-pro-tier", "name": "Google One AI Pro"},
+                            "paidTier": {"id": "g1-pro-tier", "name": "Google One AI Pro"}
+                        }))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1internal:fetchAvailableModels",
+            post({
+                let os = os.clone();
+                move || {
+                    let (os, reset) = (os.clone(), r_avail.clone());
+                    async move {
+                        os.lock().unwrap().push("/v1internal:fetchAvailableModels".into());
+                        axum::Json(json!({
+                            "models": {
+                                "gemini-4-neon-high": {
+                                    "displayName": "Gemini 4 Neon",
+                                    "model": "MODEL_PLACEHOLDER_M26",
+                                    "recommended": true,
+                                    "supportsImages": true,
+                                    "supportsThinking": true,
+                                    "maxTokens": 1048576,
+                                    "maxOutputTokens": 65536,
+                                    "quotaInfo": {"remainingFraction": 0.15, "resetTime": reset}
+                                }
+                            },
+                            "defaultAgentModelId": "gemini-4-neon-high",
+                            "agentModelSorts": [{
+                                "displayName": "Recommended",
+                                "groups": [{
+                                    "displayName": "Gemini",
+                                    "modelIds": ["gemini-4-neon-high"]
+                                }]
+                            }]
+                        }))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post({
+                let os = os.clone();
+                move || {
+                    let (os, reset) = (os.clone(), r_sum.clone());
+                    async move {
+                        os.lock().unwrap().push("/v1internal:retrieveUserQuotaSummary".into());
+                        axum::Json(json!({
+                            "buckets": [{
+                                "bucketId": "g_neon:5h",
+                                "displayName": "Gemini 4 Neon 5-hour",
+                                "remainingFraction": 0.15,
+                                "resetTime": reset,
+                                "models": ["gemini-4-neon-high"]
+                            }]
+                        }))
+                    }
+                }
+            }),
+        )
+        .route("/v1internal:fetchAdminControls", post(|| async { axum::Json(json!({})) }))
+        .route("/v1internal:fetchUserInfo", post(|| async { axum::Json(json!({"email": "sandbox@example.com"})) }))
+        .route("/v1internal:listExperiments", post(|| async { axum::Json(json!({})) }))
+        .route("/v1internal:writeTrajectoryAcls", post(|| async { axum::Json(json!({})) }))
+        .route("/v1internal:countTokens", post(|| async { axum::Json(json!({"totalTokens": 5})) }))
+        .route(
+            "/v1internal:streamGenerateContent",
+            post({
+                let gs = gs.clone();
+                move |h: HeaderMap, body: axum::body::Bytes| {
+                    let gs = gs.clone();
+                    async move {
+                        let auth = h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+                        let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                        let proj = v["project"].as_str().unwrap_or("").to_owned();
+                        gs.lock().unwrap().push(("/v1internal:streamGenerateContent".into(), auth, proj));
+                        let ev1 = json!({
+                            "response": {
+                                "candidates": [{
+                                    "content": {"role": "model", "parts": [{"text": "Hello from the pool."}]},
+                                    "finishReason": "STOP",
+                                    "index": 0
+                                }],
+                                "usageMetadata": {
+                                    "promptTokenCount": 11,
+                                    "candidatesTokenCount": 4,
+                                    "thoughtsTokenCount": 2,
+                                    "totalTokenCount": 17
+                                }
+                            }
+                        });
+                        Response::builder().header("content-type", "text/event-stream").body(Body::from(format!("data: {ev1}\n\n"))).unwrap()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1internal:generateContent",
+            post(move |h: HeaderMap, body: axum::body::Bytes| {
+                let gs = gs.clone();
+                async move {
+                    let auth = h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                    let proj = v["project"].as_str().unwrap_or("").to_owned();
+                    gs.lock().unwrap().push(("/v1internal:generateContent".into(), auth, proj));
+                    axum::Json(json!({
+                        "response": {
+                            "candidates": [{
+                                "content": {"role": "model", "parts": [{"text": "Hello from the pool."}]},
+                                "finishReason": "STOP",
+                                "index": 0
+                            }],
+                            "usageMetadata": {"promptTokenCount": 11, "candidatesTokenCount": 4, "thoughtsTokenCount": 2, "totalTokenCount": 17}
+                        }
+                    }))
+                }
+            }),
+        )
+        .fallback(|uri: axum::http::Uri| async move {
+            println!("fake agy upstream (unhandled): {uri}");
+            Response::builder().status(404).body(Body::from("{}")).unwrap()
+        });
+    let up = serve(fake).await;
+
+    let mut saved = Saved::default();
+    let mut a = Account::new("agy-pool-1".into(), "Google One".into(), Provider::Antigravity);
+    a.created = 1;
+    saved.accounts.push(a);
+    saved.credentials.insert("agy-pool-1".into(), Credential { access: "pool-agy-token".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("pool-project".into()) });
+    let mut b = Account::new("agy-pool-2".into(), "Backup".into(), Provider::Antigravity);
+    b.created = 2;
+    saved.accounts.push(b);
+    saved.credentials.insert("agy-pool-2".into(), Credential { access: "pool-agy-token-2".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("pool-project-2".into()) });
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+
+    let dir = tempfile::Builder::new().prefix("olo-pool-agy-").tempdir_in("/var/tmp").unwrap();
+    let authority = Arc::new(Authority::ephemeral());
+    let ca = dir.path().join("pool-ca.pem");
+    std::fs::write(&ca, &authority.cert_pem).unwrap();
+    let s = shared.clone();
+    let proxy_clients = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s.serves(p)), intercept::Who::Clients).await.unwrap();
+
+    // Fake agy OAuth token inside isolated sandbox HOME.
+    let home = dir.path().join("home");
+    let expiry = chrono::DateTime::from_timestamp(now() + 3600, 0).unwrap().to_rfc3339();
+    let token_json = json!({
+        "token": {
+            "access_token": "their-own-agy-token",
+            "token_type": "Bearer",
+            "refresh_token": "their-own-refresh",
+            "expiry": expiry,
+            "expires_in": 3599
+        },
+        "auth_method": "consumer",
+        "id_token_email": "sandbox@example.com"
+    });
+    write(&home.join(".gemini/antigravity-cli/antigravity-oauth-token"), &token_json.to_string());
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+
+    // 1. Direct `Who::Clients` check: proves `/proc` peer detection identifies
+    //    the real `agy` ELF binary as `Provider::Antigravity` AND `AGY_CA_CERT`
+    //    trusts our real `Authority` certificate with zero TLS errors.
+    let mut probe_cmd = tokio::process::Command::new(&bin);
+    probe_cmd
+        .args(["models"])
+        .current_dir(&work)
+        .env_clear()
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("XDG_CACHE_HOME", home.join(".cache"))
+        .env("XDG_DATA_HOME", home.join(".local/share"))
+        .env("XDG_STATE_HOME", home.join(".local/state"))
+        .env("DBUS_SESSION_BUS_ADDRESS", "")
+        .env("HTTPS_PROXY", intercept::url(proxy_clients.port()))
+        .env("AGY_CA_CERT", &ca)
+        .env("NO_PROXY", "localhost,127.0.0.1,::1")
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let p_out = tokio::time::timeout(std::time::Duration::from_secs(30), probe_cmd.output()).await.expect("agy peer probe finished").unwrap();
+    let seen_probe = other_seen.lock().unwrap().clone();
+    println!("Who::Clients probe status={}\npass-through seen: {seen_probe:?}\nstderr: {}", p_out.status, String::from_utf8_lossy(&p_out.stderr));
+    assert!(
+        seen_probe.iter().any(|s| s.contains("/v1internal:loadCodeAssist"))
+            && seen_probe.iter().any(|s| s.contains("/v1internal:retrieveUserQuotaSummary"))
+            && seen_probe.iter().any(|s| s.contains("/v1internal:fetchAvailableModels")),
+        "agy did not reach Cloud Code endpoints through Who::Clients proxy: {seen_probe:?}"
+    );
+
+    // 2. Full offline E2E (`agy models` + `agy -p`): `agy`'s eligibility check
+    //    also requests `https://www.googleapis.com/oauth2/v2/userinfo` (which
+    //    production `intercept` tunnels directly to Google). Keep `OLO_POOL_NO_TUNNEL=1`
+    //    so zero real network calls occur, and use a test-only CONNECT dispatcher
+    //    that answers `www.googleapis.com` locally while forwarding Cloud Code hosts
+    //    verbatim to `intercept::serve`.
+    let s2 = shared.clone();
+    let proxy_any = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s2.serves(p)), intercept::Who::Anyone).await.unwrap();
+    let (ui_ca_pem, ui_server_cfg) = fake_userinfo_tls();
+    let combined_ca = dir.path().join("pool-ca-with-test-userinfo.pem");
+    std::fs::write(&combined_ca, format!("{}\n{ui_ca_pem}", authority.cert_pem)).unwrap();
+    let test_proxy = serve_agy_test_dispatcher(proxy_any, ui_server_cfg).await;
+
+    let mut models_cmd = tokio::process::Command::new(&bin);
+    models_cmd
+        .args(["models"])
+        .current_dir(&work)
+        .env_clear()
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("XDG_CACHE_HOME", home.join(".cache"))
+        .env("XDG_DATA_HOME", home.join(".local/share"))
+        .env("XDG_STATE_HOME", home.join(".local/state"))
+        .env("DBUS_SESSION_BUS_ADDRESS", "")
+        .env("HTTPS_PROXY", format!("http://{test_proxy}"))
+        .env("AGY_CA_CERT", &combined_ca)
+        .env("NO_PROXY", "localhost,127.0.0.1,::1")
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let m_out = tokio::time::timeout(std::time::Duration::from_secs(30), models_cmd.output()).await.expect("agy models finished").unwrap();
+    let m_stdout = String::from_utf8_lossy(&m_out.stdout);
+    println!("agy models status={}\nstdout: {m_stdout}\nstderr: {}", m_out.status, String::from_utf8_lossy(&m_out.stderr));
+    assert!(m_out.status.success(), "agy models failed: {}", String::from_utf8_lossy(&m_out.stderr));
+    assert!(m_stdout.contains("gemini-4-neon-high") || m_stdout.contains("Gemini 4 Neon"), "agy models did not list fake model: {m_stdout}");
+
+    // 3. Run `agy -p "Say hello."` through the proxy: verifies pooled OAuth token
+    //    swap, `"project"` body rewrite, SSE streaming, and usage accounting!
+    let mut cmd = tokio::process::Command::new(&bin);
+    cmd.args(["-p", "Say hello.", "--output-format", "text", "--model", "gemini-4-neon-high", "--print-timeout", "30s"])
+        .current_dir(&work)
+        .env_clear()
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("XDG_CACHE_HOME", home.join(".cache"))
+        .env("XDG_DATA_HOME", home.join(".local/share"))
+        .env("XDG_STATE_HOME", home.join(".local/state"))
+        .env("DBUS_SESSION_BUS_ADDRESS", "")
+        .env("HTTPS_PROXY", format!("http://{test_proxy}"))
+        .env("AGY_CA_CERT", &combined_ca)
+        .env("NO_PROXY", "localhost,127.0.0.1,::1")
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let out = tokio::time::timeout(std::time::Duration::from_secs(45), cmd.output()).await.expect("agy print finished").unwrap();
+    let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    println!("agy -p status={}\nstdout: {stdout}\nstderr: {stderr}", out.status);
+    assert!(out.status.success(), "agy -p exited non-zero ({}): {stderr}", out.status);
+    let seen = gen_seen.lock().unwrap().clone();
+    println!("agy model requests: {seen:?}");
+    assert!(stdout.contains("Hello from the pool."), "agy didn't answer through the pool");
+    assert!(!seen.is_empty() && seen.iter().all(|(_, auth, proj)| auth == "Bearer pool-agy-token" && proj == "pool-project"), "unexpected model requests: {seen:?}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline && !shared.snapshot().open.is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let snap = shared.snapshot();
+    let a = snap.account("agy-pool-1").unwrap();
+    assert_eq!((a.total.requests, a.total.input_tokens, a.total.output_tokens), (seen.len() as u64, 11 * seen.len() as u64, 6 * seen.len() as u64));
+}
+
+/// Test-only ephemeral CA + TLS server config for `www.googleapis.com` so the
+/// offline `agy` E2E test answers `/oauth2/v2/userinfo` with zero network I/O.
+fn fake_userinfo_tls() -> (String, Arc<rustls::ServerConfig>) {
+    use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose};
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    let ca_key = KeyPair::generate().unwrap();
+    let mut ca_p = CertificateParams::default();
+    let mut dn = DistinguishedName::new();
+    dn.push(DnType::CommonName, "Olo Test Userinfo CA");
+    ca_p.distinguished_name = dn;
+    ca_p.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
+    ca_p.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::DigitalSignature];
+    let ca_cert = ca_p.self_signed(&ca_key).unwrap();
+    let issuer = Issuer::new(ca_p, ca_key);
+    let leaf_key = KeyPair::generate().unwrap();
+    let mut leaf_p = CertificateParams::new(vec!["www.googleapis.com".to_owned()]).unwrap();
+    leaf_p.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    leaf_p.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    let leaf = leaf_p.signed_by(&leaf_key, &issuer).unwrap();
+    let chain: Vec<CertificateDer<'static>> = vec![leaf.der().clone(), ca_cert.der().clone()];
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let priv_key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(leaf_key.serialize_der()));
+    let mut cfg = rustls::ServerConfig::builder_with_provider(provider).with_safe_default_protocol_versions().unwrap().with_no_client_auth().with_single_cert(chain, priv_key).unwrap();
+    cfg.alpn_protocols = vec![b"http/1.1".to_vec()];
+    (ca_cert.pem(), Arc::new(cfg))
+}
+
+/// Test-only CONNECT proxy: serves `www.googleapis.com` locally, forwards Cloud
+/// Code hosts verbatim to `pool_proxy`, and rejects all other hosts (403).
+async fn serve_agy_test_dispatcher(pool_proxy: SocketAddr, userinfo_tls: Arc<rustls::ServerConfig>) -> SocketAddr {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((mut client, _)) = listener.accept().await {
+            let ui_tls = userinfo_tls.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 4096];
+                let end = loop {
+                    if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break p + 4;
+                    }
+                    let Ok(n @ 1..) = client.read(&mut tmp).await else { return };
+                    buf.extend_from_slice(&tmp[..n]);
+                };
+                let head = String::from_utf8_lossy(&buf[..end]).into_owned();
+                let target = head.lines().next().and_then(|l| l.split_whitespace().nth(1)).unwrap_or("");
+                let host = target.split(':').next().unwrap_or("");
+                if host == "www.googleapis.com" {
+                    let _ = client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await;
+                    let Ok(mut tls) = tokio_rustls::TlsAcceptor::from(ui_tls).accept(client).await else { return };
+                    let mut req = Vec::new();
+                    while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        let Ok(n @ 1..) = tls.read(&mut tmp).await else { return };
+                        req.extend_from_slice(&tmp[..n]);
+                    }
+                    let body = r#"{"id":"123456","email":"sandbox@example.com","verified_email":true}"#;
+                    let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    let _ = tls.write_all(resp.as_bytes()).await;
+                    let _ = tls.shutdown().await;
+                } else if matches!(host, "daily-cloudcode-pa.googleapis.com" | "cloudcode-pa.googleapis.com") {
+                    let Ok(mut up) = tokio::net::TcpStream::connect(pool_proxy).await else { return };
+                    if up.write_all(&buf).await.is_err() {
+                        return;
+                    }
+                    let _ = tokio::io::copy_bidirectional(&mut client, &mut up).await;
+                } else {
+                    println!("test dispatcher blocked host: {host}");
+                    let _ = client.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+                }
+            });
+        }
+    });
+    addr
+}

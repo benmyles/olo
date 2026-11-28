@@ -97,7 +97,17 @@ async fn drains_and_fails_over() {
     let seen: Seen = Default::default();
     let up_addr = serve(fake(seen.clone())).await;
     let base = format!("http://{up_addr}");
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let up = Upstreams {
+        claude: base.clone(),
+        codex: base.clone(),
+        chatgpt: base.clone(),
+        agy: base.clone(),
+        agy_prod: base.clone(),
+        claude_oauth: format!("{base}/oauth"),
+        codex_oauth: format!("{base}/oauth"),
+        agy_oauth: format!("{base}/oauth"),
+        origin: None,
+    };
     // "a" expires soonest but is out; "b" next but its sign-in is stale;
     // "c" last.
     let mut saved = Saved::default();
@@ -210,7 +220,17 @@ async fn redeems_a_credit_when_all_are_out() {
         )
         .route("/api/oauth/usage", get(|| async { axum::Json(json!({"five_hour": {"utilization": 1.0, "resets_at": now() + 18000}})) }));
     let base = format!("http://{}", serve(fake).await);
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let up = Upstreams {
+        claude: base.clone(),
+        codex: base.clone(),
+        chatgpt: base.clone(),
+        agy: base.clone(),
+        agy_prod: base.clone(),
+        claude_oauth: format!("{base}/oauth"),
+        codex_oauth: format!("{base}/oauth"),
+        agy_oauth: format!("{base}/oauth"),
+        origin: None,
+    };
     let mut saved = Saved::default();
     let mut a = account("a", 1, 100);
     a.org = Some("org-1".into());
@@ -465,7 +485,17 @@ async fn switches_by_the_model_whose_meter_ran_out() {
             }),
         );
     let base = format!("http://{}", serve(fake).await);
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let up = Upstreams {
+        claude: base.clone(),
+        codex: base.clone(),
+        chatgpt: base.clone(),
+        agy: base.clone(),
+        agy_prod: base.clone(),
+        claude_oauth: format!("{base}/oauth"),
+        codex_oauth: format!("{base}/oauth"),
+        agy_oauth: format!("{base}/oauth"),
+        origin: None,
+    };
     let mut saved = Saved::default();
     for (id, created) in [("a", 1), ("b", 2), ("c", 3)] {
         saved.accounts.push(account(id, created, 1000));
@@ -543,7 +573,17 @@ async fn a_request_goes_on_across_a_network_change() {
     );
     let up_addr = serve(fake).await;
     let base = format!("http://{up_addr}");
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let up = Upstreams {
+        claude: base.clone(),
+        codex: base.clone(),
+        chatgpt: base.clone(),
+        agy: base.clone(),
+        agy_prod: base.clone(),
+        claude_oauth: format!("{base}/oauth"),
+        codex_oauth: format!("{base}/oauth"),
+        agy_oauth: format!("{base}/oauth"),
+        origin: None,
+    };
     let mut saved = Saved::default();
     saved.accounts.push(account("a", 1, 100));
     saved.credentials.insert("a".into(), cred("ok"));
@@ -630,7 +670,17 @@ async fn a_compressed_codex_request_refused_goes_again_plain() {
     );
     let up_addr = serve(fake).await;
     let base = format!("http://{up_addr}");
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let up = Upstreams {
+        claude: base.clone(),
+        codex: base.clone(),
+        chatgpt: base.clone(),
+        agy: base.clone(),
+        agy_prod: base.clone(),
+        claude_oauth: format!("{base}/oauth"),
+        codex_oauth: format!("{base}/oauth"),
+        agy_oauth: format!("{base}/oauth"),
+        origin: None,
+    };
     let mut saved = Saved::default();
     let mut a = Account::new("a".into(), "a".into(), Provider::Codex);
     a.created = 1;
@@ -767,7 +817,17 @@ fn claims_fake(state: Arc<Claims>, grants: Vec<(&'static str, &'static str)>, de
 /// in `grants`; a gateway for them in front of `fake`.
 async fn out_of_quota(ids: &[&str], grants: &[(&'static str, &'static str)], fake: Router) -> (Arc<Shared>, SocketAddr, String) {
     let base = format!("http://{}", serve(fake).await);
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let up = Upstreams {
+        claude: base.clone(),
+        codex: base.clone(),
+        chatgpt: base.clone(),
+        agy: base.clone(),
+        agy_prod: base.clone(),
+        claude_oauth: format!("{base}/oauth"),
+        codex_oauth: format!("{base}/oauth"),
+        agy_oauth: format!("{base}/oauth"),
+        origin: None,
+    };
     let mut saved = Saved::default();
     for (n, id) in ids.iter().enumerate() {
         let mut a = account(id, n as i64 + 1, 18000);
@@ -1529,7 +1589,7 @@ async fn partial_five_hour_reset_preserves_seven_day_paid_mark() {
         olo_token_pool::model::Window { name: "five_hour".into(), label: "5-hour".into(), used: 100.0, resets_at: Some(now() + 3 * 3600), models: vec![] },
         olo_token_pool::model::Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(now() + 3 * 86400), models: vec![] },
     ];
-    a.paid = Some(olo_token_pool::model::PaidFor { until: now() + 3 * 86400, meter: "seven_day".into() });
+    a.paid = Some(olo_token_pool::model::PaidFor { until: now() + 3 * 86400, meter: "seven_day".into(), at: 0 });
     a.credits = vec![olo_token_pool::model::ResetCredit {
         id: "g-5h".into(),
         expires_at: Some(now() + 86400),
@@ -1687,4 +1747,812 @@ async fn older_concurrent_sync_cannot_overwrite_newer_credit_read() {
     release_first.notify_one();
     slow.await.unwrap();
     assert_eq!(shared.snapshot().account("a").unwrap().credits.len(), 1, "older sync must never overwrite newer credits");
+}
+
+/// Antigravity gateway end-to-end:
+/// 1) Form-urlencoded OAuth token refresh preserves existing `refresh_token` when Google omits it.
+/// 2) `loadCodeAssist` discovers `cloudaicompanionProject` (`org`) and tier (`plan`).
+/// 3) Request JSON `"project"` is rewritten to the chosen pooled account's project on failover.
+/// 4) SSE `usageMetadata` counts `promptTokenCount` + `candidatesTokenCount + thoughtsTokenCount`.
+/// 5) `consumedCredits` marks paid-credit fallback so subsequent requests switch to another account.
+#[tokio::test(flavor = "multi_thread")]
+async fn antigravity_oauth_project_rewrite_sse_usage_and_paid_credits() {
+    let seen_projects: Arc<Mutex<Vec<(String, String)>>> = Default::default();
+    let seen_oauth: Arc<Mutex<Vec<String>>> = Default::default();
+    let (sp, so) = (seen_projects.clone(), seen_oauth.clone());
+    let fake = Router::new()
+        .route(
+            "/oauth",
+            post(move |h: HeaderMap, body: axum::body::Bytes| {
+                let so = so.clone();
+                async move {
+                    let ct = h.get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
+                    assert!(ct.contains("application/x-www-form-urlencoded"), "Google OAuth refresh must be form-urlencoded: {ct}");
+                    let s = String::from_utf8(body.to_vec()).unwrap();
+                    so.lock().unwrap().push(s.clone());
+                    assert!(s.contains("grant_type=refresh_token") && s.contains("refresh_token=1%2F%2Frefresh-a"), "{s}");
+                    // Google OAuth intentionally omits `refresh_token` in refresh responses.
+                    axum::Json(json!({"access_token": "fresh-a", "expires_in": 3600, "token_type": "Bearer"}))
+                }
+            }),
+        )
+        .route(
+            "/v1internal:loadCodeAssist",
+            post(|h: HeaderMap| async move {
+                match token(&h).as_str() {
+                    "fresh-a" => axum::Json(json!({"cloudaicompanionProject": "proj-a", "currentTier": {"id": "g1-pro-tier", "name": "Google One AI Pro"}})),
+                    _ => axum::Json(json!({"cloudaicompanionProject": {"id": "proj-b"}, "currentTier": {"name": "Workspace Dev"}})),
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(|| async {
+                axum::Json(json!({
+                    "buckets": [{"bucketId": "g_neon:5h", "displayName": "Gemini 4 Neon 5-hour", "remainingFraction": 0.8, "resetTime": chrono::DateTime::from_timestamp(now() + 3 * 3600, 0).unwrap().to_rfc3339(), "models": ["gemini-4-neon"]}]
+                }))
+            }),
+        )
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(move |h: HeaderMap, body: axum::body::Bytes| {
+                let sp = sp.clone();
+                async move {
+                    let t = token(&h);
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    let proj = v["project"].as_str().unwrap_or("").to_owned();
+                    sp.lock().unwrap().push((t.clone(), proj));
+                    let sse = if t == "fresh-a" {
+                        // Account A succeeds but reports `consumedCredits` (paid credits in use).
+                        "data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}],\"usageMetadata\":{\"promptTokenCount\":15,\"candidatesTokenCount\":4,\"thoughtsTokenCount\":6}},\"consumedCredits\":[{\"creditAmount\":\"5\"}]}\n\n"
+                    } else {
+                        "data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"from-b\"}]}}],\"usageMetadata\":{\"promptTokenCount\":9,\"candidatesTokenCount\":3,\"thoughtsTokenCount\":2}}}\n\n"
+                    };
+                    Response::builder().header("content-type", "text/event-stream").body(Body::from(sse)).unwrap()
+                }
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("agy-a".into(), "Agy A".into(), Provider::Antigravity);
+    a.created = 1;
+    let mut b = Account::new("agy-b".into(), "Agy B".into(), Provider::Antigravity);
+    b.created = 2;
+    saved.accounts.extend([a, b]);
+    // Account A starts with an expired access token so OAuth refresh is exercised.
+    saved.credentials.insert("agy-a".into(), Credential { access: "stale-a".into(), refresh: Some("1//refresh-a".into()), expires_at: Some(now() - 10), account_id: None });
+    saved.credentials.insert("agy-b".into(), Credential { access: "tok-b".into(), refresh: Some("1//refresh-b".into()), expires_at: Some(now() + 3600), account_id: None });
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let client = reqwest::Client::new();
+
+    // 1. First request goes to Account A: refreshes OAuth, discovers proj-a, rewrites `"project"`, counts SSE tokens, marks A as paid!
+    let r1 = client
+        .post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse"))
+        .json(&json!({"model": "gemini-4-neon-high", "project": "client-own-project", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r1.status(), 200);
+    assert_eq!(r1.headers()["x-olo-pool-account"], "Agy A");
+    let _ = r1.text().await.unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        let s = shared.snapshot();
+        if s.open.is_empty() && s.account("agy-a").is_some_and(|a| a.total.requests == 1) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    let snap = shared.snapshot();
+    let acct_a = snap.account("agy-a").unwrap();
+    assert_eq!(snap.saved.credentials["agy-a"].refresh.as_deref(), Some("1//refresh-a"), "existing refresh_token must be preserved when Google omits it");
+    assert_eq!((snap.saved.credentials["agy-a"].account_id.as_deref(), acct_a.plan.as_deref()), (Some("proj-a"), Some("Google One AI Pro")));
+    assert_eq!((acct_a.total.requests, acct_a.total.input_tokens, acct_a.total.output_tokens), (1, 15, 10));
+    assert!(acct_a.paid_until("gemini-4-neon", now()).is_some(), "consumedCredits must mark account as using paid credits");
+
+    // 2. Second request routes to Account B (avoiding A's paid credits) and rewrites `"project"` to `"proj-b"`.
+    let r2 = client
+        .post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse"))
+        .json(&json!({"model": "gemini-4-neon-high", "project": "client-own-project", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r2.status(), 200);
+    assert_eq!(r2.headers()["x-olo-pool-account"], "Agy B");
+    let _ = r2.text().await.unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        let s = shared.snapshot();
+        if s.open.is_empty() && s.account("agy-b").is_some_and(|a| a.total.requests == 1) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    assert_eq!(seen_projects.lock().unwrap().as_slice(), &[("fresh-a".to_owned(), "proj-a".to_owned()), ("tok-b".to_owned(), "proj-b".to_owned())]);
+    assert_eq!(seen_oauth.lock().unwrap().len(), 1);
+    let snap = shared.snapshot();
+    let acct_b = snap.account("agy-b").unwrap();
+    assert_eq!((acct_b.total.requests, acct_b.total.input_tokens, acct_b.total.output_tokens), (1, 9, 5));
+}
+
+/// Antigravity 429 handling + Banked Quota Reset auto-claiming:
+/// 1) Account A returns 429 `MODEL_CAPACITY_EXHAUSTED` (transient server capacity):
+///    fails over to B WITHOUT marking A's quota window 100%.
+/// 2) Account B returns 429 `QUOTA_EXHAUSTED` for `gemini-4-neon-high`:
+///    refreshes `retrieveUserQuotaSummary`, discovers a banked reset (`USAGE_BELOW_THRESHOLD`),
+///    claims via `POST /v1internal:claimBankedQuotaReset` with `requestId` + `bucketId` + `project`,
+///    applies the returned `quotaSummary` immediately, and serves 200 OK!
+/// 3) HTTP 412 `FAILED_PRECONDITION` on `claimBankedQuotaReset` is classified as `Refused`
+///    and never strands `a.redeeming`.
+#[tokio::test(flavor = "multi_thread")]
+async fn antigravity_429_capacity_vs_quota_and_banked_reset_claim() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+    let b_reset = Arc::new(AtomicBool::new(false));
+    let claims = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let summary_calls = Arc::new(AtomicUsize::new(0));
+    let (br1, br2, br3, cl, sc) = (b_reset.clone(), b_reset.clone(), b_reset.clone(), claims.clone(), summary_calls.clone());
+
+    let fake = Router::new()
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(move |h: HeaderMap| {
+                let br = br1.clone();
+                async move {
+                    match token(&h).as_str() {
+                        "tok-a" => (
+                            StatusCode::TOO_MANY_REQUESTS,
+                            axum::Json(json!({
+                                "error": {
+                                    "code": 429,
+                                    "status": "RESOURCE_EXHAUSTED",
+                                    "details": [
+                                        {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "MODEL_CAPACITY_EXHAUSTED"},
+                                        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "6s"}
+                                    ]
+                                }
+                            })),
+                        )
+                            .into_response(),
+                        "tok-b" if br.load(SeqCst) => Response::builder()
+                            .header("content-type", "text/event-stream")
+                            .body(Body::from("data: {\"response\":{\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":2}}}\n\n"))
+                            .unwrap(),
+                        _ => (
+                            StatusCode::TOO_MANY_REQUESTS,
+                            axum::Json(json!({
+                                "error": {
+                                    "code": 429,
+                                    "status": "RESOURCE_EXHAUSTED",
+                                    "details": [{
+                                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                        "reason": "QUOTA_EXHAUSTED",
+                                        "metadata": {"model": "gemini-4-neon-high", "quotaResetDelay": "4h0m0s"}
+                                    }]
+                                }
+                            })),
+                        )
+                            .into_response(),
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(move |h: HeaderMap| {
+                let (br, sc) = (br2.clone(), sc.clone());
+                async move {
+                    sc.fetch_add(1, SeqCst);
+                    if token(&h) == "tok-a" {
+                        return axum::Json(json!({
+                            "buckets": [{"bucketId": "g_neon:5h", "displayName": "Gemini 4 Neon 5-hour", "remainingFraction": 0.65, "resetTime": chrono::DateTime::from_timestamp(now() + 4 * 3600, 0).unwrap().to_rfc3339(), "models": ["gemini-4-neon"]}],
+                            "bankedResets": []
+                        }));
+                    }
+                    let is_reset = br.load(SeqCst);
+                    axum::Json(json!({
+                        "buckets": [{
+                            "bucketId": "g_neon:5h",
+                            "displayName": "Gemini 4 Neon",
+                            "window": "5h",
+                            "remainingFraction": if is_reset { 1.0 } else { 0.0 },
+                            "resetTime": chrono::DateTime::from_timestamp(now() + 4 * 3600, 0).unwrap().to_rfc3339()
+                        }],
+                        "bankedResets": [{
+                            "resetId": "rst-neon-1",
+                            "displayLabel": "Gemini 4 Neon Banked Reset",
+                            "remainingCount": if is_reset { 1 } else { 2 },
+                            "claimable": false,
+                            "ineligibleReason": "QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD",
+                            "expireTime": chrono::DateTime::from_timestamp(now() + 10 * 86400, 0).unwrap().to_rfc3339(),
+                            "bucketIds": ["g_neon:5h"]
+                        }]
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/v1internal:claimBankedQuotaReset",
+            post(move |body: axum::body::Bytes| {
+                let (br, cl) = (br3.clone(), cl.clone());
+                async move {
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    if v["resetId"].as_str() == Some("rst-refused") {
+                        return (StatusCode::PRECONDITION_FAILED, axum::Json(json!({"error": {"status": "FAILED_PRECONDITION", "message": "threshold not met"}}))).into_response();
+                    }
+                    cl.lock().unwrap().push(v);
+                    br.store(true, SeqCst);
+                    axum::Json(json!({
+                        "quotaSummary": {
+                            "buckets": [{
+                                "bucketId": "g_neon:5h",
+                                "displayName": "Gemini 4 Neon",
+                                "window": "5h",
+                                "remainingFraction": 1.0,
+                                "resetTime": chrono::DateTime::from_timestamp(now() + 5 * 3600, 0).unwrap().to_rfc3339()
+                            }],
+                            "bankedResets": [{
+                                "resetId": "rst-neon-1",
+                                "displayLabel": "Gemini 4 Neon Banked Reset",
+                                "remainingCount": 1,
+                                "claimable": false,
+                                "ineligibleReason": "QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD",
+                                "expireTime": chrono::DateTime::from_timestamp(now() + 10 * 86400, 0).unwrap().to_rfc3339(),
+                                "bucketIds": ["g_neon:5h"]
+                            }]
+                        }
+                    }))
+                    .into_response()
+                }
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("agy-a".into(), "Agy A".into(), Provider::Antigravity);
+    a.created = 1;
+    a.windows =
+        vec![olo_token_pool::model::Window { name: "g_neon:5h".into(), label: "Gemini 4 Neon 5-hour".into(), used: 35.0, resets_at: Some(now() + 4 * 3600), models: vec!["gemini-neon".into()] }];
+    let mut b = Account::new("agy-b".into(), "Agy B".into(), Provider::Antigravity);
+    b.created = 2;
+    b.windows =
+        vec![olo_token_pool::model::Window { name: "g_neon:5h".into(), label: "Gemini 4 Neon 5-hour".into(), used: 95.0, resets_at: Some(now() + 4 * 3600), models: vec!["gemini-neon".into()] }];
+    saved.accounts.extend([a, b]);
+    let mut ca = cred("tok-a");
+    ca.account_id = Some("proj-a".into());
+    let mut cb = cred("tok-b");
+    cb.account_id = Some("proj-b".into());
+    saved.credentials.insert("agy-a".into(), ca);
+    saved.credentials.insert("agy-b".into(), cb);
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    let mut h = HeaderMap::new();
+    h.insert("content-type", "application/json".parse().unwrap());
+    let body = axum::body::Bytes::from(json!({"model": "gemini-4-neon-high", "project": "client", "request": {"contents": []}}).to_string());
+    let r = gateway::serve(shared.clone(), Provider::Antigravity, "v1internal:streamGenerateContent".into(), Some("alt=sse".into()), axum::http::Method::POST, h, axum::http::Extensions::new(), body)
+        .await;
+    assert_eq!(r.status(), 200, "capacity failover + banked quota reset must rescue request");
+    assert_eq!(r.headers()["x-olo-pool-account"], "Agy B");
+
+    let claimed = claims.lock().unwrap().clone();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0]["project"], "proj-b");
+    assert_eq!(claimed[0]["resetId"], "rst-neon-1");
+    assert_eq!(claimed[0]["requestId"].as_str().unwrap().len(), 36);
+
+    let snap = shared.snapshot();
+    // Account A's 429 was transient MODEL_CAPACITY_EXHAUSTED: window stays at 35%, short capacity cooldown only.
+    let acct_a = snap.account("agy-a").unwrap();
+    assert_eq!(acct_a.windows[0].used, 35.0, "capacity error must not mark quota window 100%");
+    assert!(acct_a.capacity_cooldowns.get("gemini-4-neon").is_some_and(|&t| t > now() && t <= now() + 60));
+    // Account B's returned `quotaSummary` was applied immediately: 0% used, 1 banked reset remaining!
+    let acct_b = snap.account("agy-b").unwrap();
+    assert_eq!(acct_b.windows[0].used, 0.0);
+    assert_eq!(acct_b.credits.len(), 1);
+    assert_eq!(acct_b.credits[0].remaining, 1);
+
+    // HTTP 412 FAILED_PRECONDITION is classified as Refused and clears redeeming cleanly.
+    {
+        let mut p = shared.pool.lock().unwrap();
+        let b = p.account_mut("agy-b").unwrap();
+        b.credits.push(olo_token_pool::model::ResetCredit {
+            id: "rst-refused".into(),
+            remaining: 1,
+            usable: true,
+            expires_at: Some(now() + 86400),
+            clears: vec!["g_refused:5h".into()],
+            ..Default::default()
+        });
+    }
+    let err = shared.redeem_credit("agy-b", Some("rst-refused"), gateway::Why::Asked).await.unwrap_err();
+    assert!(matches!(err, gateway::Claimed::Refused(_)), "412 must classify as Refused, got {err:?}");
+    assert!(shared.snapshot().account("agy-b").unwrap().redeeming.is_none());
+}
+
+/// Regression suite covering Round 1 code-review invariants for Antigravity:
+/// - Exact `bucketId` matching distinguishes 5h vs 7d buckets of the same family.
+/// - 429 `QUOTA_EXHAUSTED` and `consumedCredits` touch ONLY the narrowest matching window
+///   (leaving healthy shared windows intact), and real sync clears synthetic `model:*` windows.
+/// - `RATE_LIMIT_EXCEEDED` is transient capacity-only; bare unrecognized 429 passes through
+///   without poisoning quota; shared resets preserve active transient `capacity_cooldowns`.
+/// - `/agy` gateway route strictly allows only the 4 generation POST ops (rejects auxiliary ops with 404).
+/// - `ensure_agy_project` fails closed on missing project (tries next account) and re-runs after 401 refresh.
+/// - Clean response on an unrelated model does NOT clear `a.paid` for a paid model.
+#[tokio::test(flavor = "multi_thread")]
+async fn antigravity_round1_accounting_allowlist_and_project_invariants() {
+    use olo_token_pool::model::{ResetCredit, Window};
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    // 1. Exact bucketId matching (5h vs 7d Gemini Pro) + Window::reset_worth for durationless bucket.
+    let t = now();
+    let w5 = Window { name: "g_pro:5h".into(), label: "Gemini Pro 5-hour".into(), used: 100.0, resets_at: Some(t + 3600), models: vec!["gemini-pro".into()] };
+    let w7 = Window { name: "g_pro:7d".into(), label: "Gemini Pro Weekly".into(), used: 100.0, resets_at: Some(t + 86400 * 5), models: vec!["gemini-pro".into()] };
+    let w_dur_less = Window { name: "opaque_bucket".into(), label: "Gemini Pro".into(), used: 100.0, resets_at: Some(t + 3600), models: vec!["gemini-pro".into()] };
+    let c5 = ResetCredit { id: "r5".into(), remaining: 1, usable: true, clears: vec!["g_pro:5h".into()], ..Default::default() };
+    assert!(c5.clears(Provider::Antigravity, &w5) && !c5.clears(Provider::Antigravity, &w7), "exact bucketId must not claim a 5h reset clears a 7d bucket");
+    assert_eq!(w_dur_less.reset_worth(Provider::Antigravity, t, t), 100.0, "exhausted durationless Antigravity bucket must still have positive reset_worth");
+
+    // 2. Gateway test: allowlist, narrowest-window 429, RATE_LIMIT_EXCEEDED, 401 refresh + project discovery,
+    //    and unrelated-model clean response preserving paid status.
+    let load_calls = Arc::new(AtomicUsize::new(0));
+    let lc = load_calls.clone();
+    let gen_calls = Arc::new(AtomicUsize::new(0));
+    let gc = gen_calls.clone();
+    let fake = Router::new()
+        .route(
+            "/oauth",
+            post(|| async { axum::Json(json!({"access_token": "fresh-c", "expires_in": 3600, "token_type": "Bearer"})) }),
+        )
+        .route(
+            "/v1internal:loadCodeAssist",
+            post(move |h: HeaderMap| {
+                let lc = lc.clone();
+                async move {
+                    lc.fetch_add(1, SeqCst);
+                    match token(&h).as_str() {
+                        "fresh-c" => axum::Json(json!({"cloudaicompanionProject": "proj-c-fresh"})).into_response(),
+                        "stale-c" => (StatusCode::UNAUTHORIZED, axum::Json(json!({"error": {"code": 401}}))).into_response(),
+                        _ => axum::Json(json!({"cloudaicompanionProject": ""})).into_response(),
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(|| async {
+                axum::Json(json!({
+                    "buckets": [
+                        {"bucketId": "shared:5h", "displayName": "5-hour", "remainingFraction": 0.75, "resetTime": chrono::DateTime::from_timestamp(now() + 7200, 0).unwrap().to_rfc3339()},
+                        {"bucketId": "g_pro:5h", "displayName": "Gemini Pro", "remainingFraction": 0.40, "resetTime": chrono::DateTime::from_timestamp(now() + 7200, 0).unwrap().to_rfc3339(), "models": ["gemini-pro"]}
+                    ]
+                }))
+            }),
+        )
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(move |h: HeaderMap, body: axum::body::Bytes| {
+                let gc = gc.clone();
+                async move {
+                    gc.fetch_add(1, SeqCst);
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    let tok = token(&h);
+                    let model = v["model"].as_str().unwrap_or("");
+                    if tok == "tok-a" && model == "gemini-3-pro" {
+                        return (
+                            StatusCode::TOO_MANY_REQUESTS,
+                            axum::Json(json!({
+                                "error": {
+                                    "code": 429,
+                                    "status": "RESOURCE_EXHAUSTED",
+                                    "details": [{
+                                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                        "reason": "QUOTA_EXHAUSTED",
+                                        "metadata": {"model": "gemini-3-pro", "quotaResetDelay": "2h"}
+                                    }]
+                                }
+                            })),
+                        )
+                            .into_response();
+                    }
+                    if tok == "tok-b" && model == "gemini-3-pro" {
+                        return (
+                            StatusCode::TOO_MANY_REQUESTS,
+                            axum::Json(json!({
+                                "error": {
+                                    "code": 429,
+                                    "status": "RESOURCE_EXHAUSTED",
+                                    "details": [
+                                        {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "RATE_LIMIT_EXCEEDED"},
+                                        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "8s"}
+                                    ]
+                                }
+                            })),
+                        )
+                            .into_response();
+                    }
+                    if tok == "stale-c" {
+                        return (StatusCode::UNAUTHORIZED, axum::Json(json!({"error": {"code": 401, "status": "UNAUTHENTICATED"}}))).into_response();
+                    }
+                    if tok == "fresh-c" {
+                        assert_eq!(v["project"].as_str(), Some("proj-c-fresh"), "401 retry must re-discover and rewrite project");
+                    }
+                    Response::builder()
+                        .header("content-type", "text/event-stream")
+                        .body(Body::from("data: {\"response\":{\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":2}}}\n\n"))
+                        .unwrap()
+                }
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    let mut a = Account::new("a".into(), "A".into(), Provider::Antigravity);
+    a.created = 1;
+    a.windows = vec![
+        Window { name: "shared:5h".into(), label: "5-hour".into(), used: 20.0, resets_at: Some(t + 7200), models: vec![] },
+        Window { name: "g_pro:5h".into(), label: "Gemini Pro".into(), used: 50.0, resets_at: Some(t + 7200), models: vec!["gemini-pro".into()] },
+        Window { name: "model:gemini-pro".into(), label: "gemini-pro".into(), used: 100.0, resets_at: Some(t + 7200), models: vec!["gemini-pro".into()] },
+    ];
+    a.now_paid("gemini-pro", true, t + 3600, "g_pro:5h");
+    let mut b = Account::new("b".into(), "B".into(), Provider::Antigravity);
+    b.created = 2;
+    b.windows = vec![Window { name: "shared:5h".into(), label: "5-hour".into(), used: 10.0, resets_at: Some(t + 7200), models: vec![] }];
+    let mut c = Account::new("c".into(), "C".into(), Provider::Antigravity);
+    c.created = 3;
+    c.windows = vec![Window { name: "shared:5h".into(), label: "5-hour".into(), used: 15.0, resets_at: Some(t + 7200), models: vec![] }];
+    saved.accounts.extend([a, b, c]);
+    saved.credentials.insert("a".into(), Credential { access: "tok-a".into(), refresh: None, expires_at: Some(t + 3600), account_id: Some("proj-a".into()) });
+    saved.credentials.insert("b".into(), Credential { access: "tok-b".into(), refresh: None, expires_at: Some(t + 3600), account_id: Some("proj-b".into()) });
+    // C starts with stale token and no cached project; 401 on loadCodeAssist must refresh to fresh-c and discover `proj-c-fresh`!
+    saved.credentials.insert("c".into(), Credential { access: "stale-c".into(), refresh: Some("r-c".into()), expires_at: Some(t + 3600), account_id: None });
+    let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let client = reqwest::Client::new();
+
+    // (a) `/agy` rejects auxiliary operation `claimBankedQuotaReset` with 404 (4-op allowlist).
+    let r = client.post(format!("http://{addr}/agy/v1internal:claimBankedQuotaReset")).json(&json!({"project": "x", "resetId": "r"})).send().await.unwrap();
+    assert_eq!(r.status(), 404, "non-generation /agy ops must be rejected");
+
+    // (b) Clean response for unrelated model (`gemini-3-flash`) actually served by A
+    //     must NOT clear A's `gemini-pro` model_paid mark!
+    let r = client
+        .post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse"))
+        .json(&json!({"model": "gemini-3-flash", "project": "client", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["x-olo-pool-account"], "A", "A must actually serve gemini-3-flash (only gemini-pro is paid)");
+    let _ = r.text().await.unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline && !shared.snapshot().open.is_empty() {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert!(shared.snapshot().account("a").unwrap().paid_until("gemini-pro", now()).is_some(), "clean response for gemini-flash must not clear gemini-pro paid mark");
+
+    // (c) Clear synthetic window on real sync of A, then hit gemini-3-pro:
+    //     A -> 429 QUOTA_EXHAUSTED (marks ONLY g_pro:5h 100%, preserves shared:5h at 25%!),
+    //     B -> 429 RATE_LIMIT_EXCEEDED (transient capacity_cooldowns, preserves shared:5h at 10%!),
+    //     C -> 401 refresh -> re-discovers proj-c-fresh -> 200 OK!
+    shared.sync(Some("a")).await;
+    assert!(shared.snapshot().account("a").unwrap().windows.iter().all(|w| !w.name.starts_with("model:")), "real sync must prune synthetic model:* windows");
+    shared.pool.lock().unwrap().account_mut("a").unwrap().model_paid.clear();
+    let r = client
+        .post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse"))
+        .json(&json!({"model": "gemini-3-pro", "project": "client", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["x-olo-pool-account"], "C");
+    let _ = r.text().await.unwrap();
+
+    let snap = shared.snapshot();
+    let acct_a = snap.account("a").unwrap();
+    assert_eq!(acct_a.windows.iter().find(|w| w.name == "shared:5h").unwrap().used, 25.0, "narrowest-window 429 must NOT poison shared window");
+    assert_eq!(acct_a.windows.iter().find(|w| w.name == "g_pro:5h").unwrap().used, 100.0);
+    let acct_b = snap.account("b").unwrap();
+    assert_eq!(acct_b.windows.iter().find(|w| w.name == "shared:5h").unwrap().used, 10.0, "RATE_LIMIT_EXCEEDED must not mark quota 100%");
+    assert!(acct_b.capacity_cooldowns.get("gemini-3-pro").is_some_and(|&u| u > now()), "RATE_LIMIT_EXCEEDED must set transient capacity_cooldowns: {acct_b:?}");
+    assert_eq!(snap.saved.credentials["c"].account_id.as_deref(), Some("proj-c-fresh"));
+    assert!(load_calls.load(SeqCst) >= 2 && gen_calls.load(SeqCst) >= 3);
+}
+
+/// Round 2 regression suite covering:
+/// - Invalid AGY request body fails 400 immediately with ZERO resets claimed (Astra #3).
+/// - Ambiguous 429 without unique reset-deadline match records a model refusal
+///   and NEVER guesses a bucket to blindly claim a banked reset (Astra #4 / Neon #1).
+/// - Pre-sync `consumedCredits` marks `model_paid` (not account-wide `paid`),
+///   malformed 200 response never clears paid mark (Astra #5, #12), and real sync
+///   settles synthetic `model:*` paid + quota refusals while keeping capacity backoff (Astra #11).
+/// - Capacity-backed-off account is excluded from automatic blocked claims (Astra #8).
+/// - 200 quota summary with credits + failing `fetchAvailableModels` fallback commits
+///   credits without wiping existing healthy windows (Astra #9).
+/// - Concurrent `ensure_agy_project` calls coalesce into one `loadCodeAssist` call
+///   and HTTP 403 does NOT trigger token refresh (Astra #16).
+#[tokio::test(flavor = "multi_thread")]
+async fn antigravity_round2_quota_claims_body_validation_and_profile_coalescing() {
+    use axum::body::Bytes;
+    use olo_token_pool::model::{ResetCredit, Window};
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    let t = now();
+    let claim_calls = Arc::new(AtomicUsize::new(0));
+    let load_calls = Arc::new(AtomicUsize::new(0));
+    let refresh_calls = Arc::new(AtomicUsize::new(0));
+    let summary_mode = Arc::new(AtomicUsize::new(0)); // 0: healthy buckets, 1: empty buckets + credits + failing fallback
+    let (cc, lc, rc, sm) = (claim_calls.clone(), load_calls.clone(), refresh_calls.clone(), summary_mode.clone());
+
+    let fake = Router::new()
+        .route(
+            "/oauth",
+            post(move || {
+                let rc = rc.clone();
+                async move {
+                    rc.fetch_add(1, SeqCst);
+                    axum::Json(json!({"access_token": "refreshed", "expires_in": 3600}))
+                }
+            }),
+        )
+        .route(
+            "/v1internal:claimBankedQuotaReset",
+            post(move || {
+                let cc = cc.clone();
+                async move {
+                    cc.fetch_add(1, SeqCst);
+                    axum::Json(json!({"quotaSummary": {"buckets": []}}))
+                }
+            }),
+        )
+        .route(
+            "/v1internal:loadCodeAssist",
+            post(move |h: HeaderMap| {
+                let lc = lc.clone();
+                async move {
+                    lc.fetch_add(1, SeqCst);
+                    let tok = h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("");
+                    if tok == "Bearer tok-403" {
+                        return (StatusCode::FORBIDDEN, axum::Json(json!({"error": {"code": 403, "message": "policy"}}))).into_response();
+                    }
+                    tokio::time::sleep(Duration::from_millis(80)).await;
+                    axum::Json(json!({"cloudaicompanionProject": "proj-coalesced", "paidTier": {"name": "Pro"}})).into_response()
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(move || {
+                let sm = sm.clone();
+                async move {
+                    let reset_iso = chrono::DateTime::from_timestamp(now() + 7200, 0).unwrap().to_rfc3339();
+                    match sm.load(SeqCst) {
+                        2 => (StatusCode::INTERNAL_SERVER_ERROR, "summary unavailable").into_response(),
+                        1 => axum::Json(json!({
+                            "buckets": [],
+                            "bankedResets": [{
+                                "resetId": "br-fresh",
+                                "remainingCount": 2,
+                                "claimable": true,
+                                "bucketIds": ["g_pro:5h"]
+                            }]
+                        }))
+                        .into_response(),
+                        _ => axum::Json(json!({
+                            "buckets": [
+                                {"bucketId": "g_pro:5h", "displayName": "Gemini Pro 5-hour", "remainingFraction": 0.9, "resetTime": reset_iso, "models": ["gemini-3-pro"]},
+                                {"bucketId": "g_pro:7d", "displayName": "Gemini Pro Weekly", "remainingFraction": 0.8, "resetTime": reset_iso, "models": ["gemini-3-pro"]}
+                            ],
+                            "bankedResets": []
+                        }))
+                        .into_response(),
+                    }
+                }
+            }),
+        )
+        .route("/v1internal:fetchAvailableModels", post(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "upstream down") }))
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(|h: HeaderMap, body: Bytes| async move {
+                let tok = h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("");
+                let v: Value = serde_json::from_slice(&body).unwrap_or_default();
+                let model = v["model"].as_str().unwrap_or("");
+                if tok == "Bearer tok-ambig" {
+                    // Ambiguous 429: NO reset deadline, while account has both 5h and 7d matching buckets!
+                    return (
+                        StatusCode::TOO_MANY_REQUESTS,
+                        axum::Json(json!({
+                            "error": {
+                                "code": 429,
+                                "status": "RESOURCE_EXHAUSTED",
+                                "details": [{
+                                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                    "reason": "QUOTA_EXHAUSTED",
+                                    "metadata": {"model": model}
+                                }]
+                            }
+                        })),
+                    )
+                        .into_response();
+                }
+                if tok == "Bearer tok-presync" && model == "gemini-3-pro" {
+                    return Response::builder()
+                        .header("content-type", "text/event-stream")
+                        .body(Body::from("data: {\"response\":{\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":2},\"consumedCredits\":[{\"amount\":1}]}}\n\n"))
+                        .unwrap();
+                }
+                if tok == "Bearer tok-malformed" {
+                    return Response::builder().header("content-type", "application/json").body(Body::from("{not-valid-json")).unwrap();
+                }
+                Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(Body::from("data: {\"response\":{\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":1}}}\n\n"))
+                    .unwrap()
+            }),
+        );
+    let base = format!("http://{}", serve(fake).await);
+
+    // 1. Invalid JSON body returns 400 BEFORE claiming any banked reset!
+    {
+        let mut saved = Saved::default();
+        let mut a = Account::new("a".into(), "A".into(), Provider::Antigravity);
+        a.windows = vec![Window { name: "g_pro:5h".into(), label: "Gemini Pro 5-hour".into(), used: 100.0, resets_at: Some(t + 4 * 3600), models: vec!["gemini-pro".into()] }];
+        a.credits = vec![ResetCredit { id: "br-1".into(), expires_at: Some(t + 86_400), remaining: 1, usable: true, clears: vec!["g_pro:5h".into()], ..Default::default() }];
+        saved.accounts.push(a);
+        saved.credentials.insert("a".into(), Credential { access: "tok-a".into(), refresh: None, expires_at: Some(t + 3600), account_id: Some("proj-a".into()) });
+        let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let app = gateway::router(s, addr.port());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        let r = reqwest::Client::new().post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse")).body("not json at all").send().await.unwrap();
+        assert_eq!(r.status(), 400);
+        assert_eq!(claim_calls.load(SeqCst), 0, "invalid request body must NEVER spend a banked reset");
+    }
+
+    // 2. Ambiguous 429 (both 5h and 7d match, no matching reset timestamp) must NOT guess 5h or blindly claim 5h credit!
+    {
+        summary_mode.store(2, SeqCst);
+        let mut saved = Saved::default();
+        let mut a = Account::new("amb".into(), "Amb".into(), Provider::Antigravity);
+        a.windows = vec![
+            Window { name: "g_pro:5h".into(), label: "Gemini Pro 5-hour".into(), used: 30.0, resets_at: Some(t + 4 * 3600), models: vec!["gemini-pro".into()] },
+            Window { name: "g_pro:7d".into(), label: "Gemini Pro Weekly".into(), used: 40.0, resets_at: Some(t + 5 * 86_400), models: vec!["gemini-pro".into()] },
+        ];
+        a.credits = vec![ResetCredit { id: "br-5h".into(), expires_at: Some(t + 86_400), remaining: 1, usable: true, clears: vec!["g_pro:5h".into()], ..Default::default() }];
+        saved.accounts.push(a);
+        saved.credentials.insert("amb".into(), Credential { access: "tok-ambig".into(), refresh: None, expires_at: Some(t + 3600), account_id: Some("proj-amb".into()) });
+        let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let app = gateway::router(s.clone(), addr.port());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        let r = reqwest::Client::new()
+            .post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse"))
+            .json(&json!({"model": "gemini-3-pro", "project": "x", "request": {}}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 429);
+        assert_eq!(claim_calls.load(SeqCst), 0, "ambiguous 429 must never guess shortest bucket to auto-claim");
+        let snap = s.snapshot();
+        let amb = snap.account("amb").unwrap();
+        assert!(amb.windows.iter().find(|w| w.name == "g_pro:5h").unwrap().used < 100.0, "must not poison 5h bucket");
+        assert!(amb.model_cooldowns.contains_key("gemini-3-pro"));
+        // Also verify capacity-backed-off account is excluded from `claims_for`!
+        let mut cap = amb.clone();
+        cap.windows[0].used = 100.0;
+        cap.windows.retain(|w| w.name == "g_pro:5h");
+        assert!(!cap.claims_for("gemini-3-pro", t).is_empty());
+        cap.capacity_cooldowns.insert("gemini-3-pro".into(), t + 30);
+        assert!(cap.claims_for("gemini-3-pro", t).is_empty(), "capacity-backed-off account must not auto-claim");
+    }
+
+    // 3. Pre-sync consumedCredits sets model_paid (NOT account-wide paid); malformed 200 does not clear it;
+    //    real sync settles synthetic model:* paid + quota cooldown while preserving capacity backoff;
+    //    summary 200 with credits + failing fallback commits credits without wiping healthy windows!
+    {
+        // Keep quota summary unavailable while testing pre-sync `consumedCredits`
+        // and malformed 200 so the background `sync_soon` triggered by pre-sync
+        // cannot race and settle `model_paid` before the malformed-200 assertion.
+        summary_mode.store(2, SeqCst);
+        let mut saved = Saved::default();
+        let a = Account::new("pre".into(), "Pre".into(), Provider::Antigravity);
+        saved.accounts.push(a);
+        saved.credentials.insert("pre".into(), Credential { access: "tok-presync".into(), refresh: None, expires_at: Some(t + 3600), account_id: Some("proj-pre".into()) });
+        let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let app = gateway::router(s.clone(), addr.port());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        let r = reqwest::Client::new()
+            .post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse"))
+            .json(&json!({"model": "gemini-3-pro", "project": "x", "request": {}}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 200);
+        let _ = r.text().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let snap = s.snapshot();
+        let acct = snap.account("pre").unwrap();
+        assert!(acct.paid.is_none(), "pre-sync consumedCredits must NOT set account-wide paid");
+        assert!(acct.model_paid.contains_key("gemini-3-pro"), "must set model_paid for gemini-3-pro");
+
+        // Malformed 200 body must NOT clear model_paid!
+        s.pool.lock().unwrap().saved.credentials.get_mut("pre").unwrap().access = "tok-malformed".into();
+        s.pool.lock().unwrap().account_mut("pre").unwrap().windows.clear();
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let r = reqwest::Client::new().post(format!("http://{addr}/agy/v1internal:streamGenerateContent")).json(&json!({"model": "gemini-3-pro", "project": "x", "request": {}})).send().await.unwrap();
+        assert_eq!(r.status(), 200);
+        let _ = r.text().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(s.snapshot().account("pre").unwrap().model_paid.contains_key("gemini-3-pro"), "malformed 200 must never clear paid mark");
+
+        // Real healthy sync settles synthetic model_paid + quota refusal while preserving capacity_cooldowns!
+        summary_mode.store(0, SeqCst);
+        {
+            let mut p = s.pool.lock().unwrap();
+            let acct = p.account_mut("pre").unwrap();
+            acct.model_cooldowns.insert("gemini-3-pro".into(), t + 3600);
+            acct.capacity_cooldowns.insert("gemini-3-pro".into(), t + 30);
+        }
+        s.sync(Some("pre")).await;
+        let snap = s.snapshot();
+        let acct = snap.account("pre").unwrap();
+        assert!(acct.model_paid.is_empty(), "healthy real sync must settle synthetic model:* paid");
+        assert!(acct.model_cooldowns.is_empty(), "healthy real sync must reconcile quota refusal");
+        assert!(acct.capacity_cooldowns.contains_key("gemini-3-pro"), "healthy real sync must preserve capacity backoff");
+        assert_eq!(acct.windows.len(), 2);
+
+        // Now summary returns 200 with banked credits + empty buckets, and fetchAvailableModels returns 500:
+        // credits MUST commit while existing 2 healthy windows stay intact!
+        summary_mode.store(1, SeqCst);
+        s.sync(Some("pre")).await;
+        let snap = s.snapshot();
+        let acct = snap.account("pre").unwrap();
+        assert_eq!(acct.credits.len(), 1, "credits from 200 summary must commit despite fallback error");
+        assert_eq!(acct.credits[0].id, "br-fresh");
+        assert_eq!(acct.windows.len(), 2, "existing healthy windows must not be wiped on fallback failure");
+    }
+
+    // 4. Concurrent profile discovery coalesces into ONE loadCodeAssist call, and HTTP 403 never forces refresh!
+    {
+        load_calls.store(0, SeqCst);
+        refresh_calls.store(0, SeqCst);
+        let mut saved = Saved::default();
+        let a = Account::new("co".into(), "Co".into(), Provider::Antigravity);
+        let b = Account::new("f403".into(), "F403".into(), Provider::Antigravity);
+        saved.accounts.extend([a, b]);
+        saved.credentials.insert("co".into(), Credential { access: "tok-co".into(), refresh: Some("r-co".into()), expires_at: Some(t + 3600), account_id: None });
+        saved.credentials.insert("f403".into(), Credential { access: "tok-403".into(), refresh: Some("r-403".into()), expires_at: Some(t + 3600), account_id: None });
+        let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let app = gateway::router(s.clone(), addr.port());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        // Disable f403 during coalescing check so both concurrent requests hit `co`.
+        s.set_enabled("f403", false);
+        let c = reqwest::Client::new();
+        let (r1, r2) = tokio::join!(
+            c.post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse")).json(&json!({"model": "gemini-3-pro", "project": "x"})).send(),
+            c.post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse")).json(&json!({"model": "gemini-3-pro", "project": "x"})).send()
+        );
+        assert_eq!(r1.unwrap().status(), 200);
+        assert_eq!(r2.unwrap().status(), 200);
+        assert_eq!(load_calls.load(SeqCst), 1, "concurrent requests for same account must coalesce loadCodeAssist");
+
+        // Now test HTTP 403 on loadCodeAssist: must NOT trigger OAuth refresh!
+        s.set_enabled("co", false);
+        s.set_enabled("f403", true);
+        let r3 = c.post(format!("http://{addr}/agy/v1internal:streamGenerateContent?alt=sse")).json(&json!({"model": "gemini-3-pro", "project": "x"})).send().await.unwrap();
+        assert_eq!(r3.status(), 502);
+        assert_eq!(refresh_calls.load(SeqCst), 0, "HTTP 403 from loadCodeAssist must NOT force token refresh");
+    }
 }

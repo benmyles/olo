@@ -82,9 +82,9 @@ impl Activity {
         }
     }
 
-    /// The clients seen, Claude Code and Codex first.
+    /// The clients seen, Claude Code, Codex and Antigravity first.
     pub fn clients(&self) -> Vec<String> {
-        let mut out: Vec<String> = ["Claude Code", "Codex"].map(String::from).to_vec();
+        let mut out: Vec<String> = ["Claude Code", "Codex", "Antigravity"].map(String::from).to_vec();
         for m in &self.minutes {
             if !out.contains(&m.client) {
                 out.push(m.client.clone());

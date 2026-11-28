@@ -26,11 +26,12 @@ pub struct Connections {
 }
 
 impl Connections {
-    /// "through the pool", "straight to OpenAI", "both: …", "none open".
+    /// "through the pool", "straight to OpenAI", "straight to Google", "both: …", "none open".
     pub fn describe(&self, provider: Provider) -> String {
         let company = match provider {
             Provider::Claude => "Anthropic",
             Provider::Codex => "OpenAI",
+            Provider::Antigravity => "Google",
         };
         match (self.pool, self.direct) {
             (0, 0) => "no connection open".into(),
@@ -69,6 +70,8 @@ pub struct Running {
     pub claude: Vec<Process>,
     /// Codex's windows (and `codex exec`s).
     pub codex: Vec<Process>,
+    /// Running Antigravity (`agy`) processes.
+    pub agy: Vec<Process>,
     pub daemon: Option<Daemon>,
 }
 
@@ -143,7 +146,7 @@ pub fn scan(proxy_port: u16) -> Running {
         let args: Vec<String> =
             std::fs::read(format!("/proc/{pid}/cmdline")).map(|b| b.split(|&c| c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect()).unwrap_or_default();
         let program = Program { pid, exe, args };
-        let provider = [Provider::Claude, Provider::Codex].into_iter().find(|&p| program.is_client(p));
+        let provider = Provider::ALL.into_iter().find(|&p| program.is_client(p));
         // Codex's daemon and its keeper are Codex's, not windows.
         if provider.is_none() || program.args.iter().any(|a| a == "app-server") {
             continue;
@@ -152,11 +155,14 @@ pub fn scan(proxy_port: u16) -> Running {
         let process = Process { pid, started: secs(started), cwd: std::fs::read_link(format!("/proc/{pid}/cwd")).ok(), connections: connections(pid, &table, proxy_port) };
         match provider {
             Some(Provider::Claude) => out.claude.push(process),
-            _ => out.codex.push(process),
+            Some(Provider::Codex) => out.codex.push(process),
+            Some(Provider::Antigravity) => out.agy.push(process),
+            None => {}
         }
     }
     out.claude.sort_by_key(|p| p.started);
     out.codex.sort_by_key(|p| p.started);
+    out.agy.sort_by_key(|p| p.started);
     out.daemon = daemon.map(|d| Daemon {
         pid: d.pid,
         started: secs(d.started),
@@ -185,6 +191,7 @@ mod tests {
         assert_eq!(c, Connections { pool: 1, direct: 0 });
         assert_eq!(c.describe(Provider::Codex), "through the pool");
         assert_eq!(Connections { pool: 0, direct: 2 }.describe(Provider::Codex), "straight to OpenAI");
+        assert_eq!(Connections { pool: 0, direct: 1 }.describe(Provider::Antigravity), "straight to Google");
         assert_eq!(Connections::default().describe(Provider::Claude), "no connection open");
     }
 }

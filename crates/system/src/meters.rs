@@ -271,8 +271,10 @@ pub fn pool_reading(m: Option<&PoolMeters>, measure: &Measure, now: i64) -> Read
             return Reading::missing(Unit::Percent, "its quotas aren't known yet");
         }
         let left = |w: &olo_protocol::pool::PoolWindow| (100.0 - w.used_at(now)).clamp(0.0, 100.0);
-        // (Its least of those for every request: what holds it back.)
-        let least = windows.iter().filter(|w| w.models.is_empty() || !quotas.is_empty()).map(|w| left(w)).fold(100.0, f64::min);
+        // (Its least of those for every request: what holds it back; fall back
+        // to all chosen windows when the account has only model-scoped buckets.)
+        let has_shared = windows.iter().any(|w| w.models.is_empty());
+        let least = windows.iter().filter(|w| !has_shared || w.models.is_empty() || !quotas.is_empty()).map(|w| left(w)).fold(100.0, f64::min);
         let mut r = Reading::of(windows.iter().map(|w| shown(left(w))).collect(), windows.iter().map(|w| w.label.clone()).collect(), Unit::Percent);
         r.words = Some(format!("{}: {:.0}% {word}", a.name, shown(least)));
         r.detail = std::iter::once(format!("{}{}", a.name, if a.in_flight > 0 { ", answering now" } else { ", answered last" }))
@@ -816,6 +818,30 @@ mod tests {
         // Not running.
         let r = pool_reading(None, &measure, now);
         assert!(r.values.is_empty() && r.note.as_deref() == Some("Token Pool isn't running"));
+        // Scoped-only Antigravity account works in default Together & Serving views.
+        let agy_acc = PoolAccount {
+            id: "agy1".into(),
+            name: "Google One".into(),
+            provider: "agy".into(),
+            enabled: true,
+            in_flight: 1,
+            last_used: Some(now - 10),
+            windows: vec![
+                PoolWindow { name: "g_pro:5h".into(), label: "Gemini Pro".into(), used: 80.0, resets_at: Some(now + 3_600), models: vec!["gemini-pro".into()], ..Default::default() },
+                PoolWindow { name: "g_flash:5h".into(), label: "Gemini Flash".into(), used: 10.0, resets_at: Some(now + 3_600), models: vec!["gemini-flash".into()], ..Default::default() },
+            ],
+            ..Default::default()
+        };
+        let agy_m = PoolMeters { pid: 1, loaded: true, accounts: vec![agy_acc], paused: Vec::new() };
+        let agy_default = Measure::pool("agy", &[]);
+        let r = pool_reading(Some(&agy_m), &agy_default, now);
+        assert_eq!((r.words.as_deref(), r.note.as_deref()), (Some("20% left"), None));
+        let mut agy_serving = Measure::pool("agy", &[]);
+        if let Measure::Pool { view, .. } = &mut agy_serving {
+            *view = PoolView::Serving;
+        }
+        let rs = pool_reading(Some(&agy_m), &agy_serving, now);
+        assert_eq!(rs.words.as_deref(), Some("Google One: 20% left"));
     }
 
     /// A divider is said by what it draws, not by a reading: it has none.

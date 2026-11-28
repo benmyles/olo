@@ -90,6 +90,7 @@ fn client_of(headers: &HeaderMap) -> String {
     match first {
         "claude-cli" | "claude-code" => "Claude Code".into(),
         f if f.starts_with("codex") => "Codex".into(),
+        f if f.eq_ignore_ascii_case("antigravity") => "Antigravity".into(),
         "" => "Unknown".into(),
         f => f.chars().take(40).collect(),
     }
@@ -163,6 +164,7 @@ fn provider_index(p: Provider) -> usize {
     match p {
         Provider::Claude => 0,
         Provider::Codex => 1,
+        Provider::Antigravity => 2,
     }
 }
 
@@ -192,6 +194,11 @@ pub struct Shared {
     up: Upstreams,
     /// One refresh at a time per account.
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// One profile/project discovery at a time per account.
+    profile_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Whether this pool reads/deletes per-account capture files on disk
+    /// (`false` for in-memory test pools so they never touch `~/.local/state`).
+    capture_disk: bool,
     save: std::sync::mpsc::Sender<Save>,
     changed: Box<dyn Fn() + Send + Sync>,
     runtime: Mutex<Option<tokio::runtime::Handle>>,
@@ -209,7 +216,7 @@ pub struct Shared {
     pub drain: crate::drain::Drain,
     /// The clients the person turned the pool off for, still pointed at
     /// its proxy (`clients::set`): their requests pass straight through.
-    paused: [std::sync::atomic::AtomicBool; 2],
+    paused: [std::sync::atomic::AtomicBool; 3],
     /// What opens the app's window when asked over the gateway
     /// (`/pool/open`: a launch that found no copy taking launches, while
     /// this one serves).
@@ -267,6 +274,21 @@ pub struct Shared {
     /// `/pool/hosts?after=N` waits on, so that whoever shows them (Rex's
     /// Host window) hears of a change without asking over and over.
     hosts_seen: tokio::sync::watch::Sender<u64>,
+    /// Actual TCP port the gateway bound to (useful when launched with port 0).
+    bound_port: std::sync::atomic::AtomicU16,
+    /// Asynchronous TLS proxy readiness (separate from gateway bind so CA
+    /// initialization never blocks the UI looper, while `olo-pool-host` can
+    /// await it before configuring clients).
+    proxy_ready: (std::sync::Mutex<ProxyReady>, std::sync::Condvar),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProxyReady {
+    pub finished: bool,
+    pub proxy_ok: bool,
+    pub agy_ok: bool,
+    pub error: Option<String>,
+    pub agy_error: Option<String>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -277,6 +299,37 @@ const CREDITS_EVERY: i64 = 30 * 60;
 const SYNC_BACKOFF_MAX: i64 = 30 * 60;
 
 impl Shared {
+    /// The TCP port this gateway actually bound to (or 0 if not listening).
+    pub fn bound_port(&self) -> u16 {
+        self.bound_port.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Wait until asynchronous CA + TLS proxy initialization has settled (or
+    /// `timeout` elapses), returning which providers' proxy paths are ready.
+    pub fn wait_proxy_ready(&self, timeout: Duration) -> ProxyReady {
+        let (lock, cv) = &self.proxy_ready;
+        let deadline = std::time::Instant::now() + timeout;
+        let mut st = lock.lock().unwrap();
+        while !st.finished {
+            let rem = deadline.saturating_duration_since(std::time::Instant::now());
+            if rem.is_zero() {
+                break;
+            }
+            let (next, res) = cv.wait_timeout(st, rem).unwrap();
+            st = next;
+            if res.timed_out() {
+                break;
+            }
+        }
+        st.clone()
+    }
+
+    fn set_proxy_ready(&self, ready: ProxyReady) {
+        let (lock, cv) = &self.proxy_ready;
+        *lock.lock().unwrap() = ready;
+        cv.notify_all();
+    }
+
     /// `store`: where changes are saved (None: kept in memory, for tests);
     /// `changed` is called (from any thread) when there is something new
     /// to show.
@@ -294,7 +347,7 @@ impl Shared {
         crate::meters::start(&shared, meters);
         shared.pool.lock().unwrap().loaded = false;
         // The clients turned off, before the proxy takes a request.
-        for p in [Provider::Claude, Provider::Codex] {
+        for p in Provider::ALL {
             shared.set_paused(p, crate::clients::paused(p));
         }
         // The day's activity, kept a minute at a time.
@@ -372,12 +425,15 @@ impl Shared {
     fn make(saved: Saved, store: Option<Store>, up: Upstreams, lazy: bool, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
         let (tx, rx) = std::sync::mpsc::channel::<Save>();
         let http = olo_net::PerNetwork::new(new_client);
+        let capture_disk = lazy || store.is_some();
         let shared = Arc::new(Shared {
             pool: Mutex::new(Pool { saved, loaded: true, ..Default::default() }),
             store: Mutex::new(store),
             http,
             up,
             locks: Mutex::new(HashMap::new()),
+            profile_locks: Mutex::new(HashMap::new()),
+            capture_disk,
             save: tx,
             changed: Box::new(changed),
             runtime: Mutex::new(None),
@@ -409,6 +465,8 @@ impl Shared {
             hosting: Mutex::new(None),
             accounts_changed: Mutex::new(None),
             hosts_seen: tokio::sync::watch::channel(0).0,
+            bound_port: std::sync::atomic::AtomicU16::new(0),
+            proxy_ready: (std::sync::Mutex::new(ProxyReady::default()), std::sync::Condvar::new()),
         });
         // What the copy it took over from finishes after the handover,
         // booked here, where it's saved.
@@ -494,7 +552,7 @@ impl Shared {
     /// signed-in one whose capture is missing or was made of another
     /// install of its client than the one there now (`all`: every one).
     fn capture_due(&self, all: bool) -> Vec<(String, Provider)> {
-        let installed: Vec<(Provider, String)> = [Provider::Claude, Provider::Codex].into_iter().filter_map(|p| crate::capture::installed(p).map(|i| (p, i.stamp))).collect();
+        let installed: Vec<(Provider, String)> = Provider::ALL.into_iter().filter_map(|p| crate::capture::installed(p).map(|i| (p, i.stamp))).collect();
         // (The accounts at a glance under the lock; their captures read
         // after, with nothing held.)
         let accounts: Vec<(String, Provider)> = {
@@ -525,7 +583,7 @@ impl Shared {
         // Only a pool talking to the providers' own hosts: one pointed at
         // made-up ones (a test's) never runs a client, whose reads would go
         // to the real ones with its made-up sign-ins.
-        if self.up.origin.is_some() || self.up.claude != Upstreams::default().claude || self.up.chatgpt != Upstreams::default().chatgpt {
+        if self.up.origin.is_some() || self.up.claude != Upstreams::default().claude || self.up.chatgpt != Upstreams::default().chatgpt || self.up.agy != Upstreams::default().agy {
             return;
         }
         {
@@ -577,8 +635,10 @@ impl Shared {
                             match crate::capture::save(&c) {
                                 Ok(()) => {
                                     tracing::info!("pool: captured {} {} for {} ({} requests, {:.0?})", provider.client(), c.version, account.name, c.requests.len(), began.elapsed());
-                                    if provider == Provider::Claude {
-                                        crate::upstream::refresh_claude_version();
+                                    match provider {
+                                        Provider::Claude => crate::upstream::refresh_claude_version(),
+                                        Provider::Antigravity => crate::upstream::refresh_agy_version(),
+                                        Provider::Codex => {}
                                     }
                                     s.keep_capture(&id, c);
                                     // Re-read quota and reset credits right away with the new capture
@@ -662,6 +722,9 @@ impl Shared {
         if let Some(c) = self.captures.lock().unwrap().get(id) {
             return c.clone();
         }
+        if !self.capture_disk {
+            return None;
+        }
         let c = crate::capture::load(id).map(Arc::new);
         self.captures.lock().unwrap().entry(id.to_owned()).or_insert(c).clone()
     }
@@ -675,11 +738,13 @@ impl Shared {
             let mut made = self.captures_gen.lock().unwrap();
             *made.entry(id.to_owned()).or_default() += 1;
             self.captures.lock().unwrap().insert(id.to_owned(), None);
-            // (One small file.)
-            match std::fs::remove_file(crate::capture::path(id)) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => tracing::warn!("pool: removing a capture: {e}"),
+            if self.capture_disk {
+                // (One small file.)
+                match std::fs::remove_file(crate::capture::path(id)) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => tracing::warn!("pool: removing a capture: {e}"),
+                }
             }
         }
         self.jars.lock().unwrap().remove(id);
@@ -801,6 +866,10 @@ impl Shared {
 
     fn lock_for(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
         self.locks.lock().unwrap().entry(id.to_owned()).or_default().clone()
+    }
+
+    fn profile_lock_for(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.profile_locks.lock().unwrap().entry(id.to_owned()).or_default().clone()
     }
 
     pub fn snapshot(&self) -> Pool {
@@ -1112,7 +1181,7 @@ impl Shared {
     /// how it went). One waiting for the gate meanwhile then finds this
     /// copy retired, and isn't made. None if one is still under way.
     pub fn claims_closed(&self, within: Duration) -> Option<Vec<tokio::sync::OwnedMutexGuard<()>>> {
-        let gates: Vec<_> = [Provider::Claude, Provider::Codex].into_iter().map(|p| self.claims_gate(p)).collect();
+        let gates: Vec<_> = Provider::ALL.into_iter().map(|p| self.claims_gate(p)).collect();
         if let Some(held) = gates.iter().map(|g| g.clone().try_lock_owned().ok()).collect::<Option<Vec<_>>>() {
             return Some(held);
         }
@@ -1149,10 +1218,11 @@ impl Shared {
         }
         // Reconcile any pending remote claim for this provider before spending
         // anything new (prevents interrupted manual retries from double-spending).
-        if let Some(reconciled) = self.reconcile_pending_remote_locked(provider, "", &HashMap::new()).await? {
-            if reconciled == id && why == Why::Asked {
-                return Ok(());
-            }
+        if let Some(reconciled) = self.reconcile_pending_remote_locked(provider, "", &HashMap::new()).await?
+            && reconciled == id
+            && why == Why::Asked
+        {
+            return Ok(());
         }
         if let Some(keeper) = kept_on {
             // Expiring claims belong strictly to the keeper; if ownership
@@ -1212,6 +1282,85 @@ impl Shared {
     /// Valid Claude organization UUID check shared by sync and redemption.
     fn valid_claude_org(org: Option<&str>) -> bool {
         org.filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).is_some()
+    }
+
+    /// Ensure an Antigravity account's `cloudaicompanionProject` is cached in
+    /// `Credential::account_id` (and update `Account::plan` from `loadCodeAssist`).
+    /// Coalesces concurrent discovery requests per account under a dedicated
+    /// async lock so bursts never stampede `loadCodeAssist`.
+    /// `cooldown_secs` throttles retries after failures or empty projects (`0` forces).
+    /// Returns `true` ONLY when `loadCodeAssist` returned HTTP 401 Unauthorized
+    /// (never on 400/403) so callers on the request path refresh and retry once.
+    async fn ensure_agy_project(&self, id: &str, cred: &mut Credential, like: Option<&crate::likeness::Like>, cooldown_secs: i64) -> bool {
+        if cred.account_id.as_deref().map(str::trim).is_some_and(|s| !s.is_empty()) {
+            return false;
+        }
+        let plock = self.profile_lock_for(id);
+        let _held = plock.lock().await;
+        // Re-check cached project after acquiring lock in case a concurrent
+        // request already discovered it for this same credential.
+        {
+            let p = self.pool.lock().unwrap();
+            if let Some(saved) = p.saved.credentials.get(id)
+                && saved.access == cred.access
+                && saved.refresh == cred.refresh
+                && let Some(proj) = saved.account_id.as_deref().map(str::trim).filter(|s| !s.is_empty())
+            {
+                cred.account_id = Some(proj.to_owned());
+                return false;
+            }
+        }
+        if cooldown_secs > 0 && self.profile_tried.lock().unwrap().get(id).is_some_and(|&at| now() - at < cooldown_secs) {
+            return false;
+        }
+        let sgen = self.sync_gen(id);
+        let profiled_access = cred.access.clone();
+        let profiled_refresh = cred.refresh.clone();
+        match upstream::agy_profile(&self.client_for(id), &self.up, cred, like).await {
+            Ok((project, plan)) => {
+                if self.sync_gen(id) != sgen {
+                    return false;
+                }
+                if project.is_none() {
+                    self.profile_tried.lock().unwrap().insert(id.to_owned(), now());
+                } else {
+                    self.profile_tried.lock().unwrap().remove(id);
+                }
+                let mut touched = false;
+                {
+                    let mut p = self.pool.lock().unwrap();
+                    let still_same_cred = p.saved.credentials.get(id).is_some_and(|c| c.access == profiled_access && c.refresh == profiled_refresh);
+                    if still_same_cred {
+                        if let Some(proj) = project {
+                            cred.account_id = Some(proj.clone());
+                            if let Some(c) = p.saved.credentials.get_mut(id) {
+                                c.account_id = Some(proj);
+                                touched = true;
+                            }
+                        }
+                        if let Some(pl) = plan
+                            && let Some(a) = p.account_mut(id)
+                            && a.plan.as_deref() != Some(pl.as_str())
+                        {
+                            a.plan = Some(pl);
+                            touched = true;
+                        }
+                    }
+                }
+                if touched {
+                    self.touch();
+                }
+                false
+            }
+            Err(ref e) if e.is_unauthorized() => {
+                self.profile_tried.lock().unwrap().insert(id.to_owned(), now());
+                true
+            }
+            Err(_) => {
+                self.profile_tried.lock().unwrap().insert(id.to_owned(), now());
+                false
+            }
+        }
     }
 
     fn is_critical_remote_record(r: &RemoteClaimRecord) -> bool {
@@ -1378,6 +1527,28 @@ impl Shared {
         }
     }
 
+    /// Drop synthetic Antigravity fallback/429 windows once authoritative real
+    /// buckets arrive, and reconcile quota refusals (`cooldown_until`,
+    /// `model_cooldowns`) covered by healthy real buckets while keeping
+    /// transient capacity backoffs (`capacity_until`, `capacity_cooldowns`) intact.
+    fn reconcile_agy_windows(a: &mut Account, real_windows: &[Window], t: i64) {
+        if a.provider != Provider::Antigravity || real_windows.is_empty() {
+            return;
+        }
+        a.windows.retain(|w| !w.name.starts_with("model:") && w.name != "quota" && !w.name.starts_with("models:") && w.name != "available_models");
+        if a.cooldown_until.is_some_and(|c| c > t) && real_windows.iter().all(|w| !w.exhausted(t)) {
+            a.cooldown_until = None;
+        }
+        a.model_cooldowns.retain(|fam, &mut c| {
+            if c <= t {
+                return false;
+            }
+            let mut matching = real_windows.iter().filter(|w| w.applies_to(fam)).peekable();
+            let covered_healthy = matching.peek().is_some() && matching.all(|w| !w.exhausted(t));
+            !covered_healthy
+        });
+    }
+
     /// Selectively clear ONLY the windows, cooldowns, and paid marks proven by
     /// a keeper reset scope (`cleared_shared`, `cleared_models`, `cleared_windows`),
     /// preserving any omitted exhausted windows (such as `five_hour`) not cleared.
@@ -1392,16 +1563,22 @@ impl Shared {
         force_credits: bool,
         t: i64,
     ) {
-        let clears_window = |w: &Window| cleared_windows.iter().any(|c| c == &w.name) || (cleared_shared && cleared_windows.is_empty() && w.is_shared());
+        let clears_window = |w: &Window| {
+            cleared_windows.iter().any(|c| c == &w.name)
+                || (cleared_shared && cleared_windows.is_empty() && w.is_shared())
+                || (w.name.starts_with("model:") && w.models.iter().any(|m| cleared_models.iter().any(|scope| crate::model::family_matches(scope, m))))
+        };
         if cleared_shared {
             a.cooldown_until = None;
             if a.paid.as_ref().is_none_or(|paid| cleared_windows.is_empty() || cleared_windows.iter().any(|w| w == &paid.meter)) {
                 a.paid = None;
             }
         }
-        for m in cleared_models {
-            a.model_cooldowns.remove(m);
-            a.model_paid.remove(m);
+        a.model_cooldowns.retain(|k, _| !cleared_models.iter().any(|scope| crate::model::family_matches(scope, k)));
+        a.model_paid.retain(|k, _| !cleared_models.iter().any(|scope| crate::model::family_matches(scope, k)));
+        if cleared_shared && a.provider == Provider::Antigravity {
+            a.model_cooldowns.retain(|k, _| a.windows.iter().any(|w| !w.is_shared() && !clears_window(w) && w.applies_to(k) && w.exhausted(t)));
+            a.model_paid.retain(|k, _| a.windows.iter().any(|w| !w.is_shared() && !clears_window(w) && w.applies_to(k) && w.exhausted(t)));
         }
         for w in &mut a.windows {
             if clears_window(w) {
@@ -1411,6 +1588,7 @@ impl Shared {
         if !windows.is_empty() {
             a.paid_settled(Some(&windows), t);
             let fresh_ok = |name: &str| windows.iter().any(|w| w.name == name && w.used < 100.0);
+            Self::reconcile_agy_windows(a, &windows, t);
             a.windows.retain(|w| !clears_window(w) && w.resets_at.is_some_and(|r| r > t) && (w.name.starts_with("model:") || (w.used >= 100.0 && !fresh_ok(&w.name))));
             a.merge_windows(windows);
         }
@@ -1440,7 +1618,7 @@ impl Shared {
         match claim {
             RemoteClaim::Redeemed { account, credit_id, reset_id, cleared_shared, cleared_models, cleared_windows, windows, credits } => {
                 *p.resets.entry(account.clone()).or_default() += 1;
-                p.reset_at.insert(account.clone(), t);
+                p.reset_at.insert(account.clone(), now_ms());
                 if let Some(rid) = reset_id {
                     p.keeper_reset_id.insert((keeper.to_owned(), account.clone()), rid);
                 }
@@ -1457,7 +1635,7 @@ impl Shared {
                 if let Some(ref scope) = unseen_scope {
                     p.keeper_reset_id.insert((keeper.to_owned(), account.clone()), scope.reset_id.clone());
                     *p.resets.entry(account.clone()).or_default() += 1;
-                    p.reset_at.insert(account.clone(), t);
+                    p.reset_at.insert(account.clone(), now_ms());
                 }
                 let rev = p.reset_revision(&account);
                 let already_tried = tried.get(&account) == Some(&rev);
@@ -1623,7 +1801,7 @@ impl Shared {
         };
         // Renew/verify the sign-in BEFORE persisting `a.redeeming` so a sign-in
         // failure never leaves a stranded pending reset claim on disk.
-        let cred = match self.fresh(id, provider, None, 60).await {
+        let mut cred = match self.fresh(id, provider, None, 60).await {
             Ok(c) => c,
             Err(e) => {
                 if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
@@ -1658,6 +1836,22 @@ impl Shared {
                 }
                 self.touch();
                 return Err(Claimed::NotNow("This account's Claude organization isn't known: sign in again.".into()));
+            }
+        } else if provider == Provider::Antigravity {
+            self.ensure_agy_project(id, &mut cred, self.like(id).as_ref(), 0).await;
+            if cred.account_id.as_deref().map(str::trim).is_none_or(str::is_empty) {
+                if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+                    // Never erase an already-persisted pending claim during
+                    // reconciliation on a transient project-discovery failure:
+                    // keep `a.redeeming` intact so the original requestId is reused.
+                    if !had_pending {
+                        a.redeeming = None;
+                    }
+                    a.redeem_tried = Some(now());
+                }
+                self.touch();
+                let msg = "This account's Antigravity project isn't known: sync or sign in again.".to_owned();
+                return Err(if had_pending { Claimed::Unclear(msg) } else { Claimed::NotNow(msg) });
             }
         }
         // Re-verify deadline, retirement, and ownership under lock right before
@@ -1707,7 +1901,7 @@ impl Shared {
             let rid = if result.is_ok() {
                 let rid = crate::store::new_uuid();
                 *p.resets.entry(id.to_owned()).or_default() += 1;
-                p.reset_at.insert(id.to_owned(), now());
+                p.reset_at.insert(id.to_owned(), now_ms());
                 info.reset_id = Some(rid.clone());
                 Some(rid)
             } else {
@@ -1717,7 +1911,7 @@ impl Shared {
             let mut new_scope: Option<ClearedScope> = None;
             if let Some(a) = p.account_mut(id) {
                 match &result {
-                    Ok(()) => {
+                    Ok(summary) => {
                         a.redeeming = None;
                         // Clear failure throttle on success so a Fable-only
                         // reset never suppresses an Opus weekly reset right after.
@@ -1757,14 +1951,28 @@ impl Shared {
                         if credit.clears.iter().any(|c| c == "seven_day_overage_included") && !cleared_models.iter().any(|m| m == "fable") {
                             cleared_models.push("fable".to_owned());
                         }
-                        for family in &cleared_models {
-                            a.model_cooldowns.remove(family);
-                            a.model_paid.remove(family);
+                        a.model_cooldowns.retain(|k, _| !cleared_models.iter().any(|scope| crate::model::family_matches(scope, k)));
+                        a.model_paid.retain(|k, _| !cleared_models.iter().any(|scope| crate::model::family_matches(scope, k)));
+                        if cleared_shared && provider == Provider::Antigravity {
+                            let t = now();
+                            a.model_cooldowns.retain(|k, _| a.windows.iter().any(|w| !w.is_shared() && !credit.clears(provider, w) && w.applies_to(k) && w.exhausted(t)));
+                            a.model_paid.retain(|k, _| a.windows.iter().any(|w| !w.is_shared() && !credit.clears(provider, w) && w.applies_to(k) && w.exhausted(t)));
                         }
-                        if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
-                            c.remaining = c.remaining.saturating_sub(1);
+                        if let Some(summary) = summary {
+                            let t = now();
+                            if !summary.windows.is_empty() {
+                                a.paid_settled(Some(&summary.windows), t);
+                                Self::reconcile_agy_windows(a, &summary.windows, t);
+                                a.merge_windows(summary.windows.clone());
+                                a.synced = Some(t);
+                            }
+                            a.credits = summary.credits.clone();
+                        } else {
+                            if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
+                                c.remaining = c.remaining.saturating_sub(1);
+                            }
+                            a.credits.retain(|c| c.remaining > 0);
                         }
-                        a.credits.retain(|c| c.remaining > 0);
                         info.cleared_shared = cleared_shared;
                         info.cleared_models = cleared_models.clone();
                         info.cleared_windows = cleared_windows.clone();
@@ -1809,10 +2017,14 @@ impl Shared {
         }
         self.touch();
         // (What the provider says now, after either: what it reset, or the
-        // credit it refused, which may be gone.)
-        self.sync(Some(id)).await;
+        // credit it refused, which may be gone. Skip a redundant follow-up read
+        // when the claim response already included a full `quotaSummary`.)
+        let need_sync = !matches!(&result, Ok(Some(s)) if !s.windows.is_empty());
+        if need_sync {
+            self.sync(Some(id)).await;
+        }
         match result {
-            Ok(()) => Ok(info),
+            Ok(_) => Ok(info),
             Err(Failure::Refused(e)) => Err(Claimed::Refused(e)),
             Err(Failure::NotSent(e)) => Err(Claimed::NotNow(e)),
             Err(Failure::Other(e)) => Err(Claimed::Unclear(e)),
@@ -1858,20 +2070,42 @@ impl Shared {
             let sgen = self.sync_gen(&id);
             let seq = self.begin_sync_seq(&id);
             self.credits_fetched.lock().unwrap().insert(id.clone(), now());
-            let Ok(cred) = self.fresh(&id, provider, None, 60).await else { continue };
+            let Ok(mut cred) = self.fresh(&id, provider, None, 60).await else { continue };
             let like = self.like(&id);
-            let fetched_windows = if needs_usage { upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await.ok().map(|(w, _)| w) } else { None };
-            let fetched_org =
-                if needs_org { upstream::profile_org(&self.client_for(&id), &self.up, &cred, like.as_ref()).await.ok().flatten().filter(|o| Self::valid_claude_org(Some(o))) } else { None };
-            let fetched_credits = match upstream::credits(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
-                Ok(c) => {
-                    self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
-                    Some(c)
-                }
-                Err(e) => {
-                    tracing::warn!("pool: reading reset credits for {id}: {e}");
-                    None
-                }
+            let (fetched_windows, fetched_org, fetched_credits) = if provider == Provider::Antigravity {
+                self.ensure_agy_project(&id, &mut cred, like.as_ref(), 60).await;
+                let read = upstream::agy_quota_summary(&self.client_for(&id), &self.up, &cred, like.as_ref()).await;
+                let c = match read.credits {
+                    Ok(Some(c)) => {
+                        self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
+                        Some(c)
+                    }
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::warn!("pool: reading reset credits for {id}: {e}");
+                        None
+                    }
+                };
+                let w = match read.windows {
+                    Ok(w) if !w.is_empty() => Some(w),
+                    _ => None,
+                };
+                (w, None, c)
+            } else {
+                let fetched_windows = if needs_usage { upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await.ok().map(|(w, _)| w) } else { None };
+                let fetched_org =
+                    if needs_org { upstream::profile_org(&self.client_for(&id), &self.up, &cred, like.as_ref()).await.ok().flatten().filter(|o| Self::valid_claude_org(Some(o))) } else { None };
+                let fetched_credits = match upstream::credits(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
+                    Ok(c) => {
+                        self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
+                        Some(c)
+                    }
+                    Err(e) => {
+                        tracing::warn!("pool: reading reset credits for {id}: {e}");
+                        None
+                    }
+                };
+                (fetched_windows, fetched_org, fetched_credits)
             };
             if self.sync_gen(&id) != sgen || !self.commit_sync_seq(&id, seq) {
                 continue;
@@ -1882,7 +2116,10 @@ impl Shared {
                     continue;
                 }
                 if let Some(a) = p.account_mut(&id) {
+                    let t = now();
                     if let Some(w) = fetched_windows {
+                        a.paid_settled(Some(&w), t);
+                        Self::reconcile_agy_windows(a, &w, t);
                         a.merge_windows(w);
                         changed = true;
                     }
@@ -1896,7 +2133,7 @@ impl Shared {
                         a.org = Some(org);
                         changed = true;
                     }
-                    !a.claims_for(family, now()).is_empty()
+                    !a.claims_for(family, t).is_empty()
                 } else {
                     false
                 }
@@ -2640,61 +2877,103 @@ impl Shared {
             let revision = self.pool.lock().unwrap().reset_revision(&id);
             let sgen = self.sync_gen(&id);
             let seq = self.begin_sync_seq(&id);
-            let Ok(cred) = self.fresh(&id, provider, None, 600).await else { continue };
+            let Ok(mut cred) = self.fresh(&id, provider, None, 600).await else { continue };
             let like = self.like(&id);
-            let report = match upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
-                Err(Failure::Refused(_)) => match self.fresh(&id, provider, Some(&cred), 0).await {
-                    Ok(c) => upstream::usage(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await,
-                    Err(e) => Err(e),
-                },
-                r => r,
-            };
-            // The next read: later, and later again while the provider
-            // keeps asking the pool to slow down.
-            {
-                let mut due = self.due.lock().unwrap();
-                let backoff = due.get(&id).map_or(0, |d| d.1);
-                let next = match &report {
-                    Err(e) if e.rate_limited() => {
+            let (report, fetched_org, credits) = if provider == Provider::Antigravity {
+                self.ensure_agy_project(&id, &mut cred, like.as_ref(), if only.is_some() { 0 } else { 3600 }).await;
+                let mut read = upstream::agy_quota_summary(&self.client_for(&id), &self.up, &cred, like.as_ref()).await;
+                if read.windows.as_ref().is_err_and(Failure::is_unauthorized) && read.credits.as_ref().is_err_and(Failure::is_unauthorized) {
+                    read = match self.fresh(&id, provider, Some(&cred), 0).await {
+                        Ok(mut c) => {
+                            self.ensure_agy_project(&id, &mut c, like.as_ref(), 0).await;
+                            upstream::agy_quota_summary(&self.client_for(&id), &self.up, &c, like.as_ref()).await
+                        }
+                        Err(e) => upstream::AgyQuotaRead { windows: Err(e.clone()), credits: Err(e) },
+                    };
+                }
+                {
+                    let mut due = self.due.lock().unwrap();
+                    let backoff = due.get(&id).map_or(0, |d| d.1);
+                    let rate_limited = read.windows.as_ref().is_err_and(Failure::rate_limited) || read.credits.as_ref().is_err_and(Failure::rate_limited);
+                    let next = if rate_limited {
                         let wait = (backoff * 2).clamp(SYNC_EVERY, SYNC_BACKOFF_MAX);
                         (now() + wait, wait)
-                    }
-                    _ => (now() + SYNC_EVERY, 0),
-                };
-                due.insert(id.clone(), next);
-            }
-            let credits_due = only.is_some() || self.credits_due.lock().unwrap().get(&id).is_none_or(|&at| at <= now());
-            let credits_cred = match &report {
-                Ok(_) if credits_due => {
-                    self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
-                    self.fresh(&id, provider, None, 60).await.ok()
+                    } else {
+                        (now() + SYNC_EVERY, 0)
+                    };
+                    due.insert(id.clone(), next);
                 }
-                _ => None,
-            };
-            let profile_allowed = needs_org && self.profile_tried.lock().unwrap().get(&id).is_none_or(|&at| now() - at >= 3600);
-            let fetched_org = if profile_allowed && let Some(c) = &credits_cred {
-                match upstream::profile_org(&self.client_for(&id), &self.up, c, like.as_ref()).await {
-                    Ok(Some(o)) if Self::valid_claude_org(Some(&o)) => Some(o),
-                    _ => {
-                        self.profile_tried.lock().unwrap().insert(id.clone(), now());
+                let agy_credits = match read.credits {
+                    Ok(Some(c)) => {
+                        let ts = now();
+                        self.credits_due.lock().unwrap().insert(id.clone(), ts + CREDITS_EVERY);
+                        self.credits_fetched.lock().unwrap().insert(id.clone(), ts);
+                        Some(c)
+                    }
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::warn!("pool: reading reset credits for {id}: {e}");
                         None
                     }
-                }
+                };
+                let report = read.windows.map(|w| (w, None));
+                (report, None, agy_credits)
             } else {
-                None
-            };
-            let credits = match credits_cred {
-                Some(c) => {
-                    self.credits_fetched.lock().unwrap().insert(id.clone(), now());
-                    match upstream::credits(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await {
-                        Ok(c) => Some(c),
-                        Err(e) => {
-                            tracing::warn!("pool: reading reset credits for {id}: {e}");
+                let report = match upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
+                    Err(Failure::Refused(_)) => match self.fresh(&id, provider, Some(&cred), 0).await {
+                        Ok(c) => upstream::usage(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await,
+                        Err(e) => Err(e),
+                    },
+                    r => r,
+                };
+                // The next read: later, and later again while the provider
+                // keeps asking the pool to slow down.
+                {
+                    let mut due = self.due.lock().unwrap();
+                    let backoff = due.get(&id).map_or(0, |d| d.1);
+                    let next = match &report {
+                        Err(e) if e.rate_limited() => {
+                            let wait = (backoff * 2).clamp(SYNC_EVERY, SYNC_BACKOFF_MAX);
+                            (now() + wait, wait)
+                        }
+                        _ => (now() + SYNC_EVERY, 0),
+                    };
+                    due.insert(id.clone(), next);
+                }
+                let credits_due = only.is_some() || self.credits_due.lock().unwrap().get(&id).is_none_or(|&at| at <= now());
+                let credits_cred = match &report {
+                    Ok(_) if credits_due => {
+                        self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
+                        self.fresh(&id, provider, None, 60).await.ok()
+                    }
+                    _ => None,
+                };
+                let profile_allowed = needs_org && self.profile_tried.lock().unwrap().get(&id).is_none_or(|&at| now() - at >= 3600);
+                let fetched_org = if profile_allowed && let Some(c) = &credits_cred {
+                    match upstream::profile_org(&self.client_for(&id), &self.up, c, like.as_ref()).await {
+                        Ok(Some(o)) if Self::valid_claude_org(Some(&o)) => Some(o),
+                        _ => {
+                            self.profile_tried.lock().unwrap().insert(id.clone(), now());
                             None
                         }
                     }
-                }
-                None => None,
+                } else {
+                    None
+                };
+                let credits = match credits_cred {
+                    Some(c) => {
+                        self.credits_fetched.lock().unwrap().insert(id.clone(), now());
+                        match upstream::credits(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await {
+                            Ok(c) => Some(c),
+                            Err(e) => {
+                                tracing::warn!("pool: reading reset credits for {id}: {e}");
+                                None
+                            }
+                        }
+                    }
+                    None => None,
+                };
+                (report, fetched_org, credits)
             };
             if self.sync_gen(&id) != sgen || !self.commit_sync_seq(&id, seq) {
                 continue;
@@ -2719,6 +2998,7 @@ impl Shared {
                     let t = now();
                     a.paid_settled(Some(&windows), t);
                     let fresh_ok = |name: &str| windows.iter().any(|w| w.name == name && w.used < 100.0);
+                    Self::reconcile_agy_windows(a, &windows, t);
                     a.windows.retain(|w| w.resets_at.is_some_and(|r| r > t) && (w.name.starts_with("model:") || (w.used >= 100.0 && !fresh_ok(&w.name))));
                     a.merge_windows(windows);
                     if plan.is_some() {
@@ -2729,6 +3009,10 @@ impl Shared {
                         a.cooldown_until = None;
                     }
                     a.model_cooldowns.retain(|_, &mut c| c > t);
+                    if a.capacity_until.is_some_and(|c| c <= t) {
+                        a.capacity_until = None;
+                    }
+                    a.capacity_cooldowns.retain(|_, &mut c| c > t);
                 }
                 Err(e) => tracing::info!("pool: {}: {e}", a.name),
             }
@@ -2741,6 +3025,12 @@ impl Shared {
 /// Run the gateway on its own threads; returns once it is listening (or
 /// couldn't), the error kept in the pool too.
 pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
+    start_in(shared, port, crate::intercept::port(), olo_xdg::config_dir())
+}
+
+/// Run the gateway and clients' proxy using an explicit proxy port and config
+/// directory (used by tests to isolate CAs/ports completely under `/var/tmp`).
+pub fn start_in(shared: Arc<Shared>, port: u16, proxy_port: u16, config_dir: std::path::PathBuf) -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("pool-gateway").enable_all().build().map_err(|e| e.to_string())?;
     let (tx, rx) = std::sync::mpsc::channel();
     *shared.runtime.lock().unwrap() = Some(runtime.handle().clone());
@@ -2752,6 +3042,9 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                 // (The one the version before handed over, if it did.)
                 let listener = match crate::drain::listen(port).and_then(tokio::net::TcpListener::from_std) {
                     Ok(l) => {
+                        if let Ok(local) = l.local_addr() {
+                            shared.bound_port.store(local.port(), std::sync::atomic::Ordering::Relaxed);
+                        }
                         shared.drain.keep(port, &l);
                         l
                     }
@@ -2759,25 +3052,51 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                         let msg = format!("Can’t listen on {addr}: {e}");
                         shared.pool.lock().unwrap().error = Some(msg.clone());
                         shared.touch();
+                        shared.set_proxy_ready(ProxyReady { finished: true, proxy_ok: false, agy_ok: false, error: Some(msg.clone()), agy_error: None });
                         let _ = tx.send(Err(msg));
                         return;
                     }
                 };
+                // Report gateway listening immediately so the UI looper never
+                // blocks on CA keygen/fsync; initialize the CA and clients'
+                // proxy asynchronously right after on this runtime.
                 let _ = tx.send(Ok(()));
-                // The clients' proxy, beside it.
-                let s = shared.clone();
-                let proxy = match crate::authority::Authority::open() {
-                    Ok(a) => {
-                        let serving: crate::intercept::Serving = Arc::new(move |p| s.routes(p));
-                        crate::intercept::serve(shared.clone(), Arc::new(a), crate::intercept::port(), serving, crate::intercept::Who::Clients).await.map(|_| ())
+                let s_proxy = shared.clone();
+                let cfg_dir = config_dir.clone();
+                tokio::spawn(async move {
+                    let opened_ca = tokio::task::spawn_blocking(move || crate::authority::Authority::open_in(&cfg_dir)).await;
+                    let opened_ca = match opened_ca {
+                        Ok(res) => res,
+                        Err(e) => Err(format!("CA task failed: {e}")),
+                    };
+                    match opened_ca {
+                        Ok(a) => {
+                            let agy_ok = a.has_agy();
+                            let agy_error = a.agy_error.clone();
+                            let s = s_proxy.clone();
+                            let serving: crate::intercept::Serving = Arc::new(move |p| s.routes(p));
+                            match crate::intercept::serve(s_proxy.clone(), Arc::new(a), proxy_port, serving, crate::intercept::Who::Clients).await {
+                                Ok(_) => {
+                                    s_proxy.set_proxy_ready(ProxyReady { finished: true, proxy_ok: true, agy_ok, error: None, agy_error });
+                                    s_proxy.touch();
+                                }
+                                Err(e) => {
+                                    tracing::warn!("pool: {e}");
+                                    s_proxy.pool.lock().unwrap().error = Some(e.clone());
+                                    s_proxy.set_proxy_ready(ProxyReady { finished: true, proxy_ok: false, agy_ok: false, error: Some(e), agy_error });
+                                    s_proxy.touch();
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let msg = format!("The pool’s certificate: {e}");
+                            tracing::warn!("pool: {msg}");
+                            s_proxy.pool.lock().unwrap().error = Some(msg.clone());
+                            s_proxy.set_proxy_ready(ProxyReady { finished: true, proxy_ok: false, agy_ok: false, error: Some(msg), agy_error: None });
+                            s_proxy.touch();
+                        }
                     }
-                    Err(e) => Err(format!("The pool’s certificate: {e}")),
-                };
-                if let Err(e) = proxy {
-                    tracing::warn!("pool: {e}");
-                    shared.pool.lock().unwrap().error = Some(e);
-                    shared.touch();
-                }
+                });
                 let s = shared.clone();
                 tokio::spawn(async move {
                     let mut stop = s.drain.watch();
@@ -2841,6 +3160,7 @@ pub fn router(shared: Arc<Shared>, port: u16) -> Router {
     Router::new()
         .route("/claude/v1/{*rest}", any(claude))
         .route("/codex/v1/{*rest}", any(codex))
+        .route("/agy/{*rest}", any(agy))
         .route("/pool/status", get(status))
         .route("/pool/open", post(open))
         .route("/pool/capture", post(capture_now))
@@ -2969,7 +3289,7 @@ async fn host_act(State(ctx): State<Ctx>, Path((id, what)): Path<(String, String
 /// or Codex). By address anybody on the machine could spend the
 /// accounts: a host has other people on it, a desktop its one person.
 fn not_by_address() -> Response {
-    (StatusCode::NOT_FOUND, "This Token Pool serves Claude Code and Codex through its proxy only.").into_response()
+    (StatusCode::NOT_FOUND, "This Token Pool serves Claude Code, Codex and Antigravity through its proxy only.").into_response()
 }
 
 async fn claude(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
@@ -2984,6 +3304,22 @@ async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): Ra
         return not_by_address();
     }
     proxy(ctx, Provider::Codex, rest, q, method, headers, body).await
+}
+
+async fn agy(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    if ctx.shared.is_hosted() {
+        return not_by_address();
+    }
+    // Enforce the same 4-operation allowlist as the transparent proxy so local
+    // callers can never use `/agy` to submit auxiliary operations like
+    // `claimBankedQuotaReset` outside the keeper gate.
+    if !crate::intercept::is_agy_generation_path(&rest) {
+        return (StatusCode::NOT_FOUND, "This operation isn’t served by the Token Pool gateway.").into_response();
+    }
+    if method != Method::POST {
+        return (StatusCode::METHOD_NOT_ALLOWED, "Antigravity model generation requires POST.").into_response();
+    }
+    proxy(ctx, Provider::Antigravity, rest, q, method, headers, body).await
 }
 
 /// An HTTP client as the pool's are: a connection's own time to come,
@@ -3114,6 +3450,7 @@ fn host_of(provider: Provider) -> &'static str {
     match provider {
         Provider::Claude => "api.anthropic.com",
         Provider::Codex => "chatgpt.com",
+        Provider::Antigravity => "daily-cloudcode-pa.googleapis.com",
     }
 }
 
@@ -3134,6 +3471,10 @@ fn unavailable(provider: Provider, status: StatusCode, message: &str, retry: Opt
         Provider::Codex => {
             let kind = if status == StatusCode::TOO_MANY_REQUESTS { "usage_limit_reached" } else { "server_error" };
             json!({"error": {"type": kind, "message": message}})
+        }
+        Provider::Antigravity => {
+            let gstatus = if status == StatusCode::TOO_MANY_REQUESTS { "RESOURCE_EXHAUSTED" } else { "UNAVAILABLE" };
+            json!({"error": {"code": status.as_u16(), "message": message, "status": gstatus}})
         }
     };
     let mut r = (status, axum::Json(body)).into_response();
@@ -3197,18 +3538,200 @@ fn plain<'a>(headers: &HeaderMap, body: &'a [u8]) -> std::borrow::Cow<'a, [u8]> 
     }
 }
 
+enum ProjectRewrite {
+    /// Body already carried `project`.
+    AlreadyCorrect,
+    /// Body rewritten to `project`; second field is true if compression was stripped.
+    Rewritten(Bytes, bool),
+    /// Request body could not be decoded or parsed as a JSON object.
+    InvalidBody,
+}
+
+/// Decode and parse an Antigravity generation JSON request body once before
+/// account selection so invalid bodies fail immediately with 400 (spending zero
+/// resets) and valid bodies are not decoded repeatedly across retries.
+fn parse_agy_request_body(headers: &HeaderMap, body: &Bytes) -> Option<(serde_json::Map<String, Value>, bool)> {
+    let decoded_body = plain(headers, body);
+    let Value::Object(obj) = serde_json::from_slice::<Value>(&decoded_body).ok()? else {
+        return None;
+    };
+    let was_compressed = headers.get("content-encoding").and_then(|v| v.to_str().ok()).is_some_and(|c| !matches!(c.trim().to_ascii_lowercase().as_str(), "" | "identity"));
+    Some((obj, was_compressed))
+}
+
+/// Rewrite top-level `"project"` in a pre-validated Antigravity generation JSON
+/// request object to the chosen account's `cloudaicompanionProject`.
+fn rewrite_agy_project_parsed(obj: &serde_json::Map<String, Value>, was_compressed: bool, project: &str) -> ProjectRewrite {
+    if obj.get("project").and_then(Value::as_str) == Some(project) {
+        return ProjectRewrite::AlreadyCorrect;
+    }
+    let mut updated = obj.clone();
+    updated.insert("project".to_owned(), Value::String(project.to_owned()));
+    let Ok(bytes) = serde_json::to_vec(&Value::Object(updated)) else {
+        return ProjectRewrite::InvalidBody;
+    };
+    ProjectRewrite::Rewritten(Bytes::from(bytes), was_compressed)
+}
+
+/// Choose the authoritative matching window on `a` to mark exhausted on an
+/// Antigravity 429 `QUOTA_EXHAUSTED` or `consumedCredits` response:
+/// - Never falls back to a shared window when `model_only` is set (so a
+///   model-scoped 429 never poisons an unrelated shared bucket).
+/// - When multiple matching windows exist, only picks one when `until`
+///   uniquely matches a single candidate's `resets_at` within 15 minutes
+///   (never guessing the shortest bucket to authorize a blind auto-claim).
+///
+/// Returns `(chosen_window_index, scoped_only, had_multiple_candidates)`.
+fn pick_narrowest_agy_window(a: &Account, family: &str, model_only: bool, until: Option<i64>, _t: i64) -> (Option<usize>, bool, bool) {
+    let matching: Vec<usize> = a.windows.iter().enumerate().filter(|(_, w)| w.applies_to(family)).map(|(i, _)| i).collect();
+    if matching.is_empty() {
+        return (None, model_only && !family.is_empty(), false);
+    }
+    let scoped: Vec<usize> = matching.iter().copied().filter(|&i| !a.windows[i].is_shared()).collect();
+    // When the 429 explicitly named a model (`model_only`) and no scoped bucket
+    // exists for it yet, record a model refusal rather than poisoning a healthy
+    // shared bucket.
+    if model_only && scoped.is_empty() {
+        return (None, !family.is_empty(), false);
+    }
+    let shared_near = matching.iter().copied().any(|i| a.windows[i].is_shared() && a.windows[i].used >= 95.0);
+    // Prefer scoped buckets when `model_only` is set OR when scoped buckets
+    // match and no shared bucket is already near exhaustion.
+    let candidates = if !scoped.is_empty() && (model_only || !shared_near) { scoped } else { matching };
+    let scoped_only = !family.is_empty() && candidates.iter().all(|&i| !a.windows[i].is_shared());
+    if candidates.len() == 1 {
+        return (Some(candidates[0]), scoped_only, false);
+    }
+    // Multiple matching buckets (e.g. 5-hour + weekly): only match when `until`
+    // uniquely identifies a single bucket's reset deadline within 15 minutes;
+    // otherwise return `None` so callers record a refusal and trigger sync
+    // instead of guessing which bucket to auto-claim.
+    let best = until.and_then(|u| {
+        let mut close: Vec<usize> = candidates.iter().copied().filter(|&i| a.windows[i].resets_at.is_some_and(|r| (r - u).abs() <= 900)).collect();
+        (close.len() == 1).then(|| close.remove(0))
+    });
+    (best, scoped_only || (best.is_none() && !family.is_empty()), true)
+}
+
+/// Inspect an Antigravity HTTP 429 body (up to 64 KiB wire AND 64 KiB decoded)
+/// for quota/capacity exhaustion; if it is NOT an account/model rejection (or
+/// exceeds the limit), return a complete pass-through [`Response`] preserving
+/// every byte.
+async fn inspect_agy_429(mut r: crate::relay::Answer, mut finish: Finish, family: &str, t: i64) -> Result<upstream::AgyRejection, Box<Response>> {
+    const MAX: usize = 64 << 10;
+    let status = r.status();
+    let headers = r.headers().clone();
+    let ext = r.take_extensions();
+    let mut stream = r.into_stream();
+    let mut prefix = bytes::BytesMut::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    let mut overflow: Option<Option<Result<Bytes, std::io::Error>>> = None;
+    loop {
+        match tokio::time::timeout_at(deadline, stream.next()).await {
+            Ok(None) => break,
+            Ok(Some(Ok(piece))) if piece.len() <= MAX - prefix.len() => {
+                prefix.extend_from_slice(&piece);
+                continue;
+            }
+            Ok(item) => {
+                overflow = Some(item);
+                break;
+            }
+            Err(_) => {
+                overflow = Some(None);
+                break;
+            }
+        }
+    }
+    if overflow.is_none() {
+        let coding = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("");
+        let plain_bytes = decoded_bounded(coding, &prefix, MAX);
+        if let Some(inspect_slice) = plain_bytes.as_deref()
+            && let Some(rej) = upstream::agy_rejection(&headers, inspect_slice, family, t)
+        {
+            finish.outcome = Some(Outcome::RateLimited);
+            drop(finish);
+            return Ok(rej);
+        }
+    }
+    // Not an account/model rejection (or too big/slow): pass through intact.
+    let mut out = HeaderMap::new();
+    let transfer_coded = headers.contains_key("transfer-encoding");
+    for (k, v) in headers.iter().filter(|(k, _)| returned(k.as_str()) && !(transfer_coded && k.as_str() == "content-length")) {
+        out.append(k.clone(), v.clone());
+    }
+    if let Ok(v) = HeaderValue::from_str(&finish.name) {
+        out.insert(HeaderName::from_static("x-olo-pool-account"), v);
+    }
+    finish.outcome = None;
+    let body = if let Some(tail) = overflow {
+        let finish = Arc::new(Mutex::new(finish));
+        let end = finish.clone();
+        let combined = futures_util::stream::iter(std::iter::once(Ok(prefix.freeze())).chain(tail)).chain(stream).map(move |chunk| {
+            if chunk.is_err() {
+                finish.lock().unwrap().broken = true;
+            }
+            chunk
+        });
+        let combined = combined.chain(futures_util::stream::poll_fn(move |_| {
+            end.lock().unwrap().ended = true;
+            std::task::Poll::Ready(None)
+        }));
+        Body::from_stream(combined)
+    } else {
+        finish.ended = true;
+        drop(finish);
+        Body::from(prefix.freeze())
+    };
+    let mut resp = Response::new(body);
+    *resp.status_mut() = status;
+    *resp.headers_mut() = out;
+    *resp.extensions_mut() = ext;
+    Err(Box::new(resp))
+}
+
 /// Serve a model request from the pool: `rest` is its path after the
 /// provider's API base (`messages`, `responses`), from the gateway's own
 /// address or the proxy (`intercept`).
+#[allow(clippy::too_many_arguments)]
 pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Option<String>, method: Method, headers: HeaderMap, ext: axum::http::Extensions, body: Bytes) -> Response {
-    // (The body goes on as it came; Codex compresses it on ChatGPT's
-    // backend.)
-    let model = serde_json::from_slice::<Value>(&plain(&headers, &body)).ok().and_then(|v| v["model"].as_str().map(str::to_owned)).unwrap_or_default();
+    serve_host(s, provider, None, rest, query, method, headers, ext, body).await
+}
+
+/// As [`serve`], preserving the intercepted `target_host` (e.g. distinguishing
+/// `cloudcode-pa.googleapis.com` from `daily-cloudcode-pa.googleapis.com`).
+#[allow(clippy::too_many_arguments)]
+pub async fn serve_host(
+    s: Arc<Shared>,
+    provider: Provider,
+    target_host: Option<String>,
+    rest: String,
+    query: Option<String>,
+    method: Method,
+    headers: HeaderMap,
+    ext: axum::http::Extensions,
+    body: Bytes,
+) -> Response {
+    // Validate & parse Antigravity generation JSON bodies ONCE before account
+    // selection / automatic reset claims so malformed bodies return 400 with
+    // zero resets spent, and reuse the parsed object for project substitution.
+    let (model, agy_parsed) = if provider == Provider::Antigravity {
+        let Some((obj, was_compressed)) = parse_agy_request_body(&headers, &body) else {
+            return unavailable(provider, StatusCode::BAD_REQUEST, "The Antigravity request body could not be decoded for project routing.", None);
+        };
+        let model = obj.get("model").and_then(Value::as_str).map(str::to_owned).unwrap_or_default();
+        (model, Some((obj, was_compressed)))
+    } else {
+        let model = serde_json::from_slice::<Value>(&plain(&headers, &body)).ok().and_then(|v| v["model"].as_str().map(str::to_owned)).unwrap_or_default();
+        (model, None)
+    };
     let family = model_family(&model);
+    let cookie_host = target_host.as_deref().unwrap_or(host_of(provider));
     let url = {
         let base = match provider {
             Provider::Claude => format!("{}/v1/{rest}", s.up.claude),
             Provider::Codex => format!("{}/{rest}", s.up.codex),
+            Provider::Antigravity => format!("{}/{}", s.up.agy_for_host(target_host.as_deref()), rest.trim_start_matches('/')),
         };
         match &query {
             Some(q) => format!("{base}?{q}"),
@@ -3320,6 +3843,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             name,
             open,
             provider,
+            revision,
+            dispatched_at: now_ms(),
             model: model.clone(),
             client: client.clone(),
             started: std::time::Instant::now(),
@@ -3354,16 +3879,48 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 continue;
             }
         };
-        // The account's own in what's sent: its organization, and (Claude)
-        // its id in the request's `metadata.user_id` where the client named
-        // its own (Claude Code signed in to it names it there).
-        let own = s.own(&id, provider, &headers, &body);
+        // For Antigravity, discover `cloudaicompanionProject` if not yet cached
+        // (with bounded 60 s failure cooldown on request paths so concurrent
+        // turns don't stampede `loadCodeAssist`). Fail closed and try the next
+        // account if this account's project cannot be established.
+        let mut own = s.own(&id, provider, &headers, &body);
+        let mut agy_stripped_encoding = false;
         let mut refreshed = false;
+        if provider == Provider::Antigravity {
+            let unauth = s.ensure_agy_project(&id, &mut cred, s.like(&id).as_ref(), 60).await;
+            if unauth {
+                refreshed = true;
+                if let Ok(mut c) = s.fresh(&id, provider, Some(&cred), 0).await {
+                    let _ = s.ensure_agy_project(&id, &mut c, s.like(&id).as_ref(), 0).await;
+                    cred = c;
+                }
+            }
+            let Some(proj) = cred.account_id.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned) else {
+                refresh_error.get_or_insert_with(|| "This Antigravity account's project could not be discovered.".into());
+                drop(finish);
+                tried.insert(id.clone(), revision);
+                continue;
+            };
+            let (ref agy_obj, agy_was_compressed) = *agy_parsed.as_ref().expect("validated before loop");
+            match rewrite_agy_project_parsed(agy_obj, agy_was_compressed, &proj) {
+                ProjectRewrite::AlreadyCorrect => {}
+                ProjectRewrite::Rewritten(rewritten, stripped) => {
+                    own.body = rewritten;
+                    agy_stripped_encoding = stripped;
+                }
+                ProjectRewrite::InvalidBody => {
+                    drop(finish);
+                    return unavailable(provider, StatusCode::BAD_REQUEST, "The Antigravity request body could not be decoded for project routing.", None);
+                }
+            }
+        }
         // The body as decoded, once sent so (`resend_plain`).
         let mut sent_plain: Option<Bytes> = None;
         let response = loop {
             let seen = olo_net::generation();
             revision = s.pool.lock().unwrap().reset_revision(&id);
+            finish.revision = revision;
+            finish.dispatched_at = now_ms();
             // The client's request as it came, in its order, the account's
             // own in place of the client's: its sign-in where the client's
             // was, its ChatGPT account and Claude organization, the OAuth
@@ -3442,7 +3999,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                             req = req.header("authorization", format!("Bearer {}", cred.access));
                             // (Codex names its account right after: where it
                             // names none, the account's goes there.)
-                            if !headers.contains_key("chatgpt-account-id")
+                            if provider == Provider::Codex
+                                && !headers.contains_key("chatgpt-account-id")
                                 && let Some(account) = &cred.account_id
                             {
                                 req = req.header("chatgpt-account-id", account.as_str());
@@ -3450,11 +4008,13 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                         }
                         "authorization" | "x-api-key" => {}
                         "chatgpt-account-id" => {
-                            if let Some(account) = &cred.account_id {
+                            if provider == Provider::Codex
+                                && let Some(account) = &cred.account_id
+                            {
                                 req = req.header(k, account.as_str());
                             }
                         }
-                        "content-encoding" if sent_plain.is_some() => {}
+                        "content-encoding" if sent_plain.is_some() || agy_stripped_encoding => {}
                         name if forwarded(name) => req = req.header(k, v),
                         _ => {}
                     }
@@ -3463,13 +4023,13 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     req = upstream::authorize(req, provider, &cred);
                 }
                 // (The account's cookies, as Codex's store adds its own.)
-                if let Some(c) = crate::likeness::cookie(&response_jar, host_of(provider), path_of(&url)) {
+                if let Some(c) = crate::likeness::cookie(&response_jar, cookie_host, path_of(&url)) {
                     req = req.header("cookie", c);
                 }
                 req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await.map(crate::relay::Answer::Reqwest).map_err(Sent::from)
             };
             if let Ok(r) = &sent {
-                crate::likeness::keep(&response_jar, host_of(provider), path_of(&url), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
+                crate::likeness::keep(&response_jar, cookie_host, path_of(&url), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
             }
             match sent {
                 Ok(r) if sent_plain.is_none() && resend_plain(provider, r.status(), &headers) => {
@@ -3483,7 +4043,29 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 Ok(r) if r.status() == StatusCode::UNAUTHORIZED && !refreshed => {
                     refreshed = true;
                     match s.fresh(&id, provider, Some(&cred), 0).await {
-                        Ok(c) => cred = c,
+                        Ok(mut c) => {
+                            if provider == Provider::Antigravity {
+                                if c.account_id.as_deref().map(str::trim).is_none_or(str::is_empty) {
+                                    s.ensure_agy_project(&id, &mut c, s.like(&id).as_ref(), 0).await;
+                                }
+                                let Some(proj) = c.account_id.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned) else {
+                                    break None;
+                                };
+                                let (ref agy_obj, agy_was_compressed) = *agy_parsed.as_ref().expect("validated before loop");
+                                match rewrite_agy_project_parsed(agy_obj, agy_was_compressed, &proj) {
+                                    ProjectRewrite::AlreadyCorrect => {
+                                        own.body = body.clone();
+                                        agy_stripped_encoding = false;
+                                    }
+                                    ProjectRewrite::Rewritten(rewritten, stripped) => {
+                                        own.body = rewritten;
+                                        agy_stripped_encoding = stripped;
+                                    }
+                                    ProjectRewrite::InvalidBody => break None,
+                                }
+                            }
+                            cred = c;
+                        }
                         Err(e) => {
                             if let Failure::Other(why) = e {
                                 refresh_error.get_or_insert(why);
@@ -3528,6 +4110,74 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         let status = r.status();
         finish.status = status.as_u16();
         let t = now();
+        // Antigravity carries 429 `RESOURCE_EXHAUSTED` quota/capacity details
+        // in the JSON response body rather than HTTP headers.
+        if provider == Provider::Antigravity && status == StatusCode::TOO_MANY_REQUESTS {
+            let dispatched_at = finish.dispatched_at;
+            match inspect_agy_429(r, finish, &family, t).await {
+                Ok(rej) => {
+                    let target_family = if rej.model_family.is_empty() { family.clone() } else { rej.model_family.clone() };
+                    let mut late_windows = Vec::new();
+                    let mut need_summary_sync = false;
+                    let mut late_model_only = rej.model_only && !target_family.is_empty();
+                    {
+                        let mut p = s.pool.lock().unwrap();
+                        if p.reset_revision(&id) == revision
+                            && let Some(a) = p.account_mut(&id)
+                        {
+                            if rej.capacity_only {
+                                // Transient capacity / rate-limit pressure: store in separate
+                                // capacity fields so quota resets never discard active capacity
+                                // backoff, and never mark quota windows 100% spent.
+                                if rej.model_only && !target_family.is_empty() {
+                                    a.capacity_cooldowns.insert(target_family.clone(), rej.until);
+                                } else {
+                                    a.capacity_until = Some(rej.until);
+                                }
+                            } else {
+                                let (chosen_idx, scoped_only, multi) = pick_narrowest_agy_window(a, &target_family, rej.model_only, Some(rej.until), t);
+                                need_summary_sync = multi || chosen_idx.is_none();
+                                late_model_only = (scoped_only || rej.model_only) && !target_family.is_empty();
+                                if let Some(idx) = chosen_idx {
+                                    let w = &mut a.windows[idx];
+                                    w.used = w.used.max(100.0);
+                                    if w.resets_at.is_none() || w.resets_at.is_some_and(|r| (r - rej.until).abs() <= 900) {
+                                        w.resets_at = Some(rej.until);
+                                    }
+                                    late_windows.push(w.clone());
+                                } else {
+                                    let synth = Window {
+                                        name: if late_model_only { format!("model:{target_family}") } else { "quota".to_owned() },
+                                        label: if late_model_only { target_family.clone() } else { "Quota".to_owned() },
+                                        used: 100.0,
+                                        resets_at: Some(rej.until),
+                                        models: if late_model_only { vec![target_family.clone()] } else { Vec::new() },
+                                    };
+                                    late_windows.push(synth.clone());
+                                    a.merge_windows(vec![synth]);
+                                }
+                                if late_model_only {
+                                    a.model_cooldowns.insert(target_family.clone(), rej.until);
+                                } else {
+                                    a.cooldown_until = Some(rej.until);
+                                }
+                            }
+                        }
+                    }
+                    if need_summary_sync {
+                        s.sync_soon(Some(id.clone()));
+                    }
+                    if s.drain.retired() && !rej.capacity_only {
+                        let (cooldown, model_cooldown) = if late_model_only { (None, Some((target_family, rej.until))) } else { (Some(rej.until), None) };
+                        s.tell_late(&Late::Seen { id: id.clone(), at: dispatched_at, windows: late_windows, cooldown, model_cooldown, paid: None });
+                    }
+                    s.noted();
+                    tried.insert(id.clone(), revision);
+                    continue;
+                }
+                Err(pass_through) => return *pass_through,
+            }
+        }
         let (mut windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
         // An answer given although the account's allowance is out: paid
         // for from its usage credits. It goes back (it is answered, and
@@ -3542,7 +4192,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 None => (None, None),
             };
             let paid = paid.as_ref().map(|p| (family.clone(), p.model_only, p.until, p.meter.clone()));
-            s.tell_late(&Late::Seen { id: id.clone(), at: t, windows: windows.clone(), cooldown, model_cooldown, paid });
+            s.tell_late(&Late::Seen { id: id.clone(), at: finish.dispatched_at, windows: windows.clone(), cooldown, model_cooldown, paid });
         }
         {
             let mut p = s.pool.lock().unwrap();
@@ -3856,6 +4506,7 @@ fn passed_back(mut r: hyper::Response<hyper::body::Incoming>) -> Response {
 
 /// Inspect a small, plain JSON refusal. When it is a different error or
 /// inspection runs out of time or space, preserve its complete body.
+#[allow(clippy::result_large_err)]
 async fn handshake_quota(response: Response) -> Result<Option<i64>, Response> {
     const MAX: usize = 64 << 10;
     let headers = response.headers();
@@ -4129,9 +4780,11 @@ impl Shared {
             name: turns.name.clone(),
             open,
             provider: Provider::Codex,
+            revision: turns.revision,
             model: model.to_owned(),
             client: turns.client.clone(),
             started: std::time::Instant::now(),
+            dispatched_at: now_ms(),
             status: 0,
             outcome: None,
             ended: false,
@@ -4182,7 +4835,7 @@ impl Shared {
                     });
                 }
                 if self.drain.retired() {
-                    self.tell_late(&Late::Seen { id: turns.id.clone(), at: now(), windows: windows.clone(), cooldown: None, model_cooldown: None, paid: None });
+                    self.tell_late(&Late::Seen { id: turns.id.clone(), at: now_ms(), windows: windows.clone(), cooldown: None, model_cooldown: None, paid: None });
                 }
                 a.merge_windows(windows);
             }
@@ -4218,7 +4871,7 @@ impl Shared {
                 return;
             }
             if self.drain.retired() {
-                self.tell_late(&Late::Seen { id: turns.id.clone(), at: t, windows: windows.clone(), cooldown: Some(until), model_cooldown: None, paid: None });
+                self.tell_late(&Late::Seen { id: turns.id.clone(), at: now_ms(), windows: windows.clone(), cooldown: Some(until), model_cooldown: None, paid: None });
             }
             if let Some(a) = p.account_mut(&turns.id) {
                 a.merge_windows(windows);
@@ -4293,7 +4946,8 @@ impl Shared {
                     }
                 }
                 Late::Seen { id, at, windows, cooldown, model_cooldown, paid } => {
-                    if p.reset_at.get(&id).is_some_and(|&r| r > at) {
+                    let to_ms = |v: i64| if v > 0 && v < 10_000_000_000 { v.saturating_mul(1000) } else { v };
+                    if p.reset_at.get(&id).is_some_and(|&r| to_ms(r) >= to_ms(at)) {
                         return;
                     }
                     if let Some(a) = p.account_mut(&id) {
@@ -4466,6 +5120,10 @@ struct Finish {
     name: String,
     open: u64,
     provider: Provider,
+    revision: u64,
+    /// Wall-clock timestamp when this request was dispatched (used to order
+    /// late pre-handover observations against resets and paid observations).
+    dispatched_at: i64,
     model: String,
     client: String,
     started: std::time::Instant,
@@ -4497,17 +5155,26 @@ impl Drop for Finish {
             _ => Outcome::Completed,
         });
         let decode = std::mem::replace(&mut self.decode, Decode::Plain);
-        let mut usage = if matches!(decode, Decode::Plain) {
-            self.scan.finish()
+        let (mut usage, decoded_ok) = if matches!(decode, Decode::Plain) {
+            (self.scan.finish(), !self.scan.truncated && !self.scan.malformed)
         } else if self.ended
             && !self.broken
             && let Some(tail) = decode.finish()
         {
             self.scan.feed(&tail);
-            self.scan.finish()
+            (self.scan.finish(), !self.scan.truncated && !self.scan.malformed)
         } else {
-            Usage::default()
+            (Usage::default(), false)
         };
+        let agy_consumed_credits = self.provider == Provider::Antigravity && passed && (200..300).contains(&self.status) && self.scan.consumed_credits;
+        let agy_clean_ok = self.provider == Provider::Antigravity
+            && passed
+            && self.ended
+            && !self.broken
+            && decoded_ok
+            && self.scan.recognized_response
+            && (200..300).contains(&self.status)
+            && !self.scan.consumed_credits;
         usage.requests = 1;
         let t = now();
         let request = Request {
@@ -4519,15 +5186,71 @@ impl Drop for Finish {
             ms: self.started.elapsed().as_millis() as u64,
             usage: if passed { usage.clone() } else { Usage::default() },
         };
+        #[allow(clippy::type_complexity)]
+        let mut late_paid: Option<(Vec<Window>, (String, bool, i64, String))> = None;
+        let mut need_agy_sync = false;
         {
             let mut p = s.pool.lock().unwrap();
             if let Some(n) = p.in_flight.get_mut(&self.id) {
                 *n = n.saturating_sub(1);
             }
             p.open.retain(|o| o.id != self.open);
+            let current = p.reset_revision(&self.id) == self.revision;
             if let Some(a) = p.account_mut(&self.id) {
                 if passed {
                     a.record(&usage, &today(), t);
+                }
+                if current && agy_consumed_credits {
+                    let family = model_family(&self.model);
+                    let (chosen_idx, scoped_only, multi) = pick_narrowest_agy_window(a, &family, false, None, t);
+                    need_agy_sync = multi || chosen_idx.is_none();
+                    let effective_scoped = scoped_only || (chosen_idx.is_none() && !family.is_empty());
+                    let mut marked = Vec::new();
+                    let (meter, until) = if let Some(idx) = chosen_idx {
+                        let w = &mut a.windows[idx];
+                        let until = w.resets_at.filter(|&r| r > t).unwrap_or(t + upstream::PAID_UNKNOWN);
+                        if w.used < 100.0 {
+                            w.used = 100.0;
+                            if w.resets_at.is_none() {
+                                w.resets_at = Some(until);
+                            }
+                            marked.push(w.clone());
+                        }
+                        (w.name.clone(), until)
+                    } else {
+                        // Before first sync (or when multiple buckets match
+                        // ambiguously), record a model-scoped synthetic window
+                        // and trigger sync instead of marking the whole account paid.
+                        let until = t + upstream::PAID_UNKNOWN;
+                        let synth_name = if !family.is_empty() { format!("model:{family}") } else { "quota".to_owned() };
+                        let synth = Window {
+                            name: synth_name.clone(),
+                            label: if !family.is_empty() { family.clone() } else { "Quota".to_owned() },
+                            used: 100.0,
+                            resets_at: Some(until),
+                            models: if !family.is_empty() { vec![family.clone()] } else { Vec::new() },
+                        };
+                        marked.push(synth.clone());
+                        a.merge_windows(vec![synth]);
+                        (synth_name, until)
+                    };
+                    if a.paid_until(&family, t).is_none() {
+                        tracing::info!("pool: {} answered a {family} request using Antigravity AI credits ({meter}): left for another account or a banked reset from here on", a.name);
+                    }
+                    a.now_paid(&family, effective_scoped, until, &meter);
+                    late_paid = Some((marked, (family, effective_scoped, until, meter)));
+                } else if current && agy_clean_ok {
+                    let family = model_family(&self.model);
+                    let dispatched = self.dispatched_at;
+                    if let Some(paid) = &a.paid
+                        && dispatched > paid.at_ms()
+                        && (paid.meter == "quota" || a.windows.iter().any(|w| w.name == paid.meter && w.applies_to(&family)))
+                    {
+                        a.paid = None;
+                    }
+                    if a.model_paid.get(&family).is_some_and(|pf| dispatched > pf.at_ms()) {
+                        a.model_paid.remove(&family);
+                    }
                 }
                 a.finished(request.clone());
             }
@@ -4537,8 +5260,14 @@ impl Drop for Finish {
                 p.served.pop_front();
             }
         }
+        if need_agy_sync && !s.drain.retired() {
+            s.sync_soon(Some(self.id.clone()));
+        }
         // (Handed over: booked where it's saved.)
         if s.drain.retired() {
+            if let Some((windows, paid)) = late_paid {
+                s.tell_late(&Late::Seen { id: self.id.clone(), at: self.dispatched_at, windows, cooldown: None, model_cooldown: None, paid: Some(paid) });
+            }
             s.tell_late(&Late::Turn { id: self.id.clone(), name: self.name.clone(), provider: self.provider, usage, passed, request });
         }
         // (What it used, bookkeeping: saved with the next, or soon.)
@@ -4617,15 +5346,23 @@ enum Decode {
 }
 
 /// A whole body as it reads once its `content-encoding` is undone (none:
-/// as it is); None where the pool can't read that coding.
-pub(crate) fn decoded(coding: &str, body: &[u8]) -> Option<Vec<u8>> {
-    let mut decode = Decode::of(coding);
-    if matches!(decode, Decode::Unread) {
-        return None;
-    }
-    let mut out = decode.push(body).into_owned();
-    out.extend(decode.finish()?);
-    Some(out)
+/// as it is), capping decoded output at `max_bytes` so a small compressed
+/// payload cannot allocate unbounded memory during error inspection.
+pub(crate) fn decoded_bounded(coding: &str, body: &[u8], max_bytes: usize) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let mut out = Vec::new();
+    let reader: Box<dyn std::io::Read + '_> = match coding.trim().to_ascii_lowercase().as_str() {
+        "" | "identity" => {
+            return (body.len() <= max_bytes).then(|| body.to_vec());
+        }
+        "gzip" | "x-gzip" => Box::new(flate2::read::GzDecoder::new(body)),
+        "deflate" => Box::new(flate2::read::ZlibDecoder::new(body)),
+        "br" => Box::new(brotli_decompressor::Decompressor::new(body, 4096)),
+        "zstd" => Box::new(zstd::stream::read::Decoder::new(body).ok()?),
+        _ => return None,
+    };
+    reader.take((max_bytes + 1) as u64).read_to_end(&mut out).ok()?;
+    (out.len() <= max_bytes).then_some(out)
 }
 
 impl Decode {
@@ -4711,17 +5448,29 @@ struct Scan {
     sse: bool,
     pending: Vec<u8>,
     usage: Usage,
+    /// Antigravity `GenerateContentResponse.consumedCredits` was non-empty
+    /// (paid AI credits spent after subscription allowance ran out).
+    consumed_credits: bool,
+    /// True only when at least one recognized generation JSON object/event
+    /// parsed cleanly (so empty/malformed 200 bodies never clear paid marks).
+    recognized_response: bool,
+    /// True if a relevant SSE `data:` JSON line or non-SSE body failed to parse.
+    malformed: bool,
+    /// True if the body exceeded scan limits so billing fields may have been missed.
+    truncated: bool,
 }
 
 impl Scan {
     fn new() -> Scan {
-        Scan { sse: false, pending: Vec::new(), usage: Usage::default() }
+        Scan { sse: false, pending: Vec::new(), usage: Usage::default(), consumed_credits: false, recognized_response: false, malformed: false, truncated: false }
     }
 
     fn feed(&mut self, chunk: &[u8]) {
         if !self.sse {
             if self.pending.len() + chunk.len() <= 8 << 20 {
                 self.pending.extend_from_slice(chunk);
+            } else {
+                self.truncated = true;
             }
             return;
         }
@@ -4733,17 +5482,43 @@ impl Scan {
         // A runaway line (a huge delta) needn't be kept: usage lines are short.
         if self.pending.len() > 1 << 20 {
             self.pending.clear();
+            self.truncated = true;
         }
+    }
+
+    fn is_recognized_object(v: &Value) -> bool {
+        let Some(obj) = v.as_object() else { return false };
+        obj.contains_key("candidates")
+            || obj.contains_key("response")
+            || obj.contains_key("usageMetadata")
+            || obj.contains_key("usage")
+            || obj.contains_key("consumedCredits")
+            || obj.contains_key("id")
+            || obj.contains_key("content")
+            || obj.contains_key("type")
     }
 
     fn line(&mut self, line: &[u8]) {
         let Some(data) = line.strip_prefix(b"data:") else { return };
-        // Only lines that can hold usage are parsed.
-        if !data.windows(5).any(|w| w == b"usage") {
+        let trimmed = data.trim_ascii();
+        if trimmed.is_empty() || trimmed == b"[DONE]" {
             return;
         }
-        if let Ok(v) = serde_json::from_slice::<Value>(data.trim_ascii()) {
-            self.event(&v);
+        let has_billing = trimmed.windows(5).any(|w| w == b"usage") || trimmed.windows(15).any(|w| w == b"consumedCredits");
+        let check_shape = !self.recognized_response && (trimmed.windows(10).any(|w| w == b"candidates") || trimmed.windows(8).any(|w| w == b"response"));
+        if !has_billing && !check_shape {
+            return;
+        }
+        match serde_json::from_slice::<Value>(trimmed) {
+            Ok(v) => {
+                if Self::is_recognized_object(&v) {
+                    self.recognized_response = true;
+                }
+                self.event(&v);
+            }
+            Err(_) => {
+                self.malformed = true;
+            }
         }
     }
 
@@ -4762,12 +5537,36 @@ impl Scan {
         if let Some(out) = n("output_tokens") {
             self.usage.output_tokens = self.usage.output_tokens.max(out);
         }
+        // Antigravity (`GenerateContentResponse`): `response.usageMetadata` or top-level `usageMetadata`.
+        let um = if v["response"]["usageMetadata"].is_object() { &v["response"]["usageMetadata"] } else { &v["usageMetadata"] };
+        if um.is_object() {
+            if let Some(prompt) = um["promptTokenCount"].as_u64() {
+                self.usage.input_tokens = self.usage.input_tokens.max(prompt);
+            }
+            let cand = um["candidatesTokenCount"].as_u64().unwrap_or(0);
+            let thoughts = um["thoughtsTokenCount"].as_u64().unwrap_or(0);
+            let out = cand + thoughts;
+            if out > 0 {
+                self.usage.output_tokens = self.usage.output_tokens.max(out);
+            }
+        }
+        if v["consumedCredits"].as_array().is_some_and(|a| !a.is_empty()) || v["response"]["consumedCredits"].as_array().is_some_and(|a| !a.is_empty()) {
+            self.consumed_credits = true;
+        }
     }
 
     fn finish(&mut self) -> Usage {
         if !self.sse && !self.pending.is_empty() {
-            if let Ok(v) = serde_json::from_slice::<Value>(&self.pending) {
-                self.event(&v);
+            match serde_json::from_slice::<Value>(&self.pending) {
+                Ok(v) => {
+                    if Self::is_recognized_object(&v) {
+                        self.recognized_response = true;
+                    }
+                    self.event(&v);
+                }
+                Err(_) => {
+                    self.malformed = true;
+                }
             }
         } else if self.sse && !self.pending.is_empty() {
             let rest = std::mem::take(&mut self.pending);
@@ -4817,26 +5616,22 @@ mod tests {
         let s = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
         let window = |used: f64| crate::model::Window { name: "primary_window".into(), label: String::new(), used, resets_at: Some(now() + 3600), models: vec![] };
         let seen = |at: i64, used: f64| Late::Seen { id: "a".into(), at, windows: vec![window(used)], cooldown: Some(now() + 600), model_cooldown: None, paid: None };
-        s.pool.lock().unwrap().reset_at.insert("a".into(), now() - 10);
-        s.book_late(seen(now() - 60, 100.0));
+        let base = now_ms();
+        s.pool.lock().unwrap().reset_at.insert("a".into(), base - 10_000);
+        s.book_late(seen(base - 60_000, 100.0));
+        // Same millisecond as the reset is also rejected (`r >= at`).
+        s.book_late(seen(base - 10_000, 100.0));
         let p = s.snapshot();
         let a = p.account("a").unwrap();
         assert!(a.windows.is_empty() && a.cooldown_until.is_none(), "an old observation taken: {:?}", a.windows);
-        s.book_late(seen(now(), 12.0));
+        s.book_late(seen(base, 12.0));
         let p = s.snapshot();
         let a = p.account("a").unwrap();
         assert_eq!(a.windows.iter().map(|w| w.used).collect::<Vec<_>>(), [12.0]);
         assert!(a.cooldown_until.is_some());
         // A turn: its usage counted, its request among those served.
-        let request = Request {
-            at: now(),
-            model: "gpt-5".into(),
-            client: "codex".into(),
-            outcome: Outcome::Completed,
-            status: 200,
-            ms: 5,
-            usage: Usage { requests: 1, input_tokens: 11, output_tokens: 4, ..Usage::default() },
-        };
+        let request =
+            Request { at: now(), model: "gpt-5".into(), client: "codex".into(), outcome: Outcome::Completed, status: 200, ms: 5, usage: Usage { requests: 1, input_tokens: 11, output_tokens: 4 } };
         s.book_late(Late::Turn { id: "a".into(), name: "a".into(), provider: Provider::Codex, usage: request.usage.clone(), passed: true, request });
         let p = s.snapshot();
         assert_eq!((p.account("a").unwrap().total.input_tokens, p.served.len()), (11, 1));

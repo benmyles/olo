@@ -34,6 +34,7 @@ impl Program {
         match provider {
             Provider::Claude => exe.contains("/claude/versions/") || exe_name == "claude" || arg0 == "claude" || self.args.iter().any(|a| a.contains("@anthropic-ai/claude-code")),
             Provider::Codex => exe_name == "codex" || arg0 == "codex",
+            Provider::Antigravity => exe_name == "agy" || arg0 == "agy",
         }
     }
 }
@@ -106,14 +107,16 @@ mod tests {
         assert!(claude.is_client(Provider::Claude) && !claude.is_client(Provider::Codex));
         assert!(program("/usr/bin/node", &["node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"]).is_client(Provider::Claude));
         let codex = program("/home/u/.codex/packages/standalone/releases/0.166.0-aarch64-unknown-linux-musl/bin/codex", &["codex", "exec"]);
-        assert!(codex.is_client(Provider::Codex) && !codex.is_client(Provider::Claude));
+        assert!(codex.is_client(Provider::Codex) && !codex.is_client(Provider::Claude) && !codex.is_client(Provider::Antigravity));
+        let agy = program("/home/u/.local/bin/agy", &["agy", "-p", "hi"]);
+        assert!(agy.is_client(Provider::Antigravity) && !agy.is_client(Provider::Claude) && !agy.is_client(Provider::Codex));
         // What they run is not them.
         for other in [
             program("/usr/bin/python3.14", &["python3", "call_claude.py"]),
             program("/usr/bin/curl", &["curl", "https://api.anthropic.com/v1/messages"]),
             program("/usr/bin/node", &["node", "script.js"]),
         ] {
-            assert!(!other.is_client(Provider::Claude) && !other.is_client(Provider::Codex), "{other:?}");
+            assert!(!other.is_client(Provider::Claude) && !other.is_client(Provider::Codex) && !other.is_client(Provider::Antigravity), "{other:?}");
         }
     }
 

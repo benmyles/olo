@@ -5548,5 +5548,23 @@
   "title": "Agent Screens \u2014 multi-host sidebar (dark, 2x)",
   "caption": "Dark mode multi-host Agent Screens sidebar with unbroken 1-device-pixel right divider, clear 3-level host/running/stopped ink hierarchy, and remote host live/history/stats view.",
   "image": "2026-11-27/225853-agent-screens-multi-host-sidebar-dark-2x.png"
+ },
+ {
+  "time": "2026-11-28T04:47:27",
+  "title": "Token Pool: Antigravity accounts & banked resets (light)",
+  "caption": "Added Antigravity (agy) provider with per-family quota bars, banked reset counters, companion CA isolation, and polished light/dark contrast.",
+  "image": "2026-11-28/044727-token-pool-antigravity-accounts-banked-resets-li.png"
+ },
+ {
+  "time": "2026-11-28T04:47:28",
+  "title": "Token Pool: Antigravity accounts & banked resets (dark)",
+  "caption": "Dark mode Token Pool Accounts view with full-contrast provider header bands and Antigravity quota/reset tracking.",
+  "image": "2026-11-28/044728-token-pool-antigravity-accounts-banked-resets-da.png"
+ },
+ {
+  "time": "2026-11-28T04:47:28",
+  "title": "Token Pool: Activity chart & Recent Requests with Antigravity (dark)",
+  "caption": "Unified Activity chart and width-adaptive Recent Requests table across Claude Code, Codex, and Antigravity.",
+  "image": "2026-11-28/044728-token-pool-activity-chart-recent-requests-with-a.png"
  }
 ]

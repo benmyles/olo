@@ -40,7 +40,7 @@ use olo_token_pool::{
 use serde_json::Value;
 
 const APP_ID: &str = "olo.pool";
-const PROVIDERS: [Provider; 2] = [Provider::Claude, Provider::Codex];
+const PROVIDERS: [Provider; 3] = Provider::ALL;
 
 fn client_index(p: Provider) -> usize {
     PROVIDERS.iter().position(|&q| q == p).unwrap_or(0)
@@ -94,7 +94,7 @@ fn duration(ms: u64) -> String {
 // ---- the command line -------------------------------------------------
 
 const USAGE: &str =
-    "usage: olo-pool [--tab accounts|activity|machines | --hosts-window | --service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex | --hosts | --host ID install|remove|sync|look]
+    "usage: olo-pool [--tab accounts|activity|machines | --hosts-window | --service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex|agy | --hosts | --host ID install|remove|sync|look]
   (none)            open Token Pool (starting the gateway if it isn't running)
   --tab TAB         open Token Pool directly to accounts, activity, or machines
   --hosts-window    open Token Pool directly to the Machines tab
@@ -102,15 +102,15 @@ const USAGE: &str =
   --status [--json] the pool's accounts, quota and state (no sign-ins), and
                     each minute's requests by client over the last day
   --clients [--json]
-                    the Claude Code and Codex running, where each one's
-                    connections go, and Codex's service (its daemon)
-  --capture         capture again what Claude Code and Codex send for each
-                    account (the pool's own requests are made as they
-                    are; done by itself when either changes)
+                    the Claude Code, Codex and Antigravity running, where each
+                    one's connections go, and Codex's service (its daemon)
+  --capture         capture again what Claude Code, Codex and Antigravity send
+                    for each account (the pool's own requests are made as they
+                    are; done by itself when any changes)
   --restart-codex-service
                     restart Codex's service onto its settings now (a turn
                     going on ends; Codex's windows reconnect)
-  --put-back claude|codex
+  --put-back claude|codex|agy
                     take the client off the pool's proxy altogether, its
                     settings as before the pool (turned off in Token Pool,
                     it only passes through, needing no restart)
@@ -177,7 +177,7 @@ fn capture_now(port: u16) -> std::process::ExitCode {
     })();
     match asked {
         Ok(true) => {
-            println!("Capturing Claude Code and Codex for each account, one at a time (`olo-pool --status --json` shows which).");
+            println!("Capturing Claude Code, Codex and Antigravity for each account, one at a time (`olo-pool --status --json` shows which).");
             std::process::ExitCode::SUCCESS
         }
         Ok(false) => {
@@ -284,7 +284,7 @@ fn clients_now(as_json: bool) -> std::process::ExitCode {
         }
         None => println!("Codex’s service: not running"),
     }
-    for (prov, list) in [(Provider::Claude, &r.claude), (Provider::Codex, &r.codex)] {
+    for (prov, list) in [(Provider::Claude, &r.claude), (Provider::Codex, &r.codex), (Provider::Antigravity, &r.agy)] {
         println!("{} ({}):", prov.client(), list.len());
         for p in list {
             let place = p.cwd.as_deref().map(|c| c.display().to_string()).unwrap_or_default();
@@ -428,24 +428,25 @@ fn ask_to_open(port: u16) -> bool {
 
 /// Capture what's due a minute after the start, then whenever an install
 /// folder of a client changes (a moment after: an update writes a few
-/// things).
+/// things). Runs all client discovery (`capture::installed`, `agy --version`)
+/// strictly off the UI thread.
 fn follow_clients(shared: std::sync::Arc<olo_token_pool::gateway::Shared>) {
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
-    for p in [Provider::Claude, Provider::Codex] {
-        if let Some(i) = olo_token_pool::capture::installed(p)
-            && let Some(dir) = i.exe.parent()
-            && !dirs.iter().any(|d| d == dir)
-        {
-            dirs.push(dir.to_owned());
-        }
-    }
-    let watched = olo_kit::watch::watch_dir_entries(dirs, &[], move |_| {
-        let _ = tx.send(());
-    });
     let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
-        // (Kept as long as this thread follows.)
-        let _watched = watched;
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+        for p in Provider::ALL {
+            if let Some(i) = olo_token_pool::capture::installed(p)
+                && let Some(dir) = i.exe.parent()
+                && !dirs.iter().any(|d| d == dir)
+            {
+                dirs.push(dir.to_owned());
+            }
+        }
+        olo_token_pool::upstream::refresh_claude_version();
+        olo_token_pool::upstream::refresh_agy_version();
+        let _watched = olo_kit::watch::watch_dir_entries(dirs, &[], move |_| {
+            let _ = tx.send(());
+        });
         // (What a capture killed with an earlier copy left: its sign-in
         // goes now.)
         olo_token_pool::capture::sweep_at_start();
@@ -455,6 +456,8 @@ fn follow_clients(shared: std::sync::Arc<olo_token_pool::gateway::Shared>) {
             // (Settled: what else came within the minute goes with it.)
             std::thread::sleep(Duration::from_secs(60));
             while rx.try_recv().is_ok() {}
+            olo_token_pool::upstream::refresh_claude_version();
+            olo_token_pool::upstream::refresh_agy_version();
             shared.capture(false);
         }
     });
@@ -469,7 +472,8 @@ fn main() -> std::process::ExitCode {
     // go through them, with nothing behind it; where one ran (a Rex
     // host's), it only failed to ("Can't listen on 127.0.0.1:17891:
     // Address already in use", in every picture's log, 2026-11-26).
-    if aggregate::demo_enabled() {
+    let demo = aggregate::demo_enabled();
+    if demo {
         // SAFETY: before any thread (the crash handler starts none: it
         // sets signal handlers, and is every program's first line, which
         // crates/crash/tests/every_program.rs holds each to).
@@ -482,7 +486,10 @@ fn main() -> std::process::ExitCode {
         return keeper();
     }
     // A session or install from before the rename (Tabula) carries on.
-    olo_xdg::legacy::adopt();
+    // Demo mode never mutates live config/state directories.
+    if !demo {
+        olo_xdg::legacy::adopt();
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let port = gateway::port();
     let has = |a: &str| args.iter().any(|x| x == a);
@@ -511,7 +518,7 @@ fn main() -> std::process::ExitCode {
     }
     if let Some(i) = args.iter().position(|a| a == "--put-back") {
         let Some(p) = args.get(i + 1).and_then(|a| Provider::parse(a)) else {
-            eprintln!("olo-pool: --put-back takes claude or codex");
+            eprintln!("olo-pool: --put-back takes claude, codex or agy");
             return std::process::ExitCode::FAILURE;
         };
         return match clients::put_back(p) {
@@ -553,7 +560,7 @@ fn main() -> std::process::ExitCode {
     // keeps that one, rather than running beside it with no gateway (whose
     // window showed nothing, and took the launches), or ending (the session
     // started it again and again, and gave up).
-    if service && !handed {
+    if !demo && service && !handed {
         let serving = olo_token_pool::drain::serving(port);
         if !serving.is_empty() {
             eprintln!("olo-pool: Token Pool (process {}) serves port {port} already; keeping it", serving.iter().map(i32::to_string).collect::<Vec<_>>().join(", "));
@@ -565,14 +572,14 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     }
-    if instance::forward(APP_ID, &args) {
+    if !demo && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
     // Opened while the copy serving takes no launches (it is starting, as
     // an upgrade hands over to it): it is asked over the gateway, not
     // given a copy beside it with no gateway. (One from before
     // `/pool/open`: its launches, once it takes them.)
-    if !service && !handed && std::env::var_os(olo_kit::restore::ENV).is_none() && !olo_token_pool::drain::serving(port).is_empty() {
+    if !demo && !service && !handed && std::env::var_os(olo_kit::restore::ENV).is_none() && !olo_token_pool::drain::serving(port).is_empty() {
         if ask_to_open(port) {
             return std::process::ExitCode::SUCCESS;
         }
@@ -586,34 +593,55 @@ fn main() -> std::process::ExitCode {
     olo_kit::run(APP_ID, move |app| {
         olo_kit::stay_resident();
         let proxy = olo_kit::proxy();
-        instance::listen(APP_ID, proxy.clone());
-        let to_ui = proxy.clone();
-        let shared = Shared::launch(port, move || to_ui.send(ui::Msg::Changed));
-        let to_ui = proxy.clone();
-        shared.on_open(move || to_ui.send(ui::Msg::Open));
-        // The pools on Rex hosts: the hosts Rex knows, as the desktop's
-        // settings have them (Preferences ▸ Rex), each able to have a
-        // pool of its own with this one's accounts.
-        let to_ui = proxy.clone();
-        let hosts = olo_token_pool::hosts::Hosts::start(shared.clone(), host_builds::builds(), host_builds::ID, move || to_ui.send(ui::Msg::Changed));
-        let known = hosts.clone();
-        olo_kit::settings::watch(move |s| {
-            known.set_known(s.rex.hosts.iter().map(|h| (h.id.clone(), if h.label.trim().is_empty() { h.endpoint.clone() } else { h.label.clone() }, h.endpoint.clone())).collect())
-        });
-        // Clients pointed at the pool the old way (an API endpoint of its
-        // own) go through its proxy instead, as on their own subscription.
-        let proxy_port = olo_token_pool::intercept::port();
-        std::thread::spawn(move || clients::migrate(proxy_port));
-        // Codex's daemon, which outlives its windows, kept on the settings.
-        codex_daemon::keep_following(Duration::from_secs(10));
-        // What the clients send, captured for each account (`capture`): a
-        // minute after the pool starts, and whenever a client changes (its
-        // install folder watched: an update points `claude` or `codex`
-        // there at another version), each account whose capture is of
-        // another install.
-        if service {
-            follow_clients(shared.clone());
+        if !demo {
+            instance::listen(APP_ID, proxy.clone());
         }
+        let to_ui = proxy.clone();
+        // In demo mode (`OLO_POOL_DEMO`), never open the live vault, create CA
+        // files, bind loopback ports, read live pool-hosts.json, migrate client
+        // settings, or spawn daemon followers: run purely in-memory!
+        let (shared, hosts, proxy_port) = if demo {
+            let shared = Shared::new(olo_token_pool::store::Saved::default(), None, olo_token_pool::upstream::Upstreams::fake("http://127.0.0.1:9"), move || to_ui.send(ui::Msg::Changed));
+            let to_ui = proxy.clone();
+            let hosts = olo_token_pool::hosts::Hosts::demo(shared.clone(), move || to_ui.send(ui::Msg::Changed));
+            (shared, hosts, olo_token_pool::intercept::PORT)
+        } else {
+            let shared = Shared::launch(port, move || to_ui.send(ui::Msg::Changed));
+            let to_ui = proxy.clone();
+            shared.on_open(move || to_ui.send(ui::Msg::Open));
+            // The pools on Rex hosts: the hosts Rex knows, as the desktop's
+            // settings have them (Preferences ▸ Rex), each able to have a
+            // pool of its own with this one's accounts.
+            let to_ui = proxy.clone();
+            let hosts = olo_token_pool::hosts::Hosts::start(shared.clone(), host_builds::builds(), host_builds::ID, move || to_ui.send(ui::Msg::Changed));
+            let known = hosts.clone();
+            olo_kit::settings::watch(move |s| {
+                known.set_known(s.rex.hosts.iter().map(|h| (h.id.clone(), if h.label.trim().is_empty() { h.endpoint.clone() } else { h.label.clone() }, h.endpoint.clone())).collect())
+            });
+            // Clients pointed at the pool the old way (an API endpoint of its
+            // own) go through its proxy instead, and managed Antigravity CA
+            // env is reconciled after CA init settles (skipping Antigravity if
+            // companion CA creation failed).
+            let proxy_port = olo_token_pool::intercept::port();
+            let s_mig = shared.clone();
+            std::thread::spawn(move || {
+                let ready = s_mig.wait_proxy_ready(Duration::from_secs(30));
+                if ready.proxy_ok {
+                    clients::migrate_with_agy(proxy_port, ready.agy_ok);
+                }
+            });
+            // Codex's daemon, which outlives its windows, kept on the settings.
+            codex_daemon::keep_following(Duration::from_secs(10));
+            // What the clients send, captured for each account (`capture`): a
+            // minute after the pool starts, and whenever a client changes (its
+            // install folder watched: an update points `claude` or `codex`
+            // there at another version), each account whose capture is of
+            // another install.
+            if service {
+                follow_clients(shared.clone());
+            }
+            (shared, hosts, proxy_port)
+        };
         // (The app's state lives in the hub the app's looper keeps.)
         ui::start(app, ui::Hub::new(shared, hosts, proxy_port, proxy), service);
     });

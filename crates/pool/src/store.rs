@@ -32,7 +32,7 @@ fn default_true() -> bool {
 }
 
 /// Everything kept: the accounts and, by account id, their sign-ins.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Saved {
     pub accounts: Vec<Account>,
     pub credentials: BTreeMap<String, Credential>,
@@ -48,12 +48,6 @@ pub struct Saved {
     /// desktop; fresh in-memory `Saved::default()` starts `false`.
     #[serde(default = "default_true")]
     pub legacy_desktop_claims: bool,
-}
-
-impl Default for Saved {
-    fn default() -> Self {
-        Self { accounts: Vec::new(), credentials: BTreeMap::new(), remote_claims: Vec::new(), pending_remote_claims: Vec::new(), legacy_desktop_claims: false }
-    }
 }
 
 pub fn path() -> PathBuf {
@@ -130,15 +124,30 @@ fn key(sealed_exists: bool) -> Result<Zeroizing<[u8; 32]>, String> {
 
 /// Write `bytes` to `path` readable only by us, replacing it whole.
 pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::{io::Write, os::unix::fs::OpenOptionsExt};
+    use std::{
+        io::Write,
+        os::unix::fs::OpenOptionsExt,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    static SEQ: AtomicU64 = AtomicU64::new(0);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension("tmp");
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
-    f.write_all(bytes)?;
-    f.sync_all()?;
-    std::fs::rename(tmp, path)
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("pool");
+    let pid = std::process::id();
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_file_name(format!(".{name}.{pid}.{seq}.tmp"));
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
+    if let Err(e) = f.write_all(bytes).and_then(|()| f.sync_all()) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    drop(f);
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
 }
 
 fn seal(key: &[u8; 32], plain: &[u8]) -> Vec<u8> {

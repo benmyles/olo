@@ -27,6 +27,12 @@ pub fn blocked_until(a: &Account, family: &str, now: i64) -> Option<i64> {
     if let Some(&c) = a.model_cooldowns.get(family).filter(|&&c| c > now) {
         block(c);
     }
+    if let Some(c) = a.capacity_until.filter(|&c| c > now) {
+        block(c);
+    }
+    if let Some(&c) = a.capacity_cooldowns.get(family).filter(|&&c| c > now) {
+        block(c);
+    }
     // (Its allowance out, its provider answering from usage credits:
     // not chosen as one with allowance left is. `pick_paid`.)
     if let Some(c) = a.paid_until(family, now) {
@@ -75,6 +81,8 @@ pub fn paid_for(a: &Account, provider: Provider, family: &str, now: i64, has_cre
         && a.paid_until(family, now).is_some()
         && a.cooldown_until.is_none_or(|c| c <= now)
         && a.model_cooldowns.get(family).is_none_or(|&c| c <= now)
+        && a.capacity_until.is_none_or(|c| c <= now)
+        && a.capacity_cooldowns.get(family).is_none_or(|&c| c <= now)
 }
 
 /// The account to use when none has allowance left ([`pick`] found none)

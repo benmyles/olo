@@ -27203,25 +27203,34 @@ runs `olo-pool --service` (no window; launching `olo-pool` again
 opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`), and
 on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
 
-- **Proxy** (`intercept.rs`, `authority.rs`, `peer.rs`): Claude Code
-  and Codex run as on their own subscriptions, signed in as they are
-  and talking to their own hosts, with `HTTPS_PROXY` set to the pool (no
-  API mode, no other endpoint). It takes CONNECTs only. A connection to
-  `api.anthropic.com` or `chatgpt.com` is opened with a certificate for
-  that host from the pool's own authority (`pool-ca.pem` and its key,
-  0600, in the config directory; name-constrained to those two hosts and
-  issuing nothing further, so even its key vouches for nothing else),
-  and on it the model requests (Claude's `/v1/messages…`, Codex's
-  `/backend-api/codex/…`: `intercept::pooled`) are served as the gateway
-  serves them; everything else on those hosts goes through untouched
-  (the client's own sign-in, every header and byte, its compression,
-  WebSockets and other upgrades joined byte for byte after the 101), and
-  every other host is a plain tunnel. Only the clients themselves are
-  opened: the program on the other end is read from /proc (the socket's
-  inode in `/proc/net/tcp`, the process holding it; `peer::program`),
-  and one that isn't Claude Code or Codex (a script one of them runs,
-  which inherits the setting but needn't trust the certificate) is
-  tunnelled, as without the pool. Codex's Responses over a WebSocket
+- **Proxy** (`intercept.rs`, `authority.rs`, `peer.rs`): Claude Code,
+  Codex, and Antigravity (`agy`) run as on their own subscriptions, signed
+  in as they are and talking to their own hosts, with `HTTPS_PROXY` set to
+  the pool (no API mode, no other endpoint). It takes CONNECTs only. A
+  connection to `api.anthropic.com`, `chatgpt.com`,
+  `daily-cloudcode-pa.googleapis.com`, or `cloudcode-pa.googleapis.com` is
+  opened with a certificate for that host from the pool's own authority:
+  on fresh installs a single `pool-ca.pem` + `pool-ca.key` (0600) in the
+  config directory name-constrained to all four hosts; on upgraded
+  installs whose existing `pool-ca.pem` covers only `api.anthropic.com`
+  and `chatgpt.com`, `pool-ca.{pem,key}` are left untouched (and
+  `pool-ca-bundle.pem` is rewritten only if the OS system roots change)
+  so running Claude Code and Codex sessions keep trusting their existing
+  CA, while a companion `pool-agy-ca.{pem,key}` (name-constrained strictly
+  to the two Google Cloud Code hosts) signs Antigravity leaves (`authority::
+  agy_cert_path`). On it the model requests (Claude's `/v1/messages…`,
+  Codex's `/backend-api/codex/…`, Antigravity's
+  `/v1internal:(streamGenerateContent|generateContent|streamGenerateChat|generateChat)`:
+  `intercept::pooled`) are served as the gateway serves them; everything
+  else on those hosts goes through untouched (the client's own sign-in,
+  every header and byte, its compression, WebSockets and other upgrades
+  joined byte for byte after the 101), and every other host is a plain
+  tunnel. Only the clients themselves are opened: the program on the other
+  end is read from /proc (the socket's inode in `/proc/net/tcp`, the
+  process holding it; `peer::program`), and one that isn't Claude Code,
+  Codex, or Antigravity (a script one of them runs, which inherits the
+  setting but needn't trust the certificate) is tunnelled, as without the
+  pool. Codex's Responses over a WebSocket
   (Codex 0.170 asks for one first) are the pool's too
   (`gateway::serve_socket`, below); it was answered 426, Codex's sign to
   use HTTPS for the rest of its session, which Codex left to itself never
@@ -27385,13 +27394,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   is opened on a worker thread, retried every 30 s while the keyring
   is shut, and nothing is saved until it has been read.
 - **Adding accounts** (`import.rs`): *this computer's* sign-in is read
-  from `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`) or
-  `~/.codex/auth.json` (`CODEX_HOME`). The pool then refreshes it, so
-  the client's own copy goes stale: point the client at the pool.
-  *Separately* runs the official client's own sign-in in Terminal with
-  its config in a private directory on the runtime tmpfs (`claude auth
-  login`, `codex login` with file storage), takes the result and deletes
-  the directory. The same email again updates that account's sign-in.
+  from `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`),
+  `~/.codex/auth.json` (`CODEX_HOME`), or
+  `~/.gemini/antigravity-cli/antigravity-oauth-token`. The pool then
+  refreshes it, so the client's own copy goes stale: point the client at
+  the pool. *Separately* runs the official client's own sign-in in
+  Terminal with its config in a private directory on the runtime tmpfs
+  (`claude auth login`, `codex login` with file storage, or `agy`
+  sign-in), takes the result and deletes the directory. The same email
+  again updates that account's sign-in.
 - **Clients** (`clients.rs`): "Claude Code uses the pool" sets
   `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS` (the authority's certificate,
   added to what it trusts) and `NO_PROXY` (loopback) in Claude Code's
@@ -27399,7 +27410,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `SSL_CERT_FILE` (`pool-ca-bundle.pem`: the system's roots and the
   authority's, since Codex's setting replaces the roots) and `NO_PROXY`
   in Codex's `~/.codex/.env` (`CODEX_HOME`), which Codex reads as it
-  starts. What was there before is kept in `pool-clients.json`.
+  starts; "Antigravity uses the pool" writes `HTTPS_PROXY`, `AGY_CA_CERT`
+  (`authority::agy_cert_path()`: `pool-agy-ca.pem` on upgraded legacy
+  installs, `pool-ca.pem` on fresh 4-host installs) and `NO_PROXY` into
+  `~/.config/olo/pool-agy.env` plus a shell wrapper (`pool-agy.sh` sourced
+  from a guarded block in `.bashrc`/`.zshrc`, and `fish/conf.d/olo-pool-agy.fish`)
+  so proxy variables reach only `agy` itself (first-time enable takes
+  effect in a new shell or after sourcing `pool-agy.sh`; Rex `agentd`
+  also injects `pool-agy.env` for non-interactive `olo agent` Antigravity
+  runs). What was there before is kept in `pool-clients.json`.
   Unchecked, a client is only paused (`pool-clients.json`'s `paused`,
   mirrored in `Shared::paused`): its settings stay pointed at the proxy,
   which decides for each request (`Shared::routes`: not paused, and an
@@ -27408,7 +27427,7 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   for it is only tunnelled). So checking and unchecking takes effect
   from the client's next request, with nothing restarted (Codex's
   service neither) and nothing under way cut. `olo-pool --put-back
-  claude|codex` (`clients::put_back`) takes a client off the proxy
+  claude|codex|agy` (`clients::put_back`) takes a client off the proxy
   altogether, its settings exactly as before the pool (from its next
   start). A client set up the old way (an endpoint of the
   gateway's own: `ANTHROPIC_BASE_URL` and the rest, or an `olo_pool`

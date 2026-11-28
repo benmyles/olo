@@ -58,6 +58,8 @@ const CLAUDE_RUNS: &[&str] = &["session", "wall", "print", "renewal"];
 /// background poll makes (its TUI's ask for Reserve, which the pool can't
 /// use: Codex's review), and whose claim is Codex's own.
 const CODEX_RUNS: &[&str] = &["app-server", "session", "print", "renewal"];
+/// Antigravity's runs.
+const AGY_RUNS: &[&str] = &["session", "models", "renewal"];
 
 /// An account's cookies: what each host set, sent back as its client's
 /// cookie store sends them (Codex's: RFC 6265's rules, as a browser's),
@@ -198,7 +200,59 @@ impl Like {
             (Provider::Codex, What::Claim) => c.find("chatgpt.com", "POST", "/backend-api/wham/rate-limit-reset-credits/consume", CODEX_RUNS).cloned(),
             (Provider::Codex, What::Renewal) => c.find("auth.openai.com", "POST", "/oauth/token", &["renewal"]).cloned(),
             (Provider::Codex, What::Profile) => None,
+            (Provider::Antigravity, What::Usage | What::Credits) => c
+                .find("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:retrieveUserQuotaSummary", AGY_RUNS)
+                .or_else(|| c.find("cloudcode-pa.googleapis.com", "POST", "/v1internal:retrieveUserQuotaSummary", AGY_RUNS))
+                .cloned(),
+            (Provider::Antigravity, What::Profile) => c
+                .find("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:loadCodeAssist", AGY_RUNS)
+                .or_else(|| c.find("cloudcode-pa.googleapis.com", "POST", "/v1internal:loadCodeAssist", AGY_RUNS))
+                .cloned(),
+            (Provider::Antigravity, What::Claim) => c
+                .find("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:claimBankedQuotaReset", AGY_RUNS)
+                .or_else(|| c.find("cloudcode-pa.googleapis.com", "POST", "/v1internal:claimBankedQuotaReset", AGY_RUNS))
+                .cloned()
+                .or_else(|| {
+                    c.find("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:retrieveUserQuotaSummary", AGY_RUNS)
+                        .or_else(|| c.find("cloudcode-pa.googleapis.com", "POST", "/v1internal:retrieveUserQuotaSummary", AGY_RUNS))
+                        .or_else(|| c.find("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:loadCodeAssist", AGY_RUNS))
+                        .or_else(|| c.find("cloudcode-pa.googleapis.com", "POST", "/v1internal:loadCodeAssist", AGY_RUNS))
+                        .map(agy_claim)
+                }),
+            (Provider::Antigravity, What::Renewal) => c.find("oauth2.googleapis.com", "POST", "/token", &["renewal"]).cloned(),
         }
+    }
+}
+
+/// Synthesize Antigravity's `claimBankedQuotaReset` request from a captured
+/// Cloud Code POST (`retrieveUserQuotaSummary` or `loadCodeAssist`) when no
+/// claim has been captured directly yet, preserving `agy`'s exact headers & ALPN.
+fn agy_claim(base: &Sent) -> Sent {
+    let mut headers = Vec::with_capacity(base.headers.len() + 1);
+    let mut has_ct = false;
+    for (k, v) in &base.headers {
+        if k.eq_ignore_ascii_case("content-type") {
+            has_ct = true;
+            headers.push((k.clone(), "application/json".to_owned()));
+        } else {
+            headers.push((k.clone(), v.clone()));
+        }
+    }
+    if !has_ct {
+        headers.push(("Content-Type".to_owned(), "application/json".to_owned()));
+    }
+    Sent {
+        run: format!("{}+claim", base.run),
+        host: base.host.clone(),
+        method: "POST".into(),
+        target: "/v1internal:claimBankedQuotaReset".into(),
+        headers,
+        body: r#"{"project":"","resetId":"","requestId":""}"#.into(),
+        body_len: 0,
+        alpn: base.alpn.clone(),
+        suites: base.suites.clone(),
+        schemes: base.schemes.clone(),
+        passed_on: false,
     }
 }
 
@@ -325,6 +379,20 @@ impl Fill {
         }
         Ok(out)
     }
+
+    /// As [`Self::fill`], percent-encoding substituted values for
+    /// `application/x-www-form-urlencoded` bodies (e.g. Google OAuth refresh
+    /// tokens containing `/` or `+`).
+    pub fn fill_form(&self, text: &str) -> Result<String, String> {
+        let mut out = text.to_owned();
+        for (placeholder, value) in self.pairs() {
+            if out.contains(placeholder) {
+                let v = value.ok_or_else(|| format!("no value for {placeholder}"))?;
+                out = out.replace(placeholder, &crate::upstream::url_encode(v));
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// A request ready to send: its head as it goes on the wire (HTTP/1.1),
@@ -361,8 +429,10 @@ impl Built {
 /// HTTP/1.1 needs it).
 pub fn build(s: &Sent, fill: &Fill, target: Option<&str>, body: Option<&[u8]>) -> Result<Built, String> {
     let target = fill.fill(target.unwrap_or(&s.target))?;
+    let is_form = s.header("content-type").is_some_and(|ct| ct.to_ascii_lowercase().starts_with("application/x-www-form-urlencoded"));
     let body: Vec<u8> = match body {
         Some(b) => b.to_vec(),
+        None if is_form => fill.fill_form(&s.body)?.into_bytes(),
         None => fill.fill(&s.body)?.into_bytes(),
     };
     let mut headers = Vec::with_capacity(s.headers.len() + 1);
@@ -433,8 +503,11 @@ fn origin(host: &str, up: &Upstreams) -> Result<(bool, String, u16), String> {
     let base = match host {
         "api.anthropic.com" => &up.claude,
         "chatgpt.com" => &up.chatgpt,
+        "daily-cloudcode-pa.googleapis.com" => &up.agy,
+        "cloudcode-pa.googleapis.com" => &up.agy_prod,
         "platform.claude.com" | "console.anthropic.com" => &up.claude_oauth,
         "auth.openai.com" => &up.codex_oauth,
+        "oauth2.googleapis.com" => &up.agy_oauth,
         other => return Err(format!("not a host the pool talks to: {other}")),
     };
     let (tls, rest) = if let Some(r) = base.strip_prefix("https://") {
@@ -500,8 +573,13 @@ pub async fn send(b: &Built, up: &Upstreams) -> Result<Answer, SendError> {
     tokio::time::timeout(Duration::from_secs(60), work).await.map_err(|_| SendError::AfterSend(format!("{host}: no answer")))?.map_err(SendError::AfterSend)
 }
 
+/// Maximum response headers and body size read by control-plane requests
+/// (`likeness`), both on the wire and after decompression.
+const MAX_HEAD: usize = 64 << 10;
+const MAX_BODY: usize = 2 << 20;
+
 /// HTTP/1.1: the head and body written as they are; the answer read to
-/// its end.
+/// its end (bounded to `MAX_HEAD` / `MAX_BODY`).
 async fn http1<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, b: &Built) -> Result<Answer, String> {
     s.write_all(b.head().as_bytes()).await.map_err(|e| e.to_string())?;
     s.write_all(&b.body).await.map_err(|e| e.to_string())?;
@@ -511,6 +589,9 @@ async fn http1<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, b: &Built) -> Result
     let end = loop {
         if let Some(e) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
             break e + 4;
+        }
+        if buf.len() > MAX_HEAD {
+            return Err(format!("response headers exceeded {MAX_HEAD} bytes"));
         }
         let n = s.read(&mut chunk).await.map_err(|e| e.to_string())?;
         if n == 0 {
@@ -524,27 +605,43 @@ async fn http1<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, b: &Built) -> Result
     let headers: Vec<(String, String)> = lines.filter(|l| !l.is_empty()).filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))).collect();
     let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.as_str());
     let mut body = buf[end..].to_vec();
+    if body.len() > MAX_BODY {
+        return Err(format!("response body exceeded {MAX_BODY} bytes"));
+    }
     if get("transfer-encoding").is_some_and(|t| t.to_ascii_lowercase().contains("chunked")) {
         while !body.windows(5).any(|w| w == b"0\r\n\r\n") {
             let n = s.read(&mut chunk).await.map_err(|e| e.to_string())?;
             if n == 0 {
                 break;
             }
+            if body.len().saturating_add(n) > MAX_BODY {
+                return Err(format!("response body exceeded {MAX_BODY} bytes"));
+            }
             body.extend_from_slice(&chunk[..n]);
         }
         body = unchunk(&body);
     } else if let Some(len) = get("content-length").and_then(|l| l.trim().parse::<usize>().ok()) {
+        if len > MAX_BODY {
+            return Err(format!("response body exceeded {MAX_BODY} bytes"));
+        }
         while body.len() < len {
             let n = s.read(&mut chunk).await.map_err(|e| e.to_string())?;
             if n == 0 {
                 break;
             }
-            body.extend_from_slice(&chunk[..n]);
+            let take = n.min(len.saturating_sub(body.len()));
+            body.extend_from_slice(&chunk[..take]);
         }
         body.truncate(len);
     } else if !(status == 204 || status == 304 || b.method == "HEAD") {
-        // (To the connection's end.)
-        let _ = s.read_to_end(&mut body).await;
+        // (To the connection's end, bounded to MAX_BODY.)
+        let remaining = (MAX_BODY + 1).saturating_sub(body.len());
+        let mut tail = Vec::new();
+        let _ = s.take(remaining as u64).read_to_end(&mut tail).await;
+        body.extend_from_slice(&tail);
+        if body.len() > MAX_BODY {
+            return Err(format!("response body exceeded {MAX_BODY} bytes"));
+        }
     }
     let body = decode(get("content-encoding").unwrap_or(""), body)?;
     Ok(Answer { status, headers, body })
@@ -604,17 +701,26 @@ pub(crate) fn unchunk(raw: &[u8]) -> Vec<u8> {
 }
 
 /// A body decoded as its `content-encoding` says (the clients ask for
-/// gzip, deflate, br and zstd).
+/// gzip, deflate, br and zstd), bounded to `MAX_BODY` decoded bytes.
 fn decode(coding: &str, body: Vec<u8>) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
-    match coding.trim().to_ascii_lowercase().as_str() {
-        "" | "identity" => return Ok(body),
-        "gzip" | "x-gzip" => flate2::read::GzDecoder::new(&body[..]).read_to_end(&mut out).map_err(|e| e.to_string())?,
-        "deflate" => flate2::read::ZlibDecoder::new(&body[..]).read_to_end(&mut out).map_err(|e| e.to_string())?,
-        "br" => brotli_decompressor::Decompressor::new(&body[..], 4096).read_to_end(&mut out).map_err(|e| e.to_string())?,
-        "zstd" => return zstd::stream::decode_all(&body[..]).map_err(|e| e.to_string()),
+    let reader: Box<dyn Read + '_> = match coding.trim().to_ascii_lowercase().as_str() {
+        "" | "identity" => {
+            if body.len() > MAX_BODY {
+                return Err(format!("response body exceeded {MAX_BODY} bytes"));
+            }
+            return Ok(body);
+        }
+        "gzip" | "x-gzip" => Box::new(flate2::read::GzDecoder::new(&body[..])),
+        "deflate" => Box::new(flate2::read::ZlibDecoder::new(&body[..])),
+        "br" => Box::new(brotli_decompressor::Decompressor::new(&body[..], 4096)),
+        "zstd" => Box::new(zstd::stream::read::Decoder::new(&body[..]).map_err(|e| e.to_string())?),
         other => return Err(format!("an encoding the pool can’t read: {other}")),
     };
+    reader.take((MAX_BODY + 1) as u64).read_to_end(&mut out).map_err(|e| e.to_string())?;
+    if out.len() > MAX_BODY {
+        return Err(format!("decoded response body exceeded {MAX_BODY} bytes"));
+    }
     Ok(out)
 }
 
@@ -639,7 +745,7 @@ async fn http2<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(s: S, b: &Bui
     let status = r.status().as_u16();
     let headers: Vec<(String, String)> = r.headers().iter().map(|(k, v)| (k.as_str().to_owned(), v.to_str().unwrap_or("").to_owned())).collect();
     let coding = r.headers().get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
-    let body = r.into_body().collect().await.map_err(|e| e.to_string())?.to_bytes().to_vec();
+    let body = http_body_util::Limited::new(r.into_body(), MAX_BODY).collect().await.map_err(|e| e.to_string())?.to_bytes().to_vec();
     Ok(Answer { status, headers, body: decode(&coding, body)? })
 }
 
@@ -751,7 +857,7 @@ mod tests {
         assert_eq!(got("ab.chatgpt.com", "/backend-api/codex/x"), "__cf_bm=one; _cfuvid=two");
         assert_eq!(got("notchatgpt.com", "/"), "");
         // Replaced in its place; set to expire, gone; an expired one never sent.
-        keep(&jar, "chatgpt.com", "/", ["__cf_bm=one-again; path=/; domain=chatgpt.com", "_cfuvid=; path=/; domain=chatgpt.com; Max-Age=-1"].into_iter());
+        keep(&jar, "chatgpt.com", "/", ["__cf_bm=one-again; path=/; domain=chatgpt.com", "_cfuvid=; path=/; domain=chatgpt.com; Max-Age=-1"]);
         jar.lock().unwrap().push(Kept { name: "old".into(), value: "x".into(), domain: "chatgpt.com".into(), host_only: true, path: "/".into(), expires: Some(crate::model::now() - 1) });
         assert_eq!(got("chatgpt.com", "/backend-api/wham/usage"), "__cf_bm=one-again");
         assert_eq!(default_path("/backend-api/codex/responses"), "/backend-api/codex");
@@ -846,5 +952,52 @@ mod tests {
         for n in 0..whole.len() {
             let _ = unchunk(&whole[..n]);
         }
+    }
+
+    #[test]
+    fn antigravity_form_renewal_and_claim_synthesis() {
+        // Form-urlencoded renewal body percent-encodes `{{refresh_token}}` containing `/` and `+`.
+        let mut renew = sent(
+            &[("Content-Type", "application/x-www-form-urlencoded"), ("Host", "oauth2.googleapis.com"), ("Content-Length", "10")],
+            "client_id=cid&refresh_token={{refresh_token}}&grant_type=refresh_token",
+        );
+        renew.host = "oauth2.googleapis.com".into();
+        renew.target = "/token".into();
+        let fill = Fill { refresh: Some("1//0abc+def/ghi".into()), ..Fill::default() };
+        let built = build(&renew, &fill, None, None).unwrap();
+        assert_eq!(String::from_utf8(built.body).unwrap(), "client_id=cid&refresh_token=1%2F%2F0abc%2Bdef%2Fghi&grant_type=refresh_token");
+
+        // Synthesizing What::Claim from a captured Antigravity retrieveUserQuotaSummary request.
+        let mut usage = sent(
+            &[
+                ("Authorization", "Bearer {{access_token}}"),
+                ("Content-Type", "application/json"),
+                ("User-Agent", "Antigravity/1.5.18 (linux; amd64)"),
+                ("Host", "daily-cloudcode-pa.googleapis.com"),
+                ("Content-Length", "2"),
+            ],
+            "{}",
+        );
+        usage.run = "models".into();
+        usage.host = "daily-cloudcode-pa.googleapis.com".into();
+        usage.target = "/v1internal:retrieveUserQuotaSummary".into();
+        let like = Like {
+            capture: Arc::new(Capture {
+                provider: Provider::Antigravity,
+                version: "1.5.18".into(),
+                installed: String::new(),
+                account: "agy-1".into(),
+                at: 0,
+                requests: vec![usage],
+                account_uuid: None,
+                hellos: vec![],
+            }),
+            org: None,
+            email: None,
+            jar: Default::default(),
+        };
+        let claim = like.request(What::Claim).expect("agy claim synthesized");
+        assert_eq!((claim.method.as_str(), claim.target.as_str()), ("POST", "/v1internal:claimBankedQuotaReset"));
+        assert!(claim.headers.iter().any(|(k, v)| k.eq_ignore_ascii_case("user-agent") && v.contains("Antigravity/1.5.18")));
     }
 }

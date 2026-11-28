@@ -4,6 +4,26 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 `tools/journal_html.py` builds the whole of it as one page to share.
 
+## 2026-11-28
+
+### Token Pool: Activity chart & Recent Requests with Antigravity (dark)
+
+*04:47* — Unified Activity chart and width-adaptive Recent Requests table across Claude Code, Codex, and Antigravity.
+
+![Token Pool: Activity chart & Recent Requests with Antigravity (dark)](2026-11-28/044728-token-pool-activity-chart-recent-requests-with-a.png)
+
+### Token Pool: Antigravity accounts & banked resets (dark)
+
+*04:47* — Dark mode Token Pool Accounts view with full-contrast provider header bands and Antigravity quota/reset tracking.
+
+![Token Pool: Antigravity accounts & banked resets (dark)](2026-11-28/044728-token-pool-antigravity-accounts-banked-resets-da.png)
+
+### Token Pool: Antigravity accounts & banked resets (light)
+
+*04:47* — Added Antigravity (agy) provider with per-family quota bars, banked reset counters, companion CA isolation, and polished light/dark contrast.
+
+![Token Pool: Antigravity accounts & banked resets (light)](2026-11-28/044727-token-pool-antigravity-accounts-banked-resets-li.png)
+
 ## 2026-11-27
 
 ### Agent Screens — multi-host sidebar (dark, 2x)

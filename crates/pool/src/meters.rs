@@ -77,10 +77,7 @@ impl Paces {
 /// stood as far back as an hour.
 pub fn of(p: &Pool, paused: &[Provider], paces: &Paces, pid: u32) -> PoolMeters {
     let now = crate::model::now();
-    let provider = |p: Provider| match p {
-        Provider::Claude => "claude",
-        Provider::Codex => "codex",
-    };
+    let provider = Provider::key;
     let accounts = p
         .saved
         .accounts
@@ -134,7 +131,7 @@ pub fn spawn(shared: Weak<Shared>, changes: mpsc::Receiver<()>) {
                 continue;
             }
             let now = crate::model::now();
-            let paused: Vec<Provider> = [Provider::Claude, Provider::Codex].into_iter().filter(|p| s.paused(*p)).collect();
+            let paused: Vec<Provider> = Provider::ALL.into_iter().filter(|p| s.paused(*p)).collect();
             let meters = {
                 let p = s.pool.lock().unwrap();
                 paces.note(&p.saved.accounts, now);

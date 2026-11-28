@@ -277,11 +277,10 @@ async fn keeper_auth_error_surfaces_as_502_triggers_recarry_and_retired_skips_bo
     saved2.credentials.insert("c2".into(), Credential { access: "expired".into(), refresh: None, expires_at: Some(now() - 10), account_id: None });
     let gw = Shared::new(saved2, None, up, || {});
     gw.set_lender(Some(Arc::new(|_, _, _| Box::pin(async { Err("No refresh token: sign in again.".to_owned()) }))));
-    let port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    olo_token_pool::gateway::start(gw.clone(), port).unwrap();
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    let app = olo_token_pool::gateway::router(gw.clone(), port);
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     let resp = reqwest::Client::new()
         .post(format!("http://127.0.0.1:{port}/claude/v1/messages"))
         .header("content-type", "application/json")
@@ -763,7 +762,7 @@ async fn lost_remote_claim_reply_reconciles_via_op_id_over_unix_socket() {
     a.credits =
         vec![ResetCredit { id: "g1".into(), expires_at: Some(now() + 86400), remaining: 1, usable: true, program: Some("cedar_ember".into()), clears: vec!["seven_day".into()], ..Default::default() }];
     // Also mark `a` as paid to verify pending remote claim holds off usage credits!
-    a.paid = Some(olo_token_pool::model::PaidFor { until: now() + 3 * 86400, meter: "seven_day".into() });
+    a.paid = Some(olo_token_pool::model::PaidFor { until: now() + 3 * 86400, meter: "seven_day".into(), at: 0 });
     saved.accounts.push(a);
     saved.credentials.insert("a".into(), Credential { access: "a".into(), refresh: Some("ra".into()), expires_at: Some(now() + 3600), account_id: None });
 
@@ -1000,7 +999,7 @@ async fn definitive_not_now_allows_paid_fallback_while_unreachable_holds_off() {
         a.created = 1;
         a.kept_on = Some("build".into());
         a.windows = vec![Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(now() + 3 * 86400), models: vec![] }];
-        a.paid = Some(PaidFor { until: now() + 3 * 86400, meter: "seven_day".into() });
+        a.paid = Some(PaidFor { until: now() + 3 * 86400, meter: "seven_day".into(), at: 0 });
         a.credits = vec![ResetCredit { id: "stale".into(), expires_at: Some(now() + 86400), remaining: 1, usable: true, clears: vec!["seven_day".into()], ..Default::default() }];
         saved.accounts.push(a);
         saved.credentials.insert("a".into(), Credential { access: "a".into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
@@ -1895,7 +1894,7 @@ async fn unrelated_fable_already_ready_preserves_borrower_five_hour_and_cooldown
         Window { name: "seven_day".into(), label: "Weekly".into(), used: 20.0, resets_at: Some(now() + 3 * 86400), models: vec![] },
     ];
     a.cooldown_until = Some(now() + 3600);
-    a.paid = Some(PaidFor { until: now() + 3600, meter: "five_hour".into() });
+    a.paid = Some(PaidFor { until: now() + 3600, meter: "five_hour".into(), at: 0 });
     saved.accounts.push(a);
     saved.credentials.insert("a".into(), Credential { access: "a".into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
 
@@ -2088,4 +2087,263 @@ async fn confirm_failed_skips_ready_and_mixed_pool_refreshes_after_local_refusal
     let resp = gateway::serve(mixed, Provider::Claude, "messages".into(), None, axum::http::Method::POST, h, axum::http::Extensions::new(), body).await;
     assert_eq!(resp.status(), 200, "mixed pool must refresh stale local credits after A's refusal and claim B");
     assert!(lb_reset.load(SeqCst));
+}
+
+/// Hosted keeper claims an Antigravity banked quota reset on behalf of a borrower
+/// desktop: desktop hits 429 `QUOTA_EXHAUSTED`, delegates `ClaimAsk::For` with
+/// `Provider::Antigravity`, keeper calls `/v1internal:claimBankedQuotaReset` once,
+/// applies `quotaSummary`, and desktop's request succeeds 200 OK.
+#[tokio::test(flavor = "multi_thread")]
+async fn hosted_keeper_claims_antigravity_banked_reset_for_borrower() {
+    use axum::{http::HeaderMap, response::IntoResponse};
+    use olo_token_pool::{
+        gateway::{self, ClaimAsk, Claimer},
+        model::{ResetCredit, Window},
+    };
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+
+    let reset = Arc::new(AtomicBool::new(false));
+    let claims = Arc::new(AtomicUsize::new(0));
+    let rejected_gen = Arc::new(AtomicUsize::new(0));
+    let (r1, r2, r3, c1, rej1) = (reset.clone(), reset.clone(), reset.clone(), claims.clone(), rejected_gen.clone());
+    let fake = Router::new()
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(move || {
+                let (r, rej) = (r1.clone(), rej1.clone());
+                async move {
+                    if r.load(SeqCst) {
+                        Response::builder()
+                            .header("content-type", "text/event-stream")
+                            .body(Body::from("data: {\"response\":{\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":2}}}\n\n"))
+                            .unwrap()
+                    } else {
+                        rej.fetch_add(1, SeqCst);
+                        (
+                            axum::http::StatusCode::TOO_MANY_REQUESTS,
+                            axum::Json(json!({
+                                "error": {
+                                    "code": 429,
+                                    "status": "RESOURCE_EXHAUSTED",
+                                    "details": [{
+                                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                        "reason": "QUOTA_EXHAUSTED",
+                                        "metadata": {"model": "gemini-4-neon-high", "quotaResetDelay": "4h"}
+                                    }]
+                                }
+                            })),
+                        )
+                            .into_response()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(move || {
+                let r = r2.clone();
+                async move {
+                    let ok = r.load(SeqCst);
+                    axum::Json(json!({
+                        "buckets": [{
+                            "bucketId": "g_neon:5h",
+                            "displayName": "Gemini 4 Neon",
+                            "window": "5h",
+                            "remainingFraction": if ok { 1.0 } else { 0.0 },
+                            "resetTime": chrono::DateTime::from_timestamp(now() + 4 * 3600, 0).unwrap().to_rfc3339()
+                        }],
+                        "bankedResets": if ok {
+                            json!([])
+                        } else {
+                            json!([{
+                                "resetId": "rst-neon-hosted",
+                                "displayLabel": "Gemini 4 Neon Banked Reset",
+                                "remainingCount": 1,
+                                "claimable": true,
+                                "expireTime": chrono::DateTime::from_timestamp(now() + 10 * 86400, 0).unwrap().to_rfc3339(),
+                                "bucketIds": ["g_neon:5h"]
+                            }])
+                        }
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/v1internal:claimBankedQuotaReset",
+            post(move |body: axum::body::Bytes| {
+                let (r, c) = (r3.clone(), c1.clone());
+                async move {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!((v["project"].as_str(), v["resetId"].as_str()), (Some("proj-agy"), Some("rst-neon-hosted")));
+                    c.fetch_add(1, SeqCst);
+                    r.store(true, SeqCst);
+                    axum::Json(json!({
+                        "quotaSummary": {
+                            "buckets": [{
+                                "bucketId": "g_neon:5h",
+                                "displayName": "Gemini 4 Neon",
+                                "window": "5h",
+                                "remainingFraction": 1.0,
+                                "resetTime": chrono::DateTime::from_timestamp(now() + 5 * 3600, 0).unwrap().to_rfc3339()
+                            }],
+                            "bankedResets": []
+                        }
+                    }))
+                }
+            }),
+        );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let up = Upstreams::fake(&format!("http://{}", l.local_addr().unwrap()));
+    tokio::spawn(async move { axum::serve(l, fake).await.unwrap() });
+
+    let mut saved = Saved::default();
+    let mut a = Account::new("agy-1".into(), "Google One".into(), Provider::Antigravity);
+    a.created = 1;
+    // Start eligible (used=10%) so the borrower actually sends a request, hits a real 429,
+    // and THEN delegates ClaimAsk::For to the keeper!
+    a.windows = vec![Window { name: "g_neon:5h".into(), label: "Gemini 4 Neon 5-hour".into(), used: 10.0, resets_at: Some(now() + 4 * 3600), models: vec!["gemini-neon".into()] }];
+    a.credits = vec![ResetCredit { id: "rst-neon-hosted".into(), expires_at: Some(now() + 10 * 86400), remaining: 1, usable: true, clears: vec!["g_neon:5h".into()], ..Default::default() }];
+    saved.accounts.push(a);
+    saved.credentials.insert("agy-1".into(), Credential { access: "tok-agy".into(), refresh: Some("1//ref".into()), expires_at: Some(now() + 3600), account_id: Some("proj-agy".into()) });
+
+    let desktop = Shared::new(saved, None, up.clone(), || {});
+    let host = Shared::new(Saved::default(), None, up, || {});
+    host.set_hosted();
+    let st = host.carried(desktop.carry_to("build", "this computer")).unwrap();
+    assert!(desktop.handed_over("build", &st));
+
+    let claimer: Claimer = {
+        let host = host.clone();
+        Arc::new(move |keeper, ask| {
+            let host = host.clone();
+            Box::pin(async move {
+                assert_eq!(keeper, "build");
+                match ask {
+                    ClaimAsk::Account { id, credit, op_id, timeout_secs, reconcile_only, observed } => {
+                        host.handle_remote_redeem(Some(id), credit, None, None, Some(op_id), timeout_secs, reconcile_only, observed).await
+                    }
+                    ClaimAsk::For { provider, family, op_id, timeout_secs, reconcile_only, observed } => {
+                        assert_eq!(provider, Provider::Antigravity);
+                        host.handle_remote_redeem(None, None, Some(provider), Some(family), Some(op_id), timeout_secs, reconcile_only, observed).await
+                    }
+                }
+            })
+        })
+    };
+    desktop.set_claimer(Some(claimer));
+
+    let mut h = HeaderMap::new();
+    h.insert("content-type", "application/json".parse().unwrap());
+    let body = axum::body::Bytes::from(json!({"model": "gemini-4-neon-high", "project": "client", "request": {"contents": []}}).to_string());
+    let resp =
+        gateway::serve(desktop.clone(), Provider::Antigravity, "v1internal:streamGenerateContent".into(), Some("alt=sse".into()), axum::http::Method::POST, h, axum::http::Extensions::new(), body)
+            .await;
+    assert_eq!(resp.status(), 200, "borrower must delegate Antigravity banked reset claim to keeper and succeed");
+    assert!(rejected_gen.load(SeqCst) >= 1, "borrower must observe a real 429 before delegating claim");
+    assert_eq!(claims.load(SeqCst), 1);
+    assert_eq!(desktop.snapshot().account("agy-1").unwrap().windows[0].used, 0.0);
+}
+
+/// Rolling-upgrade safety & `account_id` preservation:
+/// 1) A legacy pre-Antigravity v2 host advertising only `[Claude, Codex]` never receives
+///    Antigravity accounts in `carry_to_supported`, and those accounts stay kept locally (`kept_on: None`).
+/// 2) `borrowed()` and `carried()` preserve an existing `account_id` (Google Cloud Code project)
+///    when an incoming credential carries `account_id: None`.
+#[tokio::test(flavor = "multi_thread")]
+async fn rolling_upgrade_omits_antigravity_for_legacy_hosts_and_preserves_account_id() {
+    let up = Upstreams::fake("http://127.0.0.1:9");
+    let mut saved = Saved::default();
+    saved.accounts.push(Account::new("c1".into(), "Claude".into(), Provider::Claude));
+    saved.accounts.push(Account::new("g1".into(), "Agy".into(), Provider::Antigravity));
+    saved.credentials.insert("c1".into(), Credential { access: "tok-c".into(), refresh: Some("rc".into()), expires_at: Some(now() + 3600), account_id: None });
+    saved.credentials.insert("g1".into(), Credential { access: "tok-g".into(), refresh: Some("rg".into()), expires_at: Some(now() + 3600), account_id: Some("proj-kept".into()) });
+    let desktop = Shared::new(saved, None, up.clone(), || {});
+
+    // Legacy host only supports Claude + Codex: carry omits Antigravity and leaves g1 kept locally!
+    let legacy_supported = [Provider::Claude, Provider::Codex];
+    let payload = desktop.carry_to_supported("legacy", "desktop", &legacy_supported);
+    assert_eq!(payload.accounts.len(), 1);
+    assert_eq!(payload.accounts[0].id, "c1");
+    let snap = desktop.snapshot();
+    assert_eq!(snap.account("c1").unwrap().kept_on.as_deref(), Some("legacy"));
+    assert_eq!(snap.account("g1").unwrap().kept_on, None, "Antigravity must NOT be handed over to legacy host");
+
+    // `carried` on a modern host preserves existing `account_id` if incoming lacks it.
+    let host = Shared::new(Saved::default(), None, up, || {});
+    host.set_hosted();
+    let st = host.carried(desktop.carry_to("modern", "desktop")).unwrap();
+    assert!(desktop.handed_over("modern", &st));
+    assert_eq!(host.snapshot().saved.credentials["g1"].account_id.as_deref(), Some("proj-kept"));
+    let mut stripped = desktop.carry_to("modern", "desktop");
+    for ca in &mut stripped.accounts {
+        if ca.id == "g1"
+            && let Some(c) = ca.credential.as_mut()
+        {
+            c.account_id = None;
+        }
+    }
+    let _ = host.carried(stripped).unwrap();
+    assert_eq!(host.snapshot().saved.credentials["g1"].account_id.as_deref(), Some("proj-kept"));
+
+    // `borrowed` (via `renewed`) preserves `account_id` when keeper lends `account_id: None`.
+    desktop.pool.lock().unwrap().saved.credentials.get_mut("g1").unwrap().expires_at = Some(now() - 10);
+    desktop.set_lender(Some(Arc::new(|_, _, _| Box::pin(async { Ok(Credential { access: "tok-g2".into(), refresh: None, expires_at: Some(now() + 7200), account_id: None }) }))));
+    let lent = desktop.renewed("g1", Provider::Antigravity).await.unwrap();
+    assert_eq!(lent.access, "tok-g2");
+    assert_eq!(lent.account_id.as_deref(), Some("proj-kept"));
+    assert_eq!(desktop.snapshot().saved.credentials["g1"].account_id.as_deref(), Some("proj-kept"));
+}
+
+/// Round 2 rolling-upgrade & identity safety (Astra #1, #17):
+/// 1) A legacy carry payload (`covered_providers: None` or `[Claude, Codex]`)
+///    NEVER deletes host-kept Antigravity accounts even when omitted from the payload.
+/// 2) Replacing an account's identity (different email) drops stale `account_id`
+///    in `carried()` rather than carrying over the old account's Google project ID.
+#[tokio::test(flavor = "multi_thread")]
+async fn legacy_carry_preserves_kept_antigravity_and_replacement_identity_drops_stale_account_id() {
+    let up = Upstreams::fake("http://127.0.0.1:9");
+    let mut saved = Saved::default();
+    let mut c1 = Account::new("c1".into(), "Claude".into(), Provider::Claude);
+    c1.email = Some("c@example.com".into());
+    let mut g1 = Account::new("g1".into(), "Agy".into(), Provider::Antigravity);
+    g1.email = Some("old@example.com".into());
+    saved.accounts.extend([c1, g1]);
+    saved.credentials.insert("c1".into(), Credential { access: "tok-c".into(), refresh: Some("rc".into()), expires_at: Some(now() + 3600), account_id: None });
+    saved.credentials.insert("g1".into(), Credential { access: "tok-g".into(), refresh: Some("rg".into()), expires_at: Some(now() + 3600), account_id: Some("proj-old".into()) });
+
+    let desktop = Shared::new(saved, None, up.clone(), || {});
+    let host = Shared::new(Saved::default(), None, up, || {});
+    host.set_hosted();
+
+    // First carry all providers to host so host keeps both c1 and g1.
+    let st = host.carried(desktop.carry_to("modern", "desktop")).unwrap();
+    assert!(desktop.handed_over("modern", &st));
+    assert!(host.snapshot().account("g1").is_some());
+
+    // Simulate a legacy desktop carry (covered_providers: None, only Claude in payload):
+    // host MUST keep g1 and its credential untouched!
+    let mut legacy_payload = desktop.carry_to_supported("modern", "desktop", &[Provider::Claude, Provider::Codex]);
+    legacy_payload.covered_providers = None;
+    let _ = host.carried(legacy_payload).unwrap();
+    assert!(host.snapshot().account("g1").is_some(), "legacy carry with covered_providers=None must never delete kept Antigravity");
+    assert_eq!(host.snapshot().saved.credentials["g1"].account_id.as_deref(), Some("proj-old"));
+
+    // Explicit [Claude, Codex] covered_providers also preserves g1!
+    let partial_payload = desktop.carry_to_supported("modern", "desktop", &[Provider::Claude, Provider::Codex]);
+    assert_eq!(partial_payload.covered_providers.as_deref(), Some(&[Provider::Claude, Provider::Codex][..]));
+    let _ = host.carried(partial_payload).unwrap();
+    assert!(host.snapshot().account("g1").is_some(), "partial carry covering only Claude+Codex must preserve kept Antigravity");
+
+    // Replacement identity on g1 (new email, account_id: None) drops stale "proj-old"!
+    let mut replaced = desktop.carry_to("modern", "desktop");
+    for ca in &mut replaced.accounts {
+        if ca.id == "g1" {
+            ca.email = Some("new-user@example.com".into());
+            if let Some(c) = ca.credential.as_mut() {
+                c.account_id = None;
+            }
+        }
+    }
+    let _ = host.carried(replaced).unwrap();
+    assert_eq!(host.snapshot().saved.credentials["g1"].account_id, None, "replacement identity must not inherit stale account_id");
 }

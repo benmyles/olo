@@ -128,7 +128,7 @@ impl Offer {
         let version = b.u16()?;
         b.take(32)?;
         let session_id = b.vector(1)?.len();
-        let suites = b.vector(2)?.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        let suites = b.vector(2)?.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
         let compressions = b.vector(1)?.to_vec();
         let mut extensions = Vec::new();
         // (A ClientHello from before extensions ends here.)

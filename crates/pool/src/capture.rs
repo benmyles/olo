@@ -184,12 +184,13 @@ pub struct Installed {
     pub stamp: String,
 }
 
-/// The client the person runs (`claude` or `codex` on their PATH, its
+/// The client the person runs (`claude`, `codex` or `agy` on their PATH, its
 /// symlinks followed to the version they lead to).
 pub fn installed(p: Provider) -> Option<Installed> {
     let name = match p {
         Provider::Claude => "claude",
         Provider::Codex => "codex",
+        Provider::Antigravity => "agy",
     };
     let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
@@ -199,8 +200,95 @@ pub fn installed(p: Provider) -> Option<Installed> {
     let real = std::fs::canonicalize(&exe).ok()?;
     let meta = std::fs::metadata(&real).ok()?;
     let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-    let version = version_of(p, &real).unwrap_or_default();
-    Some(Installed { exe, version, stamp: format!("{}:{}:{}", real.display(), meta.len(), mtime) })
+    let stamp = format!("{}:{}:{}", real.display(), meta.len(), mtime);
+    let version = version_of(p, &real).or_else(|| (p == Provider::Antigravity).then(|| agy_version_cached(&exe, &stamp)).flatten()).unwrap_or_default();
+    Some(Installed { exe, version, stamp })
+}
+
+/// Wait for `child` to exit within `remaining` using `pidfd_open` + `poll`
+/// (zero sleep polling, zero PID reuse race). Returns `Some(ExitStatus)` if it
+/// exited in time, or `None` if it timed out.
+fn wait_child_until(child: &mut std::process::Child, deadline: Instant) -> Option<std::process::ExitStatus> {
+    if let Ok(Some(st)) = child.try_wait() {
+        return Some(st);
+    }
+    let rem = deadline.saturating_duration_since(Instant::now());
+    if rem.is_zero() {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: `child` has not been reaped yet so its PID is valid and
+        // pinned until `try_wait()`/`wait()` completes.
+        let pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, child.id() as libc::pid_t, 0 as libc::c_uint) } as libc::c_int;
+        if pidfd >= 0 {
+            let mut pfd = libc::pollfd { fd: pidfd, events: libc::POLLIN, revents: 0 };
+            let ms = rem.as_millis().min(i32::MAX as u128) as libc::c_int;
+            let rc = unsafe { libc::poll(&mut pfd, 1, ms) };
+            unsafe { libc::close(pidfd) };
+            if rc > 0 {
+                return child.try_wait().ok().flatten().or_else(|| child.wait().ok());
+            }
+            return None;
+        }
+    }
+    // Fallback if pidfd_open is unavailable: check once more after remaining budget.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new().name("pool-agy-ver-wait".into()).spawn(move || {
+        std::thread::sleep(rem);
+        let _ = tx.send(());
+    });
+    let _ = rx.recv_timeout(rem);
+    child.try_wait().ok().flatten()
+}
+
+/// Cache `agy --version` by binary stamp (`real:len:mtime`) so it is probed at
+/// most once per installed binary, with a single bounded deadline (no polling
+/// loops) and bounded stdout read so a stalled CLI can never hang startup.
+fn agy_version_cached(exe: &Path, stamp: &str) -> Option<String> {
+    use std::io::Read as _;
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<String>>>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(cached) = cache.lock().unwrap().get(stamp) {
+        return cached.clone();
+    }
+    let ver = (|| -> Option<String> {
+        let mut child = std::process::Command::new(exe).arg("--version").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
+        let stdout = child.stdout.take()?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = std::thread::Builder::new().name("pool-agy-ver".into()).spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout.take(4096).read_to_end(&mut buf);
+            let _ = tx.send(buf);
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let buf = match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(b) => b,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        };
+        let Some(status) = wait_child_until(&mut child, deadline) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        };
+        if !status.success() {
+            return None;
+        }
+        parse_agy_version(&String::from_utf8_lossy(&buf))
+    })();
+    cache.lock().unwrap().insert(stamp.to_owned(), ver.clone());
+    ver
+}
+
+fn parse_agy_version(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .map(|w| w.trim_start_matches('v').trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-'))
+        .find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit()) && w.contains('.'))
+        .map(str::to_owned)
 }
 
 /// The version a client's install says it is: Claude Code's versions are
@@ -212,6 +300,7 @@ fn version_of(p: Provider, real: &Path) -> Option<String> {
     match p {
         Provider::Claude => s.split("/versions/").nth(1).and_then(pick),
         Provider::Codex => s.split("/releases/").nth(1).and_then(pick),
+        Provider::Antigravity => None,
     }
 }
 
@@ -233,8 +322,8 @@ enum Fate {
 /// only reads on the providers' own hosts go on.
 fn fate(host: &str, method: &str, target: &str) -> Fate {
     let path = target.split('?').next().unwrap_or(target);
-    // A reset's claim (Claude's, Codex's): answered as if nothing needed
-    // resetting, so nothing is spent.
+    // A reset's claim (Claude's, Codex's, Antigravity's): answered as if
+    // nothing needed resetting, so nothing is spent.
     if path.ends_with("/reset_rate_limits") {
         return Fate::Answer(200, r#"{"result":"not_limited"}"#);
     }
@@ -242,12 +331,15 @@ fn fate(host: &str, method: &str, target: &str) -> Fate {
         // (As ChatGPT says it: Codex's `ConsumeRateLimitResetCreditResponse`.)
         return Fate::Answer(200, r#"{"code":"nothing_to_reset","windows_reset":0}"#);
     }
+    if path.ends_with(":claimBankedQuotaReset") {
+        return Fate::Answer(412, r#"{"error":{"code":412,"message":"Captured by Olo's Token Pool, not sent.","status":"FAILED_PRECONDITION"}}"#);
+    }
     // A sign-in's renewal: refused, so no token is rotated.
-    if path.ends_with("/oauth/token") || host.starts_with("auth.") || host == "platform.claude.com" || host == "console.anthropic.com" {
+    if path.ends_with("/oauth/token") || host.starts_with("auth.") || host == "platform.claude.com" || host == "console.anthropic.com" || host == "oauth2.googleapis.com" {
         return Fate::Answer(400, r#"{"error":"invalid_grant","error_description":"Captured by Olo's Token Pool, not sent."}"#);
     }
     // A model request: refused as a client error (never retried).
-    if path.starts_with("/v1/messages") || path.starts_with("/backend-api/codex/responses") {
+    if path.starts_with("/v1/messages") || path.starts_with("/backend-api/codex/responses") || path.starts_with("/v1internal:streamGenerate") || path.starts_with("/v1internal:generate") {
         return Fate::Answer(400, r#"{"type":"error","error":{"type":"invalid_request_error","message":"Captured by Olo's Token Pool, not sent."}}"#);
     }
     if reads(host, method, path) {
@@ -300,6 +392,16 @@ fn reads(host: &str, method: &str, path: &str) -> bool {
             "/backend-api/wham/rate-limit-reset-credits",
             "/backend-api/wham/settings/user",
             "/backend-api/wham/security-setup",
+        ]
+        .iter()
+        .any(|p| like(p)),
+        ("daily-cloudcode-pa.googleapis.com" | "cloudcode-pa.googleapis.com", "POST") => [
+            "/v1internal:loadCodeAssist",
+            "/v1internal:retrieveUserQuotaSummary",
+            "/v1internal:fetchAvailableModels",
+            "/v1internal:fetchUserInfo",
+            "/v1internal:fetchAdminControls",
+            "/v1internal:listExperiments",
         ]
         .iter()
         .any(|p| like(p)),
@@ -609,6 +711,7 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
                 200 => "OK",
                 400 => "Bad Request",
                 401 => "Unauthorized",
+                412 => "Precondition Failed",
                 _ => "Not Found",
             };
             let reply = format!("HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{answer}", answer.len());
@@ -757,6 +860,11 @@ fn client_env(sb: &Sandbox, p: Provider, port: u16, ca: &Path, exe: &Path) -> Ve
             env.push(("CODEX_HOME".into(), sb.home().join(".codex").display().to_string()));
             env.push(("SSL_CERT_FILE".into(), ca.display().to_string()));
         }
+        Provider::Antigravity => {
+            env.push(("AGY_CA_CERT".into(), ca.display().to_string()));
+            // Empty bus address forces `cliFileTokenStorage` under sandbox `$HOME`.
+            env.push(("DBUS_SESSION_BUS_ADDRESS".into(), String::new()));
+        }
     }
     env
 }
@@ -841,6 +949,25 @@ fn expired_access(c: &Credential) -> String {
     unsigned_jwt(&claims)
 }
 
+/// Antigravity's sandbox: its OAuth token file (access token + made-up refresh
+/// token) under `$HOME/.gemini/antigravity-cli/antigravity-oauth-token`.
+fn agy_files(sb: &Sandbox, a: &Account, c: &Credential, expired: bool) -> Result<(), String> {
+    let exp_secs = if expired { now() - 3600 } else { c.expires_at.unwrap_or(now() + 3600) };
+    let expiry = chrono::DateTime::from_timestamp(exp_secs, 0).unwrap_or_default().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let file = json!({
+        "token": {
+            "access_token": c.access,
+            "token_type": "Bearer",
+            "refresh_token": MADE_UP_REFRESH,
+            "expiry": expiry,
+            "expires_in": 3599,
+        },
+        "auth_method": "consumer",
+        "id_token_email": a.email.clone().unwrap_or_default(),
+    });
+    write_secret(&sb.home().join(".gemini/antigravity-cli/antigravity-oauth-token"), &file.to_string())
+}
+
 /// The steps of a capture: what a person's session sends first, then the
 /// rest.
 fn steps(p: Provider) -> Vec<Step> {
@@ -905,6 +1032,11 @@ fn steps(p: Provider) -> Vec<Step> {
                 Step::Command { run: "renewal", args: args(&["exec", "--skip-git-repo-check", "hi"]), wait: s(40), trusted: true },
             ]
         }
+        Provider::Antigravity => vec![
+            Step::Command { run: "models", args: args(&["models"]), wait: s(30), trusted: true },
+            Step::Expire,
+            Step::Command { run: "renewal", args: args(&["models"]), wait: s(30), trusted: true },
+        ],
     }
 }
 
@@ -1025,7 +1157,7 @@ fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path, port
         Step::Command { args, wait, trusted, .. } => {
             let mut c = command(args, false);
             if !trusted {
-                c.env_remove("SSL_CERT_FILE").env_remove("NODE_EXTRA_CA_CERTS");
+                c.env_remove("SSL_CERT_FILE").env_remove("NODE_EXTRA_CA_CERTS").env_remove("AGY_CA_CERT");
             }
             let mut child = c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
             let end = Instant::now() + *wait;
@@ -1171,14 +1303,21 @@ fn secrets_of(a: &Account, c: &Credential, sent: &[Sent]) -> Vec<(String, &'stat
         out.push((e.to_owned(), EMAIL));
     }
     // Claude's account uuid: in each model request's `metadata.user_id`.
+    // Antigravity's GCP project id: in Cloud Code request bodies' top-level
+    // `"project"` field (even when capture runs before sync caches `account_id`).
     for s in sent {
-        if let Ok(v) = serde_json::from_str::<Value>(&s.body)
-            && let Some(user) = v["metadata"]["user_id"].as_str()
-            && let Ok(u) = serde_json::from_str::<Value>(user)
-            && let Some(uuid) = u["account_uuid"].as_str().filter(|u| !u.is_empty())
-        {
-            out.push((uuid.to_owned(), ACCOUNT_UUID));
-            break;
+        if let Ok(v) = serde_json::from_str::<Value>(&s.body) {
+            if let Some(user) = v["metadata"]["user_id"].as_str()
+                && let Ok(u) = serde_json::from_str::<Value>(user)
+                && let Some(uuid) = u["account_uuid"].as_str().filter(|u| !u.is_empty())
+            {
+                out.push((uuid.to_owned(), ACCOUNT_UUID));
+            }
+            if a.provider == Provider::Antigravity
+                && let Some(proj) = v["project"].as_str().map(str::trim).filter(|p| !p.is_empty() && !p.starts_with("<olo-pool:"))
+            {
+                out.push((proj.to_owned(), ACCOUNT_ID));
+            }
         }
     }
     out.sort_by_key(|(v, _)| std::cmp::Reverse(v.len()));
@@ -1213,6 +1352,7 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     let write = |expired: bool| match p {
         Provider::Claude => claude_files(&sb, account, cred, expired),
         Provider::Codex => codex_files(&sb, account, cred, expired),
+        Provider::Antigravity => agy_files(&sb, account, cred, expired),
     };
     write(false)?;
     // (`OLO_POOL_CAPTURE_ONLY`: one run's steps, to work on it.)
@@ -1257,15 +1397,25 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     let hosts: &[&str] = match p {
         Provider::Claude => &["api.anthropic.com", "platform.claude.com", "console.anthropic.com", "claude.ai"],
         Provider::Codex => &["chatgpt.com", "auth.openai.com"],
+        Provider::Antigravity => &["daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com", "oauth2.googleapis.com"],
     };
     sent.retain(|s| hosts.contains(&s.host.as_str()));
     let secrets = secrets_of(account, cred, &sent);
     let account_uuid = secrets.iter().find(|(_, p)| *p == ACCOUNT_UUID).map(|(v, _)| v.clone());
     for s in sent.iter_mut() {
         // (A body kept only where the pool makes the request itself: a
-        // claim's and a renewal's; the rest, its head alone.)
+        // claim's, a renewal's, and Antigravity's JSON POST reads; the rest,
+        // its head alone.)
         let p = s.path().to_owned();
-        if !(p.ends_with("/reset_rate_limits") || p.ends_with("rate-limit-reset-credits/consume") || p.ends_with("/oauth/token")) {
+        let keep_body = p.ends_with("/reset_rate_limits")
+            || p.ends_with("rate-limit-reset-credits/consume")
+            || p.ends_with("/oauth/token")
+            || (s.host == "oauth2.googleapis.com" && p == "/token")
+            || p.ends_with(":loadCodeAssist")
+            || p.ends_with(":retrieveUserQuotaSummary")
+            || p.ends_with(":fetchAvailableModels")
+            || p.ends_with(":claimBankedQuotaReset");
+        if !keep_body {
             s.body.clear();
         }
         hide(s, &secrets);
@@ -1318,6 +1468,7 @@ pub fn follow(shared: Arc<crate::gateway::Shared>, initial_delay: Duration) {
     let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
         sweep_at_start();
         crate::upstream::refresh_claude_version();
+        crate::upstream::refresh_agy_version();
         // Watch existing install directories and their nearest ancestors.
         // Ancestor directories carry an explicit filename allowlist so unrelated
         // writes in `$HOME` (e.g. `~/.claude.json*`) never trigger PATH scans.
@@ -1348,7 +1499,7 @@ pub fn follow(shared: Arc<crate::gateway::Shared>, initial_delay: Duration) {
                     specs.push((p, only));
                 }
             };
-            for p in [Provider::Claude, Provider::Codex] {
+            for p in Provider::ALL {
                 if let Some(i) = installed(p) {
                     if let Some(dir) = i.exe.parent() {
                         push(dir.to_owned(), None);
@@ -1380,7 +1531,7 @@ pub fn follow(shared: Arc<crate::gateway::Shared>, initial_delay: Duration) {
             }
             specs
         };
-        let stamps = || -> [Option<String>; 2] { [installed(Provider::Claude).map(|i| i.stamp), installed(Provider::Codex).map(|i| i.stamp)] };
+        let stamps = || -> [Option<String>; 3] { Provider::ALL.map(|p| installed(p).map(|i| i.stamp)) };
         // SAFETY: Linux inotify_init1 and eventfd with valid flags.
         let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC | libc::IN_NONBLOCK) };
         if fd < 0 {
@@ -1564,6 +1715,7 @@ pub fn follow(shared: Arc<crate::gateway::Shared>, initial_delay: Duration) {
             arm_watches(fd, &mut watches);
             last_stamps = stamps();
             crate::upstream::refresh_claude_version();
+            crate::upstream::refresh_agy_version();
             shared.capture(false);
         }
         // SAFETY: closing our own fd.
@@ -1603,8 +1755,20 @@ mod tests {
             ("api.anthropic.com", "POST", "/api/eval/sdk-abc"),
             ("chatgpt.com", "GET", "/backend-api/wham/usage"),
             ("chatgpt.com", "GET", "/backend-api/wham/rate-limit-reset-credits"),
+            ("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:loadCodeAssist"),
+            ("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:retrieveUserQuotaSummary"),
+            ("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:fetchAvailableModels"),
         ] {
             assert_eq!(fate(host, method, target), Fate::Forward, "{method} {host}{target}");
+        }
+        // Antigravity mutating endpoints and OAuth token refresh must never hit upstream during capture.
+        for (host, method, target) in [
+            ("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:claimBankedQuotaReset"),
+            ("cloudcode-pa.googleapis.com", "POST", "/v1internal:claimBankedQuotaReset"),
+            ("daily-cloudcode-pa.googleapis.com", "POST", "/v1internal:streamGenerateContent?alt=sse"),
+            ("oauth2.googleapis.com", "POST", "/token"),
+        ] {
+            assert!(matches!(fate(host, method, target), Fate::Answer(..)), "{method} {host}{target} would go on");
         }
     }
 
@@ -1729,5 +1893,25 @@ mod tests {
         assert_eq!(s.headers[0].1, "Bearer {{access_token}}");
         assert_eq!(s.headers[1].1, "{{organization_uuid}}");
         assert!(s.body.contains("{{account_uuid}}") && !s.body.contains("acct-uuid-9"), "{}", s.body);
+
+        // Antigravity top-level "project" in body is redacted even when cred.account_id is None.
+        let agy_a = Account::new("agy".into(), "AGY".into(), Provider::Antigravity);
+        let agy_c = Credential { access: "tok-agy-1".into(), refresh: None, expires_at: None, account_id: None };
+        let mut agy_sent = vec![Sent {
+            run: "print".into(),
+            host: "daily-cloudcode-pa.googleapis.com".into(),
+            method: "POST".into(),
+            target: "/v1internal:retrieveUserQuotaSummary".into(),
+            headers: vec![("Authorization".into(), "Bearer tok-agy-1".into())],
+            body: json!({"project": "projects/my-secret-proj-42"}).to_string(),
+            body_len: 0,
+            alpn: vec![],
+            suites: vec![],
+            schemes: vec![],
+            passed_on: false,
+        }];
+        let agy_secrets = secrets_of(&agy_a, &agy_c, &agy_sent);
+        hide(&mut agy_sent[0], &agy_secrets);
+        assert!(agy_sent[0].body.contains("{{account_id}}") && !agy_sent[0].body.contains("my-secret-proj-42"), "{}", agy_sent[0].body);
     }
 }

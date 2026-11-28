@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 
 use crate::gateway::{Carried, ClaimAsk, Claimed, Claimer, Hosting, Lender, Shared};
 use crate::host::Ask;
-use crate::model::{Credential, RemoteClaim, now};
+use crate::model::{Credential, Provider, RemoteClaim, now};
 
 /// The host's program, built for one kind of host.
 #[derive(Clone, Copy, Debug)]
@@ -116,6 +116,8 @@ pub struct Hosts {
     builds: Vec<Build>,
     /// The carried program's name there (its build's own).
     build_id: String,
+    /// Whether host state is read from and persisted to `pool-hosts.json`.
+    persist: bool,
     state: Mutex<State>,
     changed: Box<dyn Fn() + Send + Sync>,
 }
@@ -125,6 +127,20 @@ fn file() -> std::path::PathBuf {
 }
 
 impl Hosts {
+    /// Purely in-memory host manager for `OLO_POOL_DEMO` (never reads or
+    /// writes `pool-hosts.json` and attaches no live SSH lender/claimer).
+    pub fn demo(shared: Arc<Shared>, changed: impl Fn() + Send + Sync + 'static) -> Arc<Hosts> {
+        Arc::new(Hosts {
+            shared,
+            ssh: Arc::new(SshSessionPool::default()),
+            builds: Vec::new(),
+            build_id: "demo".into(),
+            persist: false,
+            state: Mutex::new(State::default()),
+            changed: Box::new(changed),
+        })
+    }
+
     /// `builds`: the host's program as the app carries it; `build_id`:
     /// its name (letters and digits). `changed` is called, from any
     /// thread, when a host stands differently.
@@ -135,6 +151,7 @@ impl Hosts {
             ssh: Arc::new(SshSessionPool::default()),
             builds,
             build_id: build_id.chars().filter(char::is_ascii_alphanumeric).collect(),
+            persist: true,
             state: Mutex::new(State { kept, ..State::default() }),
             changed: Box::new(changed),
         });
@@ -212,6 +229,9 @@ impl Hosts {
     }
 
     fn save(&self) {
+        if !self.persist {
+            return;
+        }
         let kept = self.state.lock().unwrap().kept.clone();
         if let Ok(bytes) = serde_json::to_vec_pretty(&kept) {
             let _ = crate::store::write_private(&file(), &bytes);
@@ -339,12 +359,55 @@ impl Hosts {
         h.finish()
     }
 
+    /// Providers advertised by `host`'s last reported status (None if we
+    /// haven't queried its status yet). Legacy v1/v2 hosts that don't include
+    /// `"providers"` only support Claude + Codex, so we never hand over or
+    /// carry `Antigravity` accounts to them.
+    fn advertised_providers(status: &Value) -> Vec<Provider> {
+        if let Some(arr) = status["providers"].as_array() {
+            let parsed: Vec<Provider> = arr.iter().filter_map(|v| serde_json::from_value::<Provider>(v.clone()).ok()).collect();
+            if !parsed.is_empty() {
+                return parsed;
+            }
+        }
+        vec![Provider::Claude, Provider::Codex]
+    }
+
+    fn known_providers(&self, host: &str) -> Option<Vec<Provider>> {
+        let st = self.state.lock().unwrap();
+        st.live.get(host).and_then(|l| l.status.as_ref()).map(Self::advertised_providers)
+    }
+
     /// The accounts carried to host `id` now, and how it took them.
     async fn carry(&self, id: &str) -> Result<(), String> {
         let target = self.target(id)?;
-        let carried = self.shared.carry_to_checked(id, "this computer").await;
-        let status = self.ask(&target, &Ask::Carry { carried }).await?;
+        let mut supported = match self.known_providers(id) {
+            Some(p) => p,
+            None => {
+                let st = self.ask(&target, &Ask::Status).await?;
+                let p = Self::advertised_providers(&st);
+                {
+                    let mut lock = self.state.lock().unwrap();
+                    let live = lock.live.entry(id.to_owned()).or_default();
+                    (live.status, live.heard_at) = (Some(st), Some(now()));
+                }
+                p
+            }
+        };
+        let carried = self.shared.carry_to_checked_supported(id, "this computer", &supported).await;
+        let mut status = self.ask(&target, &Ask::Carry { carried }).await?;
+        let mut supported_after = Self::advertised_providers(&status);
         self.shared.handed_over(id, &status);
+        // If the host gained support for additional providers (e.g., after an
+        // upgrade to support Antigravity), immediately carry again with its
+        // expanded provider set so newly supported accounts don't stay behind.
+        if supported_after.iter().any(|p| !supported.contains(p)) {
+            supported = supported_after;
+            let carried_again = self.shared.carry_to_checked_supported(id, "this computer", &supported).await;
+            status = self.ask(&target, &Ask::Carry { carried: carried_again }).await?;
+            supported_after = Self::advertised_providers(&status);
+            self.shared.handed_over(id, &status);
+        }
         let unaccepted = self.shared.unaccepted_handovers(id);
         if !unaccepted.is_empty() {
             {
@@ -357,8 +420,11 @@ impl Hosts {
             self.save();
             return Err(format!("{} did not accept {} handed-over sign-in(s); keeping local refresh tokens until sync succeeds.", self.name(id), unaccepted.len()));
         }
-        // (As it stands after the handover: nothing more to tell it.)
-        let digest = Self::digest(&self.shared.carry_to(id, "this computer"));
+        // Compute digest from the provider set actually carried (`supported`),
+        // never `supported_after`, so any remaining provider mismatch stays
+        // behind and retries on the next pass.
+        let digest = Self::digest(&self.shared.would_carry_supported(id, "this computer", &supported));
+        let _ = supported_after;
         {
             let mut st = self.state.lock().unwrap();
             let kept = st.kept.entry(id.to_owned()).or_default();
@@ -379,8 +445,11 @@ impl Hosts {
                 st.known.iter().any(|(known, _, _)| known == id) && st.live.get(id).is_none_or(|l| l.doing.is_none())
             })
             .filter(|id| {
-                // (Asked without marking anything: what would be carried, were it.)
-                let now_is = Self::digest(&self.shared.would_carry(id, "this computer"));
+                // (Asked without marking anything: what would be carried, were it.
+                // Default unknown hosts to all providers so a cold restart never
+                // ignores new Antigravity changes before Ask::Status runs.)
+                let supported = self.known_providers(id).unwrap_or_else(|| Provider::ALL.to_vec());
+                let now_is = Self::digest(&self.shared.would_carry_supported(id, "this computer", &supported));
                 self.stale(id) || !self.shared.unaccepted_handovers(id).is_empty() || self.state.lock().unwrap().kept.get(id).is_some_and(|k| k.carried != Some(now_is))
             })
             .collect()
@@ -522,7 +591,13 @@ impl Hosts {
 
     /// Host `id` has this Olo's program: kept, so it isn't put again.
     fn put_there(&self, id: &str) -> Result<(), String> {
-        self.state.lock().unwrap().kept.entry(id.to_owned()).or_default().build = Some(self.build_id.clone());
+        {
+            let mut st = self.state.lock().unwrap();
+            st.kept.entry(id.to_owned()).or_default().build = Some(self.build_id.clone());
+            // Clear cached provider capabilities so the following `carry()`
+            // queries fresh `Ask::Status` from the newly upgraded binary.
+            st.live.entry(id.to_owned()).or_default().status = None;
+        }
         self.save();
         Ok(())
     }

@@ -219,6 +219,10 @@ fn only_the_model_requests_are_the_pools() {
     assert_eq!(pooled("api.anthropic.com", "/v1/models"), None);
     assert_eq!(pooled("chatgpt.com", "/backend-api/codex/responses"), Some((Provider::Codex, "responses".into())));
     assert_eq!(pooled("chatgpt.com", "/backend-api/wham/usage"), None);
+    assert_eq!(pooled("daily-cloudcode-pa.googleapis.com", "/v1internal:streamGenerateContent"), Some((Provider::Antigravity, "v1internal:streamGenerateContent".into())));
+    assert_eq!(pooled("cloudcode-pa.googleapis.com", "/v1internal:generateContent"), Some((Provider::Antigravity, "v1internal:generateContent".into())));
+    assert_eq!(pooled("daily-cloudcode-pa.googleapis.com", "/v1internal:retrieveUserQuotaSummary"), None);
+    assert_eq!(pooled("daily-cloudcode-pa.googleapis.com", "/v1internal:loadCodeAssist"), None);
     assert_eq!(pooled("example.com", "/v1/messages"), None);
 }
 
@@ -1360,4 +1364,305 @@ async fn a_client_is_told_nothing_is_used_while_the_pool_has_more() {
         vec![olo_token_pool::model::ResetCredit { id: "g".into(), remaining: 1, usable: true, expires_at: Some(now() + 86400), ..Default::default() }];
     let (claude, _, report, _) = told(client).await;
     assert_eq!((claude.2.as_deref(), claude.3.as_deref(), report["five_hour"]["utilization"].as_f64()), (Some("0"), Some("allowed"), Some(0.0)));
+}
+
+/// Antigravity through the MITM proxy:
+/// 1) `POST https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse`
+///    is pooled with the account's OAuth token, `"project"` rewritten, and SSE usageMetadata counted.
+/// 2) `POST https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`
+///    and `POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` pass through
+///    with the client's own token, and `told` rewrites them to full quota (1.0) while another
+///    Antigravity account or banked reset remains, and leaves them untouched on the last account.
+#[tokio::test(flavor = "multi_thread")]
+async fn antigravity_proxy_pools_generate_and_rewrites_quota_summary() {
+    let seen: Arc<Mutex<Vec<(String, String, String)>>> = Default::default();
+    let s2 = seen.clone();
+    let fake = Router::new()
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(move |h: HeaderMap, body: axum::body::Bytes| {
+                let seen = s2.clone();
+                async move {
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    seen.lock().unwrap().push(("/v1internal:streamGenerateContent".into(), bearer(&h), v["project"].as_str().unwrap_or("").to_owned()));
+                    Response::builder()
+                        .header("content-type", "text/event-stream")
+                        .body(Body::from("data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hello agy\"}]}}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":5,\"thoughtsTokenCount\":3}}}\n\n"))
+                        .unwrap()
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(|| async {
+                axum::Json(json!({
+                    "buckets": [{"bucketId": "g_neon:5h", "displayName": "Gemini 4 Neon 5-hour", "remainingFraction": 0.05, "resetTime": "2026-12-01T10:00:00Z"}],
+                    "modelAvailabilities": {"gemini-4-neon-high": {"state": "MODEL_AVAILABILITY_STATE_EXHAUSTED"}}
+                }))
+            }),
+        )
+        .route(
+            "/v1internal:fetchAvailableModels",
+            post(|| async {
+                axum::Json(json!({
+                    "models": {"gemini-4-neon-high": {"quotaInfo": {"resetTime": "2026-12-01T10:00:00Z"}}}
+                }))
+            }),
+        );
+    let up = serve(fake).await;
+    let mut saved = Saved::default();
+    for (id, created, proj) in [("agy-a", 1, "proj-a"), ("agy-b", 2, "proj-b")] {
+        let mut a = account(id, Provider::Antigravity);
+        a.created = created;
+        saved.accounts.push(a);
+        saved.credentials.insert(id.into(), Credential { access: format!("pooled-{id}"), refresh: None, expires_at: Some(now() + 3600), account_id: Some(proj.into()) });
+    }
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+    let (proxy, authority) = proxy_for(&shared).await;
+    let client = reqwest::Client::builder()
+        .proxy(reqwest::Proxy::https(format!("http://{proxy}")).unwrap())
+        .add_root_certificate(reqwest::Certificate::from_pem(authority.cert_pem.as_bytes()).unwrap())
+        .build()
+        .unwrap();
+
+    // 1. Pooled generateContent request.
+    let r = client
+        .post("https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse")
+        .header("authorization", "Bearer theirs")
+        .json(&json!({"model": "gemini-4-neon-high", "project": "client-proj", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["x-olo-pool-account"], "agy-a");
+    assert!(r.text().await.unwrap().contains("hello agy"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline && !shared.snapshot().open.is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(seen.lock().unwrap().as_slice(), &[("/v1internal:streamGenerateContent".to_owned(), "pooled-agy-a".to_owned(), "proj-a".to_owned())]);
+    let snap = shared.snapshot();
+    let a = snap.account("agy-a").unwrap();
+    assert_eq!((a.total.requests, a.total.input_tokens, a.total.output_tokens), (1, 12, 8));
+
+    // 2. With agy-b behind agy-a, both quota reports are rewritten to full quota (1.0).
+    let summary: Value = client
+        .post("https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary")
+        .header("authorization", "Bearer theirs")
+        .json(&json!({"project": "client-proj"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(summary["buckets"][0]["remainingFraction"].as_f64(), Some(1.0));
+    assert_eq!(summary["modelAvailabilities"]["gemini-4-neon-high"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_AVAILABLE"));
+
+    let avail: Value = client
+        .post("https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels")
+        .header("authorization", "Bearer theirs")
+        .json(&json!({"project": "client-proj"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(avail["models"]["gemini-4-neon-high"]["quotaInfo"]["remainingFraction"].as_f64(), Some(1.0));
+
+    // 3. Disable agy-b (last account, no banked resets): reports come back untouched.
+    shared.set_enabled("agy-b", false);
+    let summary: Value = client
+        .post("https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary")
+        .header("authorization", "Bearer theirs")
+        .json(&json!({"project": "client-proj"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(summary["buckets"][0]["remainingFraction"].as_f64(), Some(0.05));
+    assert_eq!(summary["modelAvailabilities"]["gemini-4-neon-high"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_EXHAUSTED"));
+}
+
+/// Verifies (1) `daily-cloudcode-pa.googleapis.com` and `cloudcode-pa.googleapis.com`
+/// route to their distinct upstreams (`up.agy` vs `up.agy_prod`), and (2) `told`
+/// rewrites ONLY quota-exhausted `modelAvailabilities` while preserving non-quota
+/// states (like `MODEL_AVAILABILITY_STATE_UNAVAILABLE`) and checking per-model headroom.
+#[tokio::test(flavor = "multi_thread")]
+async fn antigravity_preserves_daily_vs_prod_host_and_non_quota_unavailability() {
+    let daily_hits: Arc<Mutex<Vec<String>>> = Default::default();
+    let prod_hits: Arc<Mutex<Vec<String>>> = Default::default();
+    let (dh, ph) = (daily_hits.clone(), prod_hits.clone());
+
+    let daily_router = Router::new()
+        .route(
+            "/v1internal:streamGenerateContent",
+            post(move || {
+                let dh = dh.clone();
+                async move {
+                    dh.lock().unwrap().push("daily".into());
+                    Response::builder().header("content-type", "text/event-stream").body(Body::from("data: {\"response\":{}}\n\n")).unwrap()
+                }
+            }),
+        )
+        .route(
+            "/v1internal:retrieveUserQuotaSummary",
+            post(|| async {
+                axum::Json(json!({
+                    "buckets": [
+                        {"bucketId": "g_neon:5h", "displayName": "Gemini 4 Neon", "remainingFraction": 0.0, "resetTime": "2026-12-01T10:00:00Z", "models": ["gemini-neon"]},
+                        {"bucketId": "g_pro:5h", "displayName": "Gemini Pro", "remainingFraction": 0.0, "resetTime": "2026-12-01T10:00:00Z", "models": ["gemini-pro"]}
+                    ],
+                    "modelAvailabilities": {
+                        "gemini-4-neon-high": {"state": "MODEL_AVAILABILITY_STATE_EXHAUSTED"},
+                        "gemini-3-pro": {"state": "MODEL_AVAILABILITY_STATE_EXHAUSTED"},
+                        "gemini-deprecated": {"state": "MODEL_AVAILABILITY_STATE_UNAVAILABLE"}
+                    }
+                }))
+            }),
+        );
+    let prod_router = Router::new().route(
+        "/v1internal:streamGenerateContent",
+        post(move || {
+            let ph = ph.clone();
+            async move {
+                ph.lock().unwrap().push("prod".into());
+                Response::builder().header("content-type", "text/event-stream").body(Body::from("data: {\"response\":{}}\n\n")).unwrap()
+            }
+        }),
+    );
+    let daily_addr = serve(daily_router).await;
+    let prod_addr = serve(prod_router).await;
+    let mut up = Upstreams::fake(&format!("http://{daily_addr}"));
+    up.agy_prod = format!("http://{prod_addr}");
+
+    let mut saved = Saved::default();
+    let mut a = account("agy-a", Provider::Antigravity);
+    a.created = 1;
+    // Account A has headroom for gemini-neon ONLY; gemini-pro is exhausted on BOTH A and B!
+    a.windows = vec![
+        olo_token_pool::model::Window { name: "g_neon:5h".into(), label: "Gemini 4 Neon".into(), used: 10.0, resets_at: Some(now() + 3600), models: vec!["gemini-neon".into()] },
+        olo_token_pool::model::Window { name: "g_pro:5h".into(), label: "Gemini Pro".into(), used: 100.0, resets_at: Some(now() + 3600), models: vec!["gemini-pro".into()] },
+    ];
+    let mut b = account("agy-b", Provider::Antigravity);
+    b.created = 2;
+    b.windows = vec![
+        olo_token_pool::model::Window { name: "g_neon:5h".into(), label: "Gemini 4 Neon".into(), used: 15.0, resets_at: Some(now() + 3600), models: vec!["gemini-neon".into()] },
+        olo_token_pool::model::Window { name: "g_pro:5h".into(), label: "Gemini Pro".into(), used: 100.0, resets_at: Some(now() + 3600), models: vec!["gemini-pro".into()] },
+    ];
+    saved.accounts.extend([a, b]);
+    saved.credentials.insert("agy-a".into(), Credential { access: "tok-a".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("proj-a".into()) });
+    saved.credentials.insert("agy-b".into(), Credential { access: "tok-b".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("proj-b".into()) });
+
+    let shared = Shared::new(saved, None, up, || {});
+    let (proxy, authority) = proxy_for(&shared).await;
+    let client = reqwest::Client::builder()
+        .proxy(reqwest::Proxy::https(format!("http://{proxy}")).unwrap())
+        .add_root_certificate(reqwest::Certificate::from_pem(authority.cert_pem.as_bytes()).unwrap())
+        .build()
+        .unwrap();
+
+    // Daily host hits daily upstream; prod host hits prod upstream.
+    let r1 = client
+        .post("https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse")
+        .json(&json!({"model": "gemini-4-neon-high", "project": "c", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r1.status(), 200);
+    let r2 = client
+        .post("https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse")
+        .json(&json!({"model": "gemini-4-neon-high", "project": "c", "request": {"contents": []}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r2.status(), 200);
+    assert_eq!(daily_hits.lock().unwrap().as_slice(), &["daily"]);
+    assert_eq!(prod_hits.lock().unwrap().as_slice(), &["prod"]);
+
+    // `told` rewrites gemini-4-neon (headroom exists) to 1.0/AVAILABLE,
+    // leaves gemini-3-pro (exhausted everywhere) at 0.0/EXHAUSTED,
+    // and NEVER rewrites non-quota `MODEL_AVAILABILITY_STATE_UNAVAILABLE`!
+    let summary: Value = client
+        .post("https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary")
+        .header("authorization", "Bearer theirs")
+        .json(&json!({"project": "c"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(summary["buckets"][0]["remainingFraction"].as_f64(), Some(1.0));
+    assert_eq!(summary["buckets"][1]["remainingFraction"].as_f64(), Some(0.0));
+    assert_eq!(summary["modelAvailabilities"]["gemini-4-neon-high"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_AVAILABLE"));
+    assert_eq!(summary["modelAvailabilities"]["gemini-3-pro"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_EXHAUSTED"));
+    assert_eq!(summary["modelAvailabilities"]["gemini-deprecated"]["state"].as_str(), Some("MODEL_AVAILABILITY_STATE_UNAVAILABLE"));
+}
+
+/// Round 2 companion-CA fallback (Astra #19 / Neon #3):
+/// When `Authority` loaded a legacy 2-host CA and companion `pool-agy-ca` could
+/// not be created (`has_agy() == false`), `intercept::serve` MUST still serve
+/// Claude/Codex normally while tunnelling Google Cloud Code hosts straight through
+/// (never intercepting them with a 2-host CA that fails TLS verification!).
+#[tokio::test(flavor = "multi_thread")]
+async fn legacy_authority_without_agy_tunnels_google_hosts_instead_of_intercepting() {
+    use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, DnType, GeneralSubtree, IsCa, KeyPair, KeyUsagePurpose, NameConstraints};
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::Builder::new().prefix("olo-pool-noagy-").tempdir_in("/var/tmp").unwrap();
+    // Create a legacy 2-host pool-ca.{pem,key} (Claude + Codex only).
+    let key = KeyPair::generate().unwrap();
+    let mut p = CertificateParams::default();
+    let mut dn = DistinguishedName::new();
+    dn.push(DnType::CommonName, "Olo Token Pool");
+    dn.push(DnType::OrganizationName, "Olo");
+    p.distinguished_name = dn;
+    p.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
+    p.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::DigitalSignature];
+    p.name_constraints =
+        Some(NameConstraints { permitted_subtrees: vec![GeneralSubtree::DnsName("api.anthropic.com".into()), GeneralSubtree::DnsName("chatgpt.com".into())], excluded_subtrees: vec![] });
+    let cert = p.self_signed(&key).unwrap();
+    std::fs::write(dir.path().join("pool-ca.pem"), cert.pem()).unwrap();
+    std::fs::write(dir.path().join("pool-ca.key"), key.serialize_pem()).unwrap();
+    // Make directory read-only so companion `pool-agy-ca` cannot be created.
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+    let authority = Authority::open_in(dir.path());
+    // Restore permissions right away so tempdir cleans up even on assertion failure.
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let authority = Arc::new(authority.expect("legacy 2-host CA must still load when companion creation fails"));
+    assert!(!authority.has_agy(), "companion CA creation failed so has_agy must be false");
+
+    let up = serve(Router::new().route("/v1/messages", post(|| async { axum::Json(json!({"usage": {"input_tokens": 1, "output_tokens": 1}})) }))).await;
+    let mut saved = Saved::default();
+    saved.accounts.push(account("claude-a", Provider::Claude));
+    saved.credentials.insert("claude-a".into(), Credential { access: "tok-c".into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
+    saved.accounts.push(account("agy-a", Provider::Antigravity));
+    saved.credentials.insert("agy-a".into(), Credential { access: "tok-g".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("proj".into()) });
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+    let s = shared.clone();
+    let proxy = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s.serves(p)), intercept::Who::Anyone).await.unwrap();
+
+    // Claude still intercepts cleanly over TLS.
+    let client = reqwest::Client::builder()
+        .proxy(reqwest::Proxy::https(format!("http://{proxy}")).unwrap())
+        .add_root_certificate(reqwest::Certificate::from_pem(authority.cert_pem.as_bytes()).unwrap())
+        .build()
+        .unwrap();
+    let r = client.post("https://api.anthropic.com/v1/messages").json(&json!({"model": "claude-opus-5-5", "messages": []})).send().await.unwrap();
+    assert_eq!(r.status(), 200, "Claude must still be intercepted with legacy 2-host CA");
+
+    // Google Cloud Code hosts are excluded from TLS interception when `has_agy == false`
+    // (so they tunnel straight through instead of hitting a broken TLS handshake).
+    assert!(!intercept::intercepts_host("daily-cloudcode-pa.googleapis.com", authority.has_agy()));
+    assert!(!intercept::intercepts_host("cloudcode-pa.googleapis.com", authority.has_agy()));
+    assert!(intercept::intercepts_host("api.anthropic.com", authority.has_agy()));
+    assert!(intercept::intercepts_host("chatgpt.com", authority.has_agy()));
+    assert!(intercept::intercepts_host("daily-cloudcode-pa.googleapis.com", true));
+    assert!(intercept::intercepts_host("cloudcode-pa.googleapis.com", true));
 }

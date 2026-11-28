@@ -39,7 +39,7 @@ pub struct PoolMeters {
 pub struct PoolAccount {
     pub id: String,
     pub name: String,
-    /// "claude" or "codex".
+    /// "claude", "codex" or "agy".
     pub provider: String,
     pub enabled: bool,
     /// Its sign-in no longer works (and why).
@@ -168,11 +168,12 @@ fn length_rank(label: &str) -> u8 {
     }
 }
 
-/// "Claude", "Codex": a provider as people call it.
+/// "Claude", "Codex", "Antigravity": a provider as people call it.
 pub fn provider_name(provider: &str) -> String {
     match provider {
         "claude" => "Claude".into(),
         "codex" => "Codex".into(),
+        "agy" | "antigravity" => "Antigravity".into(),
         other => {
             let mut c = other.chars();
             c.next().map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
@@ -181,7 +182,7 @@ pub fn provider_name(provider: &str) -> String {
 }
 
 /// The providers the pool knows.
-pub const PROVIDERS: [&str; 2] = ["claude", "codex"];
+pub const PROVIDERS: [&str; 3] = ["claude", "codex", "agy"];
 
 /// One account, as a widget counts it.
 #[derive(Debug, Clone, PartialEq)]
@@ -320,11 +321,12 @@ impl Availability {
     }
 }
 
-/// "Claude Code", "Codex": a provider's client.
+/// "Claude Code", "Codex", "Antigravity": a provider's client.
 pub fn client_name(provider: &str) -> &'static str {
     match provider {
         "claude" => "Claude Code",
         "codex" => "Codex",
+        "agy" | "antigravity" => "Antigravity",
         _ => "its client",
     }
 }
@@ -369,10 +371,16 @@ pub fn availability(m: &PoolMeters, provider: &str, quota: Option<&str>, count_o
     };
     for a in m.accounts.iter().filter(|a| a.provider == provider) {
         // Its window for the quota: the one by that name, or the one for
-        // every request with least left.
+        // every request with least left (falling back to model-scoped windows
+        // when the account has no shared windows, e.g. Antigravity buckets).
         let window = match quota {
             Some(q) => a.windows.iter().find(|w| w.label.eq_ignore_ascii_case(q)),
-            None => a.windows.iter().filter(|w| w.models.is_empty()).min_by(|x, y| (100.0 - x.used_at(now)).total_cmp(&(100.0 - y.used_at(now)))),
+            None => a
+                .windows
+                .iter()
+                .filter(|w| w.models.is_empty())
+                .min_by(|x, y| (100.0 - x.used_at(now)).total_cmp(&(100.0 - y.used_at(now))))
+                .or_else(|| a.windows.iter().min_by(|x, y| (100.0 - x.used_at(now)).total_cmp(&(100.0 - y.used_at(now))))),
         };
         let Some(w) = window else {
             // (Not read yet: listed, not counted. One without this quota
@@ -575,5 +583,24 @@ mod tests {
         }
         let tip = availability(&m, "codex", None, false, 1_000).unwrap().detail(1_000);
         assert_eq!(tip[3], "With its 3 resets, it lasts until the next reset");
+    }
+
+    #[test]
+    fn antigravity_provider_and_client_names() {
+        assert_eq!(PROVIDERS, ["claude", "codex", "agy"]);
+        assert_eq!(provider_name("agy"), "Antigravity");
+        assert_eq!(provider_name("antigravity"), "Antigravity");
+        assert_eq!(client_name("agy"), "Antigravity");
+        assert_eq!(client_name("antigravity"), "Antigravity");
+        // An Antigravity account with only model-scoped windows still appears
+        // under default "Whichever holds each back" (`quota: None`).
+        let mut pro = window("Gemini Pro", 80.0, Some(2_000));
+        pro.models = vec!["gemini-pro".into()];
+        let mut flash = window("Gemini Flash", 20.0, Some(2_000));
+        flash.models = vec!["gemini-flash".into()];
+        let m = PoolMeters { pid: 1, loaded: true, accounts: vec![account("Google One", "agy", vec![pro, flash])], paused: Vec::new() };
+        let a = availability(&m, "agy", None, false, 1_000).expect("scoped-only Antigravity account counted");
+        assert!((a.left - 0.2).abs() < 1e-9, "least scoped window (20% left) holds it back: {}", a.left);
+        assert_eq!(a.title(), "Antigravity");
     }
 }

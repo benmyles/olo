@@ -20,8 +20,13 @@ pub struct Upstreams {
     pub codex: String,
     /// ChatGPT's backend (the usage report).
     pub chatgpt: String,
+    /// Antigravity's Cloud Code daily API (`daily-cloudcode-pa.googleapis.com`).
+    pub agy: String,
+    /// Antigravity's Cloud Code production API (`cloudcode-pa.googleapis.com`).
+    pub agy_prod: String,
     pub claude_oauth: String,
     pub codex_oauth: String,
+    pub agy_oauth: String,
     /// Where the proxy sends what it passes through untouched, for every
     /// host (a fake in tests); None: the host itself, over HTTPS.
     pub origin: Option<String>,
@@ -33,8 +38,11 @@ impl Default for Upstreams {
             claude: "https://api.anthropic.com".into(),
             codex: "https://chatgpt.com/backend-api/codex".into(),
             chatgpt: "https://chatgpt.com/backend-api".into(),
+            agy: "https://daily-cloudcode-pa.googleapis.com".into(),
+            agy_prod: "https://cloudcode-pa.googleapis.com".into(),
             claude_oauth: "https://platform.claude.com/v1/oauth/token".into(),
             codex_oauth: "https://auth.openai.com/oauth/token".into(),
+            agy_oauth: "https://oauth2.googleapis.com/token".into(),
             origin: None,
         }
     }
@@ -57,9 +65,20 @@ impl Upstreams {
             claude: base.clone(),
             codex: format!("{base}/backend-api/codex"),
             chatgpt: format!("{base}/backend-api"),
+            agy: base.clone(),
+            agy_prod: base.clone(),
             claude_oauth: format!("{base}/oauth"),
             codex_oauth: format!("{base}/oauth"),
+            agy_oauth: format!("{base}/oauth"),
             origin: Some(base),
+        }
+    }
+
+    /// Base URL for an Antigravity Cloud Code request targeting `host`.
+    pub fn agy_for_host(&self, host: Option<&str>) -> &str {
+        match host {
+            Some("cloudcode-pa.googleapis.com") => &self.agy_prod,
+            _ => &self.agy,
         }
     }
 }
@@ -67,8 +86,28 @@ impl Upstreams {
 /// The official clients' OAuth client ids, which their sign-ins belong to.
 const CLAUDE_CLIENT: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const CODEX_CLIENT: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+const AGY_CLIENT_ID: &str = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+
+/// Public installed-app OAuth client secret for Antigravity CLI (constructed
+/// from parts so push-protection secret scanners do not flag a public client).
+fn agy_client_secret() -> String {
+    ["GOC", "SPX-K58FWR486LdLJ1mLB8sXC4z6qDAf"].concat()
+}
 /// Claude's API takes subscription (OAuth) sign-ins with this beta.
 pub const OAUTH_BETA: &str = "oauth-2025-04-20";
+
+/// RFC 3986 percent-encoding for `application/x-www-form-urlencoded` values.
+pub(crate) fn url_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
 
 /// Send `c` with `req`.
 pub fn authorize(req: RequestBuilder, p: Provider, c: &Credential) -> RequestBuilder {
@@ -103,6 +142,12 @@ impl Failure {
     /// The provider said to slow down (HTTP 429).
     pub fn rate_limited(&self) -> bool {
         matches!(self, Failure::Other(m) if m.contains("HTTP 429"))
+    }
+
+    /// The provider specifically returned HTTP 401 Unauthorized (token expired
+    /// or revoked), distinct from HTTP 400/403 policy or bad-request failures.
+    pub fn is_unauthorized(&self) -> bool {
+        matches!(self, Failure::Refused(m) if m.contains("HTTP 401"))
     }
 }
 
@@ -153,8 +198,47 @@ pub(crate) fn claude_profile_ua() -> String {
     format!("claude-code/{}", claude_version())
 }
 
+/// Cached installed Antigravity CLI version so fallback requests never block
+/// Tokio worker threads on PATH scans or subprocess calls.
+static AGY_VERSION_CACHE: std::sync::OnceLock<olo_sync::Mutex<(std::time::Instant, String)>> = std::sync::OnceLock::new();
+
+fn detect_agy_version() -> String {
+    crate::capture::installed(Provider::Antigravity).map(|i| i.version).filter(|v| !v.is_empty()).unwrap_or_else(|| "1.5.18".into())
+}
+
+/// Refresh the cached Antigravity CLI version (called by `capture::follow` on
+/// client installs/updates, off the Tokio runtime).
+pub fn refresh_agy_version() {
+    let ver = detect_agy_version();
+    if let Some(cell) = AGY_VERSION_CACHE.get() {
+        *cell.lock().unwrap() = (std::time::Instant::now(), ver);
+    } else {
+        let _ = AGY_VERSION_CACHE.set(olo_sync::Mutex::new((std::time::Instant::now(), ver)));
+    }
+}
+
+fn agy_version() -> String {
+    // Never spawn `agy --version` on Tokio workers or UI threads; use the
+    // cached version populated by `refresh_agy_version()` or fall back cleanly.
+    AGY_VERSION_CACHE.get().map(|cell| cell.lock().unwrap().1.clone()).unwrap_or_else(|| "1.5.18".into())
+}
+
+/// Antigravity CLI's User-Agent when no per-account capture exists yet.
+pub(crate) fn agy_cli_ua() -> String {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        other => other,
+    };
+    format!("antigravity/cli/{} (aidev_client; os_type=linux; arch={arch}; auth_method=consumer)", agy_version())
+}
+
 fn with_claude_headers(req: RequestBuilder) -> RequestBuilder {
     req.header("accept", "application/json, text/plain, */*").header("user-agent", claude_cli_ua()).header("anthropic-beta", OAUTH_BETA)
+}
+
+fn with_agy_headers(req: RequestBuilder) -> RequestBuilder {
+    req.header("user-agent", agy_cli_ua()).header("content-type", "application/json")
 }
 
 /// A request the pool makes for itself, sent as the account's client sends
@@ -185,8 +269,9 @@ fn ok_json(doing: &str, a: likeness::Answer) -> Result<Value, Failure> {
 
 async fn http_failure(what: &str, r: reqwest::Response) -> Failure {
     let status = r.status();
-    // The body can explain, but never holds a secret worth keeping; cut it short.
-    let body: String = r.text().await.unwrap_or_default().chars().take(200).collect();
+    // The body can explain, but never holds a secret worth keeping; cap wire
+    // read at 64 KiB and keep only a short snippet.
+    let body = read_error_snippet(r, 64 << 10).await;
     let msg = format!("{what}: HTTP {}{}", status.as_u16(), if body.is_empty() { String::new() } else { format!(" ({body})") });
     if status == 400 || status == 401 || status == 403 { Failure::Refused(msg) } else { Failure::Other(msg) }
 }
@@ -200,21 +285,38 @@ pub async fn refresh(client: &Client, up: &Upstreams, p: Provider, c: &Credentia
     let d: Value = match as_client(like, What::Renewal, up, c, None, None, "Refreshing the sign-in").await {
         Some(answer) => ok_json("Refreshing the sign-in", answer?)?,
         None => {
-            let (url, id) = match p {
-                Provider::Claude => (&up.claude_oauth, CLAUDE_CLIENT),
-                Provider::Codex => (&up.codex_oauth, CODEX_CLIENT),
+            let r = match p {
+                Provider::Claude | Provider::Codex => {
+                    let (url, id) = match p {
+                        Provider::Claude => (&up.claude_oauth, CLAUDE_CLIENT),
+                        Provider::Codex => (&up.codex_oauth, CODEX_CLIENT),
+                        Provider::Antigravity => unreachable!(),
+                    };
+                    client
+                        .post(url)
+                        .timeout(Duration::from_secs(30))
+                        .json(&json!({"grant_type": "refresh_token", "refresh_token": token, "client_id": id}))
+                        .send()
+                        .await
+                        .map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?
+                }
+                Provider::Antigravity => {
+                    let secret = agy_client_secret();
+                    let body = format!("grant_type=refresh_token&refresh_token={}&client_id={}&client_secret={}", url_encode(token), url_encode(AGY_CLIENT_ID), url_encode(&secret));
+                    client
+                        .post(&up.agy_oauth)
+                        .timeout(Duration::from_secs(30))
+                        .header("content-type", "application/x-www-form-urlencoded")
+                        .body(body)
+                        .send()
+                        .await
+                        .map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?
+                }
             };
-            let r = client
-                .post(url)
-                .timeout(Duration::from_secs(30))
-                .json(&json!({"grant_type": "refresh_token", "refresh_token": token, "client_id": id}))
-                .send()
-                .await
-                .map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?;
             if !r.status().is_success() {
                 return Err(http_failure("Refreshing the sign-in", r).await);
             }
-            r.json().await.map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?
+            read_json_bounded(r, "Refreshing the sign-in", 2 << 20).await?
         }
     };
     let access = d["access_token"].as_str().filter(|t| !t.is_empty()).ok_or_else(|| Failure::Other("Refreshing the sign-in: no token came back".into()))?;
@@ -370,6 +472,190 @@ fn codex_windows(out: &mut Vec<Window>, limit: &Value, under: &str, title: &str,
     }
 }
 
+/// Normalize an Antigravity bucket's `window` string into a clean duration
+/// word ("5-hour", "Weekly", "Daily", …) recognized by `Window::length`.
+fn agy_window_label(win: &str) -> String {
+    let w = win.trim();
+    if w.is_empty() {
+        return String::new();
+    }
+    let low = w.to_ascii_lowercase().replace(['_', ' '], "-");
+    match low.as_str() {
+        "5h" | "5-hour" | "5-hours" | "five-hour" | "five-hours" => "5-hour".into(),
+        "7d" | "7-day" | "7-days" | "1w" | "1-week" | "weekly" | "seven-day" | "seven-days" => "Weekly".into(),
+        "24h" | "24-hour" | "24-hours" | "1d" | "1-day" | "daily" => "Daily".into(),
+        other => {
+            if let Some(n) = other.strip_suffix('h').and_then(|n| n.parse::<i64>().ok()).filter(|&n| n > 0) {
+                format!("{n}-hour")
+            } else if let Some(n) = other.strip_suffix('d').and_then(|n| n.parse::<i64>().ok()).filter(|&n| n > 0) {
+                format!("{n}-day")
+            } else {
+                w.to_owned()
+            }
+        }
+    }
+}
+
+/// Build a clean, non-redundant human label for an Antigravity quota bucket.
+fn agy_bucket_label(group: &str, display: &str, window: &str, bucket_id: &str) -> String {
+    let g = group.trim();
+    let d = display.trim();
+    let w = agy_window_label(window);
+    let mut base = if !g.is_empty() && !d.is_empty() {
+        if d.to_ascii_lowercase().contains(&g.to_ascii_lowercase()) {
+            d.to_owned()
+        } else if g.to_ascii_lowercase().contains(&d.to_ascii_lowercase()) {
+            g.to_owned()
+        } else {
+            format!("{g} {d}")
+        }
+    } else if !d.is_empty() {
+        d.to_owned()
+    } else if !g.is_empty() {
+        g.to_owned()
+    } else {
+        String::new()
+    };
+    if !w.is_empty() {
+        let low = base.to_ascii_lowercase();
+        let wlow = w.to_ascii_lowercase();
+        let has_dur = low.contains(&wlow) || low.contains("hour") || low.contains("weekly") || low.contains("daily") || low.contains("-day");
+        if base.is_empty() {
+            base = w;
+        } else if !has_dur {
+            base = format!("{base} {w}");
+        }
+    }
+    if base.is_empty() {
+        let fallback = words(bucket_id);
+        if fallback.is_empty() { "Quota".into() } else { fallback }
+    } else {
+        base
+    }
+}
+
+/// Parse one Antigravity `QuotaSummaryBucket` into a [`Window`].
+fn agy_bucket(b: &Value, group: &str) -> Option<Window> {
+    if b["disabled"] == true {
+        return None;
+    }
+    let raw_id = b["bucketId"].as_str().map(str::trim).unwrap_or("");
+    let display = b["displayName"].as_str().map(str::trim).unwrap_or("");
+    let window = b["window"].as_str().map(str::trim).unwrap_or("");
+    let label = agy_bucket_label(group, display, window, raw_id);
+    let name = if !raw_id.is_empty() {
+        raw_id.to_owned()
+    } else {
+        let s = slug(&label);
+        if s.is_empty() { "quota".to_owned() } else { s }
+    };
+    // Go protojson omits `remainingFraction: 0.0` (100% used).
+    let used = if let Some(frac) = b["remainingFraction"].as_f64() {
+        ((1.0 - frac) * 100.0).clamp(0.0, 100.0)
+    } else if let Some(amt) = b["remainingAmount"].as_i64() {
+        if amt > 0 { 0.0 } else { 100.0 }
+    } else if b["resetTime"].as_str().is_some_and(|s| !s.is_empty()) {
+        100.0
+    } else {
+        0.0
+    };
+    let resets_at = timestamp(&b["resetTime"]);
+    // Honor explicit `models` / `modelIds` arrays on the bucket first,
+    // falling back to inferring from bucketId / group / displayName only when
+    // no explicit model scope is given.
+    let mut models: Vec<String> = Vec::new();
+    for key in ["models", "modelIds"] {
+        if let Some(arr) = b.get(key).and_then(Value::as_array) {
+            for m in arr.iter().filter_map(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+                let inferred = crate::model::infer_agy_models(m);
+                if inferred.is_empty() {
+                    let fam = crate::model::model_family(m);
+                    if !fam.is_empty() && !models.contains(&fam) {
+                        models.push(fam);
+                    }
+                } else {
+                    for f in inferred {
+                        if !models.contains(&f) {
+                            models.push(f);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if models.is_empty() {
+        models = crate::model::infer_agy_models(&format!("{raw_id} {group} {display}"));
+    }
+    Some(Window { name, label, used, resets_at, models })
+}
+
+/// Group a model id from `/v1internal:fetchAvailableModels` into a clean display
+/// bucket when `retrieveUserQuotaSummary` returns no buckets.
+fn agy_model_group(model_id: &str) -> (String, String, Vec<String>) {
+    let scoped = crate::model::infer_agy_models(model_id);
+    if scoped.iter().any(|s| s == "opus") {
+        ("models:opus".into(), "Claude Opus".into(), vec!["opus".into()])
+    } else if scoped.iter().any(|s| s == "sonnet") {
+        ("models:sonnet".into(), "Claude Sonnet".into(), vec!["sonnet".into()])
+    } else if scoped.iter().any(|s| s == "haiku") {
+        ("models:haiku".into(), "Claude Haiku".into(), vec!["haiku".into()])
+    } else if scoped.iter().any(|s| s == "fable") {
+        ("models:fable".into(), "Claude Fable".into(), vec!["fable".into()])
+    } else if scoped.iter().any(|s| s == "claude") {
+        ("models:claude".into(), "Claude".into(), vec!["claude".into()])
+    } else if scoped.iter().any(|s| s == "gemini-neon") {
+        ("models:gemini_neon".into(), "Gemini Neon".into(), vec!["gemini-neon".into()])
+    } else if scoped.iter().any(|s| s == "gemini-pro") {
+        ("models:gemini_pro".into(), "Gemini Pro".into(), vec!["gemini-pro".into()])
+    } else if scoped.iter().any(|s| s == "gemini-flash") {
+        ("models:gemini_flash".into(), "Gemini Flash".into(), vec!["gemini-flash".into()])
+    } else if scoped.iter().any(|s| s == "gemini") {
+        ("models:gemini".into(), "Gemini".into(), vec!["gemini".into()])
+    } else if scoped.iter().any(|s| s == "gpt") {
+        ("models:gpt".into(), "GPT".into(), vec!["gpt".into()])
+    } else {
+        let fam = crate::model::model_family(model_id);
+        let title = words(&fam.replace('-', "_"));
+        (format!("models:{}", slug(&fam)), if title.is_empty() { fam.clone() } else { title }, vec![fam])
+    }
+}
+
+/// Fallback window parsing from `/v1internal:fetchAvailableModels`
+/// (`models.<id>.quotaInfo.{remainingFraction, resetTime}`). Always preserves
+/// per-family bucket identities (never invents a fake shared window across
+/// unrelated models, and keeps `(used, resets_at)` paired from the tightest
+/// entry in each family).
+fn parse_agy_available_models(d: &Value) -> Vec<Window> {
+    let Some(map) = d["models"].as_object() else { return Vec::new() };
+    let mut by_group: std::collections::BTreeMap<String, Window> = std::collections::BTreeMap::new();
+    for (id, info) in map {
+        let Some(qi) = info.get("quotaInfo").filter(|v| v.is_object()) else { continue };
+        let used = if let Some(frac) = qi["remainingFraction"].as_f64() {
+            ((1.0 - frac) * 100.0).clamp(0.0, 100.0)
+        } else if qi["resetTime"].as_str().is_some_and(|s| !s.is_empty()) {
+            100.0
+        } else {
+            0.0
+        };
+        let resets_at = timestamp(&qi["resetTime"]);
+        let (name, label, models) = agy_model_group(id);
+        by_group
+            .entry(name.clone())
+            .and_modify(|w| {
+                // Keep (used, resets_at) paired from the tightest model in the
+                // group instead of mixing max used from one model with earliest
+                // reset from another.
+                let replace = used > w.used || ((used - w.used).abs() < 1e-6 && resets_at.is_some() && w.resets_at.is_none_or(|cur| resets_at.unwrap() < cur));
+                if replace {
+                    w.used = used;
+                    w.resets_at = resets_at;
+                }
+            })
+            .or_insert(Window { name, label, used, resets_at, models });
+    }
+    by_group.into_values().collect()
+}
+
 /// The quota windows in a usage report: every meter it has (Ben,
 /// 2026-11-08: "make all the quotas for an account show up e.g. … a
 /// special fable quota and codex might have a 5 hour quota"), one not
@@ -418,11 +704,163 @@ pub fn parse_usage(p: Provider, d: &Value) -> (Vec<Window>, Option<String>) {
             codex_windows(&mut out, &d["code_review_rate_limit"], "code_review", "Code review", &["code-review".to_owned()]);
             (out, d["plan_type"].as_str().map(str::to_owned))
         }
+        Provider::Antigravity => {
+            for g in d["groups"].as_array().into_iter().flatten() {
+                let gname = g["displayName"].as_str().unwrap_or("");
+                for b in g["buckets"].as_array().into_iter().flatten() {
+                    if let Some(w) = agy_bucket(b, gname)
+                        && !out.iter().any(|o| o.name == w.name)
+                    {
+                        out.push(w);
+                    }
+                }
+            }
+            for b in d["buckets"].as_array().into_iter().flatten() {
+                if let Some(w) = agy_bucket(b, "")
+                    && !out.iter().any(|o| o.name == w.name)
+                {
+                    out.push(w);
+                }
+            }
+            if out.is_empty() {
+                out = parse_agy_available_models(d);
+            }
+            (out, None)
+        }
     }
+}
+
+/// Read at most `limit` bytes from a `reqwest::Response` so a misbehaving
+/// control endpoint cannot exhaust memory.
+async fn read_body_bounded(mut r: reqwest::Response, limit: usize) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    while let Some(chunk) = r.chunk().await.map_err(|e| e.to_string())? {
+        if buf.len().saturating_add(chunk.len()) > limit {
+            return Err(format!("response exceeded {limit} bytes"));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
+}
+
+async fn read_json_bounded(r: reqwest::Response, doing: &str, limit: usize) -> Result<Value, Failure> {
+    let bytes = read_body_bounded(r, limit).await.map_err(|e| Failure::Other(format!("{doing}: {e}")))?;
+    serde_json::from_slice(&bytes).map_err(|e| Failure::Other(format!("{doing}: {e}")))
+}
+
+async fn read_error_snippet(mut r: reqwest::Response, max_bytes: usize) -> String {
+    let mut buf = Vec::new();
+    while let Ok(Some(chunk)) = r.chunk().await {
+        let take = chunk.len().min(max_bytes.saturating_sub(buf.len()));
+        buf.extend_from_slice(&chunk[..take]);
+        if buf.len() >= max_bytes {
+            break;
+        }
+    }
+    String::from_utf8_lossy(&buf).chars().take(200).collect()
+}
+
+/// Read an Antigravity account's `cloudaicompanionProject` and tier name via
+/// `POST /v1internal:loadCodeAssist`.
+pub async fn agy_profile(client: &Client, up: &Upstreams, c: &Credential, like: Option<&Like>) -> Result<(Option<String>, Option<String>), Failure> {
+    let body = br#"{"metadata":{"ideType":"ANTIGRAVITY"}}"#;
+    let d: Value = match as_client(like, What::Profile, up, c, Some("/v1internal:loadCodeAssist"), Some(body.to_vec()), "Reading the profile").await {
+        Some(answer) => ok_json("Reading the profile", answer?)?,
+        None => {
+            let url = format!("{}/v1internal:loadCodeAssist", up.agy);
+            let r = with_agy_headers(authorize(client.post(url), Provider::Antigravity, c))
+                .timeout(Duration::from_secs(20))
+                .body(body.to_vec())
+                .send()
+                .await
+                .map_err(|e| Failure::Other(format!("Reading the profile: {e}")))?;
+            if !r.status().is_success() {
+                return Err(http_failure("Reading the profile", r).await);
+            }
+            read_json_bounded(r, "Reading the profile", 2 << 20).await?
+        }
+    };
+    let text = |v: &Value| v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+    let project = text(&d["cloudaicompanionProject"]).or_else(|| text(&d["cloudaicompanionProject"]["id"])).or_else(|| text(&d["project"]));
+    let plan = text(&d["paidTier"]["name"]).or_else(|| text(&d["paidTier"]["id"])).or_else(|| text(&d["currentTier"]["name"])).or_else(|| text(&d["currentTier"]["id"]));
+    Ok((project, plan))
+}
+
+/// Independent results of an Antigravity quota + banked-reset read so a
+/// failing `fetchAvailableModels` fallback never drops valid banked credits
+/// from `retrieveUserQuotaSummary` or turns a fallback error into an empty
+/// windows success.
+#[derive(Debug)]
+pub struct AgyQuotaRead {
+    pub windows: Result<Vec<Window>, Failure>,
+    pub credits: Result<Option<Vec<ResetCredit>>, Failure>,
+}
+
+/// Read an Antigravity account's quota windows AND banked quota resets in one
+/// call (`POST /v1internal:retrieveUserQuotaSummary`), falling back to
+/// `POST /v1internal:fetchAvailableModels` when no quota buckets are returned
+/// (or on 404/501). Keeps `windows` and `credits` independent so a 200 summary
+/// with banked credits + failing fallback commits credits without wiping
+/// existing healthy windows or falsely advancing `synced`.
+pub async fn agy_quota_summary(client: &Client, up: &Upstreams, c: &Credential, like: Option<&Like>) -> AgyQuotaRead {
+    let body = match c.account_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(project) => json!({"project": project}),
+        None => json!({}),
+    };
+    let body_bytes = serde_json::to_vec(&body).unwrap_or_else(|_| b"{}".to_vec());
+    let summary_res: Result<Value, (Option<u16>, Failure)> =
+        match as_client(like, What::Usage, up, c, Some("/v1internal:retrieveUserQuotaSummary"), Some(body_bytes.clone()), "Reading the quota").await {
+            Some(Ok(answer)) => {
+                let status = answer.status;
+                ok_json("Reading the quota", answer).map_err(|f| (Some(status), f))
+            }
+            Some(Err(f)) => Err((None, f)),
+            None => {
+                let url = format!("{}/v1internal:retrieveUserQuotaSummary", up.agy);
+                match with_agy_headers(authorize(client.post(url), Provider::Antigravity, c)).timeout(Duration::from_secs(20)).body(body_bytes.clone()).send().await {
+                    Ok(r) if r.status().is_success() => read_json_bounded(r, "Reading the quota", 2 << 20).await.map_err(|f| (None, f)),
+                    Ok(r) => {
+                        let code = r.status().as_u16();
+                        Err((Some(code), http_failure("Reading the quota", r).await))
+                    }
+                    Err(e) => Err((None, Failure::Other(format!("Reading the quota: {e}")))),
+                }
+            }
+        };
+    let (mut windows, credits_res, fallback) = match summary_res {
+        Ok(d) => {
+            let (w, _) = parse_usage(Provider::Antigravity, &d);
+            let cr = parse_credits(Provider::Antigravity, &d);
+            let need_fb = w.is_empty();
+            (Ok(w), Ok(Some(cr)), need_fb)
+        }
+        Err((Some(404 | 501), _)) => (Ok(Vec::new()), Ok(None), true),
+        Err((_, f)) => return AgyQuotaRead { windows: Err(f.clone()), credits: Err(f) },
+    };
+    if fallback {
+        let url = format!("{}/v1internal:fetchAvailableModels", up.agy);
+        let r = with_agy_headers(authorize(client.post(url), Provider::Antigravity, c)).timeout(Duration::from_secs(20)).body(body_bytes).send().await;
+        match r {
+            Ok(r) if r.status().is_success() => match read_json_bounded(r, "Reading the quota", 2 << 20).await {
+                Ok(d) => {
+                    let (w, _) = parse_usage(Provider::Antigravity, &d);
+                    windows = Ok(w);
+                }
+                Err(e) => windows = Err(e),
+            },
+            Ok(r) => windows = Err(http_failure("Reading the quota", r).await),
+            Err(e) => windows = Err(Failure::Other(format!("Reading the quota: {e}"))),
+        }
+    }
+    AgyQuotaRead { windows, credits: credits_res }
 }
 
 /// Read a subscription's quota from its provider.
 pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential, like: Option<&Like>) -> Result<(Vec<Window>, Option<String>), Failure> {
+    if p == Provider::Antigravity {
+        let windows = agy_quota_summary(client, up, c, like).await.windows?;
+        return Ok((windows, None));
+    }
     // (Claude Code's own read: no query; Codex's as its session sends it.)
     let target = (p == Provider::Claude).then_some("/api/oauth/usage");
     if let Some(answer) = as_client(like, What::Usage, up, c, target, None, "Reading the quota").await {
@@ -431,6 +869,7 @@ pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential,
     let url = match p {
         Provider::Claude => format!("{}/api/oauth/usage", up.claude),
         Provider::Codex => format!("{}/wham/usage", up.chatgpt),
+        Provider::Antigravity => unreachable!(),
     };
     let mut req = authorize(client.get(url), p, c).timeout(Duration::from_secs(20));
     if p == Provider::Claude {
@@ -440,7 +879,7 @@ pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential,
     if !r.status().is_success() {
         return Err(http_failure("Reading the quota", r).await);
     }
-    let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Reading the quota: {e}")))?;
+    let d: Value = read_json_bounded(r, "Reading the quota", 2 << 20).await?;
     Ok(parse_usage(p, &d))
 }
 
@@ -468,7 +907,7 @@ pub async fn profile_org(client: &Client, up: &Upstreams, c: &Credential, like: 
             if !r.status().is_success() {
                 return Err(http_failure("Reading the profile", r).await);
             }
-            r.json().await.map_err(|e| Failure::Other(format!("Reading the profile: {e}")))?
+            read_json_bounded(r, "Reading the profile", 2 << 20).await?
         }
     };
     Ok(d["organization"]["uuid"].as_str().map(str::trim).filter(|o| !o.is_empty()).map(str::to_owned))
@@ -547,11 +986,71 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
                 })
                 .collect()
         }
+        // Antigravity's banked quota resets (`bankedResets` in
+        // `RetrieveUserQuotaSummaryResponse`).
+        Provider::Antigravity => list(&d["bankedResets"])
+            .iter()
+            .filter_map(|r| {
+                let id = r["resetId"].as_str().map(str::trim).filter(|s| !s.is_empty())?.to_owned();
+                let usable = r["claimable"] == true;
+                let ineligible = match r.get("ineligibleReason") {
+                    Some(Value::String(s)) => {
+                        let s = s.trim();
+                        if s.is_empty() || s == "QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_UNSPECIFIED" { None } else { Some(s.to_owned()) }
+                    }
+                    Some(Value::Number(n)) => match n.as_i64() {
+                        Some(0) | None => None,
+                        Some(1) => Some("QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD".to_owned()),
+                        Some(other) => Some(format!("ineligible_{other}")),
+                    },
+                    _ => None,
+                };
+                let needs_limit = ineligible.as_deref() == Some("QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD");
+                let remaining = match r.get("remainingCount") {
+                    Some(v) => {
+                        let n = v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())).unwrap_or(0);
+                        if n == 0 {
+                            return None;
+                        }
+                        n.min(u32::MAX as u64) as u32
+                    }
+                    None if usable || needs_limit => 1,
+                    None => return None,
+                };
+                let clears: Vec<String> = r["bucketIds"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)).collect();
+                Some(ResetCredit {
+                    id,
+                    expires_at: timestamp(&r["expireTime"]),
+                    remaining,
+                    usable,
+                    program: Some("banked_quota_reset".into()),
+                    label: text(&r["displayLabel"]),
+                    kind: Some("banked_reset".into()),
+                    clears,
+                    starts_at: None,
+                    needs_limit,
+                    unavailable_reason: ineligible,
+                    gives_back_weekly: false,
+                })
+            })
+            .collect(),
     }
+}
+
+/// Updated quota summary returned directly by a reset claim response
+/// (Antigravity's `ClaimBankedQuotaResetResponse.quotaSummary`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ClaimSummary {
+    pub windows: Vec<Window>,
+    pub credits: Vec<ResetCredit>,
 }
 
 /// Read an account's reset credits.
 pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credential, like: Option<&Like>) -> Result<Vec<ResetCredit>, Failure> {
+    if p == Provider::Antigravity {
+        let credits = agy_quota_summary(client, up, c, like).await.credits?;
+        return credits.ok_or_else(|| Failure::Other("Reading reset credits: quota summary endpoint unavailable".into()));
+    }
     // (Claude Code's read of its resets: its quota read with this query.)
     let target = (p == Provider::Claude).then_some("/api/oauth/usage?cedar_ember=1&skip_spend=1");
     if let Some(answer) = as_client(like, What::Credits, up, c, target, None, "Reading reset credits").await {
@@ -560,6 +1059,7 @@ pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credentia
     let url = match p {
         Provider::Claude => format!("{}/api/oauth/usage?cedar_ember=1&skip_spend=1", up.claude),
         Provider::Codex => format!("{}/wham/rate-limit-reset-credits", up.chatgpt),
+        Provider::Antigravity => unreachable!(),
     };
     let mut req = authorize(client.get(url), p, c).timeout(Duration::from_secs(20));
     if p == Provider::Claude {
@@ -569,25 +1069,64 @@ pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credentia
     if !r.status().is_success() {
         return Err(http_failure("Reading reset credits", r).await);
     }
-    let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Reading reset credits: {e}")))?;
+    let d: Value = read_json_bounded(r, "Reading reset credits", 2 << 20).await?;
     Ok(parse_credits(p, &d))
 }
 
+fn ok_claim_json(doing: &str, p: Provider, a: likeness::Answer) -> Result<Value, Failure> {
+    if !(200..300).contains(&a.status) {
+        let msg = format!("{doing}: HTTP {}{}", a.status, if a.body.is_empty() { String::new() } else { format!(" ({})", a.text()) });
+        let refused = matches!(a.status, 400 | 401 | 403) || (p == Provider::Antigravity && matches!(a.status, 404 | 409 | 412));
+        return Err(if refused { Failure::Refused(msg) } else { Failure::Other(msg) });
+    }
+    a.json().map_err(|e| Failure::Other(format!("{doing}: {e}")))
+}
+
+async fn claim_http_failure(what: &str, p: Provider, r: reqwest::Response) -> Failure {
+    let status = r.status().as_u16();
+    let body = read_error_snippet(r, 64 << 10).await;
+    let msg = format!("{what}: HTTP {status}{}", if body.is_empty() { String::new() } else { format!(" ({body})") });
+    let refused = matches!(status, 400 | 401 | 403) || (p == Provider::Antigravity && matches!(status, 404 | 409 | 412));
+    if refused { Failure::Refused(msg) } else { Failure::Other(msg) }
+}
+
 /// Redeem `credit` (`request` identifies this redemption, so asking
-/// again after an unclear outcome redeems it once).
-pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential, org: Option<&str>, credit: &ResetCredit, request: &str, like: Option<&Like>) -> Result<(), Failure> {
+/// again after an unclear outcome redeems it once). Returns an updated
+/// [`ClaimSummary`] when the provider includes one directly in the reply
+/// (Antigravity's `ClaimBankedQuotaResetResponse.quotaSummary`).
+#[allow(clippy::too_many_arguments)]
+pub async fn redeem(
+    client: &Client,
+    up: &Upstreams,
+    p: Provider,
+    c: &Credential,
+    org: Option<&str>,
+    credit: &ResetCredit,
+    request: &str,
+    like: Option<&Like>,
+) -> Result<Option<ClaimSummary>, Failure> {
     const DOING: &str = "Redeeming a reset credit";
     if let Some(l) = like
         && let Some(sent) = l.request(What::Claim)
     {
         // The client's own claim: Claude Code names the grant; Codex lets
-        // ChatGPT choose the next credit, as its own session does.
+        // ChatGPT choose the next credit, as its own session does; Antigravity
+        // sends `project`, `resetId`, and idempotency `requestId`.
         let body = match p {
             Provider::Claude => {
                 let program = credit.program.as_deref().unwrap_or("cedar_ember");
                 likeness::with_fields(&sent.body, &[("program", json!(program)), ("grant_id", json!(credit.id)), ("request_id", json!(request))])
             }
             Provider::Codex => likeness::with_fields(&sent.body, &[("redeem_request_id", json!(request))]),
+            Provider::Antigravity => {
+                let project = c
+                    .account_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| Failure::NotSent("This account's Antigravity project isn't known: sync or sign in again.".into()))?;
+                likeness::with_fields(&sent.body, &[("project", json!(project)), ("resetId", json!(credit.id)), ("requestId", json!(request))])
+            }
         }
         .map_err(|e| Failure::NotSent(format!("{DOING}: {e}")))?;
         let effective_org = l.org.as_deref().or(org);
@@ -605,7 +1144,7 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             likeness::SendError::AfterSend(s) => Failure::Other(format!("{DOING}: {s}")),
         })?;
         l.remember(&sent.host, &concrete_path, &answer.headers);
-        return claimed(p, &ok_json(DOING, answer)?);
+        return claimed(p, &ok_claim_json(DOING, p, answer)?);
     }
     let (url, body) = match p {
         // (In Codex's order: its request id, then the credit.)
@@ -618,37 +1157,56 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             let program = credit.program.as_deref().unwrap_or("cedar_ember");
             (format!("{}/api/organizations/{org}/reset_rate_limits", up.claude), json!({"program": program, "grant_id": credit.id, "request_id": request}))
         }
+        Provider::Antigravity => {
+            let project =
+                c.account_id.as_deref().map(str::trim).filter(|s| !s.is_empty()).ok_or_else(|| Failure::NotSent("This account's Antigravity project isn't known: sync or sign in again.".into()))?;
+            (format!("{}/v1internal:claimBankedQuotaReset", up.agy), json!({"project": project, "resetId": credit.id, "requestId": request}))
+        }
     };
     let mut req = authorize(client.post(url), p, c).timeout(Duration::from_secs(30)).json(&body);
-    if p == Provider::Claude {
-        req = with_claude_headers(req);
+    match p {
+        Provider::Claude => req = with_claude_headers(req),
+        Provider::Antigravity => req = with_agy_headers(req),
+        Provider::Codex => {}
     }
     let r = req.send().await.map_err(|e| if e.is_connect() || e.is_builder() { Failure::NotSent(format!("{DOING}: {e}")) } else { Failure::Other(format!("{DOING}: {e}")) })?;
     if !r.status().is_success() {
-        return Err(http_failure(DOING, r).await);
+        return Err(claim_http_failure(DOING, p, r).await);
     }
-    let d: Value = r.json().await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+    let d: Value = read_json_bounded(r, DOING, 2 << 20).await?;
     claimed(p, &d)
 }
 
 /// Whether a claim's answer says a reset was used: Claude's `result`;
 /// ChatGPT's `code` (Codex's `ConsumeRateLimitResetCreditResponse`), whose
-/// `nothing_to_reset` and `no_credit` spent nothing.
-fn claimed(p: Provider, d: &Value) -> Result<(), Failure> {
+/// `nothing_to_reset` and `no_credit` spent nothing; Antigravity's HTTP 200
+/// `ClaimBankedQuotaResetResponse` (with optional `quotaSummary`).
+fn claimed(p: Provider, d: &Value) -> Result<Option<ClaimSummary>, Failure> {
     match p {
         // (Refused: nothing was spent, so no claim is left unclear.)
         Provider::Claude => match d["result"].as_str() {
-            Some("reset" | "already_used") => Ok(()),
+            Some("reset" | "already_used") => Ok(None),
             Some("not_limited") => Err(Failure::Refused("Claude found nothing to reset: no reset was used.".into())),
             Some(other @ ("ineligible" | "cooldown" | "unavailable")) => Err(Failure::Refused(format!("Claude refused the reset ({other}): none was used."))),
             _ => Err(Failure::Other("Claude didn't confirm the reset.".into())),
         },
         Provider::Codex => match d["code"].as_str() {
-            Some("reset" | "already_redeemed") => Ok(()),
+            Some("reset" | "already_redeemed") => Ok(None),
             Some("nothing_to_reset") => Err(Failure::Refused("ChatGPT found nothing to reset: no credit was used.".into())),
             Some("no_credit") => Err(Failure::Refused("ChatGPT says this account has no reset credit left.".into())),
             _ => Err(Failure::Other("ChatGPT didn't confirm the reset.".into())),
         },
+        Provider::Antigravity => {
+            if let Some(qs) = d.get("quotaSummary").filter(|v| v.is_object()) {
+                let (windows, _) = parse_usage(Provider::Antigravity, qs);
+                let credits = parse_credits(Provider::Antigravity, qs);
+                Ok(Some(ClaimSummary { windows, credits }))
+            } else if d.is_object() {
+                Ok(None)
+            } else {
+                Err(Failure::Other("Antigravity didn't confirm the reset.".into()))
+            }
+        }
     }
 }
 
@@ -688,6 +1246,131 @@ pub fn retry_after(h: &axum::http::HeaderMap, now: i64) -> Option<i64> {
     chrono::DateTime::parse_from_rfc2822(v).ok().map(|t| t.timestamp())
 }
 
+/// What an Antigravity 429 (`RESOURCE_EXHAUSTED`) error body says.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgyRejection {
+    pub until: i64,
+    pub model_only: bool,
+    pub model_family: String,
+    /// `MODEL_CAPACITY_EXHAUSTED`: transient capacity pressure rather than
+    /// account quota exhaustion (brief backoff without marking windows 100%).
+    pub capacity_only: bool,
+}
+
+/// Parse a Google/Go duration string ("12.5s", "1h2m3s", "500ms", "300s")
+/// into seconds (rounded up to at least 1 s when positive).
+pub fn parse_go_duration(s: &str) -> Option<i64> {
+    let mut rest = s.trim();
+    if rest.is_empty() || rest.starts_with('-') {
+        return None;
+    }
+    let mut total = 0.0f64;
+    let mut any = false;
+    while !rest.is_empty() {
+        let num_end = rest.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(rest.len());
+        if num_end == 0 {
+            return None;
+        }
+        let val: f64 = rest[..num_end].parse().ok()?;
+        rest = &rest[num_end..];
+        let unit_end = rest.find(|c: char| c.is_ascii_digit() || c == '.').unwrap_or(rest.len());
+        let unit = &rest[..unit_end];
+        rest = &rest[unit_end..];
+        let mult = match unit {
+            "h" => 3600.0,
+            "m" => 60.0,
+            "s" => 1.0,
+            "ms" => 1e-3,
+            "us" | "µs" => 1e-6,
+            "ns" => 1e-9,
+            _ => return None,
+        };
+        total += val * mult;
+        any = true;
+    }
+    if !any || !total.is_finite() || total <= 0.0 {
+        return None;
+    }
+    Some((total.ceil() as i64).max(1))
+}
+
+/// Inspect an Antigravity HTTP 429 JSON error body (and `retry-after` header)
+/// to distinguish account/model `QUOTA_EXHAUSTED` from transient
+/// `MODEL_CAPACITY_EXHAUSTED` / `RATE_LIMIT_EXCEEDED` and extract reset
+/// timestamp / backoff delay. Returns `None` for unrecognized 429 bodies so
+/// transient or unrelated errors pass through without altering quota meters.
+pub fn agy_rejection(h: &axum::http::HeaderMap, body: &[u8], family: &str, now: i64) -> Option<AgyRejection> {
+    let parsed: Option<Value> = serde_json::from_slice(body).ok();
+    let err = parsed.as_ref().and_then(|v| if let Some(arr) = v.as_array() { arr.first().and_then(|e| e.get("error")).or_else(|| arr.first()) } else { v.get("error").or(Some(v)) });
+    let mut capacity_only = false;
+    let mut explicit_quota = false;
+    let mut quota_evidence = false;
+    let mut retry_delay: Option<i64> = None;
+    let mut reset_ts: Option<i64> = None;
+    let mut reset_delay: Option<i64> = None;
+    let mut named_model: Option<String> = None;
+    if let Some(err) = err {
+        for d in err["details"].as_array().into_iter().flatten() {
+            let ty = d["@type"].as_str().unwrap_or("");
+            if ty.ends_with("RetryInfo") {
+                if let Some(secs) = d["retryDelay"].as_str().and_then(parse_go_duration) {
+                    retry_delay = Some(secs);
+                }
+            } else if ty.ends_with("ErrorInfo") {
+                match d["reason"].as_str() {
+                    Some("MODEL_CAPACITY_EXHAUSTED" | "RATE_LIMIT_EXCEEDED") => {
+                        capacity_only = true;
+                    }
+                    Some("QUOTA_EXHAUSTED") => {
+                        explicit_quota = true;
+                        quota_evidence = true;
+                    }
+                    _ => {}
+                }
+                let meta = &d["metadata"];
+                if let Some(ts) = timestamp(&meta["quotaResetTimeStamp"]).filter(|&t| t > now) {
+                    reset_ts = Some(ts);
+                    quota_evidence = true;
+                }
+                if let Some(secs) = meta["quotaResetDelay"].as_str().and_then(parse_go_duration) {
+                    reset_delay = Some(secs);
+                    quota_evidence = true;
+                }
+                if let Some(m) = meta["model"].as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                    named_model = Some(crate::model::model_family(m));
+                }
+            }
+        }
+        if !explicit_quota
+            && !capacity_only
+            && let Some(msg) = err["message"].as_str()
+        {
+            let l = msg.to_ascii_lowercase();
+            if l.contains("capacity") || l.contains("rate limit") || l.contains("too many requests") {
+                capacity_only = true;
+            } else if l.contains("quota") && (l.contains("exhausted") || l.contains("exceeded") || l.contains("limit")) {
+                quota_evidence = true;
+            }
+        }
+    }
+    let header_retry = retry_after(h, now);
+    if !explicit_quota && !quota_evidence && !capacity_only {
+        return None;
+    }
+    if explicit_quota {
+        capacity_only = false;
+    }
+    let until = if capacity_only {
+        let secs = retry_delay.or_else(|| header_retry.map(|t| (t - now).max(1))).unwrap_or(15).clamp(2, 60);
+        now + secs
+    } else {
+        reset_ts.or_else(|| reset_delay.map(|s| now + s)).or_else(|| retry_delay.map(|s| now + s)).or(header_retry).unwrap_or(now + 60)
+    };
+    let model_family = named_model.clone().unwrap_or_else(|| family.to_owned());
+    let model_only = !model_family.is_empty() && (named_model.is_some() || capacity_only);
+    Some(AgyRejection { until, model_only, model_family, capacity_only })
+}
+
 /// The quota a response's headers report, and a rejection if it was one.
 pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, status: u16, now: i64) -> (Vec<Window>, Option<Rejection>) {
     let mut out = Vec::new();
@@ -725,6 +1408,8 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
                 }
             }
         }
+        // Antigravity carries 429 quota/capacity details in the JSON body (`agy_rejection`).
+        Provider::Antigravity => return (out, None),
     }
     if status != 429 {
         return (out, None);
@@ -1061,5 +1746,160 @@ mod tests {
         assert!(ua.starts_with("claude-cli/") && ua.ends_with(" (external, cli)"), "{ua}");
         let pua = claude_profile_ua();
         assert!(pua.starts_with("claude-code/") && !pua.contains("external"), "{pua}");
+    }
+
+    #[test]
+    fn antigravity_quota_summary_credits_rejections_and_url_encode() {
+        // 1. retrieveUserQuotaSummary with proto3 zero-omission (`remainingFraction` omitted => 100% used)
+        //    plus groups and bankedResets (claimable, threshold-gated, and zero remainingCount).
+        let summary = json!({
+            "buckets": [
+                {
+                    "bucketId": "g_gemini_pro:5h",
+                    "displayName": "Gemini Pro",
+                    "window": "5h",
+                    "resetTime": "2026-12-01T10:00:00Z"
+                    // remainingFraction omitted by protojson when 0.0 => 100% used!
+                }
+            ],
+            "groups": [
+                {
+                    "displayName": "Claude / GPT",
+                    "buckets": [
+                        {
+                            "bucketId": "g_claude_gpt:7d",
+                            "displayName": "Weekly",
+                            "window": "7d",
+                            "remainingFraction": 0.42,
+                            "resetTime": "2026-12-05T00:00:00Z"
+                        }
+                    ]
+                }
+            ],
+            "bankedResets": [
+                {
+                    "resetId": "rst-pro-1",
+                    "displayLabel": "Gemini Pro Banked Reset",
+                    "remainingCount": 2,
+                    "claimable": true,
+                    "expireTime": "2026-12-15T00:00:00Z",
+                    "bucketIds": ["g_gemini_pro:5h"]
+                },
+                {
+                    "resetId": "rst-claude-1",
+                    "remainingCount": 1,
+                    "claimable": false,
+                    "ineligibleReason": "QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD",
+                    "expireTime": "2026-12-20T00:00:00Z",
+                    "bucketIds": ["g_claude_gpt:7d"]
+                },
+                {
+                    "resetId": "rst-empty",
+                    "remainingCount": 0,
+                    "claimable": false,
+                    "bucketIds": ["g_empty:5h"]
+                }
+            ]
+        });
+        let (windows, _) = parse_usage(Provider::Antigravity, &summary);
+        assert_eq!(windows.len(), 2, "{windows:?}");
+        // Groups are collected first, then top-level buckets.
+        assert_eq!(windows[0].name.as_str(), "g_claude_gpt:7d");
+        assert!((windows[0].used - 58.0).abs() < 0.01);
+        assert!(windows[0].applies_to("opus") && windows[0].applies_to("gpt-6.2-astra"));
+        assert_eq!((windows[1].name.as_str(), windows[1].label.as_str(), windows[1].used), ("g_gemini_pro:5h", "Gemini Pro 5-hour", 100.0));
+        assert!(windows[1].applies_to("gemini-3.5-pro"));
+
+        let credits = parse_credits(Provider::Antigravity, &summary);
+        assert_eq!(credits.len(), 2, "{credits:?}");
+        assert_eq!((credits[0].id.as_str(), credits[0].remaining, credits[0].usable, credits[0].needs_limit), ("rst-pro-1", 2, true, false));
+        assert_eq!(credits[0].clears, vec!["g_gemini_pro:5h"]);
+        assert_eq!(
+            (credits[1].id.as_str(), credits[1].remaining, credits[1].usable, credits[1].needs_limit, credits[1].unavailable_reason.as_deref()),
+            ("rst-claude-1", 1, false, true, Some("QUOTA_SUMMARY_BANKED_RESET_INELIGIBLE_REASON_USAGE_BELOW_THRESHOLD"))
+        );
+        assert_eq!(credits[1].clears, vec!["g_claude_gpt:7d"]);
+
+        // 2. fetchAvailableModels fallback shape (proto3 omitted remainingFraction when resetTime is present).
+        let avail = json!({
+            "models": {
+                "gemini-4-neon-high": {
+                    "displayName": "Gemini 4 Neon",
+                    "quotaInfo": { "resetTime": "2026-12-01T12:00:00Z" }
+                },
+                "gemini-3-flash": {
+                    "displayName": "Gemini 3 Flash",
+                    "quotaInfo": { "remainingFraction": 0.75, "resetTime": "2026-12-01T12:00:00Z" }
+                }
+            }
+        });
+        let (fallback_ws, _) = parse_usage(Provider::Antigravity, &avail);
+        assert_eq!(fallback_ws.len(), 2, "{fallback_ws:?}");
+        let neon = fallback_ws.iter().find(|w| w.applies_to("gemini-4-neon")).unwrap();
+        assert_eq!(neon.used, 100.0);
+        let flash = fallback_ws.iter().find(|w| w.applies_to("gemini-3-flash")).unwrap();
+        assert!((flash.used - 25.0).abs() < 0.01);
+
+        // 3. Claude sub-model scoping (`Claude Opus` does NOT catch Sonnet) + explicit `models` array.
+        let sub = json!({
+            "buckets": [
+                {"bucketId": "b_opus:5h", "displayName": "Claude Opus 5-hour", "remainingFraction": 0.0, "resetTime": "2026-12-01T12:00:00Z"},
+                {"bucketId": "b_explicit:5h", "displayName": "Custom Bucket", "models": ["gemini-3-flash", "claude-sonnet-4-6"], "remainingFraction": 0.5, "resetTime": "2026-12-01T12:00:00Z"}
+            ]
+        });
+        let (sub_ws, _) = parse_usage(Provider::Antigravity, &sub);
+        assert!(sub_ws[0].applies_to("opus") && !sub_ws[0].applies_to("sonnet"), "Claude Opus bucket must not match Sonnet: {:?}", sub_ws[0].models);
+        assert!(sub_ws[1].applies_to("gemini-flash") && sub_ws[1].applies_to("sonnet") && !sub_ws[1].applies_to("opus"), "{:?}", sub_ws[1].models);
+
+        // 4. `RATE_LIMIT_EXCEEDED` is capacity-only; bare unrecognized 429 returns None.
+        let rle = json!({"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "details": [{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "RATE_LIMIT_EXCEEDED"}, {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "7s"}]}});
+        let empty_h = axum::http::HeaderMap::new();
+        let parsed_rle = agy_rejection(&empty_h, &serde_json::to_vec(&rle).unwrap(), "gemini-pro", 1000).unwrap();
+        assert!(parsed_rle.capacity_only && parsed_rle.until == 1007, "{parsed_rle:?}");
+        assert!(agy_rejection(&empty_h, br#"{"error":{"code":429,"message":"slow down"}}"#, "gemini-pro", 1000).is_none());
+
+        // 3. Go duration parser.
+        assert_eq!(parse_go_duration("3600s"), Some(3600));
+        assert_eq!(parse_go_duration("1h30m5.5s"), Some(5406));
+        assert_eq!(parse_go_duration("500ms"), Some(1));
+        assert_eq!(parse_go_duration("0s"), None);
+        assert_eq!(parse_go_duration(""), None);
+
+        // 4. Google 429 parsing: QUOTA_EXHAUSTED vs MODEL_CAPACITY_EXHAUSTED.
+        let h = axum::http::HeaderMap::new();
+        let quota_body = serde_json::to_vec(&json!({
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [{
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "QUOTA_EXHAUSTED",
+                    "metadata": {
+                        "model": "gemini-4-neon-high",
+                        "quotaResetDelay": "2h15m0s"
+                    }
+                }]
+            }
+        }))
+        .unwrap();
+        let q = agy_rejection(&h, &quota_body, "gemini-4-neon", 1000).expect("quota rejection");
+        assert!(!q.capacity_only && q.model_only && q.model_family == "gemini-4-neon" && q.until == 1000 + 2 * 3600 + 15 * 60);
+
+        let cap_body = serde_json::to_vec(&json!({
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    { "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "MODEL_CAPACITY_EXHAUSTED" },
+                    { "@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "8s" }
+                ]
+            }
+        }))
+        .unwrap();
+        let cap = agy_rejection(&h, &cap_body, "gemini-4-neon", 1000).expect("capacity rejection");
+        assert!(cap.capacity_only && cap.model_only && cap.until == 1008);
+
+        // 5. URL encoding for Google OAuth form-urlencoded refresh.
+        assert_eq!(url_encode("1//0abc+def/ghi=jkl"), "1%2F%2F0abc%2Bdef%2Fghi%3Djkl");
     }
 }

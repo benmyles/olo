@@ -22,8 +22,8 @@ use std::{
 };
 
 use olo_kit::{
-    AppCx, Bounds, Child, ClickEvent, Corner, Cx, Element, Hsla, InteractiveElement as _, IntoElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Pixels, Proxy, ScrollHandle, SharedString,
-    Styled as _, View, WindowHandle, WindowOptions, canvas, div, icons, menu, metrics as m, palette as olo_theme, point, px, size, style, theme,
+    AppCx, Bounds, Child, ClickEvent, Corner, Cx, Element, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Pixels, Proxy, ScrollHandle,
+    SharedString, Styled as _, View, WindowHandle, WindowOptions, canvas, div, icons, menu, metrics as m, palette as olo_theme, point, px, size, style, theme,
     widgets::{self, Button, CheckBox, Graph, LIGHT, Light, MenuField, ScrollView, Series, StringView, TabView, TextControl, TextField, TextFieldEvent, button_width, level_bar, light, text_field},
 };
 use olo_token_pool::{
@@ -35,15 +35,15 @@ use olo_token_pool::{
     import::{self, Found},
     model::{Account, Outcome, Provider, Window as QuotaWindow, now},
     running::{Process, Running},
-    schedule, store,
+    store,
 };
 
 use crate::{
     PROVIDERS,
     aggregate::{
-        AccountRollup, LiveReq, MachineScope, RecentReq, Tab, account_rollup, custody, demo_data, demo_enabled, folder, host_brief_sentence, host_stands, host_summary, hue, kept_names,
-        last_checked_at, last_synced_at, live_requests, local_custody_summary, merged_activity, middle_truncate, provider_hue, recent_requests, sentence, sorted_accounts, sorted_hosts,
-        sorted_providers, tab_lights,
+        AccountRollup, LiveReq, MachineScope, RecentReq, Tab, account_out_of_quota, account_paid_scope, account_rollup, custody, demo_data, demo_enabled, folder, host_brief_sentence, host_stands,
+        host_summary, hue, kept_names, last_checked_at, last_synced_at, live_requests, local_custody_summary, merged_activity, middle_truncate, provider_hue, recent_requests, sentence,
+        sorted_accounts, sorted_hosts, sorted_providers, tab_lights,
     },
     client_index, clock, duration, plan_name, span, tokens,
 };
@@ -66,8 +66,8 @@ const SPANS: [(&str, i64, i64, f64); 3] = [("Last Hour", 60, 1, 600.0), ("Last 6
 /// Messages to [`Hub`].
 pub enum Msg {
     Changed,
-    Clients([bool; 2]),
-    ClientSet(Provider, Result<(), String>, Option<bool>),
+    Clients([bool; 3]),
+    ClientSet(Provider, bool, Result<(), String>, Option<bool>),
     SignedIn(Result<Found, String>, Option<String>),
     Done(Result<String, String>),
     Open,
@@ -88,7 +88,7 @@ struct Waiting {
 
 #[derive(Clone, Default, PartialEq)]
 pub struct Told {
-    clients: Option<[bool; 2]>,
+    clients: Option<[bool; 3]>,
     note: Option<(String, bool)>,
     waiting: Option<(Provider, Option<String>)>,
 }
@@ -115,7 +115,8 @@ pub struct Hub {
     proxy: Proxy,
     win: Option<WindowHandle<PoolWindow>>,
     hosts: Arc<Hosts>,
-    clients: Option<[bool; 2]>,
+    clients: Option<[bool; 3]>,
+    client_tx: std::sync::mpsc::Sender<(Provider, bool)>,
     note: Option<(String, bool)>,
     waiting: Option<Waiting>,
     open: Arc<Open>,
@@ -123,7 +124,28 @@ pub struct Hub {
 
 impl Hub {
     pub fn new(shared: Arc<Shared>, hosts: Arc<Hosts>, proxy_port: u16, proxy: Proxy) -> Hub {
-        Hub { shared, proxy_port, proxy, win: None, hosts, clients: None, note: None, waiting: None, open: Arc::default() }
+        // Single serialized worker for client toggles so rapid clicks execute
+        // strictly in click order and Antigravity enable gates on proxy CA readiness.
+        let (client_tx, client_rx) = std::sync::mpsc::channel::<(Provider, bool)>();
+        let worker_shared = shared.clone();
+        let worker_proxy = proxy.clone();
+        let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
+            while let Ok((p, on)) = client_rx.recv() {
+                if p == Provider::Antigravity && on {
+                    let ready = worker_shared.wait_proxy_ready(Duration::from_secs(5));
+                    if !ready.proxy_ok || !ready.agy_ok {
+                        let why = ready.agy_error.or(ready.error).unwrap_or_else(|| "Antigravity proxy isn’t ready yet.".into());
+                        worker_proxy.send(Msg::ClientSet(p, on, Err(why), None));
+                        continue;
+                    }
+                }
+                let pointed = clients::pointed(p, proxy_port);
+                let r = clients::set(p, on, proxy_port);
+                let restarted = p == Provider::Codex && r.is_ok() && matches!(codex_daemon::follow(), Ok(Followed::Restarted(_)));
+                worker_proxy.send(Msg::ClientSet(p, on, r, if pointed { None } else { Some(restarted) }));
+            }
+        });
+        Hub { shared, proxy_port, proxy, win: None, hosts, clients: None, client_tx, note: None, waiting: None, open: Arc::default() }
     }
 
     fn told(&self) -> Told {
@@ -143,7 +165,7 @@ impl Hub {
         }
         let existed = self.win.is_some();
         let (shared, hosts, port, told) = (self.shared.clone(), self.hosts.clone(), self.proxy_port, self.told());
-        let options = WindowOptions::new("Token Pool", 640.0, 660.0).min_size(380.0, 220.0).keep_size("main");
+        let options = WindowOptions::new("Token Pool", 640.0, 740.0).min_size(380.0, 220.0).keep_size("main");
         olo_kit::open_or_raise(&mut self.win, options, move |cx| PoolWindow::new(shared, hosts, port, told, initial, cx));
         self.open.open.store(true, Ordering::Relaxed);
         if existed
@@ -161,17 +183,7 @@ impl Hub {
     }
 
     fn set_client(&mut self, p: Provider, on: bool) {
-        if let Some(c) = self.clients.as_mut() {
-            c[client_index(p)] = on;
-        }
-        self.shared.set_paused(p, !on);
-        let (proxy, port) = (self.proxy.clone(), self.proxy_port);
-        std::thread::spawn(move || {
-            let pointed = clients::pointed(p, port);
-            let r = clients::set(p, on, port);
-            let restarted = p == Provider::Codex && r.is_ok() && matches!(codex_daemon::follow(), Ok(Followed::Restarted(_)));
-            proxy.send(Msg::ClientSet(p, r, if pointed { None } else { Some(restarted) }))
-        });
+        let _ = self.client_tx.send((p, on));
     }
 
     fn import_local(&mut self, p: Provider, target: Option<String>) {
@@ -323,18 +335,42 @@ impl Hub {
                 return;
             }
             Msg::Clients(on) => self.clients = Some(on),
-            Msg::ClientSet(prov, r, restarted) => {
+            Msg::ClientSet(prov, on, r, restarted) => {
+                if r.is_ok() {
+                    if let Some(c) = self.clients.as_mut() {
+                        c[client_index(prov)] = on;
+                    }
+                    self.shared.set_paused(prov, !on);
+                }
                 self.note = Some(match r {
                     Ok(()) => {
-                        let on = self.clients.is_some_and(|c| c[client_index(prov)]);
-                        let when = match (prov, restarted) {
-                            (_, None) => "from its next request",
-                            (Provider::Codex, Some(true)) => "from now (its service restarted)",
-                            (Provider::Codex, Some(false)) => "from now",
-                            (Provider::Claude, Some(_)) => "from its next start",
-                        };
-                        let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
-                        (format!("{} {verb} {when}.", prov.client()), false)
+                        if prov == Provider::Antigravity && restarted.is_some() {
+                            if on {
+                                let is_fish = std::env::var("SHELL").is_ok_and(|s| s.ends_with("/fish") || s == "fish");
+                                if is_fish {
+                                    let fish_p = std::env::var_os("XDG_CONFIG_HOME")
+                                        .map(std::path::PathBuf::from)
+                                        .filter(|p| !p.as_os_str().is_empty())
+                                        .map(|c| folder(&c.join("fish/conf.d/olo-pool-agy.fish")))
+                                        .unwrap_or_else(|| "~/.config/fish/conf.d/olo-pool-agy.fish".into());
+                                    (format!("Antigravity uses the pool in new fish shells (or run: source {fish_p})."), false)
+                                } else {
+                                    let sh_p = folder(&clients::agy_sh_path());
+                                    (format!("Antigravity uses the pool in new shells (or run: . {sh_p})."), false)
+                                }
+                            } else {
+                                ("Antigravity is back to its own sign-in in new shells.".to_owned(), false)
+                            }
+                        } else {
+                            let when = match (prov, restarted) {
+                                (_, None) => "from its next request",
+                                (Provider::Codex, Some(true)) => "from now (its service restarted)",
+                                (Provider::Codex, Some(false)) => "from now",
+                                (Provider::Claude | Provider::Antigravity, Some(_)) => "from its next start",
+                            };
+                            let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
+                            (format!("{} {verb} {when}.", prov.client()), false)
+                        }
                     }
                     Err(e) => (e, true),
                 });
@@ -411,7 +447,7 @@ fn add_menu() -> Menu {
         if i > 0 {
             menu = menu.separator();
         }
-        let key = format!("{p:?}").to_lowercase();
+        let key = p.key();
         menu = menu.item(format!("Add This Computer’s {} Sign-In", p.client()), format!("import:{key}")).item(format!("Sign In to {} Separately…", p.client()), format!("separate:{key}"));
     }
     menu
@@ -440,6 +476,17 @@ fn swatch_dot(color: Hsla, size_pt: f32) -> Element {
     .h(px(size_pt))
     .flex_shrink_0()
     .into_element()
+}
+
+/// Provider identity colour: shifts Antigravity purple ~20° warmer toward magenta
+/// and ~10% lighter in dark mode so its chart line and dots separate unmistakably
+/// from Codex blue while keeping light mode unchanged.
+fn provider_color(p: &olo_kit::palette::Palette, prov: Provider) -> Hsla {
+    if prov == Provider::Antigravity && p.mode == olo_theme::ThemeMode::Dark { style::c([0xd2, 0x7c, 0xf2, 0xff]) } else { style::c(p.hue(provider_hue(prov))) }
+}
+
+fn client_color(p: &olo_kit::palette::Palette, client: &str) -> Hsla {
+    if client == "Antigravity" && p.mode == olo_theme::ThemeMode::Dark { style::c([0xd2, 0x7c, 0xf2, 0xff]) } else { style::c(p.hue(hue(client))) }
 }
 
 /// Readable secondary text colour (meets ≥4.5:1 contrast on both panel and list well).
@@ -557,14 +604,14 @@ fn neutral_machine_icon(is_local: bool, size_pt: f32) -> Element {
     .into_element()
 }
 
-/// Crisp 3/4-arc busy spinner glyph in neutral secondary slate (replaces hollow "off" circle).
+/// Crisp 3/4-arc busy spinner glyph in neutral secondary ink matching 8pt status dots at 1×.
 fn spinner_arc(across: f32) -> Element {
     canvas(move |g, b| {
         let p = theme::palette();
-        let ink = neutral_bar_color(&p);
+        let ink = secondary_ink(&p, p.list_background);
         let c = b.center();
-        let rad = (across * 0.5 - 0.9).max(2.0);
-        let mut path = olo_kit::PathBuilder::stroke(px(1.6));
+        let rad = (across * 0.5 - 0.75).max(2.2);
+        let mut path = olo_kit::PathBuilder::stroke(px(1.5));
         let steps = 18;
         let start = -std::f32::consts::FRAC_PI_2;
         let sweep = std::f32::consts::TAU * 0.72;
@@ -624,25 +671,41 @@ fn barber_bar(width_pt: f32, height_pt: f32, color: Hsla) -> Element {
     .into_element()
 }
 
+/// Extract the actual loopback port from a bind/listen error message so the
+/// Gateway Stopped banner and This Computer section always blame the exact
+/// listener port that failed (17891 vs 17892).
+fn error_port(raw_error: &str, fallback: u16) -> u16 {
+    if let Some(rest) = raw_error.split("127.0.0.1:").nth(1) {
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        if let Ok(p) = digits.parse::<u16>()
+            && p != 0
+        {
+            return p;
+        }
+    }
+    fallback
+}
+
 /// BeOS-native full-width Gateway Stopped alert rendered above the tab bar on every tab.
 fn gateway_stopped_alert(p: &olo_kit::palette::Palette, port: u16, raw_error: &str, cx: &mut Cx<PoolWindow>) -> Element {
     let dark = p.mode == olo_theme::ThemeMode::Dark;
-    let bg = if dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.05)) } else { style::c([0xfd, 0xec, 0xec, 0xff]) };
-    let border = style::c(p.failure);
+    let bg = if dark { style::c(olo_theme::mix(p.panel_background, p.failure, 0.14)) } else { style::c([0xfd, 0xec, 0xec, 0xff]) };
+    let border = Hsla { a: 0.40, ..style::c(p.failure) };
+    let blamed_port = error_port(raw_error, port);
     let body = if raw_error.to_ascii_lowercase().contains("address already in use") {
-        format!("Port {port} is in use by another app, so Claude\u{a0}Code and Codex on this computer can’t reach the pool.")
+        format!("Another app is using port {blamed_port}, so Claude\u{a0}Code, Codex, and Antigravity can’t reach the pool.")
     } else {
         raw_error.to_owned()
     };
     div()
         .w_full()
-        .p(px(12.0))
+        .p(px(16.0))
         .bg(bg)
         .border_1()
         .border_color(border)
         .flex()
         .flex_col()
-        .gap(px(8.0))
+        .gap(px(10.0))
         .child(
             div().w_full().flex().flex_row().items_start().gap(px(10.0)).child(icon_box("stop", 32.0)).child(
                 div()
@@ -703,11 +766,28 @@ fn neutral_bar_color(p: &olo_kit::palette::Palette) -> Hsla {
     style::neutral_bar(p)
 }
 
+/// Compute ONE shared quota-label column width across every account in the list
+/// so every meter bar in Claude Code, Codex, and Antigravity starts on one exact
+/// vertical axis and no scoped bucket label ("Gemini Pro", "Weekly") ever truncates.
+fn shared_quota_label_width(accounts: &[Account], narrow: bool) -> f32 {
+    let font = style::ui_font(FontWeight::NORMAL);
+    let max_w = accounts
+        .iter()
+        .flat_map(|a| a.windows.iter())
+        .map(|w| {
+            let l = if w.label.is_empty() { plan_name(w.name.trim_end_matches("_window")) } else { w.label.clone() };
+            f32::from(style::text_width(l, style::SMALL_SIZE, font.clone()))
+        })
+        .fold(0.0f32, f32::max);
+    let max_cap = if narrow { 92.0 } else { 124.0 };
+    (max_w + 12.0).ceil().clamp(48.0, max_cap)
+}
+
 /// Compact inline single-row quota meter with fixed right-aligned percentage column
 /// and left-aligned reset text (`5-hour | [====] |  42%  resets Thu 00:09 (2h 10m)`).
-/// Bar colour uses neutral slate (<80%), true amber (#E3A008, 80–94%), or failure red (≥95%);
-/// the percentage text carries the warning/error colour too so state is never colour-bar-only.
-fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, narrow: bool) -> Element {
+/// Bar colour uses neutral slate (<80%) or warning amber (≥80% / exhausted); failure red
+/// is reserved strictly for actionable errors (`Signed out`, `failed`, `Can't sync`).
+fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, label_w: f32, narrow: bool) -> Element {
     let label = if w.label.is_empty() { plan_name(w.name.trim_end_matches("_window")) } else { w.label.clone() };
     let pct = w.used.clamp(0.0, 999.0);
     let pct_text = format!("{pct:.0}%");
@@ -718,13 +798,7 @@ fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, narr
     } else {
         String::new()
     };
-    let (bar_color, pct_color) = if w.exhausted(t) || pct >= 95.0 {
-        (style::c(p.failure), style::c(p.failure))
-    } else if pct >= 80.0 {
-        (style::c([0xe3, 0xa0, 0x08, 0xff]), style::c(p.warning))
-    } else {
-        (neutral_bar_color(p), style::c(p.panel_text))
-    };
+    let (bar_color, pct_color) = if w.exhausted(t) || pct >= 80.0 { (style::c([0xe3, 0xa0, 0x08, 0xff]), style::c(p.warning)) } else { (neutral_bar_color(p), style::c(p.panel_text)) };
     let fraction = (w.used / 100.0) as f32;
     let bar_key = style::key((fraction.to_bits(), style::ink_key(Some(bar_color))));
     let bar_el = canvas(move |g, b| {
@@ -734,6 +808,7 @@ fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, narr
     .paint_key(bar_key)
     .flex_1()
     .min_w(px(60.0))
+    .max_w(px(280.0))
     .h(px(10.0));
 
     let sec = secondary_ink(p, p.list_background);
@@ -745,7 +820,7 @@ fn inline_quota_row(p: &olo_kit::palette::Palette, w: &QuotaWindow, t: i64, narr
         .flex_row()
         .items_center()
         .gap(px(8.0))
-        .child(div().w(px(48.0)).flex_shrink_0().child(StringView::new(label).size(style::SMALL_SIZE).color(sec).height(DETAIL_ROW)))
+        .child(div().w(px(label_w)).flex_shrink_0().child(StringView::new(label).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)))
         .child(bar_el)
         .child(div().w(px(32.0)).flex_shrink_0().flex().justify_end().child(StringView::new(pct_text).size(style::SMALL_SIZE).color(pct_color).height(DETAIL_ROW)))
         .child(div().w(px(reset_w)).flex_shrink_0().child(StringView::new(reset_text).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)))
@@ -900,7 +975,8 @@ impl PoolWindow {
         cx.after(Duration::from_secs(if busy { 1 } else { 20 }), WinMsg::Tick);
     }
 
-    fn snapshot(&self) -> (Pool, Activity, Vec<Stands>, Option<Running>, Option<[bool; 2]>, HashMap<String, Vec<String>>) {
+    #[allow(clippy::type_complexity)]
+    fn snapshot(&self) -> (Pool, Activity, Vec<Stands>, Option<Running>, Option<[bool; 3]>, HashMap<String, Vec<String>>) {
         if demo_enabled() {
             let d = demo_data();
             return (d.pool, d.activity, d.hosts, Some(d.running), Some(d.uses), d.unaccepted);
@@ -961,11 +1037,22 @@ impl PoolWindow {
         opts
     }
 
+    fn effective_port(&self) -> u16 {
+        let bound = self.shared.bound_port();
+        if bound != 0 {
+            bound
+        } else if self.proxy_port != 0 {
+            self.proxy_port
+        } else {
+            olo_token_pool::intercept::PORT
+        }
+    }
+
     fn account_menu_items(a: &Account) -> Menu {
         Menu::new("Account")
             .item("Rename…", "rename")
             .item("Refresh Quota", "refresh")
-            .item("Use a Reset Credit…", "reset")
+            .item("Claim Banked Reset…", "reset")
             .enabled(a.credit().is_some())
             .separator()
             .item("Sign In Again in Terminal…", "sign-in")
@@ -1013,15 +1100,36 @@ impl PoolWindow {
         let sec_panel = secondary_ink(p, p.panel_background);
 
         // ONE sunken framed list well for all provider groups & account rows.
-        // Sections stay in fixed canonical order (Claude Code, then Codex); problems float to the top within each section.
+        // Sections stay in fixed canonical order (Claude Code, Codex, Antigravity);
+        // problems float to the top within each section.
         let providers = sorted_providers(&pool.saved.accounts, t);
         let first_account_id = providers.first().and_then(|&prov| sorted_accounts(&pool.saved.accounts, prov, t).first().map(|a| a.id.as_str()));
         let sel_id = self.selected_account.as_deref().filter(|id| pool.account(id).is_some()).or(first_account_id);
         let wide = ["Sign In…", "Retry Now", "Sync Now", "Install", "Try Again"].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
+        let shared_label_w = shared_quota_label_width(&pool.saved.accounts, narrow);
 
-        let mut list = div().w_full().flex().flex_col();
+        let group_bg = style::c(p.panel_background);
+        let make_group_hdr = |prov: Provider, after_another: bool| {
+            div()
+                .w_full()
+                .h(px(22.0))
+                .px(px(10.0))
+                .bg(group_bg)
+                .border_b_1()
+                .border_t(px(if after_another { 1.0 } else { 0.0 }))
+                .border_color(style::c(p.control_border))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(div().w(px(13.0)).flex_shrink_0().flex().justify_center().child(swatch_dot(provider_color(p, prov), 8.0)))
+                .child(StringView::new(prov.client()).size(style::SMALL_SIZE).bold(true).height(DETAIL_ROW))
+                .into_element()
+        };
+
+        let mut items: Vec<Element> = Vec::new();
+        let mut group_indices: Vec<(Provider, usize)> = Vec::new();
         let mut any = false;
-        let group_bg = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.list_background, p.panel_background, 0.7)) } else { style::c(p.panel_background) };
         for prov in providers {
             let accounts = sorted_accounts(&pool.saved.accounts, prov, t);
             if accounts.is_empty() {
@@ -1032,33 +1140,18 @@ impl PoolWindow {
             // to it. A separator of the kit's stood here too.)
             let after_another = any;
             any = true;
-            // Tinted 22pt group header row with provider colour swatch aligned to checkbox column
-            list = list.child(
-                div()
-                    .w_full()
-                    .h(px(22.0))
-                    .px(px(10.0))
-                    .bg(group_bg)
-                    .border_b_1()
-                    .border_t(px(if after_another { 1.0 } else { 0.0 }))
-                    .border_color(style::c(p.control_border))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .child(div().w(px(13.0)).flex_shrink_0().flex().justify_center().child(swatch_dot(style::c(p.hue(provider_hue(prov))), 8.0)))
-                    .child(StringView::new(prov.client()).size(style::SMALL_SIZE).bold(true).height(DETAIL_ROW)),
-            );
+            group_indices.push((prov, items.len()));
+            items.push(make_group_hdr(prov, after_another));
             for (idx, account) in accounts.iter().enumerate() {
                 let pending = account.kept_on.as_deref().and_then(|hid| unaccepted.get(hid)).map(Vec::as_slice).unwrap_or(&[]);
                 let rollup = account_rollup(pool, account, hosts);
                 let is_sel = sel_id == Some(account.id.as_str());
-                let row = self.account_row(account, hosts, pending, &rollup, is_sel, wide, narrow, p, cx);
-                list = list.child(if idx > 0 { under_rule(p, row) } else { row });
+                let row = self.account_row(account, hosts, pending, &rollup, is_sel, wide, shared_label_w, narrow, p, cx);
+                items.push(if idx > 0 { under_rule(p, row) } else { row });
             }
         }
         if !any {
-            let top_pad = if compact_h { 24.0 } else { 96.0 };
+            let top_pad = if compact_h { 24.0 } else { 168.0 };
             let empty_box = if pool.loaded {
                 div()
                     .w_full()
@@ -1070,16 +1163,48 @@ impl PoolWindow {
                     .items_center()
                     .child(icon_box("token-pool", 48.0))
                     .child(div().pt(px(8.0)).child(StringView::new("No accounts yet").bold(true).height(m::LABEL_ROW)))
-                    .child(div().pt(px(4.0)).flex().flex_col().items_center().child(
-                        StringView::new("Click Add Account… to add a Claude\u{a0}Code or Codex subscription.").size(style::SMALL_SIZE).color(secondary_ink(p, p.list_background)).height(DETAIL_ROW),
-                    ))
+                    .child(
+                        div().pt(px(4.0)).flex().flex_col().items_center().child(
+                            StringView::new("Click Add Account… to add a Claude\u{a0}Code, Codex, or Antigravity subscription.")
+                                .size(style::SMALL_SIZE)
+                                .color(secondary_ink(p, p.list_background))
+                                .wrap(true),
+                        ),
+                    )
             } else {
                 div().w_full().pt(px(top_pad)).pb(px(24.0)).px(px(24.0)).flex().justify_center().child(StringView::new("Opening the pool’s accounts…").color(secondary_ink(p, p.list_background)))
             };
-            list = list.child(empty_box);
+            items.push(empty_box.into_element());
         }
 
-        let well = div().flex_1().min_h_0().child(ScrollView::new(&self.accounts_scroll).background(p.list_background).child(list));
+        // Sticky active provider header so scrolling past a section banner never
+        // leaves orphaned account/Today rows without provider context.
+        let active_group = |handle: &ScrollHandle, groups: &[(Provider, usize)]| -> Option<(Provider, usize)> {
+            let y = -handle.offset().y;
+            let mut found = None;
+            for &(prov, idx) in groups {
+                if let Some(b) = handle.bounds_for_item(idx)
+                    && y > b.top()
+                {
+                    found = Some((prov, idx));
+                }
+            }
+            found
+        };
+        let stuck = active_group(&self.accounts_scroll, &group_indices);
+        let mut sv = ScrollView::new(&self.accounts_scroll).background(p.list_background).children(items);
+        if let Some(&(first_prov, first_idx)) = group_indices.first() {
+            let (sticky_prov, sticky_idx) = stuck.unwrap_or((first_prov, first_idx));
+            sv = sv.sticky(sticky_idx, 22.0, make_group_hdr(sticky_prov, false));
+            let handle = self.accounts_scroll.clone();
+            let groups = group_indices;
+            sv = sv.on_scroll(move |_, cx| {
+                if active_group(&handle, &groups) != stuck {
+                    cx.invalidate_owner();
+                }
+            });
+        }
+        let well = div().flex_1().min_h_0().child(sv);
 
         // Consistent footer order matching Machines: [Add Account…] [Edit Account…] … Updated HH:MM [Refresh Quota]
         let footer_text: (String, bool) = match (&self.told.waiting, &self.told.note) {
@@ -1141,6 +1266,7 @@ impl PoolWindow {
         rollup: &AccountRollup,
         selected: bool,
         wide: f32,
+        label_w: f32,
         narrow: bool,
         p: &olo_kit::palette::Palette,
         cx: &mut Cx<Self>,
@@ -1149,9 +1275,10 @@ impl PoolWindow {
         let sec = secondary_ink(p, p.list_background);
         let cust = custody(account, hosts, unaccepted);
         let is_signed_out = account.signed_out.is_some();
+        let is_out_of_quota = !is_signed_out && account.enabled && account_out_of_quota(account, t).is_some();
         let asking_inline = self.removing_account.as_deref() == Some(account.id.as_str()) || self.resetting_credit.as_deref() == Some(account.id.as_str());
 
-        // Line 1: checkbox mark + bold account name (+ inline red Signed out / grey Paused)
+        // Line 1: checkbox mark + bold account name (+ inline red Signed out / amber Out of quota / grey Paused)
         // Right side: inline Sign In… button when signed out (matching Retry Now on Machines),
         // else crisp machine custody chip with 16pt computer/server icon.
         let (shared, id_toggle) = (self.shared.clone(), account.id.clone());
@@ -1173,17 +1300,18 @@ impl PoolWindow {
             title_group = title_group.child(StringView::new("·").color(sec).height(DETAIL_ROW)).child(StringView::new("Signed out").color(style::c(p.failure)).height(DETAIL_ROW));
         } else if !account.enabled {
             title_group = title_group.child(StringView::new("·").color(sec).height(DETAIL_ROW)).child(StringView::new("Paused").color(sec).height(DETAIL_ROW));
+        } else if is_out_of_quota {
+            title_group = title_group.child(StringView::new("·").color(sec).height(DETAIL_ROW)).child(StringView::new("Out of quota").color(style::c(p.warning)).height(DETAIL_ROW));
         }
 
-        let mut row_action: Option<Button> = None;
         let line1 = if is_signed_out {
             let (prov, id_sign) = (account.provider, account.id.clone());
-            row_action = Some(Button::new("Sign In…").id(format!("pool-signin-{}", account.id)).min_width(wide).on_click(move |_: &ClickEvent, _| {
+            let btn = Button::new("Sign In…").id(format!("pool-signin-{}", account.id)).min_width(wide).on_click(move |_: &ClickEvent, _| {
                 if !demo_enabled() {
                     olo_kit::proxy().send(Msg::SignIn(prov, id_sign.clone(), false));
                 }
-            }));
-            div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().child(title_group)
+            });
+            div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(8.0)).child(title_group).child(btn)
         } else {
             let chip_text = if cust.is_pending() { format!("{} · Sync pending", cust.machine_name()) } else { cust.machine_name() };
             let machine_chip = div()
@@ -1197,7 +1325,7 @@ impl PoolWindow {
             div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(8.0)).child(title_group).child(machine_chip)
         };
 
-        // Line 2+: indented straight under the bold account name (13pt gutter + 5pt gap = 18pt)
+        // Line 2+: indented straight under the bold account name (13pt gutter + 6pt gap = 19pt)
         let mut facts: Vec<String> = Vec::new();
         if let Some(e) = &account.email {
             facts.push(e.clone());
@@ -1207,7 +1335,7 @@ impl PoolWindow {
         }
         let credits: u32 = account.credits.iter().map(|c| c.remaining).sum();
         if credits > 0 {
-            facts.push(format!("{credits} reset credit{}", if credits == 1 { "" } else { "s" }));
+            facts.push(format!("{credits} banked reset{}", if credits == 1 { "" } else { "s" }));
         }
 
         let mut body = div().w_full().pl(px(19.0)).flex().flex_col().gap(px(3.0));
@@ -1218,22 +1346,15 @@ impl PoolWindow {
             // Reason in readable secondary ink (matches Remote Rex Hosts' error rows!)
             body = body.child(StringView::new(why.clone()).size(style::SMALL_SIZE).color(sec).wrap(true));
         } else {
-            if let Some(until) = schedule::blocked_until(account, "", t) {
-                // (Four points taller than the card's small rows, its words
-                // two lower: the rows under it stand 21 px apart at 1×, and
-                // at its default height this one stood 23 from the line
-                // over it, at the small rows' own 19. The review's, of the
-                // first demo to show an account that is out.)
-                body = body.child(StringView::new(format!("Out of quota until {} (in {})", clock(until), span(until - t))).size(style::SMALL_SIZE).color(style::c(p.warning)).height(DETAIL_ROW + 4.0));
-                // (Its provider goes on answering it, from usage credits:
-                // said, with when the pool turns to them. Never first:
-                // Ben, 2026-11-26.)
-                if account.paid_until("", t).is_some() {
-                    body = body.child(StringView::new("Its usage credits are used only when no other account can serve and no reset can be claimed.").size(style::SMALL_SIZE).color(sec).wrap(true));
-                }
+            if let Some((paid_fam, until)) = account_paid_scope(account, t) {
+                let note = match paid_fam {
+                    Some(fam) => format!("{fam} waiting for reset at {} · paid usage credits only if nothing else can serve.", clock(until)),
+                    None => format!("Waiting for reset at {} · paid usage credits only if nothing else can serve.", clock(until)),
+                };
+                body = body.child(div().w_full().pb(px(3.0)).child(StringView::new(note).size(style::SMALL_SIZE).color(sec).wrap(true)));
             }
             for w in &account.windows {
-                body = body.child(inline_quota_row(p, w, t, narrow));
+                body = body.child(inline_quota_row(p, w, t, label_w, narrow));
             }
             if account.windows.is_empty() {
                 body = body.child(StringView::new(if account.synced.is_some() { "No quota reported." } else { "Reading quota…" }).size(style::SMALL_SIZE).color(sec));
@@ -1241,16 +1362,17 @@ impl PoolWindow {
             // Concise Today line (+ red failed count when failures occurred); local/remote breakdown lives on Activity.
             let u = &rollup.total_today;
             let failed_n = rollup.recent.iter().filter(|r| r.request.outcome == Outcome::Failed).count();
-            let today_base = if u.requests == 0 {
+            let mut today_base = if u.requests == 0 {
                 "Today: 0 requests".to_owned()
             } else {
                 format!("Today: {} request{} · {} in · {} out", u.requests, if u.requests == 1 { "" } else { "s" }, tokens(u.input_tokens), tokens(u.output_tokens))
             };
-            let mut today_row = div().w_full().pt(px(2.0)).flex().flex_row().items_center().gap(px(4.0)).child(StringView::new(today_base).size(style::SMALL_SIZE).color(sec).height(DETAIL_ROW));
             if failed_n > 0 {
-                today_row = today_row
-                    .child(StringView::new("·").size(style::SMALL_SIZE).color(sec).height(DETAIL_ROW))
-                    .child(StringView::new(format!("{failed_n} failed")).size(style::SMALL_SIZE).color(style::c(p.failure)).height(DETAIL_ROW));
+                today_base.push_str(" · ");
+            }
+            let mut today_row = div().w_full().pt(px(2.0)).flex().flex_row().items_center().child(StringView::new(today_base).size(style::SMALL_SIZE).color(sec).height(DETAIL_ROW));
+            if failed_n > 0 {
+                today_row = today_row.child(StringView::new(format!("{failed_n} failed")).size(style::SMALL_SIZE).color(style::c(p.failure)).height(DETAIL_ROW));
             }
             body = body.child(today_row);
         }
@@ -1264,11 +1386,11 @@ impl PoolWindow {
             let when = account.credit().and_then(|c| c.expires_at).map(|e| format!(" (expires {})", clock(e))).unwrap_or_default();
             body = body.child(div().pt(px(4.0)).child(warning_confirm(
                 p,
-                format!("Use one of {}’s reset credits now{when}?", account.name),
-                "Its quota starts again immediately, and the credit is spent.".into(),
+                format!("Claim one of {}’s banked resets now{when}?", account.name),
+                "Its quota refills immediately, and one banked reset is spent.".into(),
                 None,
                 Button::new("Cancel").on_click(cx.msg(WinMsg::ResetCredit(None))),
-                Button::new("Use Credit").on_click(cx.msg(WinMsg::ResetCredit(Some(account.id.clone())))),
+                Button::new("Claim Reset").on_click(cx.msg(WinMsg::ResetCredit(Some(account.id.clone())))),
             )));
         } else if self.removing_account.as_deref() == Some(account.id.as_str()) {
             body = body.child(div().pt(px(4.0)).child(warning_confirm(
@@ -1304,9 +1426,6 @@ impl PoolWindow {
             .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, cx| cx.send(WinMsg::SelectAccount(id_click.clone()))))
             .on_mouse_down(MouseButton::Right, cx.listener(move |_, e: &olo_kit::MouseDownEvent, cx| cx.send(WinMsg::AccountContextMenu(id_ctx.clone(), e.position))))
             .child(content_col);
-        if let Some(btn) = row_action {
-            row = row.child(btn);
-        }
         if let Some(bg) = sel_tint {
             row = row.bg(bg);
         }
@@ -1320,24 +1439,41 @@ impl PoolWindow {
         let vp_w = f32::from(vp.width);
         let vp_h = f32::from(vp.height);
         let narrow = vp_w < 480.0;
-        let compact_h = vp_h < 420.0;
+        let compact_h = vp_h < 520.0;
         let two_col = compact_h && vp_w >= 560.0;
+        // Short two-column tiles (quarter / horizontal half / horizontal third): merge
+        // Machine + Span popups onto the left column's top row aligned with "Recent Requests"
+        // on the right so chart + table both keep generous vertical height!
+        let merged_two_col = two_col && vp_h < 480.0;
+        // Quarter / narrow vertical: pair Machine + Span on the top bar so "Requests per Minute"
+        // stands cleanly without colliding with the span popup.
+        let pair_top_popups = !two_col && vp_w < 500.0;
         let sec_panel = secondary_ink(p, p.panel_background);
-        let sec_list = secondary_ink(p, p.list_background);
 
         let opts = Self::scope_options(hosts);
         let scope_idx = opts.iter().position(|(s, _)| s == &self.scope).unwrap_or(0);
         let active_scope = opts[scope_idx].0.clone();
         let scope_labels: Vec<SharedString> = opts.iter().map(|(_, l)| l.clone()).collect();
-        // Size "All Machines" popup box (~136pt inside the 196pt labeled control) wider than "Last Hour" (124pt).
-        let mut scope_pick = MenuField::new("pool-scope", scope_labels, scope_idx).width(if narrow { 130.0 } else { 196.0 }).on_change(cx.msg_with(|i: &usize| WinMsg::ScopeIndex(*i)));
-        if !narrow {
+        // Keep "Machine:" label unless space is tight in merged horizontal-third or very narrow.
+        let show_machine_lbl = vp_w >= 360.0 && !merged_two_col && !pair_top_popups;
+        let scope_w = if merged_two_col || pair_top_popups {
+            132.0
+        } else if !show_machine_lbl {
+            130.0
+        } else if narrow {
+            172.0
+        } else {
+            196.0
+        };
+        let mut scope_pick = MenuField::new("pool-scope", scope_labels, scope_idx).width(scope_w).on_change(cx.msg_with(|i: &usize| WinMsg::ScopeIndex(*i)));
+        if show_machine_lbl {
             scope_pick = scope_pick.label("Machine:");
         }
 
         let (span_name, span_mins, step_mins, grid_secs) = SPANS[self.span_idx];
-        let span_pick =
-            MenuField::new("pool-span", SPANS.iter().map(|s| s.0.into()).collect(), self.span_idx).width(if narrow { 112.0 } else { 124.0 }).on_change(cx.msg_with(|i: &usize| WinMsg::Span(*i)));
+        let span_pick = MenuField::new("pool-span", SPANS.iter().map(|s| s.0.into()).collect(), self.span_idx)
+            .width(if narrow || merged_two_col || pair_top_popups { 112.0 } else { 124.0 })
+            .on_change(cx.msg_with(|i: &usize| WinMsg::Span(*i)));
 
         let t_ms = crate::now_ms();
         let live = live_requests(pool, hosts, &active_scope);
@@ -1346,43 +1482,69 @@ impl PoolWindow {
             n => format!("{n} running"),
         };
 
-        let top_bar = div().w_full().flex().flex_row().items_center().justify_between().gap(px(m::SPACING)).child(scope_pick);
-
         let picked_line: Option<String> = match &self.activity_picked {
             Some(Pick::Live(key)) => live.iter().find(|o| &o.key == key).map(|o| live_details(o, t_ms)),
             Some(Pick::Recent(r)) => Some(recent_details(r)),
             None => None,
         };
 
-        // Requests per Minute chart: two crisp lines (no overlapping muddy wash),
-        // bare numeric Y-axis gutter with tight headroom, and X-axis clock band inside the well
-        // (automatically switches to clean sparkline below 76pt total height in hthird).
+        // Requests per Minute chart: crisp lines (no overlapping muddy wash),
+        // draw series largest-total-first so smaller curves (Codex) stay visible on top,
+        // and use plain `HH:MM` X-axis ticks (weekday only on `00:00` midnight).
         let t = now();
         let since = t - span_mins * 60;
         let combined = merged_activity(local_activity, hosts, &active_scope);
         let clients_list: Vec<String> = combined.clients();
         let lines: Vec<VecDeque<(f64, f64)>> = clients_list.iter().map(|cl| combined.series(cl, t, span_mins, step_mins)).collect();
         let totals: Vec<_> = clients_list.iter().map(|cl| combined.totals(cl, since)).collect();
-        let shown: Vec<usize> = (0..clients_list.len()).filter(|&i| i < 2 || totals[i].requests > 0).collect();
-        let series: Vec<Series> = shown.iter().map(|&i| Series::new(clients_list[i].clone(), style::c(p.hue(hue(&clients_list[i]))), Rc::new(lines[i].clone())).fill(false)).collect();
+        let shown: Vec<usize> = (0..clients_list.len()).filter(|&i| i < PROVIDERS.len() || totals[i].requests > 0).collect();
+        let mut draw_order = shown.clone();
+        draw_order.sort_by(|&a, &b| totals[b].requests.cmp(&totals[a].requests).then_with(|| a.cmp(&b)));
+        let series: Vec<Series> = draw_order.iter().map(|&i| Series::new(clients_list[i].clone(), client_color(p, &clients_list[i]), Rc::new(lines[i].clone())).fill(false)).collect();
         let fmt = |v: f64| if v >= 10.0 || (v - v.round()).abs() < 1e-6 { format!("{v:.0}/min") } else { format!("{v:.1}/min") };
-        let graph =
-            Graph::new(format!("pool-activity-{span_name}"), series, t as f64).span((span_mins * 60) as f64).grid(grid_secs).unit(fmt).y_labels(true).x_labels(|sec| clock(sec as i64)).smooth(false);
+        let span_secs = (span_mins * 60) as f64;
+        let graph = Graph::new(format!("pool-activity-{span_name}"), series, t as f64 + span_secs * 0.015)
+            .span(span_secs)
+            .grid(grid_secs)
+            .unit(fmt)
+            .y_labels(true)
+            .x_labels(|sec| {
+                use chrono::{Local, TimeZone, Timelike};
+                let Some(at) = Local.timestamp_opt(sec as i64, 0).single() else { return String::new() };
+                if at.hour() == 0 && at.minute() == 0 { at.format("%a %H:%M").to_string() } else { at.format("%H:%M").to_string() }
+            })
+            .smooth(false);
 
-        // Clean legend with uniform " · " middot spacing
-        let mut legend_row =
-            if two_col && vp_w < 780.0 { div().w_full().pt(px(2.0)).flex().flex_col().gap(px(2.0)) } else { div().w_full().pt(px(2.0)).flex().flex_row().flex_wrap().items_center().gap(px(16.0)) };
+        // Stacked 18pt legend with fixed provider column whenever 3 entries would wrap
+        // into an orphan 2+1 line; in wide+short horizontal-third (`two_col && left_w >= 380`)
+        // use one concise horizontal row so the sparkline keeps full vertical breathing room.
+        let left_w = (vp_w * 0.41).clamp(244.0, 480.0);
+        let stack_legend = if two_col { left_w < 380.0 } else { vp_w < 860.0 };
+        let compact_inline_legend = two_col && !stack_legend;
+        let mut legend_row = if stack_legend {
+            div().w_full().pt(px(2.0)).flex().flex_col().gap(px(0.0))
+        } else if compact_inline_legend {
+            div().w_full().h(px(18.0)).flex().flex_row().items_center().gap(px(12.0))
+        } else {
+            div().w_full().pt(px(2.0)).flex().flex_row().flex_wrap().items_center().gap(px(16.0))
+        };
         for &i in &shown {
             let x = totals[i];
-            let req_word = format!("{} request{}", x.requests, if x.requests == 1 { "" } else { "s" });
+            let req_word = if compact_inline_legend { format!("{}", x.requests) } else { format!("{} request{}", x.requests, if x.requests == 1 { "" } else { "s" }) };
             let tok_tail = if !two_col && x.input_tokens + x.output_tokens > 0 { format!(" · {} in · {} out", tokens(x.input_tokens), tokens(x.output_tokens)) } else { String::new() };
-            let mut item = div()
+            let name_el = div()
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(5.0))
-                .child(swatch_dot(style::c(p.hue(hue(&clients_list[i]))), 7.0))
+                .gap(px(6.0))
+                .child(swatch_dot(client_color(p, &clients_list[i]), 7.0))
                 .child(StringView::new(clients_list[i].clone()).size(style::SMALL_SIZE).height(DETAIL_ROW));
+            let name_col = if stack_legend { name_el.w(px(88.0)).flex_shrink_0() } else { name_el };
+            let mut item = if stack_legend {
+                div().w_full().h(px(18.0)).flex().flex_row().items_center().gap(px(6.0)).child(name_col)
+            } else {
+                div().flex().flex_row().items_center().gap(px(5.0)).child(name_col)
+            };
             if x.failed > 0 {
                 let mut stats = div()
                     .flex()
@@ -1400,18 +1562,30 @@ impl PoolWindow {
             legend_row = legend_row.child(item);
         }
 
-        // Chart header ALWAYS stays paired above the chart with uniform m::CONTROL_HEIGHT so
-        // two-column headings and wells align on one exact horizontal line!
-        let chart_hdr = div()
-            .w_full()
-            .h(px(m::CONTROL_HEIGHT))
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .gap(px(6.0))
-            .child(StringView::new("Requests per Minute").bold(true).height(m::CONTROL_HEIGHT))
-            .child(span_pick);
+        let (top_bar_opt, chart_hdr) = if merged_two_col {
+            // Horizontal-third: both popups share the left column's top row,
+            // aligned on the exact same baseline as "Recent Requests" on the right.
+            let hdr = div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(6.0)).child(scope_pick).child(span_pick);
+            (None, hdr)
+        } else if pair_top_popups {
+            // Quarter / narrow: Machine + Span share the top bar so the chart heading never collides.
+            let top = div().w_full().flex().flex_row().items_center().justify_between().gap(px(6.0)).child(scope_pick).child(span_pick);
+            let hdr = div().w_full().h(px(m::LABEL_ROW)).flex().flex_row().items_center().child(StringView::new("Requests per Minute").bold(true).height(m::LABEL_ROW));
+            (Some(top), hdr)
+        } else {
+            let top = div().w_full().flex().flex_row().items_center().justify_between().gap(px(m::SPACING)).child(scope_pick);
+            let hdr = div()
+                .w_full()
+                .h(px(m::CONTROL_HEIGHT))
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .gap(px(6.0))
+                .child(StringView::new("Requests per Minute").bold(true).height(m::CONTROL_HEIGHT))
+                .child(span_pick);
+            (Some(top), hdr)
+        };
 
         let mut chart_section = div().w_full().flex().flex_col().gap(px(6.0)).child(chart_hdr);
         if two_col {
@@ -1421,214 +1595,16 @@ impl PoolWindow {
             chart_section = chart_section.child(div().w_full().h(px(gh)).child(graph)).child(legend_row);
         }
 
-        // Recent Requests table: drop columns strictly by available width, cap Status compactly
-        // on the right (88pt) so Model absorbs extra width cleanly without a 240pt void!
-        let left_w = (vp_w * 0.41).clamp(244.0, 480.0);
-        let table_w = if two_col { vp_w - left_w - 44.0 } else { vp_w - 28.0 };
+        // Recent Requests table: compute exact inner content width (subtracting outer pad,
+        // TabView inset, well border, vertical scrollbar, and row padding), drop Machine
+        // FIRST when all 7 columns don't fit, and cap Model on wide/zoomed windows so
+        // Account absorbs slack right beside Model instead of floating across a void.
+        let outer_pad = if vp_h < 340.0 || vp_w < 460.0 { 6.0 } else { 10.0 };
+        let well_w = if two_col { vp_w - left_w - 20.0 - 2.0 * outer_pad - 24.0 } else { vp_w - 2.0 * outer_pad - 24.0 };
+        let inner_w = well_w - 4.0 - widgets::SCROLL_BAR - 2.0 * m::TIGHT;
         let recent = recent_requests(pool, hosts, &active_scope, RECENT_TABLE_LIMIT);
-        let show_machine_col = active_scope == MachineScope::All && hosts.iter().any(|h| h.wanted || h.status.is_some()) && table_w >= 540.0;
-        let show_account_col = table_w >= 390.0;
-        let show_io_cols = table_w >= 500.0;
-        let time_w = 38.0;
-        let machine_w = if table_w < 580.0 { 76.0 } else { 94.0 };
-        let account_w = if two_col && table_w > 540.0 { 92.0 } else { 76.0 };
-        let in_w = 44.0;
-        let out_w = 40.0;
-        let status_w = 88.0;
-
-        let hdr_div = || div().w(px(1.0)).h(px(12.0)).bg(style::c(p.control_border)).flex_shrink_0();
-        let col_hdr = |label: &'static str, right: bool| {
-            let s = StringView::new(label).size(style::SMALL_SIZE).bold(true).color(sec_panel).height(DETAIL_ROW);
-            if right { div().w_full().flex().justify_end().child(s) } else { div().child(s) }
-        };
-        let mut header_row = div()
-            .w_full()
-            .pl(px(m::TIGHT))
-            .pr(px(m::TIGHT + widgets::SCROLL_BAR))
-            .pt(px(3.0))
-            .pb(px(2.0))
-            .bg(style::c(p.panel_background))
-            .border_b_1()
-            .border_color(style::c(p.control_border))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(5.0))
-            .child(div().w(px(time_w)).flex_shrink_0().child(col_hdr("Time", false)));
-        if show_machine_col {
-            header_row = header_row.child(hdr_div()).child(div().w(px(machine_w)).flex_shrink_0().child(col_hdr("Machine", false)));
-        }
-        header_row = header_row.child(hdr_div()).child(div().flex_1().min_w(px(108.0)).child(col_hdr("Model", false)));
-        if show_account_col {
-            header_row = header_row.child(hdr_div()).child(div().w(px(account_w)).flex_shrink_0().child(col_hdr("Account", false)));
-        }
-        if show_io_cols {
-            header_row = header_row
-                .child(hdr_div())
-                .child(div().w(px(in_w)).pr(px(4.0)).flex_shrink_0().child(col_hdr("In", true)))
-                .child(hdr_div())
-                .child(div().w(px(out_w)).pr(px(4.0)).flex_shrink_0().child(col_hdr("Out", true)));
-        }
-        header_row = header_row.child(hdr_div()).child(div().w(px(status_w)).flex_shrink_0().child(col_hdr("Status", true)));
-
-        let sel_bg = style::c(style::selection_ground(p, p.list_background, true));
-        let sel_fg = style::c(style::selection_text(p, p.panel_text, true));
-        let mut rows = div().w_full().pb(px(4.0)).flex().flex_col();
-
-        // Invisible 1px spacer matching header dividers so every column x-coordinate matches exactly
-        let col_gap = || div().w(px(1.0)).flex_shrink_0();
-
-        for o in &live {
-            let selected = matches!(&self.activity_picked, Some(Pick::Live(k)) if k == &o.key);
-            let fg = if selected { sel_fg } else { style::c(p.panel_text) };
-            let dim_fg = if selected { sel_fg } else { sec_list };
-            let start_clock = if o.started_ms > 0 { clock(o.started_ms / 1000) } else { "now".into() };
-            let key = o.key.clone();
-            let mut line = div()
-                .w_full()
-                .pl(px(m::TIGHT))
-                .pr(px(m::TIGHT + 2.0))
-                .py(px(3.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(5.0))
-                .cursor_pointer()
-                .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, cx| cx.send(WinMsg::Pick(Pick::Live(key.clone())))));
-            if selected {
-                line = line.bg(sel_bg);
-            }
-            line = line.child(div().w(px(time_w)).flex_shrink_0().child(StringView::new(start_clock).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
-            if show_machine_col {
-                line = line.child(col_gap()).child(
-                    div()
-                        .w(px(machine_w))
-                        .flex_shrink_0()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(neutral_machine_icon(o.is_local, 14.0))
-                        .child(div().flex_1().min_w_0().child(StringView::new(o.machine_name.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW))),
-                );
-            }
-            line = line.child(col_gap()).child(
-                div()
-                    .flex_1()
-                    .min_w(px(108.0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(5.0))
-                    .child(swatch_dot(style::c(p.hue(provider_hue(o.provider))), 6.0))
-                    .child(div().flex_1().min_w_0().child(StringView::new(o.model.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW))),
-            );
-            if show_account_col {
-                line = line.child(col_gap()).child(div().w(px(account_w)).flex_shrink_0().child(StringView::new(o.account.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW)));
-            }
-            if show_io_cols {
-                line = line
-                    .child(col_gap())
-                    .child(div().w(px(in_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new("—").size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)))
-                    .child(col_gap())
-                    .child(div().w(px(out_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new("—").size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
-            }
-            // In-progress uses neutral primary ink ("Running · 2.3s"), keeping green for health dots only.
-            let elapsed = if o.started_ms > 0 { format!("Running · {}", duration((t_ms - o.started_ms).max(0) as u64)) } else { "Running".to_owned() };
-            line = line.child(col_gap()).child(div().w(px(status_w)).flex_shrink_0().flex().justify_end().child(StringView::new(elapsed).size(style::SMALL_SIZE).color(fg).height(DETAIL_ROW)));
-            rows = rows.child(line);
-        }
-
-        for r in &recent {
-            let selected = matches!(&self.activity_picked, Some(Pick::Recent(pk)) if pk.key == r.key);
-            let fg = if selected { sel_fg } else { style::c(p.panel_text) };
-            let dim_fg = if selected { sel_fg } else { sec_list };
-            let (status_text, status_fg) = match r.request.outcome {
-                Outcome::Completed => (duration(r.request.ms), dim_fg),
-                Outcome::Failed if r.request.status != 0 => (format!("Failed · {}", r.request.status), if selected { sel_fg } else { style::c(p.failure) }),
-                other => (other.label().to_owned(), if selected { sel_fg } else { outcome_color(p, other) }),
-            };
-            let picked = r.clone();
-            let mut line = div()
-                .w_full()
-                .pl(px(m::TIGHT))
-                .pr(px(m::TIGHT + 2.0))
-                .py(px(3.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(5.0))
-                .cursor_pointer()
-                .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, cx| cx.send(WinMsg::Pick(Pick::Recent(picked.clone())))));
-            if selected {
-                line = line.bg(sel_bg);
-            }
-            line = line.child(div().w(px(time_w)).flex_shrink_0().child(StringView::new(clock(r.request.at)).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
-            if show_machine_col {
-                line = line.child(col_gap()).child(
-                    div()
-                        .w(px(machine_w))
-                        .flex_shrink_0()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(neutral_machine_icon(r.is_local, 14.0))
-                        .child(div().flex_1().min_w_0().child(StringView::new(r.machine_name.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW))),
-                );
-            }
-            line = line.child(col_gap()).child(
-                div()
-                    .flex_1()
-                    .min_w(px(108.0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(5.0))
-                    .child(swatch_dot(style::c(p.hue(provider_hue(r.provider))), 6.0))
-                    .child(div().flex_1().min_w_0().child(StringView::new(r.request.model.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW))),
-            );
-            if show_account_col {
-                line = line.child(col_gap()).child(div().w(px(account_w)).flex_shrink_0().child(StringView::new(r.account.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW)));
-            }
-            if show_io_cols {
-                let in_s = if r.request.usage.input_tokens > 0 { tokens(r.request.usage.input_tokens) } else { "—".into() };
-                let out_s = if r.request.usage.output_tokens > 0 { tokens(r.request.usage.output_tokens) } else { "—".into() };
-                line = line
-                    .child(col_gap())
-                    .child(div().w(px(in_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new(in_s).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)))
-                    .child(col_gap())
-                    .child(div().w(px(out_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new(out_s).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
-            }
-            line =
-                line.child(col_gap()).child(div().w(px(status_w)).flex_shrink_0().flex().justify_end().child(StringView::new(status_text).size(style::SMALL_SIZE).color(status_fg).height(DETAIL_ROW)));
-            rows = rows.child(line);
-        }
-
-        if live.is_empty() && recent.is_empty() {
-            let empty_msg = format!("No requests in the {}.", span_name.to_ascii_lowercase());
-            rows = rows.child(div().w_full().py(px(32.0)).flex().justify_center().child(StringView::new(empty_msg).color(sec_list)));
-        }
-
-        // Genuine BeOS sunken frame around Recent Requests matching Graph and ScrollView wells!
-        let well_frame = canvas(|g, b| {
-            let p = theme::palette();
-            style::sunken(g, b, &p, false);
-        })
-        .paint_key(style::key("recent-well"))
-        .absolute()
-        .inset_0();
-        let recent_well = div()
-            .relative()
-            .flex_1()
-            .min_h_0()
-            .p(px(2.0))
-            .bg(style::c(p.list_background))
-            .flex()
-            .flex_col()
-            .child(header_row)
-            .child(div().flex_1().min_h_0().child(ScrollView::new(&self.activity_scroll).border(false).background(p.list_background).child(rows)))
-            .child(well_frame);
+        let has_hosts = hosts.iter().any(|h| h.wanted || h.status.is_some());
+        let recent_well = self.recent_requests_well(&live, &recent, &active_scope, has_hosts, inner_w, t_ms, span_name, p, cx);
 
         let recent_hdr_h = if two_col { m::CONTROL_HEIGHT } else { m::LABEL_ROW };
         let recent_hdr = div()
@@ -1657,21 +1633,16 @@ impl PoolWindow {
 
         // Wide + short horizontal third or quarter: side-by-side 2-column layout with 20pt gutter
         if two_col {
-            let left_col =
-                div().relative().w(px(left_w)).flex_shrink_0().h_full().flex().flex_col().child(canvas(|g, b| olo_kit::review::own_grid(g, b)).paint_key(0).absolute().inset_0()).child(chart_section);
+            let left_col = div().relative().w(px(left_w)).flex_shrink_0().h_full().flex().flex_col().child(canvas(olo_kit::review::own_grid).paint_key(0).absolute().inset_0()).child(chart_section);
             let mut right_col = div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(6.0)).child(recent_hdr).child(recent_well);
             if let Some(bar) = picked_bar {
                 right_col = right_col.child(bar);
             }
-            return div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .flex_col()
-                .gap(px(6.0))
-                .child(top_bar)
-                .child(div().flex_1().min_h_0().flex().flex_row().gap(px(20.0)).child(left_col).child(right_col))
-                .into_element();
+            let body = div().flex_1().min_h_0().flex().flex_row().gap(px(20.0)).child(left_col).child(right_col);
+            return match top_bar_opt {
+                Some(top_bar) => div().flex_1().min_h_0().flex().flex_col().gap(px(6.0)).child(top_bar).child(body).into_element(),
+                None => body.into_element(),
+            };
         }
 
         let mut recent_section = div().flex_1().min_h_0().flex().flex_col().gap(px(6.0)).child(recent_hdr).child(recent_well);
@@ -1679,17 +1650,261 @@ impl PoolWindow {
             recent_section = recent_section.child(bar);
         }
 
-        div().flex_1().min_h_0().flex().flex_col().gap(px(if compact_h { 8.0 } else { 12.0 })).child(top_bar).child(chart_section).child(recent_section).into_element()
+        let mut root = div().flex_1().min_h_0().flex().flex_col().gap(px(if compact_h { 8.0 } else { 20.0 }));
+        if let Some(top_bar) = top_bar_opt {
+            root = root.child(top_bar);
+        }
+        root.child(chart_section).child(recent_section).into_element()
+    }
+
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn recent_requests_well(
+        &self,
+        live: &[LiveReq],
+        recent: &[RecentReq],
+        active_scope: &MachineScope,
+        has_hosts: bool,
+        inner_w: f32,
+        t_ms: i64,
+        span_name: &str,
+        p: &olo_kit::palette::Palette,
+        cx: &mut Cx<Self>,
+    ) -> Element {
+        let sec_panel = secondary_ink(p, p.panel_background);
+        let sec_list = secondary_ink(p, p.list_background);
+        let time_w = 38.0;
+        let machine_w = 96.0;
+        let account_w = 88.0;
+        let in_w = 42.0;
+        let out_w = 38.0;
+        let status_w = 96.0;
+        // Exact column sums (including 1pt divider + 10pt gaps per boundary, model_min = 128pt):
+        // 7 cols: 592pt; 6 cols (no Machine): 485pt; 4 cols (no Machine/In/Out): 383pt; 3 cols: 284pt.
+        let show_machine_col = *active_scope == MachineScope::All && has_hosts && inner_w >= 596.0;
+        let show_io_cols = inner_w >= 488.0;
+        let show_account_col = inner_w >= 386.0;
+        let wide_account_flex = show_account_col && inner_w > 700.0;
+
+        let hdr_div = || div().w(px(1.0)).h(px(12.0)).bg(style::c(p.control_border)).flex_shrink_0();
+        let hdr_label = |label: &'static str| StringView::new(label).size(style::SMALL_SIZE).bold(true).color(sec_panel).height(DETAIL_ROW);
+        let mut header_row = div()
+            .w_full()
+            .pl(px(m::TIGHT))
+            .pr(px(m::TIGHT + widgets::SCROLL_BAR))
+            .pt(px(3.0))
+            .pb(px(2.0))
+            .bg(style::c(p.panel_background))
+            .border_b_1()
+            .border_color(style::c(p.control_border))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(5.0))
+            .child(div().w(px(time_w)).flex_shrink_0().child(hdr_label("Time")));
+        if show_machine_col {
+            header_row = header_row.child(hdr_div()).child(div().w(px(machine_w)).flex_shrink_0().child(hdr_label("Machine")));
+        }
+        header_row = header_row.child(hdr_div()).child(if wide_account_flex {
+            div().w(px(176.0)).pr(px(8.0)).flex_shrink_0().child(hdr_label("Model"))
+        } else {
+            div().flex_1().min_w(px(116.0)).pr(px(8.0)).child(hdr_label("Model"))
+        });
+        if show_account_col {
+            header_row = header_row.child(hdr_div()).child(if wide_account_flex {
+                div().flex_1().min_w(px(96.0)).child(hdr_label("Account"))
+            } else {
+                div().w(px(account_w)).flex_shrink_0().child(hdr_label("Account"))
+            });
+        }
+        if show_io_cols {
+            header_row = header_row
+                .child(hdr_div())
+                .child(div().w(px(in_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(hdr_label("In")))
+                .child(hdr_div())
+                .child(div().w(px(out_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(hdr_label("Out")));
+        }
+        header_row = header_row.child(hdr_div()).child(div().w(px(status_w)).flex_shrink_0().flex().justify_end().child(hdr_label("Status")));
+
+        let sel_bg = style::c(style::selection_ground(p, p.list_background, true));
+        let sel_fg = style::c(style::selection_text(p, p.panel_text, true));
+        let mut rows = div().w_full().pb(px(4.0)).flex().flex_col();
+
+        let col_gap = || div().w(px(1.0)).flex_shrink_0();
+
+        for o in live {
+            let selected = matches!(&self.activity_picked, Some(Pick::Live(k)) if k == &o.key);
+            let fg = if selected { sel_fg } else { style::c(p.panel_text) };
+            let dim_fg = if selected { sel_fg } else { sec_list };
+            let start_clock = if o.started_ms > 0 { clock(o.started_ms / 1000) } else { "now".into() };
+            let key = o.key.clone();
+            let mut line = div()
+                .w_full()
+                .pl(px(m::TIGHT))
+                .pr(px(m::TIGHT))
+                .py(px(3.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, cx| cx.send(WinMsg::Pick(Pick::Live(key.clone())))));
+            if selected {
+                line = line.bg(sel_bg);
+            }
+            line = line.child(div().w(px(time_w)).flex_shrink_0().child(StringView::new(start_clock).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
+            if show_machine_col {
+                line = line.child(col_gap()).child(
+                    div()
+                        .w(px(machine_w))
+                        .flex_shrink_0()
+                        .overflow_hidden()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(neutral_machine_icon(o.is_local, 14.0))
+                        .child(div().flex_1().min_w_0().child(StringView::new(o.machine_name.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW))),
+                );
+            }
+            let model_cell = div()
+                .pr(px(8.0))
+                .overflow_hidden()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .child(swatch_dot(provider_color(p, o.provider), 6.0))
+                .child(div().flex_1().min_w_0().child(StringView::new(o.model.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW)));
+            line = line.child(col_gap()).child(if wide_account_flex { model_cell.w(px(176.0)).flex_shrink_0() } else { model_cell.flex_1().min_w(px(116.0)) });
+            if show_account_col {
+                let acct_txt = StringView::new(o.account.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW);
+                line = line.child(col_gap()).child(if wide_account_flex {
+                    div().flex_1().min_w(px(96.0)).overflow_hidden().child(acct_txt)
+                } else {
+                    div().w(px(account_w)).flex_shrink_0().overflow_hidden().child(acct_txt)
+                });
+            }
+            if show_io_cols {
+                line = line
+                    .child(col_gap())
+                    .child(div().w(px(in_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new("—").size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)))
+                    .child(col_gap())
+                    .child(div().w(px(out_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new("—").size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
+            }
+            let elapsed = if o.started_ms > 0 { format!("Running · {}", duration((t_ms - o.started_ms).max(0) as u64)) } else { "Running".to_owned() };
+            line = line
+                .child(col_gap())
+                .child(div().w(px(status_w)).flex_shrink_0().overflow_hidden().flex().justify_end().child(StringView::new(elapsed).size(style::SMALL_SIZE).color(fg).height(DETAIL_ROW)));
+            rows = rows.child(line);
+        }
+
+        for r in recent {
+            let selected = matches!(&self.activity_picked, Some(Pick::Recent(pk)) if pk.key == r.key);
+            let fg = if selected { sel_fg } else { style::c(p.panel_text) };
+            let dim_fg = if selected { sel_fg } else { sec_list };
+            let (status_text, status_fg) = match r.request.outcome {
+                Outcome::Completed => (duration(r.request.ms), dim_fg),
+                Outcome::Failed if r.request.status != 0 => (format!("Failed · {}", r.request.status), if selected { sel_fg } else { style::c(p.failure) }),
+                other => (other.label().to_owned(), if selected { sel_fg } else { outcome_color(p, other) }),
+            };
+            let picked = r.clone();
+            let mut line = div()
+                .w_full()
+                .pl(px(m::TIGHT))
+                .pr(px(m::TIGHT))
+                .py(px(3.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, cx| cx.send(WinMsg::Pick(Pick::Recent(picked.clone())))));
+            if selected {
+                line = line.bg(sel_bg);
+            }
+            line = line.child(div().w(px(time_w)).flex_shrink_0().child(StringView::new(clock(r.request.at)).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
+            if show_machine_col {
+                line = line.child(col_gap()).child(
+                    div()
+                        .w(px(machine_w))
+                        .flex_shrink_0()
+                        .overflow_hidden()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(neutral_machine_icon(r.is_local, 14.0))
+                        .child(div().flex_1().min_w_0().child(StringView::new(r.machine_name.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW))),
+                );
+            }
+            let model_cell = div()
+                .pr(px(8.0))
+                .overflow_hidden()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .child(swatch_dot(provider_color(p, r.provider), 6.0))
+                .child(div().flex_1().min_w_0().child(StringView::new(r.request.model.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW)));
+            line = line.child(col_gap()).child(if wide_account_flex { model_cell.w(px(176.0)).flex_shrink_0() } else { model_cell.flex_1().min_w(px(116.0)) });
+            if show_account_col {
+                let acct_txt = StringView::new(r.account.clone()).size(style::SMALL_SIZE).color(fg).cut(true).height(DETAIL_ROW);
+                line = line.child(col_gap()).child(if wide_account_flex {
+                    div().flex_1().min_w(px(96.0)).overflow_hidden().child(acct_txt)
+                } else {
+                    div().w(px(account_w)).flex_shrink_0().overflow_hidden().child(acct_txt)
+                });
+            }
+            if show_io_cols {
+                let in_s = if r.request.usage.input_tokens > 0 { tokens(r.request.usage.input_tokens) } else { "—".into() };
+                let out_s = if r.request.usage.output_tokens > 0 { tokens(r.request.usage.output_tokens) } else { "—".into() };
+                line = line
+                    .child(col_gap())
+                    .child(div().w(px(in_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new(in_s).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)))
+                    .child(col_gap())
+                    .child(div().w(px(out_w)).pr(px(4.0)).flex_shrink_0().flex().justify_end().child(StringView::new(out_s).size(style::SMALL_SIZE).color(dim_fg).height(DETAIL_ROW)));
+            }
+            line = line
+                .child(col_gap())
+                .child(div().w(px(status_w)).flex_shrink_0().overflow_hidden().flex().justify_end().child(StringView::new(status_text).size(style::SMALL_SIZE).color(status_fg).height(DETAIL_ROW)));
+            rows = rows.child(line);
+        }
+
+        if live.is_empty() && recent.is_empty() {
+            let empty_msg = format!("No requests in the {}.", span_name.to_ascii_lowercase());
+            rows = rows.child(div().w_full().py(px(32.0)).flex().justify_center().child(StringView::new(empty_msg).color(sec_list)));
+        }
+
+        let well_frame = canvas(|g, b| {
+            let p = theme::palette();
+            style::sunken(g, b, &p, false);
+        })
+        .paint_key(style::key("recent-well"))
+        .absolute()
+        .inset_0();
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .p(px(2.0))
+            .bg(style::c(p.list_background))
+            .flex()
+            .flex_col()
+            .child(header_row)
+            .child(div().flex_1().min_h_0().child(ScrollView::new(&self.activity_scroll).border(false).background(p.list_background).child(rows)))
+            .child(well_frame)
+            .into_element()
     }
 
     // ---- Tab 3: Machines --------------------------------------------------
 
-    fn machines_tab(&self, pool: &Pool, hosts: &[Stands], running: Option<&Running>, uses: Option<[bool; 2]>, p: &olo_kit::palette::Palette, cx: &mut Cx<Self>) -> Element {
+    fn machines_tab(&self, pool: &Pool, hosts: &[Stands], running: Option<&Running>, uses: Option<[bool; 3]>, p: &olo_kit::palette::Palette, cx: &mut Cx<Self>) -> Element {
         let vp = cx.viewport_size();
         let vp_w = f32::from(vp.width);
         let vp_h = f32::from(vp.height);
         let narrow = vp_w < 480.0;
-        let compact_h = vp_h < 420.0;
+        let compact_h = vp_h < 520.0;
         let tight_h = vp_h < 290.0;
         let sec_panel = secondary_ink(p, p.panel_background);
 
@@ -1699,16 +1914,21 @@ impl PoolWindow {
         let sel_host = self.selected_host.as_deref().filter(|id| ordered_hosts.iter().any(|h| h.id == *id)).or_else(|| ordered_hosts.first().map(|h| h.id.as_str()));
         let sel_stands = sel_host.and_then(|id| ordered_hosts.iter().find(|h| h.id == id));
 
+        let left_w = if vp_w >= 860.0 { (vp_w * 0.34).clamp(240.0, 360.0) } else { (vp_w * 0.38).clamp(212.0, 300.0) };
+        let hosts_col_w = if compact_h { vp_w - left_w - 44.0 } else { vp_w - 28.0 };
+
         // Remote Rex Hosts heading + red error count matching Activity's red failures
         let err_n = ordered_hosts.iter().filter(|h| h.error.is_some()).count();
-        let mut count_row = div().flex().flex_row().items_center().gap(px(4.0));
+        let mut count_row = div().flex().flex_row().items_center();
         if !ordered_hosts.is_empty() {
-            count_row = count_row.child(StringView::new(format!("{} configured", ordered_hosts.len())).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(sec_panel).height(m::LABEL_ROW));
+            let mut cfg_txt = format!("{} configured", ordered_hosts.len());
+            if err_n > 0 {
+                cfg_txt.push_str(" · ");
+            }
+            count_row = count_row.child(StringView::new(cfg_txt).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(sec_panel).height(m::LABEL_ROW));
             if err_n > 0 {
                 let err_txt = if err_n == 1 { "1 error".to_owned() } else { format!("{err_n} errors") };
-                count_row = count_row
-                    .child(StringView::new("·").size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(sec_panel).height(m::LABEL_ROW))
-                    .child(StringView::new(err_txt).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(style::c(p.failure)).height(m::LABEL_ROW));
+                count_row = count_row.child(StringView::new(err_txt).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(style::c(p.failure)).height(m::LABEL_ROW));
             }
         }
         let hosts_hdr = div().w_full().flex().flex_row().items_center().justify_between().child(StringView::new("Remote Rex Hosts").bold(true).height(m::LABEL_ROW)).child(count_row);
@@ -1725,7 +1945,7 @@ impl PoolWindow {
             );
         }
         if ordered_hosts.is_empty() {
-            let top_pad = if compact_h { 20.0 } else { 56.0 };
+            let top_pad = if compact_h { 20.0 } else { 96.0 };
             host_list = host_list.child(
                 div()
                     .w_full()
@@ -1751,21 +1971,21 @@ impl PoolWindow {
             for (idx, h) in ordered_hosts.iter().enumerate() {
                 let kept = kept_names(pool, Some(&h.id));
                 let is_sel = sel_host == Some(h.id.as_str());
-                let row = self.remote_host_row(h, &kept, is_sel, wide, narrow, compact_h, p, cx);
+                let row = self.remote_host_row(h, &kept, is_sel, wide, hosts_col_w, p, cx);
                 host_list = host_list.child(if idx > 0 { under_rule(p, row) } else { row });
             }
         }
         let hosts_well = div().flex_1().min_h_0().child(ScrollView::new(&self.hosts_scroll).background(p.list_background).child(host_list));
 
-        // Consistent footer matching Accounts order & labels: [Add Host…] [Remove Host…] … Checked HH:MM [Sync All]
+        // Consistent footer matching Accounts order & labels: [Add Host…] [Remove Host…] … Updated HH:MM [Sync All]
         let any_syncable = ordered_hosts.iter().any(|h| h.wanted && h.doing.is_none());
         let asking_this = sel_host.is_some() && self.host_asking_remove.as_deref() == sel_host;
         let can_remove = !asking_this && sel_stands.is_some_and(|h| h.wanted && h.doing.is_none());
         let rm_id = sel_stands.map(|h| h.id.clone()).unwrap_or_default();
-        let checked_text = last_checked_at(&ordered_hosts).map(|at| format!("Checked {}", clock(at))).unwrap_or_default();
+        let checked_text = last_checked_at(&ordered_hosts).map(|at| format!("Updated {}", clock(at))).unwrap_or_default();
 
         let mut status_box = div().flex_1().min_w_0().flex().justify_end();
-        if !checked_text.is_empty() && !narrow && !compact_h {
+        if !checked_text.is_empty() && hosts_col_w >= 440.0 {
             status_box = status_box.child(StringView::new(checked_text).color(sec_panel).height(m::CONTROL_HEIGHT));
         }
 
@@ -1784,7 +2004,6 @@ impl PoolWindow {
         if compact_h {
             // In short tiles (quarter / horizontal third), both columns share one top heading line
             // with a generous 20pt gutter, and host buttons sit right beneath Remote Rex Hosts!
-            let left_w = (vp_w * 0.36).clamp(198.0, 290.0);
             let hosts_col = div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(6.0)).child(hosts_hdr).child(hosts_well).child(footer);
             return div()
                 .flex_1()
@@ -1792,17 +2011,7 @@ impl PoolWindow {
                 .flex()
                 .flex_row()
                 .gap(px(20.0))
-                .child(
-                    div()
-                        .relative()
-                        .w(px(left_w))
-                        .flex_shrink_0()
-                        .h_full()
-                        .flex()
-                        .flex_col()
-                        .child(canvas(|g, b| olo_kit::review::own_grid(g, b)).paint_key(0).absolute().inset_0())
-                        .child(local_section),
-                )
+                .child(div().relative().w(px(left_w)).flex_shrink_0().h_full().flex().flex_col().child(canvas(olo_kit::review::own_grid).paint_key(0).absolute().inset_0()).child(local_section))
                 .child(hosts_col)
                 .into_element();
         }
@@ -1818,7 +2027,7 @@ impl PoolWindow {
         pool: &Pool,
         hosts: &[Stands],
         running: Option<&Running>,
-        uses: Option<[bool; 2]>,
+        uses: Option<[bool; 3]>,
         narrow: bool,
         compact_h: bool,
         tight_h: bool,
@@ -1829,19 +2038,21 @@ impl PoolWindow {
         // Unified left column matching Remote Rex Hosts below: 13pt gutter + 5pt gap = 18pt exact!
         const INDENT: f32 = 18.0;
 
+        let port = self.effective_port();
         let (gw_lamp, gw_status, gw_err, gw_detail) = match &pool.error {
             Some(e) => {
-                let reason = if e.to_ascii_lowercase().contains("address already in use") { format!("Port {} is in use by another app.", self.proxy_port) } else { e.clone() };
+                let blamed = error_port(e, port);
+                let reason = if e.to_ascii_lowercase().contains("address already in use") { format!("Port {blamed} is in use by another app.") } else { e.clone() };
                 (Light::Down, "Stopped".to_owned(), true, Some(reason))
             }
-            None if compact_h => (Light::On, format!("127.0.0.1:{}", self.proxy_port), false, None),
-            None => (Light::On, format!("Listening on 127.0.0.1:{}", self.proxy_port), false, None),
+            None if compact_h => (Light::On, format!("127.0.0.1:{port}"), false, None),
+            None => (Light::On, format!("Listening on 127.0.0.1:{port}"), false, None),
         };
 
         // Bold section heading matching "Remote Rex Hosts" (same x-offset, no BBox frame!)
         let hdr = div().w_full().flex().flex_row().items_center().justify_between().gap(px(8.0)).child(StringView::new("This Computer").bold(true).height(m::LABEL_ROW));
 
-        // 1. Gateway row + named account custody (broken cleanly at " · " when narrow/compact)
+        // 1. Gateway row + named account custody (wrapped cleanly at " · " when narrow/compact)
         let mut gw_block = div().w_full().flex().flex_col().gap(px(2.0)).child(
             div()
                 .w_full()
@@ -1863,19 +2074,25 @@ impl PoolWindow {
             {
                 let cap_right = sentence(right);
                 gw_block = gw_block
-                    .child(div().w_full().pl(px(INDENT)).child(StringView::new(left.to_owned()).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)))
-                    .child(div().w_full().pl(px(INDENT)).child(StringView::new(cap_right).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)));
+                    .child(div().w_full().pl(px(INDENT)).child(StringView::new(left.to_owned()).size(style::SMALL_SIZE).color(sec).wrap(true)))
+                    .child(div().w_full().pl(px(INDENT)).child(StringView::new(cap_right).size(style::SMALL_SIZE).color(sec).wrap(true)));
             } else {
                 gw_block = gw_block.child(div().w_full().pl(px(INDENT)).child(StringView::new(custody_line).size(style::SMALL_SIZE).color(sec).wrap(true)));
             }
         }
 
-        // 2. Claude Code client row + matching right-hand count (no redundant "through the pool"!)
+        // 2. Client routing toggles grouped under a concise "Use the pool" label so
+        //    quarter & horizontal-half never cramp before the right-aligned running count.
+        let use_pool_hdr = div().w_full().child(StringView::new("Use the pool").size(style::SMALL_SIZE).color(sec).height(DETAIL_ROW));
+
         let claude_on = uses.is_some_and(|c| c[client_index(Provider::Claude)]);
         let claude_procs = running.map(|r| r.claude.as_slice()).unwrap_or(&[]);
         let claude_count = match claude_procs.len() {
             0 => "Idle".to_owned(),
             n => format!("{n} running"),
+        };
+        let status_cell = |txt: String, col: Hsla| {
+            div().w(px(58.0)).flex_shrink_0().flex().justify_end().child(StringView::new(txt).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(col).height(m::MARK_ROW))
         };
         let mut claude_block = div().w_full().flex().flex_col().gap(px(2.0)).child(
             div()
@@ -1884,13 +2101,13 @@ impl PoolWindow {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .gap(px(8.0))
-                .child(CheckBox::new("Claude Code uses the pool", claude_on).enabled(uses.is_some()).on_toggle(|on: &bool, _| {
+                .gap(px(12.0))
+                .child(div().flex_1().min_w_0().child(CheckBox::new("Claude Code", claude_on).enabled(uses.is_some()).on_toggle(|on: &bool, _| {
                     if !demo_enabled() {
                         olo_kit::proxy().send(Msg::SetClient(Provider::Claude, *on));
                     }
-                }))
-                .child(StringView::new(claude_count).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(sec).height(m::MARK_ROW)),
+                })))
+                .child(status_cell(claude_count, sec)),
         );
         if !tight_h {
             for proc in claude_procs {
@@ -1909,10 +2126,8 @@ impl PoolWindow {
         let codex_on = uses.is_some_and(|c| c[client_index(Provider::Codex)]);
         let daemon = running.and_then(|r| r.daemon.as_ref());
         let needs_restart = daemon.is_some_and(|d| d.stale || (codex_on && d.connections.direct > 0 && d.connections.pool == 0));
-        let codex_check = CheckBox::new("Codex uses the pool", codex_on)
-            .height(if needs_restart && !narrow && !compact_h { m::CONTROL_HEIGHT } else { m::MARK_ROW })
-            .enabled(uses.is_some())
-            .on_toggle(|on: &bool, _| {
+        let codex_check =
+            CheckBox::new("Codex", codex_on).height(if needs_restart && !narrow && !compact_h { m::CONTROL_HEIGHT } else { m::MARK_ROW }).enabled(uses.is_some()).on_toggle(|on: &bool, _| {
                 if !demo_enabled() {
                     olo_kit::proxy().send(Msg::SetClient(Provider::Codex, *on));
                 }
@@ -1922,15 +2137,7 @@ impl PoolWindow {
         match daemon {
             None => {
                 codex_block = codex_block.child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .gap(px(8.0))
-                        .child(codex_check)
-                        .child(StringView::new("Stopped").size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(sec).height(m::MARK_ROW)),
+                    div().w_full().flex().flex_row().items_center().justify_between().gap(px(12.0)).child(div().flex_1().min_w_0().child(codex_check)).child(status_cell("Stopped".to_owned(), sec)),
                 );
             }
             Some(d) => {
@@ -1956,9 +2163,9 @@ impl PoolWindow {
                             .flex_row()
                             .items_center()
                             .justify_between()
-                            .gap(px(8.0))
-                            .child(codex_check)
-                            .child(StringView::new(conn_count).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(if needs_restart { style::c(p.failure) } else { sec }).height(m::MARK_ROW)),
+                            .gap(px(12.0))
+                            .child(div().flex_1().min_w_0().child(codex_check))
+                            .child(status_cell(conn_count, if needs_restart { style::c(p.failure) } else { sec })),
                     );
                 }
                 if !tight_h {
@@ -1977,16 +2184,15 @@ impl PoolWindow {
                     {
                         for th in threads {
                             let title = if th.title.is_empty() { "A conversation".to_owned() } else { format!("“{}”", th.title) };
-                            let place = th
-                                .cwd
-                                .as_deref()
-                                .map(|dir| {
+                            let line = match th.cwd.as_deref() {
+                                Some(dir) => {
                                     let f = folder(dir);
-                                    if narrow { format!(" · {}", middle_truncate(&f, 18)) } else { format!(" · {f}") }
-                                })
-                                .unwrap_or_default();
-                            codex_block =
-                                codex_block.child(div().w_full().pl(px(INDENT)).child(StringView::new(format!("{title}{place}")).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)));
+                                    let place = if narrow { middle_truncate(&f, 18) } else { f };
+                                    format!("{place} · since {} · {title}", clock(d.started))
+                                }
+                                None => format!("since {} · {title}", clock(d.started)),
+                            };
+                            codex_block = codex_block.child(div().w_full().pl(px(INDENT)).child(StringView::new(line).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW)));
                         }
                     } else {
                         codex_block = codex_block.child(
@@ -2014,14 +2220,45 @@ impl PoolWindow {
             }
         }
 
-        let mut content = div()
-            .w_full()
-            .flex()
-            .flex_col()
-            .gap(px(if tight_h { 6.0 } else { 8.0 }))
-            .child(div().w_full().pb(px(if tight_h { 2.0 } else { 6.0 })).child(gw_block))
-            .child(claude_block)
-            .child(codex_block);
+        // 4. Antigravity client row + running `agy` processes (matches Claude Code above)
+        let agy_on = uses.is_some_and(|c| c[client_index(Provider::Antigravity)]);
+        let agy_procs = running.map(|r| r.agy.as_slice()).unwrap_or(&[]);
+        let agy_count = match agy_procs.len() {
+            0 => "Idle".to_owned(),
+            n => format!("{n} running"),
+        };
+        let mut agy_block = div().w_full().flex().flex_col().gap(px(2.0)).child(
+            div()
+                .w_full()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .gap(px(12.0))
+                .child(div().flex_1().min_w_0().child(CheckBox::new("Antigravity", agy_on).enabled(uses.is_some()).on_toggle(|on: &bool, _| {
+                    if !demo_enabled() {
+                        olo_kit::proxy().send(Msg::SetClient(Provider::Antigravity, *on));
+                    }
+                })))
+                .child(status_cell(agy_count, sec)),
+        );
+        if !tight_h {
+            for proc in agy_procs {
+                let Process { started, cwd, connections, .. } = proc;
+                let raw_place = cwd.as_deref().map(folder).unwrap_or_else(|| "?".into());
+                let place = if narrow { middle_truncate(&raw_place, 18) } else { raw_place };
+                let wrong = agy_on && connections.direct > 0 && connections.pool == 0;
+                let line = if wrong { format!("{place} · bypassing pool · since {}", clock(*started)) } else { format!("{place} · since {}", clock(*started)) };
+                agy_block = agy_block
+                    .child(div().w_full().pl(px(INDENT)).child(StringView::new(line).size(style::SMALL_SIZE).color(if wrong { style::c(p.failure) } else { sec }).cut(true).height(DETAIL_ROW)));
+            }
+        }
+
+        let mut content = div().w_full().flex().flex_col().gap(px(if tight_h { 4.0 } else { 7.0 })).child(div().w_full().pb(px(if tight_h { 1.0 } else { 5.0 })).child(gw_block));
+        if !tight_h {
+            content = content.child(use_pool_hdr);
+        }
+        content = content.child(claude_block).child(codex_block).child(agy_block);
         if let Some((note, err)) = &self.told.note {
             content = content.child(StringView::new(note.clone()).size(style::SMALL_SIZE).color(if *err { style::c(p.failure) } else { sec }).wrap(true));
         }
@@ -2030,7 +2267,7 @@ impl PoolWindow {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn remote_host_row(&self, s: &Stands, kept: &[String], selected: bool, wide: f32, narrow: bool, compact_h: bool, p: &olo_kit::palette::Palette, cx: &mut Cx<Self>) -> Element {
+    fn remote_host_row(&self, s: &Stands, kept: &[String], selected: bool, wide: f32, hosts_col_w: f32, p: &olo_kit::palette::Palette, cx: &mut Cx<Self>) -> Element {
         let sec = secondary_ink(p, p.list_background);
         let (lamp, state) = host_stands(s);
         // Busy indicator uses crisp neutral 3/4-arc spinner (never hollow "off" circle or orange!)
@@ -2072,8 +2309,9 @@ impl PoolWindow {
             .child(StringView::new("·").color(sec).height(DETAIL_ROW))
             .child(div().flex_1().min_w_0().child(StringView::new(state).color(state_color).cut(true).height(DETAIL_ROW)));
 
-        // Uniform title line height across all rows (buttons align centred on the title line without shifting sublines!)
-        let narrow_row = narrow || compact_h;
+        // Width-driven layout: keep action button inline whenever the hosts column has ≥360pt
+        // (including horizontal third!), wrapping only in genuinely narrow columns.
+        let narrow_row = hosts_col_w < 360.0;
         let line1 = div().w_full().h(px(if narrow_row { 20.0 } else { m::CONTROL_HEIGHT })).flex().flex_row().items_center().child(title_group);
         let (right_btn, wrapped_btn) = match row_btn {
             Some(btn) if narrow_row => (None, Some(btn)),
@@ -2087,7 +2325,7 @@ impl PoolWindow {
             under = under.child(div().pt(px(4.0)).child(warning_confirm(
                 p,
                 olo_kit::tr!("Remove Token Pool from {}?", s.name).to_string(),
-                "Claude\u{a0}Code and Codex on this host will return to their own sign-ins.".into(),
+                "Claude\u{a0}Code, Codex, and Antigravity on this host will return to their own sign-ins.".into(),
                 Some("Any sign-ins kept there are copied back to This Computer first.".into()),
                 Button::new("Cancel").id(format!("pool-host-{}-cancel", s.id)).on_click(cx.msg::<ClickEvent>(WinMsg::HostAskRemove(None))),
                 Button::new("Remove").id(format!("pool-host-{}-confirm-remove", s.id)).on_click(cx.msg::<ClickEvent>(WinMsg::HostDo(s.id.clone(), "remove"))),
@@ -2109,7 +2347,7 @@ impl PoolWindow {
                     }
                     (None, _) => {
                         if let Some(status) = &s.status {
-                            let summary = host_summary(status, kept, s.heard_at, narrow || compact_h);
+                            let summary = host_summary(status, kept, s.heard_at, hosts_col_w < 460.0);
                             under = under.child(StringView::new(summary).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW));
                         }
                     }
@@ -2385,7 +2623,7 @@ impl View for PoolWindow {
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let mut content = div().flex_1().min_h_0().p(px(outer_pad)).flex().flex_col().gap(px(10.0));
         if let Some(err) = pool.error.as_deref() {
-            content = content.child(gateway_stopped_alert(p, self.proxy_port, err, cx));
+            content = content.child(gateway_stopped_alert(p, self.effective_port(), err, cx));
         }
         content = content.child(div().flex_1().min_h_0().child(tabs));
         div().size_full().flex().flex_col().child(bar).child(content)

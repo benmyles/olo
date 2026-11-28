@@ -66,6 +66,20 @@ something nobody here has is in "Blocked", with what it waits for.
   fixture): both columns are then near the smallest screen's height,
   with no room for another row; the tab wants laying out again before
   anything more goes in it.
+- **Token Pool Antigravity (`agy`) follow-ups** (deferred from Round 2
+  reviews `astra-bdf7d152b0` & `shots-r2/opus-look.md`):
+  - *Opus #2 (compact horizontal-third rows):* add a compact single-line
+    row mode for Accounts and Machines in very short Horizontal Third
+    tiling layouts so more accounts/hosts fit without scrolling.
+  - *Opus #3 (wide-window Accounts measure):* cap Account card row
+    measure (~640 pt) or switch to a two-column Accounts layout on wide /
+    zoomed windows so quota bars don't stretch across the full screen.
+  - *Astra #10 (exact model IDs in `upstream.rs`):* preserve exact
+    upstream model IDs rather than collapsing to broad model families
+    when recording per-model quota windows and usage.
+  - *Astra #18 (vault rollback compatibility):* keep Antigravity accounts
+    in a backwards-compatible sidecar or downgrade-safe vault schema so
+    rolling back to a pre-Antigravity binary cannot reject the vault.
 - **Token Pool, left of "usage credits come last"** (fixed
   2026-11-26; HACKING, Gateway): (1) *reset claiming across pools*
   (desktop + Rex host keeper done 2026-11-27: claiming follows keeper

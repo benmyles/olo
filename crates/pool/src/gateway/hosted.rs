@@ -92,6 +92,12 @@ pub struct Carried {
     /// claim borrowed accounts directly.
     #[serde(default)]
     pub host_claims: bool,
+    /// Authoritative set of providers covered by this carry payload. Omitted
+    /// accounts are only deleted on the receiver if their provider is covered
+    /// here (legacy v1/v2 desktops without this field only cover Claude+Codex,
+    /// so they can never delete kept Antigravity credentials on an upgraded host).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub covered_providers: Option<Vec<Provider>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -238,8 +244,11 @@ impl Shared {
             Ok(mut newer) => {
                 // (Only what is used is kept here: never its refresh token.)
                 newer.refresh = None;
+                if newer.account_id.is_none() {
+                    newer.account_id = current.account_id.clone();
+                }
                 self.asked.lock().unwrap().remove(id);
-                if newer.access != current.access {
+                if newer.access != current.access || newer.account_id != current.account_id {
                     self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), newer.clone());
                     self.touch();
                     return Ok(newer);
@@ -357,6 +366,11 @@ impl Shared {
                     Some(host) => Some(host.clone()),
                     None => Some(carried.from.clone()),
                 };
+                let prev_email = p.account(&c.id).and_then(|a| a.email.clone());
+                let same_identity = match (&prev_email, &c.email) {
+                    (Some(old), Some(new)) => old.eq_ignore_ascii_case(new),
+                    _ => true,
+                };
                 let ours = p.saved.credentials.get(&c.id).cloned();
                 let take = match (&c.credential, &ours) {
                     // A refresh token carried: this pool keeps it from now (a
@@ -370,30 +384,44 @@ impl Shared {
                         None => Some(theirs.clone()),
                         Some(o) if o.refresh.is_none() => {
                             let mut next = theirs.clone();
-                            if super::newer(o, theirs) {
+                            if same_identity && next.account_id.is_none() {
+                                next.account_id = o.account_id.clone();
+                            }
+                            if same_identity && super::newer(o, theirs) {
                                 next.access = o.access.clone();
                                 next.expires_at = o.expires_at;
                             }
                             Some(next)
                         }
-                        Some(o) => (o.refresh != theirs.refresh && o.access != theirs.access && theirs.expires_at.unwrap_or(i64::MAX) >= o.expires_at.unwrap_or(0)).then(|| theirs.clone()),
+                        Some(o) => {
+                            (!same_identity || (o.refresh != theirs.refresh && o.access != theirs.access && theirs.expires_at.unwrap_or(i64::MAX) >= o.expires_at.unwrap_or(0))).then(|| theirs.clone())
+                        }
                     },
                     // Lent: taken where this pool isn't the keeper, and it is newer.
                     (Some(theirs), ours) if kept_elsewhere.is_some() => {
                         let mut lent = theirs.clone();
                         lent.refresh = None;
-                        ours.as_ref().is_none_or(|o| o.access != lent.access && lent.expires_at.unwrap_or(0) >= o.expires_at.unwrap_or(0)).then_some(lent)
+                        if let Some(o) = ours
+                            && same_identity
+                            && lent.account_id.is_none()
+                        {
+                            lent.account_id = o.account_id.clone();
+                        }
+                        ours.as_ref().is_none_or(|o| !same_identity || (o.access != lent.access && lent.expires_at.unwrap_or(0) >= o.expires_at.unwrap_or(0))).then_some(lent)
                     }
                     _ => None,
                 };
                 if let Some(credential) = take {
                     p.saved.credentials.insert(c.id.clone(), credential);
                     renewed.push(c.id.clone());
-                } else if kept_elsewhere.is_some()
-                    && let Some(mine) = p.saved.credentials.get_mut(&c.id)
-                {
-                    // (Kept elsewhere now: the refresh token given back goes.)
-                    mine.refresh = None;
+                } else if let Some(mine) = p.saved.credentials.get_mut(&c.id) {
+                    if kept_elsewhere.is_some() {
+                        // (Kept elsewhere now: the refresh token given back goes.)
+                        mine.refresh = None;
+                    }
+                    if !same_identity {
+                        mine.account_id = None;
+                    }
                 }
                 let a = p.account_mut(&c.id).expect("there or just added");
                 (a.name, a.created, a.enabled, a.separate) = (c.name.clone(), c.created, c.enabled, c.separate);
@@ -412,7 +440,14 @@ impl Shared {
                     a.cooldown_until = None;
                 }
             }
-            let gone: Vec<String> = p.saved.accounts.iter().filter(|a| !carried.accounts.iter().any(|c| c.id == a.id)).map(|a| a.id.clone()).collect();
+            // Only remove omitted accounts whose provider is authoritatively
+            // covered by this carry payload (legacy desktops without
+            // `covered_providers` only cover Claude + Codex, never Antigravity).
+            let covered: &[Provider] = match carried.covered_providers.as_deref() {
+                Some(list) => list,
+                None => &[Provider::Claude, Provider::Codex],
+            };
+            let gone: Vec<String> = p.saved.accounts.iter().filter(|a| covered.contains(&a.provider) && !carried.accounts.iter().any(|c| c.id == a.id)).map(|a| a.id.clone()).collect();
             for id in gone {
                 if p.busy(&id) || p.account(&id).is_some_and(|a| a.redeeming.is_some()) {
                     // (Answering or claiming now: paused, and gone the next time.)
@@ -440,14 +475,24 @@ impl Shared {
         Ok(self.hosted_status())
     }
 
-    /// As [`Self::carry_to`], holding both provider claim gates across the
-    /// ownership transition so no in-flight local claim can race a handover.
+    /// As [`Self::carry_to_supported`], holding every provider's claim gate across
+    /// the ownership transition so no in-flight local claim can race a handover.
     pub async fn carry_to_checked(&self, host: &str, from: &str) -> Carried {
-        let g_claude = self.claims_gate(Provider::Claude);
-        let g_codex = self.claims_gate(Provider::Codex);
-        let _h1 = g_claude.lock().await;
-        let _h2 = g_codex.lock().await;
-        self.carry_to(host, from)
+        self.carry_to_checked_supported(host, from, &Provider::ALL).await
+    }
+
+    /// As [`Self::carry_to_checked`], restricting ownership handover and carried
+    /// accounts to providers in `supported` (for rolling upgrades against older
+    /// hosts that don't yet know `Provider::Antigravity`).
+    pub async fn carry_to_checked_supported(&self, host: &str, from: &str, supported: &[Provider]) -> Carried {
+        let gates: Vec<_> = Provider::ALL.into_iter().map(|p| self.claims_gate(p)).collect();
+        let mut held = Vec::with_capacity(gates.len());
+        for g in &gates {
+            held.push(g.lock().await);
+        }
+        let carried = self.carry_to_supported(host, from, supported);
+        drop(held);
+        carried
     }
 
     /// The desktop's side. What is carried to `host` now: every
@@ -460,12 +505,23 @@ impl Shared {
     /// ([`Self::handed_over`]). One kept on another host is carried as
     /// lent, with the access token there is.
     pub fn carry_to(&self, host: &str, from: &str) -> Carried {
+        self.carry_to_supported(host, from, &Provider::ALL)
+    }
+
+    pub fn carry_to_supported(&self, host: &str, from: &str, supported: &[Provider]) -> Carried {
         let handed: Vec<String> = {
             let mut p = self.pool.lock().unwrap();
             // (Never one kept here for another host: a moving account's,
-            // for the host it moves to.)
+            // for the host it moves to; never a provider the host doesn't know.)
             let now = crate::model::now();
-            let handed: Vec<String> = p.saved.accounts.iter().filter(|a| handed_to(a, p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()), host, now)).map(|a| a.id.clone()).collect();
+            let handed: Vec<String> = p
+                .saved
+                .accounts
+                .iter()
+                .filter(|a| supported.contains(&a.provider))
+                .filter(|a| handed_to(a, p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()), host, now))
+                .map(|a| a.id.clone())
+                .collect();
             for id in &handed {
                 if let Some(a) = p.account_mut(id) {
                     a.kept_on = Some(host.to_owned());
@@ -478,17 +534,22 @@ impl Shared {
             self.touch();
             self.flush();
         }
-        self.would_carry(host, from)
+        self.would_carry_supported(host, from, supported)
     }
 
     /// What [`Self::carry_to`] would carry to `host`, nothing marked: to
     /// know whether the host has what is here.
     pub fn would_carry(&self, host: &str, from: &str) -> Carried {
+        self.would_carry_supported(host, from, &Provider::ALL)
+    }
+
+    pub fn would_carry_supported(&self, host: &str, from: &str, supported: &[Provider]) -> Carried {
         let p = self.pool.lock().unwrap();
         let accounts = p
             .saved
             .accounts
             .iter()
+            .filter(|a| supported.contains(&a.provider))
             .map(|a| {
                 // (One this pool still keeps would be handed to the host,
                 // unless it is kept here for another.)
@@ -518,7 +579,7 @@ impl Shared {
                 }
             })
             .collect();
-        Carried { from: from.to_owned(), you: host.to_owned(), accounts, host_claims: true }
+        Carried { from: from.to_owned(), you: host.to_owned(), accounts, host_claims: true, covered_providers: Some(supported.to_vec()) }
     }
 
     /// `host` answered a carrying with how it stands: each account it
@@ -644,6 +705,7 @@ impl Shared {
         status["sign_ins"] = Value::Array(kept);
         status["hosted"] = json!(self.is_hosted());
         status["version"] = json!(crate::host::VERSION);
+        status["providers"] = json!(Provider::ALL);
         status["redeems"] = json!(!p.saved.legacy_desktop_claims);
         status
     }
