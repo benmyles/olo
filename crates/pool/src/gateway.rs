@@ -112,11 +112,20 @@ pub struct Pool {
     /// Why the gateway isn't listening (or the accounts can't be
     /// opened), if so.
     pub error: Option<String>,
+    /// Why the accounts couldn't be written into the vault the last time
+    /// they were saved, if so: cleared once they are, and never the
+    /// listener's `error` (Astra's review, 2026-11-28: a disk full for a
+    /// while said "Gateway Stopped" for good).
+    pub save_error: Option<String>,
     /// Each minute's requests by client, over the last day.
     pub activity: Activity,
     /// The saved accounts have been read (until then nothing is saved,
     /// so a keyring that isn't open yet can't cost them).
     pub loaded: bool,
+    /// How many times opening them has failed (`error` says why): what a
+    /// sign-in kept until they're open watches, so it says why they
+    /// didn't open rather than "Opening…" for ever.
+    pub open_tries: u64,
     /// Each account's latest confirmed reset. An observation from an older
     /// revision cannot put the account back at its former limit.
     resets: HashMap<String, u64>,
@@ -178,6 +187,9 @@ enum Save {
     Later,
     /// Write what's waiting now, then say so (before a handover).
     Flush(std::sync::mpsc::Sender<()>),
+    /// Write what's waiting now, then say how that went: a sign-in's
+    /// only copy is let go once it's in the vault ([`Shared::keep`]).
+    Kept(std::sync::mpsc::Sender<Result<(), String>>),
 }
 
 /// The longest a request's bookkeeping waits to be written (Ben's pool,
@@ -185,6 +197,18 @@ enum Save {
 /// the sealed file was written more than once a second, 38 times in 30 s:
 /// disk, sealing, and a wake for everything watching the config folder).
 pub const USAGE_EVERY: Duration = Duration::from_secs(30);
+
+/// What a sign-in says of its account, set with it as it's signed in again
+/// ([`Shared::reauth_as`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SignedInAs {
+    pub email: Option<String>,
+    pub plan: Option<String>,
+    /// Claude's organization.
+    pub org: Option<String>,
+    /// Signed in apart from the client's own sign-in (`Account::separate`).
+    pub separate: bool,
+}
 
 pub struct Shared {
     pub pool: Mutex<Pool>,
@@ -265,6 +289,9 @@ pub struct Shared {
     profile_tried: Mutex<HashMap<String, i64>>,
     /// When each account's sign-in was last renewed here.
     lent: Mutex<HashMap<String, std::time::Instant>>,
+    /// The thread opening the vault while it can't be opened yet (the
+    /// keyring shut), woken to try again at once ([`Shared::open_again`]).
+    vault_opener: Mutex<Option<std::thread::Thread>>,
     /// The pools on Rex hosts, as the gateway's `/pool/hosts` shows and
     /// changes them (`hosts::Hosts`, the desktop's), and who is told
     /// when the accounts change.
@@ -389,7 +416,7 @@ impl Shared {
             }
         });
         let s = shared.clone();
-        let _ = std::thread::Builder::new().name("pool-open".into()).spawn(move || {
+        let opening = std::thread::Builder::new().name("pool-open".into()).spawn(move || {
             loop {
                 if !crate::store::path().exists() {
                     s.pool.lock().unwrap().loaded = true;
@@ -407,15 +434,24 @@ impl Shared {
                         break;
                     }
                     Err(e) => {
-                        s.pool.lock().unwrap().error = Some(e);
+                        {
+                            let mut p = s.pool.lock().unwrap();
+                            p.error = Some(e);
+                            p.open_tries += 1;
+                        }
                         (s.changed)();
                     }
                 }
-                std::thread::sleep(Duration::from_secs(30));
+                // (Again in 30 s, or at once when the keyring was just
+                // unlocked: `open_again`.)
+                std::thread::park_timeout(Duration::from_secs(30));
             }
             (s.changed)();
             s.sync_soon(None);
         });
+        if let Ok(t) = opening {
+            *shared.vault_opener.lock().unwrap() = Some(t.thread().clone());
+        }
         if let Err(e) = start(shared.clone(), port) {
             tracing::warn!("pool: {e}");
         }
@@ -462,6 +498,7 @@ impl Shared {
             sync_seq: Mutex::new(HashMap::new()),
             profile_tried: Mutex::new(HashMap::new()),
             lent: Mutex::new(HashMap::new()),
+            vault_opener: Mutex::new(None),
             hosting: Mutex::new(None),
             accounts_changed: Mutex::new(None),
             hosts_seen: tokio::sync::watch::channel(0).0,
@@ -489,7 +526,7 @@ impl Shared {
                         Err(_) => break,
                     },
                 };
-                let mut flushed = Vec::new();
+                let (mut flushed, mut kept) = (Vec::new(), Vec::new());
                 match got {
                     Some(Save::Later) => {
                         later.get_or_insert_with(|| std::time::Instant::now() + USAGE_EVERY);
@@ -497,19 +534,25 @@ impl Shared {
                     }
                     Some(Save::Now) => std::thread::sleep(Duration::from_millis(300)),
                     Some(Save::Flush(done)) => flushed.push(done),
+                    Some(Save::Kept(done)) => kept.push(done),
                     None => {}
                 }
                 while let Ok(m) = rx.try_recv() {
-                    if let Save::Flush(done) = m {
-                        flushed.push(done);
+                    match m {
+                        Save::Flush(done) => flushed.push(done),
+                        Save::Kept(done) => kept.push(done),
+                        Save::Now | Save::Later => {}
                     }
                 }
                 later = None;
                 let Some(s) = weak.upgrade() else { break };
-                save_once(&s);
+                let written = save_once(&s);
                 drop(s);
                 for done in flushed {
                     let _ = done.send(());
+                }
+                for done in kept {
+                    let _ = done.send(written.clone());
                 }
             }
         });
@@ -540,6 +583,18 @@ impl Shared {
         if self.save.send(Save::Flush(tx)).is_ok() {
             let _ = rx.recv_timeout(Duration::from_secs(3));
         }
+    }
+
+    /// Write what's waiting now, and say whether it's in the vault (waited
+    /// for `within` at most; blocks: a worker thread's). A separate
+    /// sign-in's own copy is let go, and "You can quit agy" said, only
+    /// after this (Astra's review, 2026-11-28: with the vault's keyring
+    /// shut, or no room on the disk, it was said of a sign-in that was in
+    /// memory alone, and gone when Token Pool next started).
+    pub fn keep(&self, within: Duration) -> Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.save.send(Save::Kept(tx)).map_err(|_| "The pool’s saver has stopped.".to_owned())?;
+        rx.recv_timeout(within).map_err(|_| "Saving the pool’s accounts is taking longer than it should.".to_owned())?
     }
 
     /// Tell the app to look again (nothing to save).
@@ -883,7 +938,9 @@ impl Shared {
             open: p.open.clone(),
             next_open: 0,
             error: p.error.clone(),
+            save_error: p.save_error.clone(),
             loaded: p.loaded,
+            open_tries: p.open_tries,
             activity: Activity::default(),
             resets: p.resets.clone(),
             reset_at: p.reset_at.clone(),
@@ -908,33 +965,101 @@ impl Shared {
             p.saved.credentials.insert(id.clone(), credential);
             p.saved.accounts.push(account);
         }
+        self.after_add(id);
+        Ok(())
+    }
+
+    fn after_add(self: &Arc<Self>, id: String) {
         self.touch();
         self.sync_soon(Some(id));
         // (Its client captured for it, in a moment: what's due.)
         self.capture(false);
-        Ok(())
     }
 
-    /// Replace an account's sign-in (signed in again).
-    pub fn reauth(self: &Arc<Self>, id: &str, credential: Credential) {
-        let prev_keeper = {
+    /// A sign-in read taken in as its account's: `target`'s, else the one
+    /// of its provider with its email, else `new`'s, added. Which it is
+    /// found, `newest(id)` asked of it (whether no sign-in for that
+    /// account began, or was taken, after this one), and its sign-in
+    /// written, all under one lock: of two for one account the newer
+    /// stays, whichever ends first, and two for one new email make one
+    /// account (Astra's and Neon's reviews, 2026-11-28: each was looked up
+    /// on its own and written later, an older over a newer, and twice).
+    /// The account, its name and whether it was one already; None if a
+    /// newer sign-in is its.
+    pub fn take_sign_in(
+        self: &Arc<Self>,
+        target: Option<&str>,
+        new: Account,
+        credential: Credential,
+        said: SignedInAs,
+        newest: impl FnOnce(&str) -> bool,
+    ) -> Result<Option<(String, String, bool)>, String> {
+        let (taken, prev_keeper) = {
             let mut p = self.pool.lock().unwrap();
-            p.saved.credentials.insert(id.to_owned(), credential);
-            p.account_mut(id).and_then(|a| {
-                a.signed_out = None;
-                a.cooldown_until = None;
-                // Invalidate any stale org UUID so `/api/oauth/profile` heals
-                // the new sign-in's real organization.
-                a.org = None;
-                // (Signed in anew here: this pool's to keep, until it
-                // is next carried to the hosts, `hosted`.)
-                let prev = a.kept_on.take();
-                if let Some(ref host) = prev {
-                    a.reauth_pending_host = Some(host.clone());
+            if !p.loaded {
+                return Err(p.error.clone().unwrap_or_else(|| "The pool’s accounts aren’t open yet.".into()));
+            }
+            let existing = match target {
+                Some(t) => Some(p.account(t).map(|a| a.id.clone()).ok_or_else(|| "That account left the pool while its sign-in was read.".to_owned())?),
+                None => p.saved.accounts.iter().find(|a| a.provider == new.provider && said.email.is_some() && a.email == said.email).map(|a| a.id.clone()),
+            };
+            let id = existing.clone().unwrap_or_else(|| new.id.clone());
+            if !newest(&id) {
+                return Ok(None);
+            }
+            match existing {
+                Some(id) => {
+                    let Some((name, prev)) = reauth_locked(&mut p, &id, credential, |a| set_said(a, said)) else {
+                        return Err("That account left the pool while its sign-in was read.".to_owned());
+                    };
+                    ((id, name, true), Some(prev))
                 }
-                prev
-            })
+                None => {
+                    let name = new.name.clone();
+                    p.saved.credentials.insert(id.clone(), credential);
+                    p.saved.accounts.push(new);
+                    ((id, name, false), None)
+                }
+            }
         };
+        match prev_keeper {
+            Some(prev) => self.after_reauth(&taken.0, prev),
+            None => self.after_add(taken.0.clone()),
+        }
+        Ok(Some(taken))
+    }
+
+    /// The vault tried again at once, while it hasn't opened (the keyring
+    /// it waited for was just unlocked), not in up to 30 s.
+    pub fn open_again(&self) {
+        if let Some(t) = &*self.vault_opener.lock().unwrap() {
+            t.unpark();
+        }
+    }
+
+    /// Replace an account's sign-in (signed in again). Nothing is kept for
+    /// one that's gone (removed while the sign-in was read: it was kept
+    /// with no account); whether it was there.
+    pub fn reauth(self: &Arc<Self>, id: &str, credential: Credential) -> bool {
+        self.reauth_with(id, credential, |_| {}).is_some()
+    }
+
+    /// [`Shared::reauth`], what the sign-in says of the account set with it
+    /// under the same lock, where it was signed in too, whichever way that
+    /// changed: its name, None if it's gone.
+    pub fn reauth_as(self: &Arc<Self>, id: &str, credential: Credential, said: SignedInAs) -> Option<String> {
+        self.reauth_with(id, credential, move |a| set_said(a, said))
+    }
+
+    fn reauth_with(self: &Arc<Self>, id: &str, credential: Credential, update: impl FnOnce(&mut Account)) -> Option<String> {
+        let (name, prev_keeper) = reauth_locked(&mut self.pool.lock().unwrap(), id, credential, update)?;
+        self.after_reauth(id, prev_keeper);
+        Some(name)
+    }
+
+    /// What follows signing account `id` in again (`reauth_locked`), kept
+    /// on `prev_keeper` before.
+    fn after_reauth(self: &Arc<Self>, id: &str, prev_keeper: Option<String>) {
         if let Some(host) = prev_keeper
             && let Some(hosting) = self.hosting()
         {
@@ -1024,7 +1149,24 @@ impl Shared {
         }
         match upstream::refresh(&self.client_for(id), &self.up, provider, &current, self.like(id).as_ref()).await {
             Ok(c) => {
-                self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
+                let c = {
+                    let mut p = self.pool.lock().unwrap();
+                    // Signed in again (or removed) while this renewal was
+                    // under way: the newer sign-in stays, and is what's
+                    // used (Astra's review, 2026-11-28: the old one's
+                    // renewal was written over it). Carried to a keeper
+                    // as it was: this renewal, for this request, and
+                    // nothing written here (the keeper's now).
+                    match since(&p, id, &current, None) {
+                        Since::Held => {}
+                        Since::Newer(newer) => return Ok(newer),
+                        Since::Moved if p.account(id).is_some() => return Ok(c),
+                        Since::Moved => return Err(Failure::Refused("No sign-in".into())),
+                    }
+                    let c = with_found(&p, id, c);
+                    p.saved.credentials.insert(id.to_owned(), c.clone());
+                    c
+                };
                 // (When: a borrower asking for a longer-lived one soon
                 // after gets this one, `hosted::lend`.)
                 self.lent.lock().unwrap().insert(id.to_owned(), std::time::Instant::now());
@@ -1044,16 +1186,26 @@ impl Shared {
                 drop(shared_file);
                 Ok(c)
             }
-            Err(Failure::Refused(why)) => {
-                self.signed_out(id, &why);
-                Err(Failure::Refused(why))
+            // (Refused: signed out, unless it was signed in again meanwhile:
+            // the old sign-in's refusal says nothing of the new one; or
+            // carried to a keeper, whose it is to say.)
+            Err(Failure::Refused(why)) => match self.signed_out_if_still(id, &why, &current) {
+                Some(newer) => Ok(newer),
+                None => Err(Failure::Refused(why)),
+            },
+            // Not refused: the old one may still do, if it's still the
+            // account's (never another's sign-in for a request).
+            Err(e) => {
+                let since = since(&self.pool.lock().unwrap(), id, &current, None);
+                match since {
+                    Since::Newer(newer) => Ok(newer),
+                    Since::Held if refused.is_none() && current.expires_at.is_none_or(|t| t > now()) => {
+                        tracing::warn!("pool: {e}");
+                        Ok(current)
+                    }
+                    _ => Err(e),
+                }
             }
-            // Not refused: the old one may still do.
-            Err(e) if refused.is_none() && current.expires_at.is_none_or(|t| t > now()) => {
-                tracing::warn!("pool: {e}");
-                Ok(current)
-            }
-            Err(e) => Err(e),
         }
     }
 
@@ -1109,11 +1261,24 @@ impl Shared {
         }
     }
 
-    fn signed_out(&self, id: &str, why: &str) {
-        if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
-            a.signed_out = Some(why.to_owned());
+    /// Account `id` signed out for `why`, its sign-in `started` (kept
+    /// here) refused, if that's still its sign-in; else left as it is:
+    /// the newer sign-in it has now, if it was signed in again meanwhile
+    /// (none if it was removed, or carried to a keeper).
+    fn signed_out_if_still(&self, id: &str, why: &str, started: &Credential) -> Option<Credential> {
+        {
+            let mut p = self.pool.lock().unwrap();
+            match since(&p, id, started, None) {
+                Since::Held => {}
+                Since::Newer(newer) => return Some(newer),
+                Since::Moved => return None,
+            }
+            if let Some(a) = p.account_mut(id) {
+                a.signed_out = Some(why.to_owned());
+            }
         }
         self.touch();
+        None
     }
 
     /// Write the pool now (for what must be kept before a provider is
@@ -3916,9 +4081,15 @@ pub async fn serve_host(
         }
         // The body as decoded, once sent so (`resend_plain`).
         let mut sent_plain: Option<Bytes> = None;
+        // (Where its sign-in was kept as it went: a refusal of it signs
+        // out only that.)
+        let mut sent_kept_on: Option<String>;
         let response = loop {
             let seen = olo_net::generation();
-            revision = s.pool.lock().unwrap().reset_revision(&id);
+            (revision, sent_kept_on) = {
+                let p = s.pool.lock().unwrap();
+                (p.reset_revision(&id), p.account(&id).and_then(|a| a.kept_on.clone()))
+            };
             finish.revision = revision;
             finish.dispatched_at = now_ms();
             // The client's request as it came, in its order, the account's
@@ -4197,11 +4368,15 @@ pub async fn serve_host(
         {
             let mut p = s.pool.lock().unwrap();
             let current = p.reset_revision(&id) == revision;
+            // (Signed in again, or carried, while it was answered: the
+            // refusal was of the sign-in it was sent with, not of the
+            // account's now; Astra's review, 2026-11-28.)
+            let refused_still = status == StatusCode::UNAUTHORIZED && still_holds(&p, &id, &cred, sent_kept_on.as_deref());
             if let Some(a) = p.account_mut(&id) {
                 if current {
                     a.merge_windows(windows);
                 }
-                if status == StatusCode::UNAUTHORIZED {
+                if refused_still {
                     a.signed_out = Some("Its provider refused the sign-in.".into());
                 }
                 if current && let Some(rej) = &rejection {
@@ -5583,23 +5758,116 @@ fn newer(theirs: &Credential, ours: &Credential) -> bool {
     theirs.access != ours.access && theirs.expires_at.unwrap_or(0) > ours.expires_at.unwrap_or(0)
 }
 
-/// One save of the pool as it is now (the saver's).
-fn save_once(s: &Shared) {
+/// Whether account `id` still has the sign-in `started` with (its tokens:
+/// an id found for it meanwhile, Antigravity's project, is no other
+/// sign-in), kept where it was (`kept_on`: on that keeper; None: here):
+/// what a renewal, a refusal or a keeper's loan begun with it may change.
+/// One signed in again meanwhile (Sign In Again: another sign-in, kept
+/// here now), or removed, is left as it is.
+pub(crate) fn still_holds(p: &Pool, id: &str, started: &Credential, kept_on: Option<&str>) -> bool {
+    p.saved.credentials.get(id).is_some_and(|c| c.access == started.access && c.refresh == started.refresh) && p.account(id).is_some_and(|a| a.kept_on.as_deref() == kept_on)
+}
+
+/// What a sign-in says of its account, set on it as it's signed in again
+/// (`Shared::reauth_as`).
+fn set_said(a: &mut Account, said: SignedInAs) {
+    // (Its email is what the new sign-in says, none where it says none:
+    // kept, the old one matched this row to that account's next sign-in,
+    // which then replaced this one; Astra's review, 2026-11-28. Its name
+    // is the person's, and stays.)
+    a.email = said.email;
+    if said.plan.is_some() {
+        a.plan = said.plan;
+    }
+    if said.org.is_some() {
+        a.org = said.org;
+    }
+    a.separate = said.separate;
+}
+
+/// Account `id` signed in again with `credential`, under the pool's lock
+/// (`p`), `update` setting what the sign-in says of it: its name, and the
+/// keeper it was kept on before (None: here); None if it's gone.
+fn reauth_locked(p: &mut Pool, id: &str, credential: Credential, update: impl FnOnce(&mut Account)) -> Option<(String, Option<String>)> {
+    let a = p.account_mut(id)?;
+    a.signed_out = None;
+    a.cooldown_until = None;
+    // Invalidate any stale org UUID so `/api/oauth/profile` heals the new
+    // sign-in's real organization.
+    a.org = None;
+    update(a);
+    // (Signed in anew here: this pool's to keep, until it is next carried
+    // to the hosts, `hosted`.)
+    let prev = a.kept_on.take();
+    if let Some(ref host) = prev {
+        a.reauth_pending_host = Some(host.clone());
+    }
+    let name = a.name.clone();
+    p.saved.credentials.insert(id.to_owned(), credential);
+    Some((name, prev))
+}
+
+/// What a renewal or a keeper's loan begun with `started` (kept where
+/// `kept_on`) finds of account `id` as it ends (`still_holds`).
+#[derive(Debug, PartialEq)]
+pub(crate) enum Since {
+    /// Its sign-in as it was: what's renewed or lent is kept.
+    Held,
+    /// Signed in again meanwhile (another access token): that one,
+    /// never the old one's renewal, refusal or loan.
+    Newer(Credential),
+    /// Removed, or its sign-in carried to another keeper (or back here)
+    /// as it was: nothing for it written here, the old token never
+    /// handed back (Astra's and Neon's reviews, 2026-11-28: a keeper's
+    /// carry was taken for a newer sign-in, and the token just refused
+    /// given back as fresh).
+    Moved,
+}
+
+pub(crate) fn since(p: &Pool, id: &str, started: &Credential, kept_on: Option<&str>) -> Since {
+    if still_holds(p, id, started, kept_on) {
+        return Since::Held;
+    }
+    match p.saved.credentials.get(id) {
+        Some(c) if p.account(id).is_some() && c.access != started.access => Since::Newer(c.clone()),
+        _ => Since::Moved,
+    }
+}
+
+/// `c`, an account's sign-in renewed or lent, with what was found for it
+/// meanwhile that it hasn't (Antigravity's project, found by a request
+/// while it was renewed: Astra's review, 2026-11-28).
+pub(crate) fn with_found(p: &Pool, id: &str, mut c: Credential) -> Credential {
+    if c.account_id.as_deref().is_none_or(|a| a.trim().is_empty()) {
+        c.account_id = p.saved.credentials.get(id).and_then(|kept| kept.account_id.clone()).or(c.account_id);
+    }
+    c
+}
+
+/// One save of the pool as it is now (the saver's): how it went.
+fn save_once(s: &Shared) -> Result<(), String> {
     // Handed over: the new copy owns the file (a sign-in renewed
     // here is written in on its own: `fresh`).
     if s.drain.retired() {
-        return;
+        return Err("This copy of the pool has handed over.".into());
     }
-    match s.write(true) {
-        Ok(()) => {}
+    let written = s.write(true);
+    match &written {
+        Ok(()) => {
+            let cleared = s.pool.lock().unwrap().save_error.take().is_some();
+            if cleared {
+                (s.changed)();
+            }
+        }
         // (Not open yet: nothing to save.)
         Err(_) if s.drain.retired() || !s.pool.lock().unwrap().loaded => {}
         Err(e) => {
             tracing::warn!("pool: {e}");
-            s.pool.lock().unwrap().error = Some(e);
+            s.pool.lock().unwrap().save_error = Some(e.clone());
             (s.changed)();
         }
     }
+    written
 }
 
 #[cfg(test)]
@@ -5635,6 +5903,258 @@ mod tests {
         s.book_late(Late::Turn { id: "a".into(), name: "a".into(), provider: Provider::Codex, usage: request.usage.clone(), passed: true, request });
         let p = s.snapshot();
         assert_eq!((p.account("a").unwrap().total.input_tokens, p.served.len()), (11, 1));
+    }
+
+    /// A sign-in is said to be kept only on the saver's own word that its
+    /// write went into the vault, and a write that didn't is said as such
+    /// (Astra's review, 2026-11-28: "You can quit agy" came before the only
+    /// copy was written, and a failed write was a log line).
+    #[test]
+    fn keeping_says_whether_it_was_written() {
+        let s = Shared::new(Saved::default(), None, Upstreams::fake("http://127.0.0.1:9"), || {});
+        assert_eq!(s.keep(Duration::from_secs(5)), Ok(()));
+        s.pool.lock().unwrap().loaded = false;
+        let e = s.keep(Duration::from_secs(5)).unwrap_err();
+        assert!(e.contains("aren’t open"), "{e}");
+    }
+
+    /// A save that failed, then went through: said as the vault's while
+    /// it fails, never as the listener's, and cleared once it goes
+    /// (Astra's review, 2026-11-28: a disk full for a while said "Gateway
+    /// Stopped" for good).
+    #[test]
+    fn a_failed_save_is_the_vaults_and_clears_once_it_goes() {
+        let scratch = tempfile::Builder::new().prefix("olo-pool-save-").tempdir_in("/var/tmp").unwrap();
+        let blocked = scratch.path().join("vault");
+        std::fs::write(&blocked, b"a file where its folder goes").unwrap();
+        let st = Store::with_key(blocked.join("pool.vault"), [7; 32]);
+        let s = Shared::new(Saved::default(), Some(st), Upstreams::fake("http://127.0.0.1:9"), || {});
+        assert!(s.keep(Duration::from_secs(5)).is_err());
+        let p = s.snapshot();
+        assert!(p.error.is_none(), "a save's failure said as the gateway's: {:?}", p.error);
+        assert!(p.save_error.is_some());
+        std::fs::remove_file(&blocked).unwrap();
+        std::fs::create_dir(&blocked).unwrap();
+        assert_eq!(s.keep(Duration::from_secs(5)), Ok(()));
+        let p = s.snapshot();
+        assert!(p.save_error.is_none() && p.error.is_none(), "{:?} {:?}", p.save_error, p.error);
+    }
+
+    /// A token endpoint of a test's own, for one request: it says when
+    /// it's asked (`asked`), and answers `answer` once let go (`go`).
+    fn held_endpoint(answer: String) -> (String, std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let (asked_tx, asked) = std::sync::mpsc::channel();
+        let (go, gone) = std::sync::mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            let Ok((mut conn, _)) = listener.accept() else { return };
+            let mut buf = [0u8; 16 << 10];
+            let _ = std::io::Read::read(&mut conn, &mut buf);
+            let _ = asked_tx.send(());
+            let _ = gone.recv_timeout(Duration::from_secs(20));
+            let _ = std::io::Write::write_all(&mut conn, answer.as_bytes());
+        });
+        (url, asked, go)
+    }
+
+    fn http_answer(status: &str, body: &str) -> String {
+        format!("HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len())
+    }
+
+    /// A renewal, a refusal or a keeper's loan begun with a sign-in
+    /// never lands on the one that replaced it meanwhile (Sign In Again):
+    /// the newer stays, signed in, and is what's used. With nothing in
+    /// between, the renewal is kept and the refusal signs the account
+    /// out, as before (Astra's review, 2026-11-28: the old one's renewal
+    /// was written over the new sign-in, its refusal signed it out, and a
+    /// keeper's late loan replaced its refresh token with none).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_renewal_never_undoes_a_sign_in_made_meanwhile() {
+        let old = Credential { access: "old".into(), refresh: Some("r-old".into()), expires_at: Some(now() - 10), account_id: None };
+        let newer = Credential { access: "signed-in-again".into(), refresh: Some("r-new".into()), expires_at: Some(now() + 3600), account_id: None };
+        let renewed = r#"{"access_token":"renewed-old","refresh_token":"r-old-2","expires_in":3600}"#;
+        let pool = |url: &str| {
+            let mut saved = Saved::default();
+            saved.accounts.push(Account::new("a".into(), "A".into(), Provider::Codex));
+            saved.credentials.insert("a".into(), old.clone());
+            Shared::new(saved, None, Upstreams::fake(url), || {})
+        };
+        let said = || SignedInAs { email: Some("a@example.com".into()), separate: true, ..Default::default() };
+        for (answer, again) in
+            [(http_answer("200 OK", renewed), true), (http_answer("400 Bad Request", "{}"), true), (http_answer("200 OK", renewed), false), (http_answer("400 Bad Request", "{}"), false)]
+        {
+            let refusal = answer.starts_with("HTTP/1.1 400");
+            let (url, asked, go) = held_endpoint(answer);
+            let s = pool(&url);
+            let renewal = {
+                let s = s.clone();
+                tokio::spawn(async move { s.fresh("a", Provider::Codex, None, 600).await })
+            };
+            tokio::task::block_in_place(|| asked.recv_timeout(Duration::from_secs(10))).expect("the renewal asked");
+            if again {
+                assert_eq!(s.reauth_as("a", newer.clone(), said()).as_deref(), Some("A"));
+            }
+            go.send(()).unwrap();
+            let used = renewal.await.unwrap();
+            let p = s.snapshot();
+            let (kept, signed_out) = (p.saved.credentials.get("a").cloned(), p.account("a").unwrap().signed_out.clone());
+            match (again, refusal) {
+                (true, _) => {
+                    assert!(kept == Some(newer.clone()), "the new sign-in written over (refused: {refusal})");
+                    assert!(signed_out.is_none(), "the new sign-in signed out: {signed_out:?}");
+                    assert!(used.is_ok_and(|c| c == newer), "not the new sign-in used (refused: {refusal})");
+                }
+                (false, false) => assert!(kept.is_some_and(|c| c.access == "renewed-old" && c.refresh.as_deref() == Some("r-old-2")) && used.is_ok()),
+                (false, true) => assert!(signed_out.is_some() && used.is_err()),
+            }
+        }
+
+        // A keeper's loan: one asked for before the account was signed in
+        // here is never put over that sign-in (kept here now, with its
+        // refresh token).
+        let borrowed = Credential { access: "borrowed".into(), refresh: None, expires_at: Some(now() - 10), account_id: None };
+        let mut saved = Saved::default();
+        saved.accounts.push(Account { kept_on: Some("keeper".into()), ..Account::new("k".into(), "K".into(), Provider::Codex) });
+        saved.credentials.insert("k".into(), borrowed);
+        let s = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+        let (asked_tx, asked) = std::sync::mpsc::channel::<()>();
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let held = gate.clone();
+        s.set_lender(Some(Arc::new(move |_keeper, _id, _at_least| {
+            let (asked_tx, held) = (asked_tx.clone(), held.clone());
+            Box::pin(async move {
+                let _ = asked_tx.send(());
+                held.notified().await;
+                Ok(Credential { access: "lent-late".into(), refresh: None, expires_at: Some(now() + 3600), account_id: None })
+            })
+        })));
+        let loan = {
+            let s = s.clone();
+            tokio::spawn(async move { s.fresh("k", Provider::Codex, None, 600).await })
+        };
+        tokio::task::block_in_place(|| asked.recv_timeout(Duration::from_secs(10))).expect("the keeper asked");
+        let here = Credential { access: "signed-in-here".into(), refresh: Some("r-here".into()), expires_at: Some(now() + 3600), account_id: None };
+        assert!(s.reauth_as("k", here.clone(), said()).is_some());
+        gate.notify_one();
+        let used = loan.await.unwrap();
+        assert!(s.snapshot().saved.credentials.get("k") == Some(&here), "the keeper's late loan put over the sign-in made here");
+        assert!(used.is_ok_and(|c| c == here));
+    }
+
+    /// A renewal that ends as the account's sign-in was carried to a
+    /// keeper (as it was) writes nothing here and signs nothing out, and
+    /// never hands back the token just refused; one that failed for a
+    /// while gives the sign-in made meanwhile, never the old; a project
+    /// found while it was renewed stays. A keeper's loan ending after a
+    /// sign-in here, unchanged or failed, gives that sign-in and keeps no
+    /// wait for the keeper; one lent as a project was found keeps it
+    /// (Astra's and Neon's reviews, 2026-11-28).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_renewal_ending_after_a_carry_or_a_find_keeps_whats_true() {
+        #[derive(Clone, Copy, Debug)]
+        enum Meanwhile {
+            Carried,
+            Again,
+            Found,
+        }
+        let old = Credential { access: "old".into(), refresh: Some("r-old".into()), expires_at: Some(now() + 300), account_id: None };
+        let newer = Credential { access: "signed-in-again".into(), refresh: Some("r-new".into()), expires_at: Some(now() + 3600), account_id: None };
+        let renewed = r#"{"access_token":"renewed-old","refresh_token":"r-old-2","expires_in":3600}"#;
+        let said = || SignedInAs { email: Some("a@example.com".into()), separate: true, ..Default::default() };
+        for (answer, meanwhile) in [
+            (http_answer("200 OK", renewed), Meanwhile::Carried),
+            (http_answer("400 Bad Request", "{}"), Meanwhile::Carried),
+            (http_answer("503 Service Unavailable", "{}"), Meanwhile::Carried),
+            (http_answer("503 Service Unavailable", "{}"), Meanwhile::Again),
+            (http_answer("200 OK", renewed), Meanwhile::Found),
+        ] {
+            let status = answer[9..12].to_owned();
+            let (url, asked, go) = held_endpoint(answer);
+            let mut saved = Saved::default();
+            saved.accounts.push(Account::new("a".into(), "A".into(), Provider::Codex));
+            saved.credentials.insert("a".into(), old.clone());
+            let s = Shared::new(saved, None, Upstreams::fake(&url), || {});
+            let renewal = {
+                let s = s.clone();
+                tokio::spawn(async move { s.fresh("a", Provider::Codex, None, 600).await })
+            };
+            tokio::task::block_in_place(|| asked.recv_timeout(Duration::from_secs(10))).expect("the renewal asked");
+            match meanwhile {
+                // (As `carry_to_supported` does: the keeper's now, its
+                // sign-in as it was until it's handed over.)
+                Meanwhile::Carried => s.pool.lock().unwrap().account_mut("a").unwrap().kept_on = Some("keeper".into()),
+                Meanwhile::Again => assert!(s.reauth_as("a", newer.clone(), said()).is_some()),
+                // (As a request's `ensure_agy_project` does.)
+                Meanwhile::Found => s.pool.lock().unwrap().saved.credentials.get_mut("a").unwrap().account_id = Some("proj-1".into()),
+            }
+            go.send(()).unwrap();
+            let used = renewal.await.unwrap();
+            let p = s.snapshot();
+            let (kept, signed_out) = (p.saved.credentials["a"].clone(), p.account("a").unwrap().signed_out.clone());
+            assert!(signed_out.is_none(), "{meanwhile:?} {status}: signed out: {signed_out:?}");
+            match (meanwhile, status.as_str()) {
+                (Meanwhile::Carried, "200") => {
+                    assert!(kept == old, "a renewal written over the sign-in carried to its keeper");
+                    assert!(used.is_ok_and(|c| c.access == "renewed-old"), "not this renewal used");
+                }
+                (Meanwhile::Carried, _) => {
+                    assert!(kept == old);
+                    assert!(used.is_err(), "{status}: the old token handed back as fresh");
+                }
+                (Meanwhile::Again, _) => assert!(used.is_ok_and(|c| c == newer), "not the newer sign-in used after a failed renewal"),
+                (Meanwhile::Found, _) => {
+                    assert_eq!((kept.access.as_str(), kept.account_id.as_deref()), ("renewed-old", Some("proj-1")), "the project found meanwhile lost");
+                    assert!(used.is_ok_and(|c| c.account_id.as_deref() == Some("proj-1")));
+                }
+            }
+        }
+
+        let borrowed = Credential { access: "borrowed".into(), refresh: None, expires_at: Some(now() - 10), account_id: None };
+        let here = Credential { access: "signed-in-here".into(), refresh: Some("r-here".into()), expires_at: Some(now() + 3600), account_id: None };
+        for (lends, meanwhile) in [(Some("borrowed"), Meanwhile::Again), (None, Meanwhile::Again), (Some("lent"), Meanwhile::Found)] {
+            let mut saved = Saved::default();
+            saved.accounts.push(Account { kept_on: Some("keeper".into()), ..Account::new("k".into(), "K".into(), Provider::Codex) });
+            saved.credentials.insert("k".into(), borrowed.clone());
+            let s = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+            let (asked_tx, asked) = std::sync::mpsc::channel::<()>();
+            let gate = Arc::new(tokio::sync::Notify::new());
+            let held = gate.clone();
+            s.set_lender(Some(Arc::new(move |_keeper, _id, _at_least| {
+                let (asked_tx, held) = (asked_tx.clone(), held.clone());
+                Box::pin(async move {
+                    let _ = asked_tx.send(());
+                    held.notified().await;
+                    match lends {
+                        Some(access) => Ok(Credential { access: access.into(), refresh: None, expires_at: Some(now() + 3600), account_id: None }),
+                        None => Err("the keeper can’t be reached".to_owned()),
+                    }
+                })
+            })));
+            let loan = {
+                let s = s.clone();
+                tokio::spawn(async move { s.fresh("k", Provider::Codex, None, 600).await })
+            };
+            tokio::task::block_in_place(|| asked.recv_timeout(Duration::from_secs(10))).expect("the keeper asked");
+            match meanwhile {
+                Meanwhile::Again => assert!(s.reauth_as("k", here.clone(), said()).is_some()),
+                _ => s.pool.lock().unwrap().saved.credentials.get_mut("k").unwrap().account_id = Some("proj-k".into()),
+            }
+            gate.notify_one();
+            let used = loan.await.unwrap();
+            let kept = s.snapshot().saved.credentials["k"].clone();
+            match meanwhile {
+                Meanwhile::Again => {
+                    assert!(kept == here, "{lends:?}: the sign-in made here replaced");
+                    assert!(used.is_ok_and(|c| c == here), "{lends:?}: not the sign-in made here used");
+                    assert!(!s.asked.lock().unwrap().contains_key("k"), "{lends:?}: a wait kept for the keeper of a sign-in made here");
+                }
+                _ => {
+                    assert_eq!((kept.access.as_str(), kept.account_id.as_deref()), ("lent", Some("proj-k")), "the project found meanwhile lost");
+                    assert!(used.is_ok_and(|c| c.account_id.as_deref() == Some("proj-k")));
+                }
+            }
+        }
     }
 
     #[test]

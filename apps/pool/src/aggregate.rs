@@ -500,7 +500,9 @@ pub fn tab_lights(pool: &Pool, hosts: &[Stands], running: Option<&Running>, uses
         let enabled: Vec<&Account> = pool.saved.accounts.iter().filter(|a| a.provider == prov && a.enabled && a.signed_out.is_none()).collect();
         !enabled.is_empty() && enabled.iter().all(|a| account_out_of_quota(a, t).is_some())
     });
-    let accounts_light = if pool.error.is_some() || any_signed_out {
+    // (Accounts that can't be saved are the accounts' trouble, not the
+    // listener's: `save_error`.)
+    let accounts_light = if pool.error.is_some() || pool.save_error.is_some() || any_signed_out {
         Some(Light::Down)
     } else if any_provider_exhausted {
         Some(Light::Waiting)
@@ -676,6 +678,26 @@ pub fn demo_enabled() -> bool {
     std::env::var_os("OLO_POOL_DEMO").is_some() || std::env::var_os("OLO_POOL_DEMO_HOSTS").is_some()
 }
 
+/// The demo's note in the footer (`OLO_POOL_DEMO_NOTE`; an error's, in
+/// red, with `OLO_POOL_DEMO_NOTE_ERROR=1`), for pictures of one.
+pub fn demo_note() -> Option<(String, bool)> {
+    let note = demo_enabled().then(|| std::env::var("OLO_POOL_DEMO_NOTE").ok()).flatten().filter(|n| !n.is_empty())?;
+    Some((note, std::env::var("OLO_POOL_DEMO_NOTE_ERROR").as_deref() == Ok("1")))
+}
+
+/// The demo's account just signed in separately (`OLO_POOL_DEMO_JOINED`,
+/// its id; named `OLO_POOL_DEMO_JOINED_NAME` if that's given): shown,
+/// with its note, for pictures of one.
+pub fn demo_joined() -> Option<String> {
+    demo_enabled().then(|| std::env::var("OLO_POOL_DEMO_JOINED").ok()).flatten().filter(|id| !id.is_empty())
+}
+
+/// The demo waiting for a separate sign-in (`OLO_POOL_DEMO_WAITING=1`),
+/// for pictures of the wait.
+pub fn demo_waiting() -> bool {
+    demo_enabled() && std::env::var("OLO_POOL_DEMO_WAITING").as_deref() == Ok("1")
+}
+
 pub struct DemoData {
     pub pool: Pool,
     pub activity: Activity,
@@ -829,6 +851,13 @@ pub fn demo_data() -> DemoData {
     let mut pool = Pool::default();
     pool.loaded = true;
     pool.saved.accounts = vec![claude_work, claude_personal, codex_team, codex_old, agy_ultra, agy_dev];
+    // (The account just signed in, under the name the pictures give it:
+    // its row and its note say the same.)
+    if let (Some(id), Ok(name)) = (demo_joined(), std::env::var("OLO_POOL_DEMO_JOINED_NAME"))
+        && let Some(a) = pool.saved.accounts.iter_mut().find(|a| a.id == id)
+    {
+        a.name = name;
+    }
     pool.in_flight.insert("acc-c2".into(), 1);
     pool.open = vec![Open {
         id: 101,

@@ -240,24 +240,59 @@ impl Shared {
             self.asked.lock().unwrap().insert(id.to_owned(), (std::time::Instant::now(), msg.clone()));
             return if lasts && !refused { Ok(current) } else { Err(Failure::Other(msg)) };
         }
-        match lender(keeper.to_owned(), id.to_owned(), BORROW_AHEAD + 600).await {
-            Ok(mut newer) => {
+        let lent = lender(keeper.to_owned(), id.to_owned(), BORROW_AHEAD + 600).await;
+        // What the account holds now, the loan asked for: signed in here
+        // meanwhile (its own sign-in, kept here now, refresh token and
+        // all), that stays and is used, never the keeper's late loan
+        // without one, nor the old token (Astra's review, 2026-11-28);
+        // carried elsewhere, or removed: nothing written, no wait kept
+        // for this keeper.
+        let since = {
+            let p = self.pool.lock().unwrap();
+            super::since(&p, id, &current, Some(keeper))
+        };
+        match (lent, since) {
+            (_, super::Since::Newer(newer)) => Ok(newer),
+            (Ok(mut newer), held) => {
                 // (Only what is used is kept here: never its refresh token.)
                 newer.refresh = None;
                 if newer.account_id.is_none() {
                     newer.account_id = current.account_id.clone();
                 }
                 self.asked.lock().unwrap().remove(id);
-                if newer.access != current.access || newer.account_id != current.account_id {
-                    self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), newer.clone());
-                    self.touch();
-                    return Ok(newer);
+                let changed = newer.access != current.access || newer.account_id != current.account_id;
+                match held {
+                    super::Since::Held if changed => {
+                        let newer = {
+                            let mut p = self.pool.lock().unwrap();
+                            // (Checked again as it's written: the lock was
+                            // let go.)
+                            match super::since(&p, id, &current, Some(keeper)) {
+                                super::Since::Held => {}
+                                super::Since::Newer(newer) => return Ok(newer),
+                                super::Since::Moved => return Ok(newer),
+                            }
+                            let newer = super::with_found(&p, id, newer);
+                            p.saved.credentials.insert(id.to_owned(), newer.clone());
+                            newer
+                        };
+                        self.touch();
+                        Ok(newer)
+                    }
+                    // (Carried as it was: the keeper's loan, for this
+                    // request, kept by whoever keeps it now.)
+                    super::Since::Moved if changed && self.pool.lock().unwrap().account(id).is_some() => Ok(newer),
+                    super::Since::Held if lasts && !refused => Ok(current),
+                    super::Since::Moved if self.pool.lock().unwrap().account(id).is_none() => Err(Failure::Refused("No sign-in".into())),
+                    _ => Err(Failure::Other(default_waits())),
                 }
-                if lasts && !refused { Ok(current) } else { Err(Failure::Other(default_waits())) }
             }
-            Err(why) => {
+            (Err(why), held) => {
                 tracing::info!("pool: asking {keeper} for a sign-in: {why}");
                 let msg = keeper_failure(keeper, &why);
+                if !matches!(held, super::Since::Held) {
+                    return Err(Failure::Other(msg));
+                }
                 self.asked.lock().unwrap().insert(id.to_owned(), (std::time::Instant::now(), msg.clone()));
                 if lasts && !refused { Ok(current) } else { Err(Failure::Other(msg)) }
             }

@@ -160,19 +160,138 @@ pub fn path(account: &str) -> PathBuf {
     olo_xdg::state_dir().join("pool/captures").join(format!("{account}.json"))
 }
 
-/// An account's capture, if one was made.
+/// An account's capture, if one was made (and is fit to be used:
+/// [`load_from`]).
 pub fn load(account: &str) -> Option<Capture> {
-    serde_json::from_slice(&std::fs::read(path(account)).ok()?).ok()
+    load_from(&path(account))
+}
+
+/// The capture at `p`, if there's one fit to be used. One that carries a
+/// sign-in as it is, not as its placeholder, is another account's: a
+/// capture's client that found one elsewhere kept it (agy, given an empty
+/// bus address, read the desktop's keyring until 2026-11-28), and sent for
+/// this account it would use that one (Astra's review, 2026-11-28). It's
+/// removed, and the account is captured again (`Shared::capture_due`
+/// sees none), whatever the client's stamp says.
+pub fn load_from(p: &Path) -> Option<Capture> {
+    let c: Capture = serde_json::from_slice(&std::fs::read(p).ok()?).ok()?;
+    if let Some(s) = c.requests.iter().find(|s| !templated(s)) {
+        tracing::warn!("pool: {}’s capture of {} carries a sign-in as it is: removed, to be captured again", c.provider.client(), s.host);
+        let _ = std::fs::remove_file(p);
+        return None;
+    }
+    Some(c)
 }
 
 /// Keep `c` (readable by the person alone: it says what their clients send).
 pub fn save(c: &Capture) -> Result<(), String> {
-    let p = path(&c.account);
+    save_to(&path(&c.account), c)
+}
+
+/// [`save`] at `p`. Never one that carries a sign-in as it is
+/// ([`templated`]): that's refused, and nothing is written.
+pub fn save_to(p: &Path, c: &Capture) -> Result<(), String> {
+    if let Some(s) = c.requests.iter().find(|s| !templated(s)) {
+        return Err(format!("what {} sent to {} carries a sign-in that isn’t a placeholder: not kept", c.provider.client(), s.host));
+    }
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let text = serde_json::to_vec_pretty(c).map_err(|e| e.to_string())?;
-    crate::store::write_private(&p, &text).map_err(|e| e.to_string())
+    crate::store::write_private(p, &text).map_err(|e| e.to_string())
+}
+
+/// Whether what `s` carries of a sign-in is placeholders only, each filled
+/// with the account's own as it's sent: its authorization (and a proxy's)
+/// a scheme and placeholders, an API key a placeholder; and in its body
+/// (a renewal's form or JSON), each token a placeholder, a refresh grant's
+/// `refresh_token` the account's own (`REFRESH`). Other headers aren't a
+/// sign-in (a client's own key for an API is the same for every account),
+/// and the session's cookies are always one (`COOKIE`). (A renewal kept
+/// with another account's refresh token in its body, and no header at
+/// all, passed; Astra's and Neon's reviews, 2026-11-28.)
+pub fn templated(s: &Sent) -> bool {
+    let headers = s.headers.iter().all(|(k, v)| match k.to_ascii_lowercase().as_str() {
+        "authorization" | "proxy-authorization" => placeholders_only(v.split_once(' ').map_or(v.as_str(), |(_, token)| token)),
+        "x-api-key" => placeholders_only(v),
+        _ => true,
+    });
+    headers && body_templated(&s.body)
+}
+
+/// The placeholders a captured request's are filled from as it's sent
+/// (`likeness::Fill`, which a test holds to these): any other `{{…}}`
+/// would go as it is. (`COOKIE` is the cookie header's whole, apart.)
+pub const FILLED: &[&str] = &[ACCESS, REFRESH, ACCOUNT_ID, ORG, ACCOUNT_UUID, EMAIL];
+
+/// Whether `v` is nothing but placeholders of `FILLED` and space round
+/// them.
+fn placeholders_only(v: &str) -> bool {
+    let mut rest = v.trim();
+    while !rest.is_empty() {
+        let Some(end) = rest.strip_prefix("{{").and_then(|after| after.find("}}")) else { return false };
+        if !FILLED.contains(&&rest[..end + 4]) {
+            return false;
+        }
+        rest = rest[end + 4..].trim_start();
+    }
+    true
+}
+
+/// The fields of a request's body that hold a sign-in.
+const TOKEN_FIELDS: &[&str] = &["refresh_token", "access_token", "id_token"];
+
+/// Whether a request's body (a form's fields, or JSON's, at any depth)
+/// holds each token as a placeholder, and a refresh grant the account's
+/// own refresh token's (`REFRESH`, never none).
+fn body_templated(body: &str) -> bool {
+    let body = body.trim();
+    if body.is_empty() {
+        return true;
+    }
+    if let Ok(v) = serde_json::from_str::<Value>(body) {
+        return json_templated(&v);
+    }
+    // (A form: its fields decoded, as the provider reads them.)
+    let fields: Vec<(String, String)> = body.split('&').map(|kv| kv.split_once('=').unwrap_or((kv, ""))).map(|(k, v)| (form_decoded(k), form_decoded(v))).collect();
+    let tokens = fields.iter().filter(|(k, _)| TOKEN_FIELDS.contains(&k.as_str())).all(|(_, v)| placeholders_only(v));
+    let grant = fields.iter().any(|(k, v)| k == "grant_type" && v == "refresh_token");
+    tokens && (!grant || fields.iter().any(|(k, v)| k == "refresh_token" && v == REFRESH))
+}
+
+fn json_templated(v: &Value) -> bool {
+    match v {
+        Value::Object(o) => {
+            // (A token's field anything but a string of placeholders: a
+            // number or an object may be a sign-in's too.)
+            let tokens = o.iter().filter(|(k, _)| TOKEN_FIELDS.contains(&k.as_str())).all(|(_, v)| v.is_null() || v.as_str().is_some_and(placeholders_only));
+            let grant = o.get("grant_type").and_then(Value::as_str) == Some("refresh_token");
+            tokens && (!grant || o.get("refresh_token").and_then(Value::as_str) == Some(REFRESH)) && o.values().all(json_templated)
+        }
+        Value::Array(a) => a.iter().all(json_templated),
+        _ => true,
+    }
+}
+
+/// A form's field as it means: `+` a space, `%XX` its byte (a `%` not
+/// followed by two hex digits, itself).
+fn form_decoded(s: &str) -> String {
+    let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match (b[i], b.get(i + 1).copied().and_then(hex), b.get(i + 2).copied().and_then(hex)) {
+            (b'+', ..) => out.push(b' '),
+            (b'%', Some(hi), Some(lo)) => {
+                out.push(hi << 4 | lo);
+                i += 2;
+            }
+            (c, ..) => out.push(c),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// The installed client of a provider: where it is, its version, and what
@@ -184,6 +303,30 @@ pub struct Installed {
     pub stamp: String,
 }
 
+/// Where the person has program `name`: on the PATH, else in their own bin
+/// folder (`~/.local/bin`, which the service's PATH may lack). The first
+/// they can run ([`runnable_in`]), by its absolute path.
+pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    dirs.push(home.join(".local/bin"));
+    runnable_in(name, &dirs)
+}
+
+/// The first `name` in `dirs` that's a file this user may run, by its
+/// absolute path: one that can't be run (not executable, or a folder) is
+/// passed over, as a shell passes it, and one in a folder named relative to
+/// wherever this runs isn't looked for. (The first file of that name had
+/// been taken: Terminal ran it, it ended at once, and the pool waited
+/// twenty minutes for a sign-in: Astra's review, 2026-11-28.)
+fn runnable_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt as _;
+    dirs.iter().filter(|d| d.is_absolute()).map(|d| d.join(name)).find(|p| {
+        // SAFETY: a NUL-terminated path, read and not kept.
+        p.is_file() && std::ffi::CString::new(p.as_os_str().as_bytes()).is_ok_and(|c| unsafe { libc::access(c.as_ptr(), libc::X_OK) } == 0)
+    })
+}
+
 /// The client the person runs (`claude`, `codex` or `agy` on their PATH, its
 /// symlinks followed to the version they lead to).
 pub fn installed(p: Provider) -> Option<Installed> {
@@ -192,11 +335,7 @@ pub fn installed(p: Provider) -> Option<Installed> {
         Provider::Codex => "codex",
         Provider::Antigravity => "agy",
     };
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
-    // (The service's PATH may lack the person's own bin folder.)
-    dirs.push(home.join(".local/bin"));
-    let exe = dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())?;
+    let exe = on_path(name)?;
     let real = std::fs::canonicalize(&exe).ok()?;
     let meta = std::fs::metadata(&real).ok()?;
     let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
@@ -862,8 +1001,12 @@ fn client_env(sb: &Sandbox, p: Provider, port: u16, ca: &Path, exe: &Path) -> Ve
         }
         Provider::Antigravity => {
             env.push(("AGY_CA_CERT".into(), ca.display().to_string()));
-            // Empty bus address forces `cliFileTokenStorage` under sandbox `$HOME`.
-            env.push(("DBUS_SESSION_BUS_ADDRESS".into(), String::new()));
+            // No bus, so no keyring: agy's file storage, under the
+            // sandbox's home. (An empty address was the session's bus to
+            // agy, and its keyring's sign-in of another account used in
+            // place of the sandbox's, its token recorded unredacted in
+            // this one's capture: `import::no_bus_address`.)
+            env.push(("DBUS_SESSION_BUS_ADDRESS".into(), crate::import::no_bus_address(&sb.home())));
         }
     }
     env
@@ -925,13 +1068,18 @@ fn unsigned_jwt(claims: &Value) -> String {
 
 /// Codex's sandbox: its sign-in (the account's access token and id, a
 /// made-up refresh token) and the folder trusted.
-fn codex_files(sb: &Sandbox, a: &Account, c: &Credential, expired: bool) -> Result<(), String> {
+fn codex_files(sb: &Sandbox, a: &Account, c: &Credential, expired: bool, made_up: &std::cell::RefCell<Vec<String>>) -> Result<(), String> {
     let claims = crate::upstream::jwt_claims(&c.access).unwrap_or_else(|| json!({}));
     let auth = claims.get("https://api.openai.com/auth").cloned().unwrap_or_else(|| json!({"chatgpt_account_id": c.account_id, "chatgpt_plan_type": a.plan}));
     let id = json!({"email": a.email.clone().unwrap_or_default(), "exp": now() + 7 * 86400, "iat": now(), "https://api.openai.com/auth": auth});
     // (Codex renews a sign-in whose token has expired: one that has, made
     // up, for the renewal's capture; its answer refused, nothing rotates.)
     let access = if expired { expired_access(c) } else { c.access.clone() };
+    // (Kept, to stand for the account's own in what's captured: this
+    // token, made up here, and no other.)
+    if expired {
+        made_up.borrow_mut().push(access.clone());
+    }
     let last = chrono::DateTime::from_timestamp(if expired { now() - 30 * 86400 } else { now() }, 0).unwrap_or_default().format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string();
     let file = json!({"OPENAI_API_KEY": null, "tokens": {"id_token": unsigned_jwt(&id), "access_token": access, "refresh_token": MADE_UP_REFRESH, "account_id": c.account_id}, "last_refresh": last});
     let dir = sb.home().join(".codex");
@@ -1279,15 +1427,14 @@ fn hide(s: &mut Sent, secrets: &[(String, &'static str)]) {
 
 /// The values to hide in what an account's client sent, longest first (a
 /// token contains no other, but an id might be part of a path).
-fn secrets_of(a: &Account, c: &Credential, sent: &[Sent]) -> Vec<(String, &'static str)> {
+fn secrets_of(a: &Account, c: &Credential, sent: &[Sent], made_up: &[String]) -> Vec<(String, &'static str)> {
     let mut out: Vec<(String, &'static str)> = vec![(c.access.clone(), ACCESS), (MADE_UP_REFRESH.to_owned(), REFRESH)];
-    // (A renewal's run's made-up token stands for the account's own too.)
-    for s in sent.iter().filter(|s| s.run == "renewal") {
-        if let Some(v) = s.header("authorization").and_then(|v| v.strip_prefix("Bearer "))
-            && v != c.access
-        {
-            out.push((v.to_owned(), ACCESS));
-        }
+    // (A token made up for a run stands for the account's own too: those
+    // the capture made itself, exactly, never any other a run sent. A
+    // renewal's Bearer had been taken as one, another account's
+    // included; Astra's and Neon's reviews, 2026-11-28.)
+    for v in made_up.iter().filter(|v| **v != c.access) {
+        out.push((v.clone(), ACCESS));
     }
     if let Some(r) = c.refresh.as_deref() {
         // (Never in a sandbox; hidden all the same, should one ever be.)
@@ -1349,9 +1496,11 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     });
     let env = client_env(&sb, p, port, &ca, &client.exe);
     let mut expired = false;
+    // (The tokens made up for its runs: Codex's expired one.)
+    let made_up = std::cell::RefCell::new(Vec::new());
     let write = |expired: bool| match p {
         Provider::Claude => claude_files(&sb, account, cred, expired),
-        Provider::Codex => codex_files(&sb, account, cred, expired),
+        Provider::Codex => codex_files(&sb, account, cred, expired, &made_up),
         Provider::Antigravity => agy_files(&sb, account, cred, expired),
     };
     write(false)?;
@@ -1400,7 +1549,7 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
         Provider::Antigravity => &["daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com", "oauth2.googleapis.com"],
     };
     sent.retain(|s| hosts.contains(&s.host.as_str()));
-    let secrets = secrets_of(account, cred, &sent);
+    let secrets = secrets_of(account, cred, &sent, &made_up.borrow());
     let account_uuid = secrets.iter().find(|(_, p)| *p == ACCOUNT_UUID).map(|(v, _)| v.clone());
     for s in sent.iter_mut() {
         // (A body kept only where the pool makes the request itself: a
@@ -1727,6 +1876,24 @@ pub fn follow(shared: Arc<crate::gateway::Shared>, initial_delay: Duration) {
 mod tests {
     use super::*;
 
+    /// A sandboxed agy is given a bus that isn't there, in its sandbox:
+    /// never an empty address (the session's bus to agy, and its keyring's
+    /// sign-in of another account). The others are given none to change.
+    #[test]
+    fn a_sandboxed_agy_finds_no_bus() {
+        let dir = tempfile::Builder::new().prefix("olo-pool-capture-env-").tempdir_in("/var/tmp").unwrap();
+        let sb = Sandbox { dir: dir.path().join("sandbox") };
+        let env = |p| client_env(&sb, p, 17999, Path::new("/nonexistent/ca.pem"), Path::new("/nonexistent/bin/agy"));
+        let agy = env(Provider::Antigravity);
+        let bus: Vec<&str> = agy.iter().filter(|(k, _)| k == "DBUS_SESSION_BUS_ADDRESS").map(|(_, v)| v.as_str()).collect();
+        assert_eq!(bus, [crate::import::no_bus_address(&sb.home()).as_str()]);
+        let socket = Path::new(bus[0].strip_prefix("unix:path=").expect("a unix:path address"));
+        assert!(socket.starts_with(sb.home()) && !socket.exists(), "{socket:?}");
+        for p in [Provider::Claude, Provider::Codex] {
+            assert!(!env(p).iter().any(|(k, _)| k == "DBUS_SESSION_BUS_ADDRESS"), "{p:?}");
+        }
+    }
+
     /// Nothing that spends, claims or rotates is ever sent on, whichever
     /// host or method; reads on the providers' hosts are.
     #[test]
@@ -1867,6 +2034,147 @@ mod tests {
         assert_eq!(version_of(Provider::Codex, Path::new("/home/u/.codex/packages/standalone/releases/0.170.0-x86_64-unknown-linux-musl/bin/codex")).as_deref(), Some("0.170.0"));
     }
 
+    /// A capture that carries a sign-in as it is (another account's, which
+    /// the account's own placeholders didn't replace) is never kept, and
+    /// one kept before is removed as it's read, whatever the client's
+    /// stamp: it's captured again (Astra's review, 2026-11-28: one made
+    /// while agy read the desktop's keyring would have sent that
+    /// account's bearer for this one). A client's own API key isn't a
+    /// sign-in.
+    #[test]
+    fn a_capture_carrying_a_sign_in_is_never_used() {
+        let sent = |authorization: &str| Sent {
+            run: "print".into(),
+            host: "cloudcode-pa.googleapis.com".into(),
+            method: "POST".into(),
+            target: "/v1internal:loadCodeAssist".into(),
+            headers: vec![("Authorization".into(), authorization.into()), ("x-goog-api-key".into(), "AIzaTheClientsOwnKey".into()), ("cookie".into(), COOKIE.into())],
+            body: String::new(),
+            body_len: 0,
+            alpn: vec![],
+            suites: vec![],
+            schemes: vec![],
+            passed_on: false,
+        };
+        let capture = |authorization: &str| Capture {
+            provider: Provider::Antigravity,
+            version: "1.5.18".into(),
+            installed: "agy 1.5.18 4242 1764300000".into(),
+            account: "acc-a".into(),
+            at: 1_764_300_000,
+            requests: vec![sent("Bearer {{access_token}}"), sent(authorization)],
+            account_uuid: None,
+            hellos: vec![],
+        };
+        for literal in ["Bearer ya29.another-accounts-token", "ya29.bare", "Basic dXNlcjpwYXNz", "Bearer {{access_token}} ya29.x"] {
+            assert!(!templated(&capture(literal).requests[1]), "{literal}");
+        }
+        for fine in ["Bearer {{access_token}}", "{{access_token}}", ""] {
+            assert!(templated(&capture(fine).requests[1]), "{fine}");
+        }
+        assert!(!templated(&Sent { headers: vec![("X-Api-Key".into(), "sk-ant-literal".into())], ..sent("Bearer {{access_token}}") }));
+        // Only the placeholders filled as it's sent: any other would go
+        // as it is.
+        for unfilled in ["Bearer {{id_token}}", "Bearer {{cookie}}", "Bearer {{nope}}", "Bearer {{access_token"] {
+            assert!(!templated(&capture(unfilled).requests[1]), "{unfilled}");
+        }
+
+        // A renewal's body, with no authorization at all: its tokens
+        // placeholders, a refresh grant's the account's own.
+        let renewal = |content_type: &str, body: &str| Sent {
+            run: "models".into(),
+            host: "oauth2.googleapis.com".into(),
+            target: "/token".into(),
+            headers: vec![("Content-Type".into(), content_type.into())],
+            body: body.into(),
+            ..sent("")
+        };
+        let form = "application/x-www-form-urlencoded";
+        for literal in [
+            "grant_type=refresh_token&refresh_token=1%2F%2F0B-another-accounts&client_id=cid&client_secret=cs",
+            "client_id=cid&refresh_token=1//0B-another-accounts&grant_type=refresh_token",
+            "grant_type=refresh_token&client_id=cid",
+            "grant_type=refresh_token&refresh_token=",
+            "grant_type=refresh_token&refresh_token={{refresh_token}}&access_token=ya29.another-accounts",
+            "grant_type=refresh%5Ftoken&refresh%5Ftoken=1%2F%2F0B",
+            "grant_type=authorization_code&id_token=eyJ.another.accounts",
+        ] {
+            assert!(!templated(&renewal(form, literal)), "{literal}");
+        }
+        for fine in ["grant_type=refresh_token&refresh_token={{refresh_token}}&client_id=cid&client_secret=cs", "a=b&c"] {
+            assert!(templated(&renewal(form, fine)), "{fine}");
+        }
+        let json = "application/json";
+        for literal in [
+            json!({"grant_type": "refresh_token", "refresh_token": "sk-ant-ort01-another-accounts", "client_id": "cid"}),
+            json!({"grant_type": "refresh_token", "client_id": "cid"}),
+            json!({"grant_type": "refresh_token", "refresh_token": "{{refresh_token}}", "access_token": "eyJ.another"}),
+            json!({"params": [{"refresh_token": "1//0B-another-accounts"}]}),
+            json!({"id_token": 42}),
+        ] {
+            assert!(!templated(&renewal(json, &literal.to_string())), "{literal}");
+        }
+        for fine in
+            [json!({"grant_type": "refresh_token", "refresh_token": "{{refresh_token}}", "client_id": "cid", "scope": "openid"}), json!({"project": "{{account_id}}"}), json!({"access_token": null})]
+        {
+            assert!(templated(&renewal(json, &fine.to_string())), "{fine}");
+        }
+        let with = |body: &str| Capture { requests: vec![sent("Bearer {{access_token}}"), renewal(form, body)], ..capture("Bearer {{access_token}}") };
+
+        let dir = tempfile::Builder::new().prefix("olo-pool-capture-kept-").tempdir_in("/var/tmp").unwrap();
+        let at = dir.path().join("captures/acc-a.json");
+        // Never kept.
+        assert!(save_to(&at, &capture("Bearer ya29.another-accounts-token")).unwrap_err().contains("isn’t a placeholder"));
+        assert!(!at.exists());
+        // Kept before (the same stamp as the client's now): removed as
+        // it's read, nothing used of it.
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, serde_json::to_vec(&capture("Bearer ya29.another-accounts-token")).unwrap()).unwrap();
+        assert_eq!(load_from(&at), None);
+        assert!(!at.exists(), "kept to be read again");
+        // One of placeholders only: kept and read as it was.
+        let fine = capture("Bearer {{access_token}}");
+        save_to(&at, &fine).unwrap();
+        assert_eq!(load_from(&at), Some(fine));
+        // A renewal's body with another account's refresh token in it:
+        // never kept, and removed as it's read (a form's and JSON's).
+        let foreign = with("grant_type=refresh_token&refresh_token=1%2F%2F0B-another-accounts&client_id=cid");
+        assert!(save_to(&at, &foreign).unwrap_err().contains("isn’t a placeholder"));
+        for kept in [
+            foreign,
+            Capture { requests: vec![renewal(json, &json!({"grant_type": "refresh_token", "refresh_token": "sk-ant-ort01-another-accounts"}).to_string())], ..capture("Bearer {{access_token}}") },
+        ] {
+            std::fs::write(&at, serde_json::to_vec(&kept).unwrap()).unwrap();
+            assert_eq!(load_from(&at), None);
+            assert!(!at.exists(), "kept to be read again");
+        }
+        let fine = with("grant_type=refresh_token&refresh_token={{refresh_token}}&client_id=cid");
+        save_to(&at, &fine).unwrap();
+        assert_eq!(load_from(&at), Some(fine));
+    }
+
+    /// The program found is one this user can run: a file of its name
+    /// that can't be (not executable) is passed over for a later one, and
+    /// a folder named relative to here isn't looked in (Astra's review,
+    /// 2026-11-28).
+    #[test]
+    fn the_program_found_can_be_run() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::Builder::new().prefix("olo-pool-capture-path-").tempdir_in("/var/tmp").unwrap();
+        let (first, second, third) = (dir.path().join("a"), dir.path().join("b"), dir.path().join("c"));
+        for d in [&first, &second, &third] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(first.join("agy"), "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(first.join("agy"), std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::create_dir(second.join("agy")).unwrap();
+        std::fs::write(third.join("agy"), "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(third.join("agy"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(runnable_in("agy", &[first.clone(), second.clone(), third.clone()]), Some(third.join("agy")));
+        assert_eq!(runnable_in("agy", &[first, second]), None);
+        assert_eq!(runnable_in("agy", &[PathBuf::from("c")]), None);
+    }
+
     /// The account's secrets and ids never stay in what's kept.
     #[test]
     fn secrets_become_placeholders() {
@@ -1886,7 +2194,7 @@ mod tests {
             schemes: vec![],
             passed_on: false,
         }];
-        let secrets = secrets_of(&a, &c, &sent);
+        let secrets = secrets_of(&a, &c, &sent, &[]);
         hide(&mut sent[0], &secrets);
         let s = &sent[0];
         assert_eq!(s.target, "/api/oauth/organizations/{{organization_uuid}}/x");
@@ -1910,8 +2218,28 @@ mod tests {
             schemes: vec![],
             passed_on: false,
         }];
-        let agy_secrets = secrets_of(&agy_a, &agy_c, &agy_sent);
+        let agy_secrets = secrets_of(&agy_a, &agy_c, &agy_sent, &[]);
         hide(&mut agy_sent[0], &agy_secrets);
         assert!(agy_sent[0].body.contains("{{account_id}}") && !agy_sent[0].body.contains("my-secret-proj-42"), "{}", agy_sent[0].body);
+
+        // A token a renewal's run sent stands for the account's own only
+        // when the capture made it up (Codex's expired one): another
+        // account's (a keyring's, read past the sandbox) stays as it was,
+        // and the capture isn't kept.
+        let foreign = |run: &str, bearer: &str| Sent { run: run.into(), headers: vec![("Authorization".into(), format!("Bearer {bearer}"))], body: String::new(), ..agy_sent[0].clone() };
+        let mut renewal = vec![foreign("renewal", "ya29.another-accounts"), foreign("models", "ya29.another-accounts")];
+        let agy_secrets = secrets_of(&agy_a, &agy_c, &renewal, &[]);
+        for s in renewal.iter_mut() {
+            hide(s, &agy_secrets);
+            assert_eq!(s.headers[0].1, "Bearer ya29.another-accounts");
+            assert!(!templated(s));
+        }
+        let made_up = expired_access(&c);
+        let codex_a = Account::new("cx".into(), "CX".into(), Provider::Codex);
+        let mut renewal = vec![foreign("renewal", &made_up)];
+        let codex_secrets = secrets_of(&codex_a, &c, &renewal, std::slice::from_ref(&made_up));
+        hide(&mut renewal[0], &codex_secrets);
+        assert_eq!(renewal[0].headers[0].1, "Bearer {{access_token}}");
+        assert!(templated(&renewal[0]));
     }
 }

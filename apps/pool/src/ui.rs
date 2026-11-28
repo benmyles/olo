@@ -11,7 +11,7 @@
 //! and full tiling adaptability (including two-column horizontal-third Activity).
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
     rc::Rc,
     sync::{
@@ -30,7 +30,7 @@ use olo_token_pool::{
     activity::Activity,
     clients,
     codex_daemon::{self, Followed},
-    gateway::{Pool, Shared},
+    gateway::{Pool, Shared, SignedInAs},
     hosts::{Hosts, Stands},
     import::{self, Found},
     model::{Account, Outcome, Provider, Window as QuotaWindow, now},
@@ -41,9 +41,9 @@ use olo_token_pool::{
 use crate::{
     PROVIDERS,
     aggregate::{
-        AccountRollup, LiveReq, MachineScope, RecentReq, Tab, account_out_of_quota, account_paid_scope, account_rollup, custody, demo_data, demo_enabled, folder, host_brief_sentence, host_stands,
-        host_summary, hue, kept_names, last_checked_at, last_synced_at, live_requests, local_custody_summary, merged_activity, middle_truncate, provider_hue, recent_requests, sentence,
-        sorted_accounts, sorted_hosts, sorted_providers, tab_lights,
+        AccountRollup, LiveReq, MachineScope, RecentReq, Tab, account_out_of_quota, account_paid_scope, account_rollup, custody, demo_data, demo_enabled, demo_joined, demo_note, demo_waiting, folder,
+        host_brief_sentence, host_stands, host_summary, hue, kept_names, last_checked_at, last_synced_at, live_requests, local_custody_summary, merged_activity, middle_truncate, provider_hue,
+        recent_requests, sentence, sorted_accounts, sorted_hosts, sorted_providers, tab_lights,
     },
     client_index, clock, duration, plan_name, span, tokens,
 };
@@ -53,6 +53,40 @@ const PROCESS_POLL_EVERY: Duration = Duration::from_secs(2);
 const HOSTS_POLL_EVERY: Duration = Duration::from_secs(30);
 const GRAPH_HEIGHT: f32 = 152.0;
 const DETAIL_ROW: f32 = 16.0;
+/// The group's band pinned at the top of the accounts list.
+const BAND: f32 = 22.0;
+/// A quota's line in an account's row (`inline_quota_row`).
+const QUOTA_ROW: f32 = 18.0;
+/// The space between the lines of an account's row's body.
+const BODY_GAP: f32 = 3.0;
+
+/// A line of an account's row as the list's pinned band sees it: its
+/// height, and how much of its top and of its bottom no glyph, bar or
+/// button reaches (less than they leave, at every scale: 10.5-point words
+/// in 16 points leave nearer 3.5 above and 1.5 below).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Line {
+    h: f32,
+    top: f32,
+    bottom: f32,
+}
+
+/// A row's facts (its email, plan, resets).
+const FACT_LINE: Line = Line { h: DETAIL_ROW, top: 2.0, bottom: 1.0 };
+/// A quota's (its bar 10 points of 18, its words 16).
+const QUOTA_LINE: Line = Line { h: QUOTA_ROW, top: 3.0, bottom: 2.0 };
+/// Today's (2 points over its words' 16).
+const TODAY_LINE: Line = Line { h: 2.0 + DETAIL_ROW, top: 4.0, bottom: 1.0 };
+
+/// Where the list's pinned band can end on an item without cutting a
+/// line: the stretches from its top (points down it) no glyph reaches,
+/// and how much of its end is clear (a row's padding, and its last line's
+/// clear bottom).
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Clear {
+    from_top: Vec<(f32, f32)>,
+    end: f32,
+}
 /// An account's or a host's row: the room above and below its words.
 /// (Eight points, and the three on each side of the rule between rows
 /// that a separator of the kit's had: the rule is the row's own now,
@@ -68,7 +102,11 @@ pub enum Msg {
     Changed,
     Clients([bool; 3]),
     ClientSet(Provider, bool, Result<(), String>, Option<bool>),
-    SignedIn(Result<Found, String>, Option<String>),
+    /// A sign-in read ([`Read`]).
+    SignedIn(Read),
+    /// What became of a sign-in taken into the pool, its worker's
+    /// ([`Taken`]).
+    Taken(Taken),
     Done(Result<String, String>),
     Open,
     Command(String),
@@ -80,17 +118,291 @@ pub enum Msg {
     CloseWindows,
 }
 
+/// The sign-ins begun ([`Ops::begin`]), and the latest begun or taken for
+/// each account: only that one's result is taken, whichever way it was
+/// begun (this computer's, or separately; for the account, or one Add
+/// Account found to be it by its email), and whatever order the answers
+/// come in (Astra's review, 2026-11-28: an older one, answered later,
+/// replaced the newer and its "signed in separately"; Astra's and Neon's,
+/// again: one added that turned out to be an account signed in again
+/// meanwhile was never compared).
+#[derive(Default)]
+struct Ops {
+    begun: u64,
+    latest: HashMap<String, u64>,
+}
+
+impl Ops {
+    /// A sign-in begun, for the account `target` (else one to be found
+    /// as it's taken in, or a new one): its number, the latest for that
+    /// account now.
+    fn begin(&mut self, target: Option<&str>) -> u64 {
+        self.begun += 1;
+        if let Some(t) = target {
+            self.latest.insert(t.to_owned(), self.begun);
+        }
+        self.begun
+    }
+
+    /// Whether a sign-in's result (`op`, for `target`) is still wanted
+    /// before it's taken in: one for an account to be found always is
+    /// (which it is is known as it's taken, [`Ops::take`]); one signed in
+    /// again, only if no sign-in for it has begun since.
+    fn current(&self, op: u64, target: Option<&str>) -> bool {
+        target.is_none_or(|t| self.latest.get(t) == Some(&op))
+    }
+
+    /// Whether sign-in `op` is taken in as account `id`'s, the account it
+    /// turned out to be (its target, the one with its email, or a new
+    /// one): only if no sign-in for that account began, or was taken,
+    /// after it, and then it's that account's latest. Asked as it's
+    /// written (`Shared::take_sign_in`, under the pool's lock).
+    fn take(&mut self, op: u64, id: &str) -> bool {
+        if self.latest.get(id).is_some_and(|&later| later > op) {
+            return false;
+        }
+        self.latest.insert(id.to_owned(), op);
+        true
+    }
+
+    /// Whether `op`, taken in as `id`'s, is still that account's latest:
+    /// what came of it is said only then.
+    fn latest_for(&self, op: u64, id: &str) -> bool {
+        self.latest.get(id).is_none_or(|&l| l == op)
+    }
+}
+
+/// Sign-ins read while the pool's accounts weren't open yet (the keyring
+/// they wait for was shut, and reading one may just have opened it): kept
+/// in the order they came until the accounts are open (Astra's and Neon's
+/// reviews, 2026-11-28: one slot, and a second replaced the first), and
+/// how many times opening them had failed when the first came
+/// (`Pool::open_tries`), so a failure since is said, not "Opening…" for
+/// ever.
+#[derive(Default)]
+struct Held {
+    reads: VecDeque<Read>,
+    tries_then: Option<u64>,
+}
+
+impl Held {
+    fn hold(&mut self, read: Read, tries: u64) {
+        self.tries_then.get_or_insert(tries);
+        self.reads.push_back(read);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.reads.is_empty()
+    }
+
+    /// The accounts as they are now (`loaded`, after `tries` failures to
+    /// open): once open, all that's held, in the order it came; until
+    /// then, whether opening them failed again since last looked.
+    fn looked(&mut self, loaded: bool, tries: u64) -> (Vec<Read>, bool) {
+        if loaded {
+            self.tries_then = None;
+            return (self.reads.drain(..).collect(), false);
+        }
+        match self.tries_then {
+            Some(then) if tries > then => {
+                self.tries_then = Some(tries);
+                (Vec::new(), true)
+            }
+            _ => (Vec::new(), false),
+        }
+    }
+}
+
+/// Account `id`, just taken in, into the vault before its sign-in's own
+/// copy goes (`discard`): what came of each try `said` (why it isn't
+/// saved yet, or nothing), tried again after `wait` while it can't be (the
+/// keyring shut, the disk full). Nothing more is said of one removed
+/// meanwhile, nor by a copy that handed over, its copy let go (Astra's and
+/// Neon's reviews, 2026-11-28: one removed while a save was tried again
+/// "joined" once it was).
+fn keep_taken(shared: &Shared, id: &str, discard: impl Fn(), mut said: impl FnMut(Option<String>), wait: impl Fn()) {
+    let gone = || shared.pool.lock().unwrap().account(id).is_none();
+    loop {
+        if gone() || shared.drain.retired() {
+            return discard();
+        }
+        let unsaved = shared.keep(Duration::from_secs(15)).err();
+        if gone() {
+            return discard();
+        }
+        let done = unsaved.is_none();
+        if done {
+            discard();
+        }
+        said(unsaved);
+        if done {
+            return;
+        }
+        wait();
+    }
+}
+
+/// A sign-in read and not taken (cancelled, replaced, or its account
+/// signed in again since): its private directory, if it has one, removed,
+/// off the window's thread.
+fn let_go(read: Read) {
+    if let Some((_, dir)) = read.separate
+        && !dir.as_os_str().is_empty()
+    {
+        std::thread::spawn(move || import::discard(&dir));
+    }
+}
+
+/// A sign-in read, for the account `target` (else a new one).
+pub struct Read {
+    found: Result<Found, String>,
+    target: Option<String>,
+    /// The sign-in it was begun as ([`Hub::begin`]): one begun for its
+    /// account since is the one taken (Astra's review, 2026-11-28: an
+    /// older one, answered later, replaced the newer).
+    op: u64,
+    /// A separate one's: the wait it was (`Waiting::cancel`), and its
+    /// private directory, its only copy, kept until it's in the vault.
+    separate: Option<(Arc<AtomicBool>, std::path::PathBuf)>,
+    /// The keyring was opened as it was looked for (`Imported::unlocked`).
+    unlocked: bool,
+}
+
+/// What became of a sign-in taken into the pool ([`Hub::adopt`]'s worker).
+pub struct Taken {
+    op: u64,
+    target: Option<String>,
+    outcome: Result<Kept, String>,
+}
+
+/// An account signed in, and whether it's in the vault yet.
+struct Kept {
+    id: String,
+    name: String,
+    again: bool,
+    quit_agy: bool,
+    /// Why it isn't in the vault yet (tried again until it is), if not.
+    unsaved: Option<String>,
+}
+
+/// The program a separate sign-in runs in Terminal, as the person sees it
+/// there: what the footer calls it, waiting and after (one name at every
+/// width, the one "You can quit agy" uses: Opus's review, 2026-11-28).
+fn program(p: Provider) -> &'static str {
+    match p {
+        Provider::Claude => "claude",
+        Provider::Codex => "codex",
+        Provider::Antigravity => "agy",
+    }
+}
+
 struct Waiting {
     provider: Provider,
     target: Option<String>,
     cancel: Arc<AtomicBool>,
+    /// When it's given up on: the countdown the footer shows, and the
+    /// worker's own end.
+    until: Instant,
 }
+
+/// Whether a separate sign-in's result (its wait's `token`) is the one
+/// waited for now (`current`): not cancelled, not replaced by another.
+/// Read just before Cancel or another sign-in, it's dropped as they are.
+fn waited_for(current: Option<&Arc<AtomicBool>>, token: &Arc<AtomicBool>) -> bool {
+    !token.load(Ordering::Relaxed) && current.is_some_and(|c| Arc::ptr_eq(c, token))
+}
+
+/// A separate sign-in in `dir` waited for, until `until`: what it read
+/// (looked for every two seconds; a file still being written is read
+/// again), why it never will be (one that's there and can't be: at once),
+/// or that it timed out. None once cancelled.
+fn wait_for_sign_in(p: Provider, dir: &std::path::Path, cancel: &AtomicBool, until: Instant) -> Option<Result<Found, String>> {
+    loop {
+        std::thread::sleep(Duration::from_secs(2));
+        if cancel.load(Ordering::Relaxed) {
+            return None;
+        }
+        match import::read_separate(p, dir) {
+            Ok(found) => return Some(Ok(found)),
+            Err(import::Unread::Never(e)) => return Some(Err(e)),
+            Err(import::Unread::NotYet(_)) => {}
+        }
+        if Instant::now() >= until {
+            return Some(Err(format!("The {} sign-in timed out.", program(p))));
+        }
+    }
+}
+
+/// How long is left of a wait, as the footer counts it down: minutes and
+/// seconds ("4:12"), rounded up, never under 0:00.
+fn left(until: Instant, now: Instant) -> String {
+    let s = until.saturating_duration_since(now).as_secs_f64().ceil() as u64;
+    format!("{}:{:02}", s / 60, s % 60)
+}
+
+/// A note in the window's footer: what was just done, or what went wrong
+/// (`error`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Note {
+    pub text: String,
+    pub error: bool,
+    /// How much of `text`'s start is an account's name: all that's cut
+    /// short where the room is too little, never what follows (“You can
+    /// quit agy.” is the point of that note).
+    pub name_len: usize,
+    /// Where its quiet end begins, if it has one: what it says in the
+    /// text's own ink, that in the note's grey (the wait's time left).
+    pub quiet_from: Option<usize>,
+}
+
+impl From<(String, bool)> for Note {
+    fn from((text, error): (String, bool)) -> Note {
+        Note { text, error, name_len: 0, quiet_from: None }
+    }
+}
+
+impl Note {
+    /// That `name` is signed in: joined, or `again`. After a separate
+    /// Antigravity sign-in (`quit_agy`), short enough for the footer at
+    /// its width, with what's to be done: agy goes on in Terminal once
+    /// it's signed in (Claude Code's and Codex's sign-ins end), on a home
+    /// that's gone now.
+    pub fn signed_in(name: &str, again: bool, quit_agy: bool) -> Note {
+        let said = match (again, quit_agy) {
+            (false, true) => " joined. You can quit agy.",
+            (true, true) => " signed in. You can quit agy.",
+            (false, false) => " joined the pool.",
+            (true, false) => " is signed in again.",
+        };
+        Note { text: format!("{name}{said}"), error: false, name_len: name.len(), quiet_from: None }
+    }
+
+    /// The separate sign-in of `p` waited for, with `left` of its time
+    /// ("Waiting for agy in Terminal… 4:12 left"): the same words at every
+    /// width, and the time it has, since it ends (Opus's review,
+    /// 2026-11-28). What asks something of the person in the text's ink,
+    /// the time in the note's grey: all grey, and its time without "left",
+    /// it read as the idle window's "Updated 10:20", a clock's time
+    /// (Opus's review, again).
+    pub fn waiting(p: Provider, left: &str) -> Note {
+        let head = format!("Waiting for {} in Terminal… ", program(p));
+        Note { quiet_from: Some(head.len()), ..(format!("{head}{left} left"), false).into() }
+    }
+}
+
+/// What the demo says when asked to sign in: its accounts are made up, and
+/// nothing of the person's (their keyring, Terminal) is touched.
+const DEMO_SIGN_IN: &str = "The demo’s accounts are made up: nothing is signed in.";
 
 #[derive(Clone, Default, PartialEq)]
 pub struct Told {
     clients: Option<[bool; 3]>,
-    note: Option<(String, bool)>,
-    waiting: Option<(Provider, Option<String>)>,
+    note: Option<Note>,
+    /// The separate sign-in waited for: whose, for which account, until.
+    waiting: Option<(Provider, Option<String>, Instant)>,
+    /// The account just signed in, to show (the count: the same one
+    /// again is shown again).
+    joined: Option<(String, u64)>,
 }
 
 #[derive(Default)]
@@ -117,8 +429,27 @@ pub struct Hub {
     hosts: Arc<Hosts>,
     clients: Option<[bool; 3]>,
     client_tx: std::sync::mpsc::Sender<(Provider, bool)>,
-    note: Option<(String, bool)>,
+    /// Written only with [`Hub::set_note`], which keeps its time with it.
+    note: Option<Note>,
+    /// When the note that agy can be quit goes: at the first quota read
+    /// after this (a minute after it was said: seen, and not still there
+    /// an hour later). That note's own: cleared with any other note.
+    note_until: Option<i64>,
     waiting: Option<Waiting>,
+    /// This computer's sign-in being read: one at a time (a second click is
+    /// neither a second worker nor a second password prompt).
+    importing: bool,
+    /// Sign-ins read while the pool's accounts weren't open yet ([`Held`]).
+    held: Held,
+    /// Why the vault's saves fail, as last said ([`Hub::said_save`]).
+    save_said: Option<String>,
+    /// The sign-ins begun ([`Ops`]): asked by the worker that takes them
+    /// in too, as it does.
+    ops: Arc<std::sync::Mutex<Ops>>,
+    /// The worker that takes sign-ins into the pool, one after another in
+    /// the order they came (`Hub::adopt`).
+    adopt_tx: std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>,
+    joined: Option<(String, u64)>,
     open: Arc<Open>,
 }
 
@@ -145,11 +476,71 @@ impl Hub {
                 worker_proxy.send(Msg::ClientSet(p, on, r, if pointed { None } else { Some(restarted) }));
             }
         });
-        Hub { shared, proxy_port, proxy, win: None, hosts, clients: None, client_tx, note: None, waiting: None, open: Arc::default() }
+        // (And one taking sign-ins into the pool, in the order they came:
+        // two at once, each looking for its account before the other was
+        // written, made two of one; Astra's and Neon's reviews,
+        // 2026-11-28.)
+        let (adopt_tx, adopt_rx) = std::sync::mpsc::channel::<Box<dyn FnOnce() + Send>>();
+        let _ = std::thread::Builder::new().name("pool-adopt".into()).spawn(move || {
+            while let Ok(job) = adopt_rx.recv() {
+                job();
+            }
+        });
+        let mut hub = Hub {
+            shared,
+            proxy_port,
+            proxy,
+            win: None,
+            hosts,
+            clients: None,
+            client_tx,
+            adopt_tx,
+            note: None,
+            note_until: None,
+            waiting: None,
+            importing: false,
+            held: Held::default(),
+            save_said: None,
+            ops: Arc::default(),
+            joined: None,
+            open: Arc::default(),
+        };
+        if demo_enabled() {
+            hub.demo_told();
+        }
+        hub
+    }
+
+    /// What the demo shows of a sign-in, for pictures: a note
+    /// (`OLO_POOL_DEMO_NOTE`), an account just signed in separately
+    /// (`OLO_POOL_DEMO_JOINED`), a separate sign-in waited for
+    /// (`OLO_POOL_DEMO_WAITING`).
+    fn demo_told(&mut self) {
+        self.set_note(demo_note().map(Note::from));
+        if let Some(id) = demo_joined()
+            && let Some(a) = demo_data().pool.account(&id)
+        {
+            self.set_note(Some(Note::signed_in(&a.name, false, a.provider == Provider::Antigravity)));
+            self.joined = Some((id, 1));
+        }
+        if demo_waiting() {
+            // (Begun 2 min 18 s ago, as a picture would find it.)
+            self.waiting = Some(Waiting { provider: Provider::Antigravity, target: None, cancel: Arc::default(), until: Instant::now() + SIGN_IN_WAIT - Duration::from_secs(138) });
+        }
     }
 
     fn told(&self) -> Told {
-        Told { clients: self.clients, note: self.note.clone(), waiting: self.waiting.as_ref().map(|w| (w.provider, w.target.clone())) }
+        Told { clients: self.clients, note: self.note.clone(), waiting: self.waiting.as_ref().map(|w| (w.provider, w.target.clone(), w.until)), joined: self.joined.clone() }
+    }
+
+    /// The footer's note now `note` (None: none), with no time of its own:
+    /// the time that agy can be quit is that note's ([`Hub::signed_in`]
+    /// sets it after this), and another note written over it isn't cleared
+    /// when it runs out (Astra's and Neon's reviews, 2026-11-28: a host's
+    /// error went a minute after a sign-in's note it replaced).
+    fn set_note(&mut self, note: Option<Note>) {
+        self.note = note;
+        self.note_until = None;
     }
 
     fn tell(&self) {
@@ -165,7 +556,9 @@ impl Hub {
         }
         let existed = self.win.is_some();
         let (shared, hosts, port, told) = (self.shared.clone(), self.hosts.clone(), self.proxy_port, self.told());
-        let options = WindowOptions::new("Token Pool", 640.0, 740.0).min_size(380.0, 220.0).keep_size("main");
+        // (At least 400 wide, where the footer's three buttons fit, Cancel
+        // Sign-In's too: at 380, Refresh Quota ran 16 points out of it.)
+        let options = WindowOptions::new("Token Pool", WIDTH, OPENS_TALL).min_size(400.0, 220.0).keep_size("main");
         olo_kit::open_or_raise(&mut self.win, options, move |cx| PoolWindow::new(shared, hosts, port, told, initial, cx));
         self.open.open.store(true, Ordering::Relaxed);
         if existed
@@ -187,81 +580,164 @@ impl Hub {
     }
 
     fn import_local(&mut self, p: Provider, target: Option<String>) {
+        // (The demo touches nothing of the person's: no keyring asked.)
+        if demo_enabled() {
+            return self.set_note(Some((DEMO_SIGN_IN.to_owned(), false).into()));
+        }
+        if self.importing {
+            return;
+        }
+        self.importing = true;
+        let op = self.ops.lock().unwrap().begin(target.as_deref());
         let proxy = self.proxy.clone();
-        std::thread::spawn(move || proxy.send(Msg::SignedIn(import::this_computer(p), target)));
+        std::thread::spawn(move || {
+            let imported = import::this_computer(p);
+            proxy.send(Msg::SignedIn(Read { found: imported.found, target, op, separate: None, unlocked: imported.unlocked }));
+        });
     }
 
     fn sign_in_separately(&mut self, p: Provider, target: Option<String>) {
+        // (The demo touches nothing of the person's: no Terminal started.)
+        if demo_enabled() {
+            return self.set_note(Some((DEMO_SIGN_IN.to_owned(), false).into()));
+        }
         if let Some(w) = self.waiting.take() {
             w.cancel.store(true, Ordering::Relaxed);
         }
-        let dir = match import::separate_dir() {
-            Ok(d) => d,
-            Err(e) => return self.note = Some((e, true)),
-        };
-        let mut argv = vec!["olo-terminal".to_owned(), "-e".to_owned()];
-        argv.extend(import::sign_in_command(p, &dir));
-        let argv: Vec<std::ffi::OsString> = argv.into_iter().map(Into::into).collect();
-        if let Err(e) = olo_xdg::open::spawn(&argv) {
-            import::discard(&dir);
-            return self.note = Some((format!("Couldn’t open Terminal: {e}"), true));
-        }
+        let op = self.ops.lock().unwrap().begin(target.as_deref());
         let cancel = Arc::new(AtomicBool::new(false));
-        self.waiting = Some(Waiting { provider: p, target: target.clone(), cancel: cancel.clone() });
-        self.note = None;
+        let until = Instant::now() + SIGN_IN_WAIT;
+        self.waiting = Some(Waiting { provider: p, target: target.clone(), cancel: cancel.clone(), until });
+        self.set_note(None);
         let proxy = self.proxy.clone();
+        // Its directory made, its client found and Terminal started on the
+        // worker too (files, and programs looked for): the window waits for
+        // none of it, and says what went wrong as it would a sign-in's.
         std::thread::spawn(move || {
-            let start = Instant::now();
-            let result = loop {
-                std::thread::sleep(Duration::from_secs(2));
-                if cancel.load(Ordering::Relaxed) {
-                    break None;
-                }
-                if let Ok(found) = import::read_separate(p, &dir) {
-                    break Some(Ok(found));
-                }
-                if start.elapsed() > SIGN_IN_WAIT {
-                    break Some(Err("The sign-in in Terminal didn’t finish in time.".to_owned()));
-                }
+            let (dir, command) = match import::begin_separate(p) {
+                Ok(begun) => begun,
+                Err(e) => return proxy.send(Msg::SignedIn(Read { found: Err(e), target, op, separate: Some((cancel, std::path::PathBuf::new())), unlocked: false })),
             };
-            import::discard(&dir);
-            if let Some(r) = result {
-                proxy.send(Msg::SignedIn(r, target));
+            // (Cancelled, or another begun, while it was made ready:
+            // Terminal isn't opened for it. Astra's review, 2026-11-28.)
+            if cancel.load(Ordering::Relaxed) {
+                return import::discard(&dir);
+            }
+            let mut argv: Vec<std::ffi::OsString> = vec!["olo-terminal".into(), "-e".into()];
+            argv.extend(command.into_iter().map(Into::into));
+            let found = match olo_xdg::open::spawn(&argv) {
+                Ok(()) => wait_for_sign_in(p, &dir, &cancel, until),
+                Err(e) => Some(Err(format!("Couldn’t open Terminal: {e}"))),
+            };
+            match found {
+                // (Its directory kept with what it read: its only copy,
+                // let go once it's in the vault, `Hub::adopt`.)
+                Some(Ok(found)) => proxy.send(Msg::SignedIn(Read { found: Ok(found), target, op, separate: Some((cancel, dir)), unlocked: false })),
+                Some(Err(e)) => {
+                    import::discard(&dir);
+                    proxy.send(Msg::SignedIn(Read { found: Err(e), target, op, separate: Some((cancel, std::path::PathBuf::new())), unlocked: false }));
+                }
+                None => import::discard(&dir),
             }
         });
     }
 
-    fn adopt(&mut self, found: Found, target: Option<String>) {
-        let pool = self.shared.snapshot();
-        let same = |a: &&Account| a.provider == found.provider && found.email.is_some() && a.email == found.email;
-        let existing = target.or_else(|| pool.saved.accounts.iter().find(same).map(|a| a.id.clone()));
-        if let Some(id) = existing {
-            let name = pool.account(&id).map(|a| a.name.clone()).unwrap_or_default();
-            self.shared.reauth(&id, found.credential);
-            if let Some(a) = self.shared.pool.lock().unwrap().account_mut(&id) {
-                if found.org.is_some() {
-                    a.org = found.org;
-                }
-                if found.email.is_some() {
-                    a.email = found.email;
-                }
-                if found.plan.is_some() {
-                    a.plan = found.plan;
-                }
-            }
-            self.note = Some((format!("{name} is signed in again."), false));
+    /// `read` taken in; or, the pool's accounts not open yet (the keyring
+    /// they wait for was shut: reading this sign-in may just have opened
+    /// it), kept until they are, in the order they came, and they're
+    /// opened at once.
+    fn take_in(&mut self, read: Read) {
+        let (loaded, tries) = {
+            let p = self.shared.pool.lock().unwrap();
+            (p.loaded, p.open_tries)
+        };
+        if !loaded || !self.held.is_empty() {
+            self.shared.open_again();
+            self.set_note(Some(("Opening the pool’s accounts to add it…".to_owned(), false).into()));
+            self.held.hold(read, tries);
             return;
         }
-        let mut a = Account::new(store::new_id(), found.name(), found.provider);
-        a.email = found.email.clone();
-        a.plan = found.plan.clone();
-        a.org = found.org.clone();
-        a.separate = self.waiting.is_some();
-        let name = a.name.clone();
-        self.note = Some(match self.shared.add(a, found.credential) {
-            Ok(()) => (format!("{name} joined the pool."), false),
-            Err(e) => (e, true),
-        });
+        self.adopt(read);
+    }
+
+    /// What `read` found into the pool, on the worker that takes them in
+    /// one after another in the order they came (the vault written to
+    /// disk, a capture forgotten: never on the window's thread, Astra's
+    /// review, 2026-11-28): the account it is again (its target, else the
+    /// one with its email), else a new one, signed in separately if it was
+    /// one of those; nothing, if a newer sign-in for that account began or
+    /// was taken since. Said only once it's in the vault: a separate one's
+    /// own copy (its directory) goes then, and not before.
+    fn adopt(&mut self, read: Read) {
+        let Read { found, target, op, separate, .. } = read;
+        let Ok(found) = found else { return };
+        let dir = separate.map(|(_, dir)| dir);
+        let quit_agy = dir.is_some() && found.provider == Provider::Antigravity;
+        let (shared, proxy, ops) = (self.shared.clone(), self.proxy.clone(), self.ops.clone());
+        let job = move || {
+            let discard = |dir: &Option<std::path::PathBuf>| {
+                if let Some(d) = dir {
+                    import::discard(d);
+                }
+            };
+            // What the sign-in says of it, and where it was signed in, set
+            // with it; nothing kept for one removed as it was read.
+            let said = SignedInAs { email: found.email.clone(), plan: found.plan.clone(), org: found.org.clone(), separate: dir.is_some() };
+            let mut a = Account::new(store::new_id(), found.name(), found.provider);
+            a.email = found.email;
+            a.plan = found.plan;
+            a.org = found.org;
+            a.separate = dir.is_some();
+            let (id, name, again) = match shared.take_sign_in(target.as_deref(), a, found.credential, said, |id| ops.lock().unwrap().take(op, id)) {
+                Ok(Some(taken)) => taken,
+                // (A newer sign-in for its account is its: nothing said.)
+                Ok(None) => return discard(&dir),
+                Err(e) => {
+                    discard(&dir);
+                    return proxy.send(Msg::Taken(Taken { op, target, outcome: Err(e) }));
+                }
+            };
+            // Into the vault before its own copy goes, on a thread of its
+            // own (the next sign-in taken in meanwhile).
+            std::thread::spawn(move || {
+                let said = |unsaved| {
+                    let kept = Kept { id: id.clone(), name: name.clone(), again, quit_agy, unsaved };
+                    proxy.send(Msg::Taken(Taken { op, target: target.clone(), outcome: Ok(kept) }));
+                };
+                keep_taken(&shared, &id, || discard(&dir), said, || std::thread::sleep(Duration::from_secs(30)));
+            });
+        };
+        if let Err(job) = self.adopt_tx.send(Box::new(job)) {
+            // (Its worker gone, a panic: taken in here, as before one was.)
+            tracing::warn!("pool: the worker that takes sign-ins in is gone");
+            std::thread::spawn(job.0);
+        }
+    }
+
+    /// The vault's saves failing (`Pool::save_error`: the disk full, the
+    /// keyring shut) said once as they start to, and that note gone once
+    /// one goes through again (Astra's review, 2026-11-28: it was the
+    /// gateway's error, "Gateway Stopped", and stayed).
+    fn said_save(&mut self, error: Option<String>) {
+        if error == self.save_said {
+            return;
+        }
+        match &error {
+            Some(e) => self.set_note(Some((e.clone(), true).into())),
+            None if self.note.as_ref().is_some_and(|n| Some(&n.text) == self.save_said.as_ref()) => self.set_note(None),
+            None => {}
+        }
+        self.save_said = error;
+        // (Told now: a change of the pool's goes no further, mostly.)
+        self.tell();
+    }
+
+    /// Said that `name` (`id`) is signed in, and the account shown.
+    fn signed_in(&mut self, id: &str, name: &str, again: bool, quit_agy: bool) {
+        self.set_note(Some(Note::signed_in(name, again, quit_agy)));
+        self.note_until = quit_agy.then(|| now() + 60);
+        let n = self.joined.as_ref().map_or(1, |(_, n)| n + 1);
+        self.joined = Some((id.to_owned(), n));
     }
 
     fn sync_all_hosts(&mut self) {
@@ -278,15 +754,18 @@ impl Hub {
                 }
             }
         }
-        self.note = Some(if let Some(e) = first_err {
-            (e, true)
-        } else if started == 0 {
-            ("No remote hosts to sync right now.".to_owned(), false)
-        } else if started == 1 {
-            ("Syncing 1 remote host…".to_owned(), false)
-        } else {
-            (format!("Syncing {started} remote hosts…"), false)
-        });
+        self.set_note(Some(
+            if let Some(e) = first_err {
+                (e, true)
+            } else if started == 0 {
+                ("No remote hosts to sync right now.".to_owned(), false)
+            } else if started == 1 {
+                ("Syncing 1 remote host…".to_owned(), false)
+            } else {
+                (format!("Syncing {started} remote hosts…"), false)
+            }
+            .into(),
+        ));
     }
 
     fn command(&mut self, command: &str) {
@@ -305,9 +784,18 @@ impl Hub {
             _ => {}
         }
         let provider = command.rsplit(':').next().and_then(Provider::parse);
+        // (Begun from the menu on another tab: Accounts shown, where its
+        // wait, Cancel Sign-In and what came of it are. Astra's review,
+        // 2026-11-28.)
         match (command.split(':').next(), provider) {
-            (Some("import"), Some(p)) => self.import_local(p, None),
-            (Some("separate"), Some(p)) => self.sign_in_separately(p, None),
+            (Some("import"), Some(p)) => {
+                self.open_tab(Some(Tab::Accounts));
+                self.import_local(p, None);
+            }
+            (Some("separate"), Some(p)) => {
+                self.open_tab(Some(Tab::Accounts));
+                self.sign_in_separately(p, None);
+            }
             _ => {}
         }
     }
@@ -327,7 +815,39 @@ impl Hub {
                 if let Some(w) = &self.win {
                     w.messenger().send(WinMsg::Changed);
                 }
-                return;
+                let save_error = self.shared.pool.lock().unwrap().save_error.clone();
+                self.said_save(save_error);
+                // (Looked at only while there's something to see to.)
+                if self.held.is_empty() && self.note_until.is_none() {
+                    return;
+                }
+                let (loaded, synced, tries, error) = {
+                    let p = self.shared.pool.lock().unwrap();
+                    (p.loaded, last_synced_at(&p), p.open_tries, p.error.clone())
+                };
+                // Sign-ins read while the accounts weren't open, taken in
+                // now they are, in the order they came (one whose account
+                // was signed in again since, dropped); or, they failed to
+                // open again: why, said, and not "Opening…" for ever (the
+                // sign-ins wait on, taken in once they do).
+                let (opened, failed) = self.held.looked(loaded, tries);
+                for read in opened {
+                    if self.ops.lock().unwrap().current(read.op, read.target.as_deref()) {
+                        self.adopt(read);
+                    } else {
+                        let_go(read);
+                    }
+                }
+                if failed {
+                    self.set_note(Some((error.unwrap_or_else(|| "The pool’s accounts couldn’t be opened.".to_owned()), true).into()));
+                }
+                // That agy can be quit: gone with the first quota read after
+                // a minute.
+                if let Some(until) = self.note_until
+                    && synced.is_some_and(|t| t > until)
+                {
+                    self.set_note(None);
+                }
             }
             Msg::Open => {
                 olo_kit::instance::listen(crate::APP_ID, self.proxy.clone());
@@ -342,52 +862,118 @@ impl Hub {
                     }
                     self.shared.set_paused(prov, !on);
                 }
-                self.note = Some(match r {
-                    Ok(()) => {
-                        if prov == Provider::Antigravity && restarted.is_some() {
-                            if on {
-                                let is_fish = std::env::var("SHELL").is_ok_and(|s| s.ends_with("/fish") || s == "fish");
-                                if is_fish {
-                                    let fish_p = std::env::var_os("XDG_CONFIG_HOME")
-                                        .map(std::path::PathBuf::from)
-                                        .filter(|p| !p.as_os_str().is_empty())
-                                        .map(|c| folder(&c.join("fish/conf.d/olo-pool-agy.fish")))
-                                        .unwrap_or_else(|| "~/.config/fish/conf.d/olo-pool-agy.fish".into());
-                                    (format!("Antigravity uses the pool in new fish shells (or run: source {fish_p})."), false)
+                self.set_note(Some(
+                    match r {
+                        Ok(()) => {
+                            if prov == Provider::Antigravity && restarted.is_some() {
+                                if on {
+                                    let is_fish = std::env::var("SHELL").is_ok_and(|s| s.ends_with("/fish") || s == "fish");
+                                    if is_fish {
+                                        let fish_p = std::env::var_os("XDG_CONFIG_HOME")
+                                            .map(std::path::PathBuf::from)
+                                            .filter(|p| !p.as_os_str().is_empty())
+                                            .map(|c| folder(&c.join("fish/conf.d/olo-pool-agy.fish")))
+                                            .unwrap_or_else(|| "~/.config/fish/conf.d/olo-pool-agy.fish".into());
+                                        (format!("Antigravity uses the pool in new fish shells (or run: source {fish_p})."), false)
+                                    } else {
+                                        let sh_p = folder(&clients::agy_sh_path());
+                                        (format!("Antigravity uses the pool in new shells (or run: . {sh_p})."), false)
+                                    }
                                 } else {
-                                    let sh_p = folder(&clients::agy_sh_path());
-                                    (format!("Antigravity uses the pool in new shells (or run: . {sh_p})."), false)
+                                    ("Antigravity is back to its own sign-in in new shells.".to_owned(), false)
                                 }
                             } else {
-                                ("Antigravity is back to its own sign-in in new shells.".to_owned(), false)
+                                let when = match (prov, restarted) {
+                                    (_, None) => "from its next request",
+                                    (Provider::Codex, Some(true)) => "from now (its service restarted)",
+                                    (Provider::Codex, Some(false)) => "from now",
+                                    (Provider::Claude | Provider::Antigravity, Some(_)) => "from its next start",
+                                };
+                                let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
+                                (format!("{} {verb} {when}.", prov.client()), false)
                             }
-                        } else {
-                            let when = match (prov, restarted) {
-                                (_, None) => "from its next request",
-                                (Provider::Codex, Some(true)) => "from now (its service restarted)",
-                                (Provider::Codex, Some(false)) => "from now",
-                                (Provider::Claude | Provider::Antigravity, Some(_)) => "from its next start",
-                            };
-                            let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
-                            (format!("{} {verb} {when}.", prov.client()), false)
                         }
+                        Err(e) => (e, true),
                     }
-                    Err(e) => (e, true),
-                });
+                    .into(),
+                ));
                 self.read_clients();
             }
             Msg::Done(r) => {
-                self.note = Some(match r {
-                    Ok(m) => (m, false),
-                    Err(e) => (e, true),
-                })
+                self.set_note(Some(
+                    match r {
+                        Ok(m) => (m, false),
+                        Err(e) => (e, true),
+                    }
+                    .into(),
+                ));
             }
-            Msg::SignedIn(r, target) => {
-                match r {
-                    Ok(found) => self.adopt(found, target),
-                    Err(e) => self.note = Some((e, true)),
+            Msg::SignedIn(read) => {
+                let waited = match &read.separate {
+                    // A separate sign-in's: only the one waited for. One
+                    // cancelled or replaced as it was read is dropped
+                    // whole: no account added or signed in again, no note
+                    // over another's.
+                    Some((token, _)) => waited_for(self.waiting.as_ref().map(|w| &w.cancel), token),
+                    // This computer's: one more may be read now. (A
+                    // separate sign-in waited for meanwhile stays waited for,
+                    // its Cancel Sign-In there.) The keyring opened as it
+                    // was looked for: the pool's own accounts, kept in it
+                    // too, are opened now, whatever was found (Astra's
+                    // review, 2026-11-28).
+                    None => {
+                        self.importing = false;
+                        if read.unlocked {
+                            self.shared.open_again();
+                        }
+                        true
+                    }
+                };
+                if !waited {
+                    return let_go(read);
                 }
-                self.waiting = None;
+                if read.separate.is_some() {
+                    self.waiting = None;
+                }
+                // One begun for its account since, either way, is the one
+                // taken: this one's dropped (Astra's review, 2026-11-28).
+                let current = self.ops.lock().unwrap().current(read.op, read.target.as_deref());
+                if !current {
+                    let_go(read);
+                } else if let Err(e) = &read.found {
+                    let e = e.clone();
+                    self.set_note(Some((e, true).into()));
+                } else {
+                    self.take_in(read);
+                }
+            }
+            Msg::Taken(Taken { op, target, outcome }) => {
+                // (What came of one whose account was signed in again since
+                // isn't said over the newer one's.)
+                match outcome {
+                    Err(e) if self.ops.lock().unwrap().current(op, target.as_deref()) => self.set_note(Some((e, true).into())),
+                    Err(_) => {}
+                    Ok(k) => {
+                        let latest = self.ops.lock().unwrap().latest_for(op, &k.id);
+                        if latest {
+                            match &k.unsaved {
+                                None => self.signed_in(&k.id, &k.name, k.again, k.quit_agy),
+                                Some(e) => {
+                                    // In the pool, and shown, but not said
+                                    // to be kept until it is. (Chosen once:
+                                    // each try that fails again leaves the
+                                    // list where the person has it.)
+                                    let why = e.trim_end_matches('.');
+                                    self.set_note(Some((format!("{} isn’t saved yet ({why}): tried again every 30 seconds.", k.name), true).into()));
+                                    if self.joined.as_ref().is_none_or(|(id, _)| *id != k.id) {
+                                        let n = self.joined.as_ref().map_or(1, |(_, n)| n + 1);
+                                        self.joined = Some((k.id.clone(), n));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Msg::Command(command) => self.command(&command),
             Msg::SetClient(p, on) => self.set_client(p, on),
@@ -402,6 +988,7 @@ impl Hub {
                 if let Some(w) = self.waiting.take() {
                     w.cancel.store(true, Ordering::Relaxed);
                 }
+                self.set_note(None);
             }
             Msg::TabChanged(tab) => {
                 self.open.tab.store(tab as usize, Ordering::Relaxed);
@@ -441,14 +1028,22 @@ pub fn requested_tab(args: &[String]) -> Option<Tab> {
     None
 }
 
-fn add_menu() -> Menu {
+/// The Accounts menu (and Add Account…'s): each client's sign-in, this
+/// computer's or a separate one. None begun while another is `waiting`:
+/// one at a time, its Cancel Sign-In in the footer (Opus's review,
+/// 2026-11-28).
+fn add_menu(waiting: bool) -> Menu {
     let mut menu = Menu::new("Accounts");
     for (i, p) in PROVIDERS.into_iter().enumerate() {
         if i > 0 {
             menu = menu.separator();
         }
         let key = p.key();
-        menu = menu.item(format!("Add This Computer’s {} Sign-In", p.client()), format!("import:{key}")).item(format!("Sign In to {} Separately…", p.client()), format!("separate:{key}"));
+        menu = menu
+            .item(format!("Add This Computer’s {} Sign-In", p.client()), format!("import:{key}"))
+            .enabled(!waiting)
+            .item(format!("Sign In to {} Separately…", p.client()), format!("separate:{key}"))
+            .enabled(!waiting);
     }
     menu
 }
@@ -493,6 +1088,221 @@ fn client_color(p: &olo_kit::palette::Palette, client: &str) -> Hsla {
 fn secondary_ink(p: &olo_kit::palette::Palette, over: olo_theme::Rgba) -> Hsla {
     let target = if p.mode == olo_theme::ThemeMode::Dark { olo_theme::mix(p.panel_text, over, 0.28) } else { olo_theme::mix(p.panel_text, over, 0.36) };
     style::c(olo_theme::readable(target, over, 4.6))
+}
+
+/// How a footer note is inked on the panel: set small (a row's details'
+/// size), so further from the panel than other secondary words, 5.5:1 or
+/// more; an error's red no less than 4.5:1 there.
+fn note_ink(p: &olo_kit::palette::Palette, error: bool) -> olo_theme::Rgba {
+    if error { olo_theme::readable(p.failure, p.panel_background, 4.5) } else { olo_theme::readable(olo_theme::mix(p.panel_text, p.panel_background, 0.3), p.panel_background, 5.5) }
+}
+
+/// How much more room there is between a footer button and the footer's
+/// words (its note after Edit Account…, its time before Refresh Quota)
+/// than between the buttons: 16 points then (the words aren't a button).
+const NOTE_GAP: f32 = 4.0;
+
+/// The window's width when it opens.
+const WIDTH: f32 = 640.0;
+
+/// Its height when it opens: with its tab and frame on the smallest
+/// screen, 800 points, with room below (740 ran its bottom off it at 2×),
+/// its list's foot between two lines of the accounts as they open, the
+/// middle of the gap over a quota's bar (at 720 it cut "All models"' bar
+/// in half, the first thing seen: Opus's and Neon's reviews, 2026-11-28).
+const OPENS_TALL: f32 = 712.0;
+
+/// Narrower than this, a footer note has a row of its own, above the
+/// buttons. Beside three, a joined note needs about 600 points to keep
+/// some of its name before " joined. You can quit agy." (606 for all of
+/// "Workspace Dev"), and from 480, where it moved before, to about 550 it
+/// showed nothing at all.
+const NOTE_ROW: f32 = 600.0;
+
+/// The note's own row, below `NOTE_ROW`: its capitals 10 (and a half)
+/// under the list, its baseline 6 over the buttons, so it reads as their
+/// caption (Opus's review, 2026-11-28: 17 and 15, it belonged to neither;
+/// then 10 and 10, midway between them). Whole points, its baseline at 18
+/// (capitals of 7.5): at 27.5, 1× set them 9 and 11. Always there below
+/// `NOTE_ROW`, with when quota was read where there's no note, so the
+/// list is as tall in every state (Opus's review, again: it came and
+/// went, the list's height with it, and at 400 the time was nowhere).
+const NOTE_ROW_UNDER: f32 = 6.0;
+const NOTE_ROW_BASELINE: f32 = 18.0;
+
+/// How far a tip's words are set in from its edge (the kit's: `TIGHT` and
+/// a point, `tip::PAD_X`): a tip moved left by it has its words where the
+/// note's are.
+const TIP_PAD: f32 = m::TIGHT + 1.0;
+
+/// How wide the kit's tip is for `text`, as the kit sizes it (its own
+/// `tip_size`, which it keeps to itself; docs/TODO.md): one line as wide
+/// as it is, up to 360 points, its frame and insets included; past that
+/// wrapped, as narrow as its longest line then is; on whole points. A
+/// tip's place over the footer's note is chosen by it: by the most a tip
+/// may be, a wrapped one, much narrower, was placed against the list's
+/// end, far from its note (Opus's and Neon's reviews, 2026-11-28).
+fn tip_width(text: &str) -> f32 {
+    const MAX_WIDTH: f32 = 360.0;
+    let font = style::ui_font(FontWeight::NORMAL);
+    let measure = |l: &str| f32::from(style::text_width(l.to_owned(), style::PLAIN_SIZE, font.clone()));
+    let one_line = text.lines().map(measure).fold(0.0, f32::max);
+    let frame = 2.0;
+    let most = MAX_WIDTH - 2.0 * TIP_PAD - frame;
+    let mut inner = one_line.ceil().min(most);
+    let mut wrapper = olo_kit::text_system().line_wrapper(font.clone(), px(style::PLAIN_SIZE));
+    let mut wraps = |width: f32| text.lines().any(|l| measure(l) <= most && wrapper.wrap_line(&[olo_kit::LineFragment::text(l)], px(width)).count() > 0);
+    while inner < most && wraps(inner) {
+        inner += 1.0;
+    }
+    if inner >= most {
+        let lines = olo_kit::tip::paragraph_height(text, inner);
+        let mut longest_at = |width: f32| {
+            let mut longest: f32 = 0.0;
+            for l in text.lines() {
+                let mut from = 0;
+                let ends: Vec<usize> = wrapper.wrap_line(&[olo_kit::LineFragment::text(l)], px(width)).map(|b| b.ix).chain([l.len()]).collect();
+                for to in ends {
+                    longest = longest.max(measure(l[from..to].trim_end()));
+                    from = to;
+                }
+            }
+            longest
+        };
+        loop {
+            let mut fitted = longest_at(inner).ceil().min(inner);
+            while fitted < inner && olo_kit::tip::paragraph_height(text, fitted) > lines {
+                fitted += 1.0;
+            }
+            if fitted >= inner {
+                break;
+            }
+            inner = fitted;
+        }
+    }
+    (inner + 2.0 * TIP_PAD + frame).ceil()
+}
+
+/// Where the footer's note was last drawn, as its drawing found it: cut or
+/// whole, and its place across the window. What the tip over it is made
+/// from, at the next look (the room it's given is known only as it's drawn).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Drawn {
+    cut: bool,
+    left: f32,
+    width: f32,
+}
+
+/// What of a footer note shows in `room`, as `width` measures and `cut`
+/// cuts (to a width, with "…": where a word ends if asked, else anywhere):
+/// all of its text if it fits; else, its text's first `name_len` bytes an
+/// account's name, the name cut short, at least a letter of it, and all
+/// that follows; else, one with no name, cut where a word ends; else
+/// nothing (never a lone "…", nor "… joined", which names no one: Neon's
+/// review, 2026-11-28).
+fn fitted(note: &Note, room: f32, width: impl Fn(&str) -> f32, mut cut: impl FnMut(&str, f32, bool) -> String) -> Option<String> {
+    let text = note.text.as_str();
+    if width(text) <= room {
+        return Some(text.to_owned());
+    }
+    if note.name_len > 0 && text.is_char_boundary(note.name_len) {
+        let (name, rest) = text.split_at(note.name_len);
+        let left = room - width(rest);
+        if left <= 0.0 {
+            return None;
+        }
+        let short = cut(name, left, false);
+        if !short.chars().any(|c| c != '…' && !c.is_whitespace()) {
+            return None;
+        }
+        let whole = format!("{short}{rest}");
+        return (width(&whole) <= room).then_some(whole);
+    }
+    let short = cut(text, room, true);
+    (short != "…" && !short.is_empty() && width(&short) <= room).then_some(short)
+}
+
+/// Where the footer's note goes: beside the buttons, on their labels'
+/// baseline; or on a row of its own above them (`NOTE_ROW_UNDER`).
+#[derive(Clone, Copy, PartialEq)]
+enum NotePlace {
+    Beside,
+    Row,
+}
+
+/// The footer's note in the room it's given: in a row's details' size,
+/// from the left, where `place` says; cut as `fitted` cuts it, and always
+/// whole to agents. Where it was drawn, and whether cut, kept in `drawn`
+/// (`invalidate` asked when that changed): the tip with its whole is the
+/// window's, above it ([`PoolWindow::note_tip`]), never the kit's cut-text
+/// tip, which opens below, on the window's frame and Refresh Quota (Opus's
+/// and Neon's reviews, 2026-11-28).
+fn footer_note(note: &Note, ink: olo_theme::Rgba, place: NotePlace, drawn: Rc<Cell<Drawn>>, invalidate: impl Fn() + 'static) -> Element {
+    let text = SharedString::from(note.text.clone());
+    let key = style::key((&note.text, note.name_len, note.quiet_from, ink, place == NotePlace::Row));
+    let note = note.clone();
+    let height = match place {
+        NotePlace::Beside => m::CONTROL_HEIGHT,
+        NotePlace::Row => NOTE_ROW_BASELINE + NOTE_ROW_UNDER,
+    };
+    canvas(move |g, b| {
+        let font = style::ui_font(FontWeight::NORMAL);
+        let width = |t: &str| f32::from(style::text_width(t.to_owned(), style::SMALL_SIZE, font.clone()));
+        let shown = fitted(&note, f32::from(b.size.width), width, |t, w, words| {
+            if words { style::fit_words(g, t.to_owned().into(), style::SMALL_SIZE, &font, px(w)).to_string() } else { style::fit(g, t.to_owned().into(), style::SMALL_SIZE, &font, px(w)).to_string() }
+        });
+        let baseline = match place {
+            NotePlace::Beside => style::baseline_at(g, b.center().y, style::PLAIN_SIZE),
+            // (Its baseline `NOTE_ROW_BASELINE` down.)
+            NotePlace::Row => style::baseline_at(g, b.top() + px(NOTE_ROW_BASELINE - style::SMALL_SIZE * style::CAP_HEIGHT / 2.0), style::SMALL_SIZE),
+        };
+        let at = match (&shown, note.quiet_from) {
+            // (Its quiet end, whole, in the note's grey after the rest in
+            // the text's own ink.)
+            (Some(shown), Some(from)) if shown == &note.text && note.text.is_char_boundary(from) => {
+                let loud = style::c(theme::palette().panel_text);
+                let head = style::label_on_baseline(g, b.left(), baseline, style::Align::Left, note.text[..from].to_owned(), style::SMALL_SIZE, font.clone(), loud);
+                let tail =
+                    style::label_on_baseline(g, b.left() + px(width(&note.text[..from])), baseline, style::Align::Left, note.text[from..].to_owned(), style::SMALL_SIZE, font.clone(), style::c(ink));
+                head.union(&tail)
+            }
+            (Some(shown), Some(_)) => style::label_on_baseline(g, b.left(), baseline, style::Align::Left, shown.clone(), style::SMALL_SIZE, font.clone(), style::c(theme::palette().panel_text)),
+            (Some(shown), None) => style::label_on_baseline(g, b.left(), baseline, style::Align::Left, shown.clone(), style::SMALL_SIZE, font.clone(), style::c(ink)),
+            (None, _) => b,
+        };
+        g.agent(olo_kit::agent::Node::label(text.clone(), at));
+        let now = Drawn { cut: shown.as_deref() != Some(text.as_ref()), left: f32::from(b.left()), width: f32::from(b.size.width) };
+        let was = drawn.get();
+        if now.cut != was.cut || (now.left - was.left).abs() > 0.5 || (now.width - was.width).abs() > 0.5 {
+            drawn.set(now);
+            invalidate();
+        }
+    })
+    .paint_key(key)
+    .w_full()
+    .min_w_0()
+    .h(px(height))
+    .into_element()
+}
+
+/// The footer's time ("Updated 10:42") as its note is set: a row's
+/// details' size and ink, on the buttons' labels' baseline, from the right
+/// (its end `NOTE_GAP` in, 16 points before Refresh Quota). It was a
+/// button's size, paler, 13 points off: the footer had two styles of the
+/// same thing (Opus's review, 2026-11-28).
+fn footer_time(text: String, ink: olo_theme::Rgba) -> Element {
+    let key = style::key((&text, ink));
+    let text = SharedString::from(text);
+    canvas(move |g, b| {
+        let baseline = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+        let at = style::label_on_baseline(g, b.right(), baseline, style::Align::Right, text.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::c(ink));
+        g.agent(olo_kit::agent::Node::label(text.clone(), at));
+    })
+    .paint_key(key)
+    .w_full()
+    .min_w_0()
+    .h(px(m::CONTROL_HEIGHT))
+    .into_element()
 }
 
 fn outcome_color(p: &olo_kit::palette::Palette, o: Outcome) -> Hsla {
@@ -541,6 +1351,115 @@ fn live_details(o: &LiveReq, now_ms: i64) -> String {
 /// short of the rule, a strip of white between them (two pixels at 1x,
 /// three at 1.25x; both reviewers, 2026-11-26: "should meet the
 /// horizontal divider line flush", "end the band exactly on the rule").
+/// Where in an account's row (points down it from its top, its rule above
+/// not counted) the list's pinned group band can end without cutting a
+/// line: from its top to its title's glyphs (`title`: how clear its
+/// title's line is above and below, nothing where a button fills it),
+/// between each two of its lines (`lines`, its body's), and from its last
+/// line's glyphs to its end; past a line whose height isn't known before
+/// layout, only its end's padding.
+fn row_cuts(title: (f32, f32), lines: &[Option<Line>]) -> Clear {
+    let mut from_top = vec![(0.0, ROW_PAD + title.0)];
+    let mut y = ROW_PAD + m::CONTROL_HEIGHT;
+    let mut clear = y - title.1;
+    let mut end = ROW_PAD + title.1;
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 {
+            y += BODY_GAP;
+        }
+        let Some(l) = line else {
+            from_top.push((clear, y));
+            return Clear { from_top, end: ROW_PAD };
+        };
+        from_top.push((clear, y + l.top));
+        y += l.h;
+        clear = y - l.bottom;
+        end = ROW_PAD + l.bottom;
+    }
+    Clear { from_top, end }
+}
+
+/// How far the first line under the pinned band's ledge (its last point,
+/// a line of the bevel's shadow) is kept from it where there's room: 7
+/// points (about 8 to its words, whose glyphs leave a point more than a
+/// line's margins say): in the gap between two of a row's quotas, the
+/// band ends where the one above ends. Put just over a line's words, they
+/// touched the ledge and read as cut (Opus's and Neon's reviews,
+/// 2026-11-28: at least 5, the tile's 9 ideal). At 5 or 6, the band's
+/// name and the first line's stood 24 points apart at 1×, three off the
+/// list's 21, and the layout review took them for rows out of step; 4
+/// further off, they're plainly apart.
+const UNDER_LEDGE: f32 = 7.0;
+
+/// Where the list should stand (its offset: how far down its content its
+/// view's top is) to show the item `row` whole below the band pinned at
+/// its top (`band` points, its ledge the point after), 8 points under it,
+/// if it isn't shown so: from `at`, the least way. The band's edge is
+/// then where no line is cut on the item it ends on (`clear`: each item's,
+/// its bounds in `items`; Opus's review, 2026-11-28: the first thing under
+/// the tabs was half a line, in amber), in a gap between lines, as near
+/// its middle as leaves `UNDER_LEDGE` under the ledge to the line after it
+/// (Opus's and Neon's reviews, again: the line's words touched the
+/// ledge); in the nearest such gap, up or down, that shows the row,
+/// taking at most what leaves 4 points of the row's own end (`ROW_PAD`)
+/// under its last line. Where none does, as near as no line is cut, the
+/// gap's end; where nothing does, as far as shows the row. None where
+/// it's shown as it is.
+fn reveal_offset(row: (f32, f32), at: f32, view: f32, max: f32, band: f32, items: &[(f32, f32)], clear: &[Clear]) -> Option<f32> {
+    const UNDER: f32 = 8.0;
+    let (top, bottom) = row;
+    let max = max.max(0.0);
+    let shows = |o: f32| (-0.25..=max + 0.25).contains(&o) && top >= o + band - 0.5 && bottom - (ROW_PAD - 4.0) <= o + view + 0.5;
+    if top >= at + band - 0.5 && bottom + UNDER <= at + view + 0.5 {
+        return None;
+    }
+    let want = (if bottom + UNDER > at + view { bottom + UNDER - view } else { top - band }).clamp(0.0, max);
+    let edge = want + band;
+    let Some(i) = items.iter().position(|&(t, b)| t <= edge && edge < b) else { return Some(want) };
+    let stretches_of = |j: usize| {
+        let (t, b) = items[j];
+        let c = clear.get(j).cloned().unwrap_or_default();
+        c.from_top.iter().map(|&(s, e)| (t + s, t + e)).chain([(b - c.end, b)]).collect::<Vec<_>>()
+    };
+    // The gaps of the item the edge is on, and of those either side of it
+    // (an edge near an item's end may do better in the next's top).
+    let gaps: Vec<(f32, f32)> = (i.saturating_sub(1)..(i + 2).min(items.len())).flat_map(stretches_of).collect();
+    // Where in each the edge is best: its middle, or higher, its ledge
+    // `UNDER_LEDGE` over the line after it; none where it's too short.
+    let best = |&(s, e): &(f32, f32)| {
+        let room = e - 1.0 - UNDER_LEDGE;
+        (room >= s).then(|| ((s + e) / 2.0).min(room))
+    };
+    if gaps.iter().any(|&(s, e)| s - 0.25 <= edge && edge <= e - 1.0 - UNDER_LEDGE + 0.25) {
+        return Some(want);
+    }
+    let nearest = |edges: &mut dyn Iterator<Item = f32>| {
+        let (mut up, mut down) = (f32::MIN, f32::MAX);
+        for y in edges {
+            if y < edge {
+                up = up.max(y);
+            } else if y > edge {
+                down = down.min(y);
+            }
+        }
+        match (shows(up - band), shows(down - band)) {
+            (true, true) => Some(if want - (up - band) <= (down - band) - want { up - band } else { down - band }),
+            (true, false) => Some(up - band),
+            (false, true) => Some(down - band),
+            (false, false) => None,
+        }
+    };
+    if let Some(o) = nearest(&mut gaps.iter().filter_map(best)) {
+        return Some(o);
+    }
+    // (No gap with room for that within reach: no line cut, at least.)
+    let own = stretches_of(i);
+    if own.iter().any(|&(s, e)| s - 0.25 <= edge && edge <= e + 0.25) {
+        return Some(want);
+    }
+    Some(nearest(&mut own.iter().flat_map(|&(s, e)| [s, e])).unwrap_or(want))
+}
+
 fn under_rule(p: &olo_kit::palette::Palette, row: Element) -> Element {
     // (The groove's dark line by day, as it was. By night that is the
     // list's own darkness, 1.0 to 1, and it was the groove's light line
@@ -838,6 +1757,8 @@ pub enum WinMsg {
     Changed,
     Told(Told),
     Tick,
+    /// A second of a sign-in's wait gone (`PoolWindow::count_down`).
+    Countdown,
     HostsTick,
     Tab(Tab),
     SelectAccount(String),
@@ -863,6 +1784,21 @@ pub enum WinMsg {
     SyncAllHosts,
 }
 
+/// The account just signed in, being brought into view: asked for, then
+/// placed by a layout (its row's index and the list's length then, and
+/// when). Kept by its id until a layout that still has it where it was
+/// shows it: one that moved it (a quota read, an account more, the window
+/// put in a tile as it opened) is waited out, not given up on (Astra's
+/// review, 2026-11-28), for `REVEAL_FOR` from its first placing.
+enum Reveal {
+    Asked(String),
+    Placed(String, (usize, usize), Instant),
+}
+
+/// How long the account just signed in is kept in view while the window
+/// settles (it may open at one size and be put in a tile of another).
+const REVEAL_FOR: Duration = Duration::from_millis(1500);
+
 pub struct PoolWindow {
     shared: Arc<Shared>,
     hosts: Arc<Hosts>,
@@ -872,6 +1808,16 @@ pub struct PoolWindow {
     // Accounts tab
     accounts_scroll: ScrollHandle,
     selected_account: Option<String>,
+    /// The account just signed in, being brought into view (`Reveal`).
+    reveal: RefCell<Option<Reveal>>,
+    /// Where the footer's note was last drawn (`footer_note`): the tip
+    /// over a cut one is made from it.
+    note_drawn: Rc<Cell<Drawn>>,
+    /// The wait's countdown is ticking (once a second, only while a
+    /// sign-in is waited for: nothing while idle).
+    counting: bool,
+    /// Its opening size looked at, against the screen's room.
+    sized: bool,
     renaming: Option<(String, Child<TextField>)>,
     removing_account: Option<String>,
     resetting_credit: Option<String>,
@@ -897,6 +1843,8 @@ impl PoolWindow {
             hosts.refresh();
             cx.after(HOSTS_POLL_EVERY, WinMsg::HostsTick);
         }
+        // (An account signed in as it opened, shown: the demo's.)
+        let joined = told.joined.as_ref().map(|(id, _)| id.clone());
         let mut w = PoolWindow {
             shared,
             hosts,
@@ -904,7 +1852,11 @@ impl PoolWindow {
             told,
             tab,
             accounts_scroll: ScrollHandle::new(),
-            selected_account: None,
+            selected_account: joined.clone(),
+            reveal: RefCell::new(joined.map(Reveal::Asked)),
+            note_drawn: Rc::default(),
+            counting: false,
+            sized: false,
             renaming: None,
             removing_account: None,
             resetting_credit: None,
@@ -925,7 +1877,25 @@ impl PoolWindow {
             w.start_scanner(cx);
         }
         w.schedule_tick(cx);
+        w.count_down(cx);
         w
+    }
+
+    /// The wait's countdown ticked on, a second from now, while a sign-in
+    /// is waited for (the demo's too); none otherwise.
+    fn count_down(&mut self, cx: &mut Cx<Self>) {
+        if self.countdown_shown() && !self.counting {
+            self.counting = true;
+            cx.after(Duration::from_secs(1), WinMsg::Countdown);
+        }
+    }
+
+    /// Whether the wait's countdown is in sight: on the Accounts tab, no
+    /// other note over it. Ticked on only then (Astra's review, 2026-11-28:
+    /// each second redrew a tab that doesn't show it), and from the wait's
+    /// own end when it's back in sight.
+    fn countdown_shown(&self) -> bool {
+        self.tab == Tab::Accounts && self.told.note.is_none() && self.told.waiting.is_some()
     }
 
     fn start_scanner(&mut self, cx: &mut Cx<Self>) {
@@ -964,6 +1934,7 @@ impl PoolWindow {
         } else {
             self.stop_scanner();
         }
+        self.count_down(cx);
         olo_kit::proxy().send(Msg::TabChanged(tab));
     }
 
@@ -1013,7 +1984,7 @@ impl PoolWindow {
                 .item("Machines", "tab-machines")
                 .key("3")
                 .checked(self.tab == Tab::Machines),
-            add_menu(),
+            add_menu(self.told.waiting.is_some()),
             Menu::new("Machines")
                 .item("Add Host…", "add-host")
                 .item("Show Activity", "show-host-activity")
@@ -1048,7 +2019,9 @@ impl PoolWindow {
         }
     }
 
-    fn account_menu_items(a: &Account) -> Menu {
+    /// An account's menu; its sign-ins not begun while another is
+    /// `waiting` ([`add_menu`]).
+    fn account_menu_items(a: &Account, waiting: bool) -> Menu {
         Menu::new("Account")
             .item("Rename…", "rename")
             .item("Refresh Quota", "refresh")
@@ -1056,7 +2029,9 @@ impl PoolWindow {
             .enabled(a.credit().is_some())
             .separator()
             .item("Sign In Again in Terminal…", "sign-in")
+            .enabled(!waiting)
             .item(format!("Use This Computer’s {} Sign-In", a.provider.client()), "sign-in-local")
+            .enabled(!waiting)
             .separator()
             .item("Remove from Pool…", "remove")
     }
@@ -1097,7 +2072,6 @@ impl PoolWindow {
         let vp = cx.viewport_size();
         let narrow = f32::from(vp.width) < 480.0;
         let compact_h = f32::from(vp.height) < 420.0;
-        let sec_panel = secondary_ink(p, p.panel_background);
 
         // ONE sunken framed list well for all provider groups & account rows.
         // Sections stay in fixed canonical order (Claude Code, Codex, Antigravity);
@@ -1128,7 +2102,14 @@ impl PoolWindow {
         };
 
         let mut items: Vec<Element> = Vec::new();
+        // Where the pinned band can end on each item without cutting a line
+        // (`row_cuts`; a band, its top and its end): while a row's being
+        // brought into view, and not otherwise (Astra's review, 2026-11-28:
+        // a list of them each rebuild).
+        let revealing = self.reveal.borrow().is_some();
+        let mut cuts: Vec<Clear> = Vec::new();
         let mut group_indices: Vec<(Provider, usize)> = Vec::new();
+        let mut sel_ix = None;
         let mut any = false;
         for prov in providers {
             let accounts = sorted_accounts(&pool.saved.accounts, prov, t);
@@ -1142,11 +2123,23 @@ impl PoolWindow {
             any = true;
             group_indices.push((prov, items.len()));
             items.push(make_group_hdr(prov, after_another));
+            if revealing {
+                cuts.push(Clear { from_top: vec![(0.0, 0.0)], end: 0.0 });
+            }
             for (idx, account) in accounts.iter().enumerate() {
                 let pending = account.kept_on.as_deref().and_then(|hid| unaccepted.get(hid)).map(Vec::as_slice).unwrap_or(&[]);
                 let rollup = account_rollup(pool, account, hosts);
                 let is_sel = sel_id == Some(account.id.as_str());
-                let row = self.account_row(account, hosts, pending, &rollup, is_sel, wide, shared_label_w, narrow, p, cx);
+                if is_sel {
+                    sel_ix = Some(items.len());
+                }
+                let (row, row_cuts) = self.account_row(account, hosts, pending, &rollup, is_sel, wide, shared_label_w, narrow, revealing, p, cx);
+                // (A row after another has its rule over it: its lines a
+                // point lower.)
+                let rule = if idx > 0 { 1.0 } else { 0.0 };
+                if let Some(row_cuts) = row_cuts {
+                    cuts.push(Clear { from_top: row_cuts.from_top.iter().map(|&(s, e)| (if s > 0.0 { s + rule } else { s }, e + rule)).collect(), end: row_cuts.end });
+                }
                 items.push(if idx > 0 { under_rule(p, row) } else { row });
             }
         }
@@ -1175,6 +2168,43 @@ impl PoolWindow {
                 div().w_full().pt(px(top_pad)).pb(px(24.0)).px(px(24.0)).flex().justify_center().child(StringView::new("Opening the pool’s accounts…").color(secondary_ink(p, p.list_background)))
             };
             items.push(empty_box.into_element());
+            if revealing {
+                cuts.push(Clear::default());
+            }
+        }
+
+        // The account just signed in, brought into view: once a layout has
+        // placed its row (a new one's place is known only then), clear of
+        // the group band that sticks at the list's top and 8 points above
+        // its bottom, the band's edge between two lines (`reveal_offset`).
+        {
+            let now = sel_ix.map(|ix| (ix, items.len()));
+            let mut reveal = self.reveal.borrow_mut();
+            *reveal = match reveal.take() {
+                // (Chosen otherwise meanwhile: left where it is. Not in the
+                // list yet: looked for again next time.)
+                Some(Reveal::Asked(id) | Reveal::Placed(id, ..)) if sel_id != Some(id.as_str()) => pool.account(&id).is_none().then_some(Reveal::Asked(id)),
+                // Shown as its last layout placed it: then looked at again
+                // as the next one does, while the window settles.
+                Some(Reveal::Placed(id, at, t)) if now == Some(at) => {
+                    let moved = self.reveal_row(at.0, &cuts, cx);
+                    (moved && t.elapsed() < REVEAL_FOR).then(|| {
+                        cx.invalidate_at_frame();
+                        Reveal::Placed(id, at, t)
+                    })
+                }
+                // Placed by the next layout; laid out again since (moved,
+                // or the list changed), placed again.
+                Some(Reveal::Asked(id)) => {
+                    cx.invalidate_at_frame();
+                    now.map(|at| Reveal::Placed(id, at, Instant::now()))
+                }
+                Some(Reveal::Placed(id, _, t)) if t.elapsed() < REVEAL_FOR => {
+                    cx.invalidate_at_frame();
+                    now.map(|at| Reveal::Placed(id, at, t))
+                }
+                _ => None,
+            };
         }
 
         // Sticky active provider header so scrolling past a section banner never
@@ -1192,61 +2222,94 @@ impl PoolWindow {
             found
         };
         let stuck = active_group(&self.accounts_scroll, &group_indices);
+        // Rows scrolled under the pinned band: a line of the bevel's shadow
+        // under its rule, so they read as passing under a ledge, not cut
+        // (Opus's review, 2026-11-28).
+        let under = |handle: &ScrollHandle| f32::from(handle.offset().y) < -0.5;
+        let scrolled = under(&self.accounts_scroll);
         let mut sv = ScrollView::new(&self.accounts_scroll).background(p.list_background).children(items);
         if let Some(&(first_prov, first_idx)) = group_indices.first() {
             let (sticky_prov, sticky_idx) = stuck.unwrap_or((first_prov, first_idx));
-            sv = sv.sticky(sticky_idx, 22.0, make_group_hdr(sticky_prov, false));
+            let band = make_group_hdr(sticky_prov, false);
+            sv = if scrolled {
+                // (By day the well's inner top edge, its bevel's shadow:
+                // near black, it was the heaviest line in the window, a
+                // rule more than a ledge; Opus's review, 2026-11-28.)
+                let ledge = if p.mode == olo_theme::ThemeMode::Dark { style::c(p.shadow) } else { style::tint(p.panel_background, 1.55) };
+                sv.sticky(sticky_idx, BAND + 1.0, div().w_full().flex().flex_col().child(band).child(div().w_full().h(px(1.0)).bg(ledge)).into_element())
+            } else {
+                sv.sticky(sticky_idx, BAND, band)
+            };
             let handle = self.accounts_scroll.clone();
             let groups = group_indices;
             sv = sv.on_scroll(move |_, cx| {
-                if active_group(&handle, &groups) != stuck {
+                if active_group(&handle, &groups) != stuck || under(&handle) != scrolled {
                     cx.invalidate_owner();
                 }
             });
         }
         let well = div().flex_1().min_h_0().child(sv);
 
-        // Consistent footer order matching Machines: [Add Account…] [Edit Account…] … Updated HH:MM [Refresh Quota]
-        let footer_text: (String, bool) = match (&self.told.waiting, &self.told.note) {
-            (Some((provider, target)), _) => {
-                let whose = target.as_deref().and_then(|id| pool.account(id)).map(|x| format!("{}’s", x.name)).unwrap_or_else(|| format!("the {}", provider.client()));
-                (format!("Waiting for {whose} sign-in in Terminal…"), false)
-            }
-            (None, Some(n)) => n.clone(),
-            (None, None) => match last_synced_at(pool) {
-                Some(at) => (format!("Updated {}", clock(at)), false),
-                None => (String::new(), false),
-            },
-        };
+        // The footer, as Machines' is: [Add Account…] [Edit Account…] note …
+        // Updated HH:MM [Refresh Quota]. While a sign-in is waited for,
+        // Cancel Sign-In stands where Add Account… does, as wide, so nothing
+        // moves and Edit Account… stays, at every width; Add Account… comes
+        // back as it ends (Opus's and Neon's reviews, 2026-11-28). What was
+        // just done (or went wrong) is said, else the sign-in waited for, its
+        // time counting down: a note after the buttons, from the left. Else
+        // when quota was read, by Refresh Quota.
+        let note: Option<Note> = self.told.note.clone().or_else(|| self.told.waiting.as_ref().map(|(provider, _, until)| Note::waiting(*provider, &left(*until, Instant::now()))));
         let sel_owned = sel_id.map(str::to_owned);
         let can_edit = sel_owned.is_some();
         let has_accounts = !pool.saved.accounts.is_empty();
         let edit_id = sel_owned.unwrap_or_default();
 
-        let mut footer = div()
-            .w_full()
-            .flex()
-            .items_center()
-            .gap(px(m::SPACING))
-            .h(px(m::CONTROL_HEIGHT))
-            .child(Button::new("Add Account…").id("pool-add-account").default(pool.loaded && !has_accounts).on_click(cx.listener(|_, _: &ClickEvent, cx| {
+        let slot = button_width("Add Account…", false).max(button_width("Cancel Sign-In", false));
+        let first = if self.told.waiting.is_some() {
+            Button::new("Cancel Sign-In").id("pool-cancel-sign-in").min_width(slot).on_click(|_: &ClickEvent, _| olo_kit::proxy().send(Msg::CancelSignIn))
+        } else {
+            Button::new("Add Account…").id("pool-add-account").min_width(slot).default(pool.loaded && !has_accounts).on_click(cx.listener(|_, _: &ClickEvent, cx| {
                 let at = cx.listener_bounds();
                 cx.send(WinMsg::AddMenu(at));
-            })))
-            .child(Button::new("Edit Account…").id("pool-account-details").enabled(can_edit).on_click(cx.listener(move |_, _: &ClickEvent, cx| {
+            }))
+        };
+        let mut footer = div().w_full().flex().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).child(first).child(
+            Button::new("Edit Account…").id("pool-account-details").enabled(can_edit).on_click(cx.listener(move |_, _: &ClickEvent, cx| {
                 if !edit_id.is_empty() {
                     let at = cx.listener_bounds();
                     cx.send(WinMsg::AccountMenu(edit_id.clone(), at));
                 }
-            })));
-        if self.told.waiting.is_some() {
-            footer = footer.child(Button::new("Cancel Sign-In").on_click(|_: &ClickEvent, _| olo_kit::proxy().send(Msg::CancelSignIn)));
-        }
-        let mut status_box = div().flex_1().min_w_0().flex().justify_end();
-        if !footer_text.0.is_empty() && !narrow {
-            let col = if footer_text.1 { style::c(p.failure) } else { sec_panel };
-            status_box = status_box.child(StringView::new(footer_text.0).color(col).height(m::CONTROL_HEIGHT));
-        }
+            })),
+        );
+        let note_row = f32::from(vp.width) < NOTE_ROW;
+        let note_el = note.as_ref().map(|n| {
+            let place = if note_row { NotePlace::Row } else { NotePlace::Beside };
+            let invalidator = cx.invalidator();
+            self.note_tip(n, place, footer_note(n, note_ink(p, n.error), place, self.note_drawn.clone(), move || invalidator.invalidate()))
+        });
+        let updated = last_synced_at(pool).map(|at| format!("Updated {}", clock(at)));
+        let (status_box, row_note) = match note_el {
+            // (Too narrow for it beside the buttons: a row of its own, just
+            // above them.)
+            Some(el) if note_row => (div().flex_1().min_w_0(), Some(el)),
+            Some(el) => (div().flex_1().min_w_0().pl(px(NOTE_GAP)).child(el), None),
+            // (That row there with no note too: when quota was read, in a
+            // note's place, from the left.)
+            None if note_row => {
+                let el = match updated {
+                    Some(text) => footer_note(&(text, false).into(), note_ink(p, false), NotePlace::Row, Rc::default(), || {}),
+                    None => div().w_full().h(px(NOTE_ROW_BASELINE + NOTE_ROW_UNDER)).into_element(),
+                };
+                (div().flex_1().min_w_0(), Some(el))
+            }
+            None => {
+                let mut b = div().flex_1().min_w_0().pr(px(NOTE_GAP));
+                if let Some(text) = updated.filter(|_| !narrow) {
+                    b = b.child(footer_time(text, note_ink(p, false)));
+                }
+                (b, None)
+            }
+        };
         footer = footer.child(status_box).child(Button::new("Refresh Quota").id("pool-refresh").enabled(has_accounts).on_click(cx.listener(|v, _: &ClickEvent, _| {
             if !demo_enabled() {
                 v.shared.sync_soon(None);
@@ -1254,7 +2317,69 @@ impl PoolWindow {
             }
         })));
 
-        div().flex_1().min_h_0().flex().flex_col().gap(px(8.0)).child(well).child(footer).into_element()
+        match row_note {
+            // (Its row set to its buttons: 10 from the list to its
+            // capitals, `NOTE_ROW_UNDER` from its baseline to them.)
+            Some(el) => div().flex_1().min_h_0().flex().flex_col().child(well).child(el).child(footer).into_element(),
+            None => div().flex_1().min_h_0().flex().flex_col().gap(px(8.0)).child(well).child(footer).into_element(),
+        }
+    }
+
+    /// The list brought to show the item at `ix` whole ([`reveal_offset`]),
+    /// from what its last layout placed (each item's `cuts`): whether it
+    /// was moved (not where it stands already).
+    fn reveal_row(&self, ix: usize, cuts: &[Clear], cx: &mut Cx<Self>) -> bool {
+        let h = &self.accounts_scroll;
+        let Some(row) = h.bounds_for_item(ix) else { return false };
+        let items: Vec<(f32, f32)> = (0..cuts.len()).map_while(|i| h.bounds_for_item(i)).map(|b| (f32::from(b.top()), f32::from(b.bottom()))).collect();
+        let (at, view, max) = (-f32::from(h.offset().y), f32::from(h.bounds().size.height), f32::from(h.max_offset().height));
+        match reveal_offset((f32::from(row.top()), f32::from(row.bottom())), at, view, max, BAND, &items, cuts) {
+            Some(o) if (o - at).abs() >= 0.5 => {
+                h.set_offset(cx, olo_kit::point(px(0.0), px(-o)));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// `el`, the footer's note (`place`d), with its whole in a tip above
+    /// it where it was cut (`note_drawn`): its words where the note's
+    /// begin, at every width; its end where the list's is (and Refresh
+    /// Quota's) where it would end past there, or over the list's scroll
+    /// bar (a sliver of the bar's arrow showed beside it); its foot 4
+    /// points over the list's, off the window's frame and the buttons
+    /// (Opus's and Neon's reviews, 2026-11-28: at 400 it began a third of
+    /// the way across, under the pointer, and at 640 it ended a point
+    /// under the list's foot).
+    fn note_tip(&self, n: &Note, place: NotePlace, el: Element) -> Element {
+        let drawn = self.note_drawn.get();
+        if !drawn.cut {
+            return el;
+        }
+        let tip = tip_width(&n.text);
+        // The list's right, where Refresh Quota's is: its scroller's, and
+        // its bar beside that.
+        let bar = olo_kit::widgets::SCROLL_BAR;
+        let end = f32::from(self.accounts_scroll.bounds().right()) + bar;
+        // (The kit's tip stands 4 points over its place: that 4 points
+        // over the list's foot, the footer's 8 above a note beside the
+        // buttons, the note's own top on its row.)
+        let above = match place {
+            NotePlace::Beside => 8.0,
+            NotePlace::Row => 0.0,
+        };
+        let reach = if end > bar && drawn.left - TIP_PAD + tip > end - bar {
+            // (Too wide to begin there, or ending over the bar: it ends
+            // where the list does. Its place the last point before there,
+            // in the window's far half, where the kit's tip ends at its
+            // place's end.)
+            olo_kit::tip::Reach { before: -(end - 1.0 - drawn.left), after: end - (drawn.left + drawn.width), above }
+        } else {
+            // (Its place drawn in to the note's first point, so the kit's
+            // tip begins there, its words over the note's.)
+            olo_kit::tip::Reach { before: TIP_PAD, after: 1.0 - drawn.width, above }
+        };
+        olo_kit::tip::on_above_of(el, "pool-footer-note", n.text.clone(), reach)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1268,12 +2393,23 @@ impl PoolWindow {
         wide: f32,
         label_w: f32,
         narrow: bool,
+        revealing: bool,
         p: &olo_kit::palette::Palette,
         cx: &mut Cx<Self>,
-    ) -> Element {
+    ) -> (Element, Option<Clear>) {
         let t = now();
         let sec = secondary_ink(p, p.list_background);
         let cust = custody(account, hosts, unaccepted);
+        // Each of its body's lines, in order (None: one not known before
+        // layout, a wrapped reason or note), and how clear its title's line
+        // is: where the list's pinned band can end on it without cutting a
+        // line (`row_cuts`): only while a row's being revealed.
+        let mut lines: Vec<Option<Line>> = Vec::new();
+        let mut line = |l: Option<Line>| {
+            if revealing {
+                lines.push(l);
+            }
+        };
         let is_signed_out = account.signed_out.is_some();
         let is_out_of_quota = !is_signed_out && account.enabled && account_out_of_quota(account, t).is_some();
         let asking_inline = self.removing_account.as_deref() == Some(account.id.as_str()) || self.resetting_credit.as_deref() == Some(account.id.as_str());
@@ -1287,6 +2423,7 @@ impl PoolWindow {
                 shared.set_enabled(&id_toggle, *on);
             }
         });
+        let name_w = f32::from(style::text_width(account.name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD))).ceil() + 1.0;
         let mut title_group = div()
             .flex_1()
             .min_w_0()
@@ -1295,7 +2432,11 @@ impl PoolWindow {
             .items_center()
             .gap(px(6.0))
             .child(div().w(px(13.0)).flex_shrink_0().flex().justify_center().child(check))
-            .child(StringView::new(account.name.clone()).bold(true).height(DETAIL_ROW));
+            // (As wide as it is where there's room; else cut short with
+            // "…", its whole in a tip, 12 points clear of what's beside it,
+            // the machine's name or Sign In…: a long name ran over "This
+            // Computer"; Opus's and Neon's reviews, 2026-11-28.)
+            .child(div().w(px(name_w)).flex_shrink().min_w_0().child(StringView::new(account.name.clone()).bold(true).cut(true).height(DETAIL_ROW)));
         if is_signed_out {
             title_group = title_group.child(StringView::new("·").color(sec).height(DETAIL_ROW)).child(StringView::new("Signed out").color(style::c(p.failure)).height(DETAIL_ROW));
         } else if !account.enabled {
@@ -1306,12 +2447,15 @@ impl PoolWindow {
 
         let line1 = if is_signed_out {
             let (prov, id_sign) = (account.provider, account.id.clone());
-            let btn = Button::new("Sign In…").id(format!("pool-signin-{}", account.id)).min_width(wide).on_click(move |_: &ClickEvent, _| {
+            // (Not while another sign-in is waited for: one at a time,
+            // Cancel Sign-In in Add Account…'s place. Opus's review,
+            // 2026-11-28.)
+            let btn = Button::new("Sign In…").id(format!("pool-signin-{}", account.id)).min_width(wide).enabled(self.told.waiting.is_none()).on_click(move |_: &ClickEvent, _| {
                 if !demo_enabled() {
                     olo_kit::proxy().send(Msg::SignIn(prov, id_sign.clone(), false));
                 }
             });
-            div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(8.0)).child(title_group).child(btn)
+            div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(m::SPACING)).child(title_group).child(btn)
         } else {
             let chip_text = if cust.is_pending() { format!("{} · Sync pending", cust.machine_name()) } else { cust.machine_name() };
             let machine_chip = div()
@@ -1321,8 +2465,10 @@ impl PoolWindow {
                 .items_center()
                 .gap(px(5.0))
                 .child(neutral_machine_icon(cust.is_local(), 14.0))
-                .child(StringView::new(chip_text).size(style::SMALL_SIZE).color(sec).height(DETAIL_ROW));
-            div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(8.0)).child(title_group).child(machine_chip)
+                // (On the name's baseline: centred itself, it stood a pixel
+                // off level at 2×, the layout review's "near-level".)
+                .child(StringView::new(chip_text).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE).color(sec).height(DETAIL_ROW));
+            div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().justify_between().gap(px(m::SPACING)).child(title_group).child(machine_chip)
         };
 
         // Line 2+: indented straight under the bold account name (13pt gutter + 6pt gap = 19pt)
@@ -1338,13 +2484,15 @@ impl PoolWindow {
             facts.push(format!("{credits} banked reset{}", if credits == 1 { "" } else { "s" }));
         }
 
-        let mut body = div().w_full().pl(px(19.0)).flex().flex_col().gap(px(3.0));
+        let mut body = div().w_full().pl(px(19.0)).flex().flex_col().gap(px(BODY_GAP));
         if !facts.is_empty() {
             body = body.child(StringView::new(facts.join(" · ")).size(style::SMALL_SIZE).color(sec).cut(true).height(DETAIL_ROW));
+            line(Some(FACT_LINE));
         }
         if let Some(why) = &account.signed_out {
             // Reason in readable secondary ink (matches Remote Rex Hosts' error rows!)
             body = body.child(StringView::new(why.clone()).size(style::SMALL_SIZE).color(sec).wrap(true));
+            line(None);
         } else {
             if let Some((paid_fam, until)) = account_paid_scope(account, t) {
                 let note = match paid_fam {
@@ -1352,12 +2500,15 @@ impl PoolWindow {
                     None => format!("Waiting for reset at {} · paid usage credits only if nothing else can serve.", clock(until)),
                 };
                 body = body.child(div().w_full().pb(px(3.0)).child(StringView::new(note).size(style::SMALL_SIZE).color(sec).wrap(true)));
+                line(None);
             }
             for w in &account.windows {
                 body = body.child(inline_quota_row(p, w, t, label_w, narrow));
+                line(Some(QUOTA_LINE));
             }
             if account.windows.is_empty() {
                 body = body.child(StringView::new(if account.synced.is_some() { "No quota reported." } else { "Reading quota…" }).size(style::SMALL_SIZE).color(sec));
+                line(None);
             }
             // Concise Today line (+ red failed count when failures occurred); local/remote breakdown lives on Activity.
             let u = &rollup.total_today;
@@ -1375,6 +2526,7 @@ impl PoolWindow {
                 today_row = today_row.child(StringView::new(format!("{failed_n} failed")).size(style::SMALL_SIZE).color(style::c(p.failure)).height(DETAIL_ROW));
             }
             body = body.child(today_row);
+            line(Some(TODAY_LINE));
         }
 
         // Inline edit/confirm dialogs for this account
@@ -1429,7 +2581,14 @@ impl PoolWindow {
         if let Some(bg) = sel_tint {
             row = row.bg(bg);
         }
-        row.into_element()
+        // (An editor or a confirmation opened in it: of a height not known
+        // before layout.)
+        if self.renaming.as_ref().is_some_and(|(id, _)| *id == account.id) || asking_inline {
+            line(None);
+        }
+        // (A signed-out row's Sign In… fills its title's line.)
+        let title_clear = if is_signed_out { (0.0, 0.0) } else { (5.0, 4.0) };
+        (row.into_element(), revealing.then(|| row_cuts(title_clear, &lines)))
     }
 
     // ---- Tab 2: Activity --------------------------------------------------
@@ -2259,8 +3418,8 @@ impl PoolWindow {
             content = content.child(use_pool_hdr);
         }
         content = content.child(claude_block).child(codex_block).child(agy_block);
-        if let Some((note, err)) = &self.told.note {
-            content = content.child(StringView::new(note.clone()).size(style::SMALL_SIZE).color(if *err { style::c(p.failure) } else { sec }).wrap(true));
+        if let Some(note) = &self.told.note {
+            content = content.child(StringView::new(note.text.clone()).size(style::SMALL_SIZE).color(if note.error { style::c(p.failure) } else { sec }).wrap(true));
         }
 
         div().w_full().flex().flex_col().gap(px(6.0)).child(hdr).child(content).into_element()
@@ -2412,9 +3571,22 @@ impl View for PoolWindow {
                 if told == self.told {
                     return;
                 }
+                // An account just signed in: chosen, and brought into
+                // view, so the note and its row say the same.
+                if told.joined != self.told.joined
+                    && let Some((id, _)) = &told.joined
+                {
+                    self.selected_account = Some(id.clone());
+                    *self.reveal.borrow_mut() = Some(Reveal::Asked(id.clone()));
+                }
                 self.told = told;
+                self.count_down(cx);
             }
             WinMsg::Tick => self.schedule_tick(cx),
+            WinMsg::Countdown => {
+                self.counting = false;
+                self.count_down(cx);
+            }
             WinMsg::HostsTick => {
                 if !demo_enabled() {
                     self.hosts.refresh();
@@ -2446,13 +3618,13 @@ impl View for PoolWindow {
             WinMsg::ClearPick => self.activity_picked = None,
             WinMsg::AddMenu(at) => {
                 let chosen = cx.msg_with(|command: &str| WinMsg::Account(String::new(), command.to_owned()));
-                menu::popup(cx, add_menu(), at, Corner::BottomLeft, chosen);
+                menu::popup(cx, add_menu(self.told.waiting.is_some()), at, Corner::BottomLeft, chosen);
                 return;
             }
             WinMsg::AccountMenu(id, at) => {
                 let pool = if demo_enabled() { demo_data().pool } else { self.shared.snapshot() };
                 let Some(a) = pool.account(&id).cloned() else { return };
-                let m = Self::account_menu_items(&a);
+                let m = Self::account_menu_items(&a, self.told.waiting.is_some());
                 let chosen = cx.msg_with(move |command: &str| WinMsg::Account(id.clone(), command.to_owned()));
                 menu::popup(cx, m, at, Corner::BottomLeft, chosen);
                 return;
@@ -2461,7 +3633,7 @@ impl View for PoolWindow {
                 self.selected_account = Some(id.clone());
                 let pool = if demo_enabled() { demo_data().pool } else { self.shared.snapshot() };
                 let Some(a) = pool.account(&id).cloned() else { return };
-                let m = Self::account_menu_items(&a);
+                let m = Self::account_menu_items(&a, self.told.waiting.is_some());
                 let chosen = cx.msg_with(move |command: &str| WinMsg::Account(id.clone(), command.to_owned()));
                 menu::context_menu(cx, m, pos, chosen);
                 return;
@@ -2602,6 +3774,23 @@ impl View for PoolWindow {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        // Opened at a size it was left at before, no taller than the screen
+        // has room for now: a window kept at 740 points ran off the
+        // smallest screen, though it opens at 720 (Astra's review,
+        // 2026-11-28). Its width, and its height on a taller screen, as
+        // they were; asked once, as it first shows.
+        // (Never one app_server holds the size of, a tile or a zoom: its
+        // size is the tile's, and the ask was never answered. The room of
+        // the screen it's on, not of the shortest: a window kept taller on
+        // a taller screen stays so; Neon's review, 2026-11-28.)
+        if !self.sized {
+            self.sized = true;
+            let vp = cx.viewport_size();
+            let room = (olo_kit::display_height(cx) - 64.0).max(240.0);
+            if !cx.held_state().held() && f32::from(vp.height) > room + 0.5 {
+                cx.resize_window(olo_kit::size(vp.width, px(room)));
+            }
+        }
         let p = theme::palette();
         let p = &*p;
         let (pool, activity, hosts, running, uses, unaccepted) = self.snapshot();
@@ -2761,4 +3950,313 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
     });
     drop(child);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A separate sign-in's result is taken only while it's the one waited
+    /// for (as `Msg::SignedIn` asks, before anything of it is used: no
+    /// account added or signed in again, no note over another's): dropped
+    /// once cancelled, or once another sign-in began, for a new account or
+    /// for one signed in again alike.
+    #[test]
+    fn only_the_sign_in_waited_for_is_taken() {
+        let wait = |target: Option<&str>| Waiting { provider: Provider::Antigravity, target: target.map(str::to_owned), cancel: Arc::default(), until: Instant::now() + SIGN_IN_WAIT };
+        let current = |w: &Option<Waiting>| w.as_ref().map(|w| w.cancel.clone());
+        // Sign In Again in Terminal… for "acc-a": its result taken.
+        let mut waiting = Some(wait(Some("acc-a")));
+        let a = current(&waiting).unwrap();
+        assert!(waited_for(current(&waiting).as_ref(), &a));
+        // Another begun (`sign_in_separately` marks the first): the first's
+        // result, read just before, dropped; the new one's taken.
+        a.store(true, Ordering::Relaxed);
+        waiting = Some(wait(None));
+        let b = current(&waiting).unwrap();
+        assert!(!waited_for(current(&waiting).as_ref(), &a));
+        assert!(waited_for(current(&waiting).as_ref(), &b));
+        // Cancel Sign-In (marked, none waited for): dropped.
+        b.store(true, Ordering::Relaxed);
+        waiting = None;
+        assert!(!waited_for(current(&waiting).as_ref(), &b));
+        // Unmarked but not the one waited for: dropped too.
+        waiting = Some(wait(Some("acc-b")));
+        assert!(!waited_for(current(&waiting).as_ref(), &Arc::new(AtomicBool::new(false))));
+    }
+
+    #[test]
+    fn signed_in_notes_say_what_to_do() {
+        let n = Note::signed_in("Workspace Dev", false, true);
+        assert_eq!((n.text.as_str(), n.name_len, n.error), ("Workspace Dev joined. You can quit agy.", 13, false));
+        assert_eq!(Note::signed_in("Pat", true, true).text, "Pat signed in. You can quit agy.");
+        assert_eq!(Note::signed_in("Pat", false, false).text, "Pat joined the pool.");
+        assert_eq!(Note::signed_in("Pat", true, false).text, "Pat is signed in again.");
+        let plain: Note = ("Syncing 1 remote host…".to_owned(), false).into();
+        assert_eq!(plain.name_len, 0);
+    }
+
+    /// Cut for the footer's room: an account's name before what follows it,
+    /// and nothing rather than a lone "…". Measured as if each character
+    /// were a point wide, cut as the kit cuts (with "…", where a word ends
+    /// if asked).
+    #[test]
+    fn a_note_cut_keeps_what_follows_a_name() {
+        let width = |t: &str| t.chars().count() as f32;
+        let cut = |t: &str, w: f32, words: bool| {
+            let max = (w.max(0.0) as usize).saturating_sub(1);
+            let mut end = t.char_indices().map(|(i, _)| i).rfind(|&i| t[..i].chars().count() <= max).unwrap_or(0);
+            if words {
+                end = t[..end].rfind(' ').unwrap_or(0);
+            }
+            format!("{}…", t[..end].trim_end())
+        };
+        let n = Note::signed_in("Workspace Development", false, true);
+        assert_eq!(fitted(&n, 60.0, width, cut).as_deref(), Some(n.text.as_str()));
+        assert_eq!(fitted(&n, 35.0, width, cut).as_deref(), Some("Workspac… joined. You can quit agy."));
+        assert_eq!(fitted(&n, 20.0, width, cut), None);
+        let e: Note = ("Your keyring is locked, and Antigravity keeps its sign-in in it.".to_owned(), true).into();
+        assert_eq!(fitted(&e, 30.0, width, cut).as_deref(), Some("Your keyring is locked, and…"));
+        assert_eq!(fitted(&e, 3.0, width, cut), None);
+        // Never "… joined": a letter of the name at least, the whole in the
+        // room (Neon's review, 2026-11-28: with a point for the name, it
+        // was "… joined. You can quit agy.").
+        let rest = " joined. You can quit agy.".chars().count() as f32;
+        for room in [rest, rest + 0.5, rest + 1.0, rest + 1.5] {
+            assert_eq!(fitted(&n, room, width, cut), None, "{room}");
+        }
+        assert_eq!(fitted(&n, rest + 2.0, width, cut).as_deref(), Some("W… joined. You can quit agy."));
+        // The wait: the same words at every width, its time last.
+        let w = Note::waiting(Provider::Antigravity, "4:12");
+        assert_eq!(w.text, "Waiting for agy in Terminal… 4:12 left");
+        assert_eq!(&w.text[w.quiet_from.unwrap()..], "4:12 left");
+        assert_eq!(Note::waiting(Provider::Claude, "19:59").text, "Waiting for claude in Terminal… 19:59 left");
+        assert_eq!(fitted(&w, 60.0, width, cut).as_deref(), Some("Waiting for agy in Terminal… 4:12 left"));
+    }
+
+    /// The wait counts down in minutes and seconds, rounded up, and never
+    /// below nothing.
+    #[test]
+    fn the_wait_counts_down() {
+        let now = Instant::now();
+        assert_eq!(left(now + Duration::from_secs(20 * 60), now), "20:00");
+        assert_eq!(left(now + Duration::from_millis(252_400), now), "4:13");
+        assert_eq!(left(now + Duration::from_secs(252), now), "4:12");
+        assert_eq!(left(now + Duration::from_secs(9), now), "0:09");
+        assert_eq!(left(now, now + Duration::from_secs(5)), "0:00");
+    }
+
+    /// A sign-in's result is taken only if it's the latest begun for its
+    /// account, whichever way either was begun and whatever order they're
+    /// answered in; a new account's always is (Astra's review,
+    /// 2026-11-28).
+    #[test]
+    fn only_the_latest_sign_in_for_an_account_is_taken() {
+        let mut ops = Ops::default();
+        let local = ops.begin(Some("acc-a"));
+        let separate = ops.begin(Some("acc-a"));
+        let fresh = ops.begin(None);
+        // The local one answered last (its keyring prompt left open):
+        // dropped; the separate one's taken; a new account's either way.
+        assert!(!ops.current(local, Some("acc-a")));
+        assert!(ops.current(separate, Some("acc-a")));
+        assert!(ops.current(fresh, None));
+        // Another account's, begun meanwhile, its own.
+        let b = ops.begin(Some("acc-b"));
+        assert!(ops.current(b, Some("acc-b")) && ops.current(separate, Some("acc-a")));
+        // As they're taken in: the newest for the account found, whichever
+        // way it was begun. One added that turned out to be acc-a (its
+        // email), begun after the separate one: it's acc-a's from then on,
+        // and the separate one, ending later, isn't taken.
+        assert!(!ops.take(local, "acc-a"));
+        assert!(ops.take(fresh, "acc-a") && ops.latest_for(fresh, "acc-a"));
+        assert!(!ops.take(separate, "acc-a") && !ops.latest_for(separate, "acc-a"));
+        // One added before a sign-in again of the account it turns out to
+        // be, ending after it: not taken.
+        let older = ops.begin(None);
+        let again = ops.begin(Some("acc-b"));
+        assert!(ops.take(again, "acc-b"));
+        assert!(!ops.take(older, "acc-b"));
+        // A new account's, its own.
+        assert!(ops.take(older, "acc-new") && ops.latest_for(older, "acc-new"));
+    }
+
+    /// One whose save is tried again (the vault not open) and that's
+    /// removed meanwhile: what's said of it ends with the failure, never
+    /// "joined" once a save goes through without it; its copy let go
+    /// (Astra's and Neon's reviews, 2026-11-28).
+    #[test]
+    fn one_removed_while_its_save_is_tried_again_is_said_nothing_of() {
+        use olo_token_pool::{model::Credential, store::Saved, upstream::Upstreams};
+        let mut saved = Saved::default();
+        saved.accounts.push(Account::new("acc-p".into(), "Pat".into(), Provider::Antigravity));
+        saved.credentials.insert("acc-p".into(), Credential { access: "a".into(), refresh: None, expires_at: None, account_id: None });
+        let shared = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+        shared.pool.lock().unwrap().loaded = false;
+        let (said, discarded) = (std::cell::RefCell::new(Vec::new()), Cell::new(0));
+        // (Removed while it waited to try again, the vault open since.)
+        let wait = || {
+            shared.pool.lock().unwrap().loaded = true;
+            shared.remove("acc-p").unwrap();
+        };
+        keep_taken(&shared, "acc-p", || discarded.set(discarded.get() + 1), |unsaved| said.borrow_mut().push(unsaved), wait);
+        let said = said.into_inner();
+        assert_eq!(said.len(), 1, "said after it was removed: {said:?}");
+        assert!(said[0].as_deref().is_some_and(|e| e.contains("aren’t open")), "{said:?}");
+        assert_eq!(discarded.get(), 1);
+        // Saved at once: said so, and its copy let go, once.
+        let mut saved = Saved::default();
+        saved.accounts.push(Account::new("acc-q".into(), "Quinn".into(), Provider::Antigravity));
+        let shared = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+        let (said, discarded) = (std::cell::RefCell::new(Vec::new()), Cell::new(0));
+        keep_taken(&shared, "acc-q", || discarded.set(discarded.get() + 1), |unsaved| said.borrow_mut().push(unsaved), || panic!("waited"));
+        assert_eq!((said.into_inner(), discarded.get()), (vec![None], 1));
+    }
+
+    /// Sign-ins taken in one after another, in the order they came, each
+    /// as its account's: the account found and its sign-in written under
+    /// one lock, so two for one new email make one account, and of two
+    /// for one account the newest begun stays, whichever ends first
+    /// (Astra's and Neon's reviews, 2026-11-28: each looked for its account
+    /// on its own and was written later, making two of one, and an older
+    /// over a newer).
+    #[test]
+    fn sign_ins_are_taken_in_order_as_their_accounts() {
+        use olo_token_pool::{model::Credential, store::Saved, upstream::Upstreams};
+        let cred = |t: &str| Credential { access: t.into(), refresh: Some(format!("r-{t}")), expires_at: Some(now() + 3600), account_id: None };
+        let mut saved = Saved::default();
+        let mut a = Account::new("acc-a".into(), "A".into(), Provider::Antigravity);
+        a.email = Some("a@example.com".into());
+        saved.accounts.push(a);
+        saved.credentials.insert("acc-a".into(), cred("first"));
+        let shared = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+        let ops = std::sync::Mutex::new(Ops::default());
+        let said = |email: &str| SignedInAs { email: Some(email.into()), separate: true, ..Default::default() };
+        let new = |email: &str| {
+            let mut a = Account::new(store::new_id(), email.into(), Provider::Antigravity);
+            a.email = Some(email.into());
+            a
+        };
+        let take = |op: u64, target: Option<&str>, email: &str, token: &str| shared.take_sign_in(target, new(email), cred(token), said(email), |id| ops.lock().unwrap().take(op, id)).unwrap();
+        // Two for one new email: one account.
+        // (One at a time: a guard lives to its statement's end.)
+        let one = ops.lock().unwrap().begin(None);
+        let two = ops.lock().unwrap().begin(None);
+        let first = take(one, None, "new@example.com", "n1").unwrap();
+        let second = take(two, None, "new@example.com", "n2").unwrap();
+        assert!(!first.2 && second.2 && first.0 == second.0, "two accounts of one: {first:?} {second:?}");
+        let p = shared.snapshot();
+        assert_eq!(p.saved.accounts.iter().filter(|a| a.email.as_deref() == Some("new@example.com")).count(), 1);
+        assert_eq!(p.saved.credentials[&first.0].access, "n2");
+        // Add Account (acc-a's email), then Sign In Again for acc-a; the
+        // newer taken first, the older after: the newer stays.
+        let added = ops.lock().unwrap().begin(None);
+        let again = ops.lock().unwrap().begin(Some("acc-a"));
+        assert!(take(again, Some("acc-a"), "a@example.com", "again").is_some());
+        assert!(take(added, None, "a@example.com", "added").is_none(), "an older sign-in taken over a newer");
+        assert_eq!(shared.snapshot().saved.credentials["acc-a"].access, "again");
+        // The other way round: Sign In Again, then Add Account, the newer
+        // (the add) first.
+        let again = ops.lock().unwrap().begin(Some("acc-a"));
+        let added = ops.lock().unwrap().begin(None);
+        assert!(take(added, None, "a@example.com", "added-2").is_some());
+        assert!(take(again, Some("acc-a"), "a@example.com", "again-2").is_none(), "an older sign-in again taken over a newer add");
+        assert_eq!(shared.snapshot().saved.credentials["acc-a"].access, "added-2");
+        assert_eq!(shared.snapshot().saved.accounts.len(), 2);
+        // One for an account removed as it was read: said, nothing kept.
+        let gone = ops.lock().unwrap().begin(Some("acc-gone"));
+        assert!(shared.take_sign_in(Some("acc-gone"), new("g@example.com"), cred("g"), said("g@example.com"), |id| ops.lock().unwrap().take(gone, id)).unwrap_err().contains("left the pool"));
+        assert!(!shared.snapshot().saved.credentials.contains_key("acc-gone"));
+    }
+
+    /// Sign-ins read while the accounts can't be opened wait, every one,
+    /// in the order they came, until the accounts are open; a failure to
+    /// open them since is said once each time (Astra's and Neon's reviews,
+    /// 2026-11-28: a second replaced the first, and the note said
+    /// "Opening…" for ever).
+    #[test]
+    fn sign_ins_wait_in_order_for_the_accounts() {
+        let read = |op: u64| Read { found: Err(format!("{op}")), target: None, op, separate: None, unlocked: false };
+        let mut held = Held::default();
+        held.hold(read(1), 3);
+        held.hold(read(2), 3);
+        let (taken, failed) = held.looked(false, 3);
+        assert!(taken.is_empty() && !failed);
+        let (taken, failed) = held.looked(false, 4);
+        assert!(taken.is_empty() && failed, "a failure to open them not said");
+        assert!(!held.looked(false, 4).1, "said twice");
+        held.hold(read(3), 4);
+        let (taken, failed) = held.looked(true, 5);
+        assert_eq!(taken.iter().map(|r| r.op).collect::<Vec<_>>(), [1, 2, 3]);
+        assert!(!failed && held.is_empty());
+    }
+
+    /// Where the list's pinned band can end on a row: from its top to its
+    /// title's glyphs, between each two of its lines' glyphs, and from its
+    /// last line's to its end; past a line of a height not known, its
+    /// padding alone.
+    #[test]
+    fn a_rows_lines_are_known_to_the_band() {
+        // Facts, two quotas, Today: 11 + 24, then 16, 18, 18, 18 with 3
+        // between (a row of 125).
+        let row = [Some(FACT_LINE), Some(QUOTA_LINE), Some(QUOTA_LINE), Some(TODAY_LINE)];
+        let c = row_cuts((5.0, 4.0), &row);
+        assert_eq!(c.from_top, [(0.0, 16.0), (31.0, 37.0), (50.0, 57.0), (70.0, 78.0), (91.0, 100.0)]);
+        assert_eq!(c.end, 12.0);
+        // A signed-out row: its button fills its title's line; a wrapped
+        // reason after its facts, nothing past that but its end's padding.
+        let c = row_cuts((0.0, 0.0), &[Some(FACT_LINE), None, Some(QUOTA_LINE)]);
+        assert_eq!((c.from_top, c.end), (vec![(0.0, 11.0), (35.0, 37.0), (50.0, 54.0)], ROW_PAD));
+    }
+
+    /// The joined row brought into view with the band's edge between two
+    /// lines, never through one: up into the row's own end by at most 7
+    /// points, else down to the next; and not moved at all when it shows.
+    #[test]
+    fn a_row_is_revealed_with_no_line_cut_under_the_band() {
+        // A band of 22, then two rows of 125 (the second under its rule,
+        // its end at 273), a 170-point view: the last row's end shows only
+        // at the far end (103), where the band's edge, at 125, would cut
+        // the first row's Today line (its words from 122 to 135).
+        let items = [(0.0, 22.0), (22.0, 147.0), (148.0, 273.0)];
+        let row = row_cuts((5.0, 4.0), &[Some(FACT_LINE), Some(QUOTA_LINE), Some(QUOTA_LINE), Some(TODAY_LINE)]);
+        let ruled = Clear { from_top: row.from_top.iter().map(|&(s, e)| (if s > 0.0 { s + 1.0 } else { s }, e + 1.0)).collect(), end: row.end };
+        let clear = [Clear { from_top: vec![(0.0, 0.0)], end: 0.0 }, row.clone(), ruled];
+        let o = reveal_offset((148.0, 273.0), 0.0, 170.0, 103.0, BAND, &items, &clear).unwrap();
+        // Up to where the Today line's words begin (122): 3 points of the
+        // row's own end under the view, 8 left under its last words.
+        assert_eq!(o + BAND, 122.0);
+        assert!(273.0 - (ROW_PAD - 4.0) <= o + 170.0, "the row's last line cut: {o}");
+        // Where the edge is clear already (a 160-point view: at 135, in the
+        // first row's end), as far as it goes.
+        assert_eq!(reveal_offset((148.0, 273.0), 0.0, 160.0, 113.0, BAND, &items, &clear), Some(113.0));
+        // Shown already: not moved.
+        assert_eq!(reveal_offset((22.0, 147.0), 0.0, 400.0, 0.0, BAND, &items, &clear), None);
+        // Nothing clear within reach: as far as it shows the row.
+        let far = [(0.0, 22.0), (22.0, 400.0), (400.0, 525.0)];
+        let lone = [Clear::default(), Clear { from_top: vec![(0.0, 11.0)], end: 11.0 }, row.clone()];
+        assert_eq!(reveal_offset((400.0, 525.0), 0.0, 160.0, 365.0, BAND, &far, &lone), Some(365.0));
+        // With room for it, the ledge (the band's last point) is kept 7
+        // points over the first line under it: an edge that fell a point
+        // into the first row's Today line (its words from 122) went up to
+        // their top, under the ledge, and goes to the gap over them now,
+        // the row still shown whole (Opus's and Neon's reviews, 2026-11-28).
+        let items = [(0.0, 22.0), (22.0, 147.0), (148.0, 273.0), (274.0, 399.0)];
+        let clear = [Clear { from_top: vec![(0.0, 0.0)], end: 0.0 }, row.clone(), clear[2].clone(), clear[2].clone()];
+        let o = reveal_offset((148.0, 273.0), 0.0, 180.0, 219.0, BAND, &items, &clear).unwrap();
+        assert_eq!(o, 92.0);
+        assert!(122.0 - (o + BAND + 1.0) >= UNDER_LEDGE, "the line under the ledge {} points from it", 122.0 - (o + BAND + 1.0));
+        assert!(o + BAND >= 113.0, "the quota line over it cut");
+        assert!(273.0 - (ROW_PAD - 4.0) <= o + 180.0, "the row's last line cut: {o}");
+    }
+
+    /// Set small on the panel, a note is darker than other secondary words:
+    /// 5.5:1 or more there, an error's red 4.5:1, in either theme.
+    #[test]
+    fn notes_are_inked_to_be_read_on_the_panel() {
+        for p in [olo_kit::palette::Palette::light(), olo_kit::palette::Palette::dark()] {
+            assert!(olo_theme::contrast(note_ink(&p, false), p.panel_background) >= 5.5, "{:?}", p.mode);
+            assert!(olo_theme::contrast(note_ink(&p, true), p.panel_background) >= 4.5, "{:?}", p.mode);
+        }
+    }
 }

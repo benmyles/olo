@@ -4574,3 +4574,20 @@ prompts while staying sandboxed to its scratch cwd.
   `wp_cursor_shape_device_v1::set_shape(1)` (`default`) is Haiku/BeOS's
   hand cursor, not an arrow — do not misread it in screenshots as web
   `PointingHand` (`FollowLink`), which is only requested over actual links.
+
+**Antigravity (`agy` 1.5.18) keyring, sign-in isolation & `jato` target binaries** (2026-11-28):
+- `agy` 1.5.18 stores its OAuth sign-in in the login keyring (`service=gemini`,
+  `username=antigravity`, the same `StoredToken` JSON as its file) and reads
+  the keyring first before falling back to
+  `~/.gemini/antigravity-cli/antigravity-oauth-token`. It opens its OAuth
+  page via `xdg-open` on `PATH` (never `$BROWSER`).
+- `godbus` treats an empty `DBUS_SESSION_BUS_ADDRESS` as unset and falls back
+  to `/run/user/<uid>/bus` by uid (ignoring `XDG_RUNTIME_DIR`). To keep a
+  subprocess off the session bus, set `DBUS_SESSION_BUS_ADDRESS` to a
+  nonexistent `unix:path=...`.
+- When testing `agy` in isolation, use `bwrap` with a scratch dir over
+  `/run/user/<uid>`, real `~/.gemini` hidden, `--unshare-net` (or clear
+  `HTTPS_PROXY` so it does not inherit the live Token Pool proxy), and a
+  private `olo-bus` + `olo-secrets` (`OLO_SECRETS_SERVE=1`) keyring.
+- `jato build` populates `target/debug` with the binaries of that invocation:
+  build every binary a `tsession` needs in one `jato build -p ...` command.

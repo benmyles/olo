@@ -27738,15 +27738,176 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   is opened on a worker thread, retried every 30 s while the keyring
   is shut, and nothing is saved until it has been read.
 - **Adding accounts** (`import.rs`): *this computer's* sign-in is read
-  from `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`),
-  `~/.codex/auth.json` (`CODEX_HOME`), or
-  `~/.gemini/antigravity-cli/antigravity-oauth-token`. The pool then
-  refreshes it, so the client's own copy goes stale: point the client at
-  the pool. *Separately* runs the official client's own sign-in in
-  Terminal with its config in a private directory on the runtime tmpfs
-  (`claude auth login`, `codex login` with file storage, or `agy`
-  sign-in), takes the result and deletes the directory. The same email
-  again updates that account's sign-in.
+  from `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`; its account's
+  details where Claude Code keeps them, as Terminal reads them:
+  `~/.claude.json` for the default config directory, else beside it, an
+  old copy there only where that has no account; through a link for this
+  computer's, never for a separate sign-in's; never a directory's
+  parent's), `~/.codex/auth.json` (`CODEX_HOME`), or, for Antigravity,
+  where agy itself looks: the login
+  keyring first (go-keyring's Secret Service item `service=gemini`,
+  `username=antigravity`, holding the same JSON as its file, which is
+  where agy keeps it on a desktop), as go-keyring finds it
+  (`olo_system::secrets::lookup_login`: in `…/collection/login`, unlocked
+  first, never an older one kept unlocked elsewhere; the default
+  collection only where the keyring's own list says there's no login one,
+  an error listing them being an error), then
+  `~/.gemini/antigravity-cli/antigravity-oauth-token` (a computer with no
+  session bus). Only the file had been read, so a desktop's sign-in was
+  "There's no sign-in there" (Ben, 2026-11-28). `lookup_login` closes the
+  Secret Service session it opens (a resident program's were kept to the
+  desktop session's end), and keeps no more than a sign-in's size
+  (`TOO_BIG`, the reply's size looked at before its value is copied out
+  of it: a bound on what's kept, not on what the bus takes in, which has
+  the whole reply by then; the file is read instead); `lookup` takes any
+  size, as `store` does. Olo's keyring, locked, is asked to open once,
+  before anything is asked of it, as Passwords asks (a question put to it
+  locked brought its own prompt, and Not Now there then this one's: the
+  prompt twice); `secrets::locked` believes `olo-secrets.json` only while
+  `org.olo.Secrets1` has an owner on the bus (asked only when the file
+  says locked), and reads it as a plain file of a status's size, opened
+  without waiting (a pipe left there held every import);
+  `secrets::unlock` waits on a connection of its own, as long as a
+  password takes and no more than five minutes (the shared one
+  gives up after ten seconds; with none, a keyring that never answered
+  held every import back). The Secret Service's `IsLocked`, or an
+  `Unlock` that neither opens nor prompts, is "locked". Still locked,
+  with no file, that's what's said; opened as it was looked for, the
+  pool's own accounts are opened too, whatever was found
+  (`Imported::unlocked`). A sign-in's file is read as a plain file of a
+  sign-in's size, opened without waiting (a pipe put there can't hold the
+  reader), a link not followed in a separate sign-in's directory. Tests
+  never ask the session's keyring (`cfg(test)`, `OLO_POOL_TEST_ISOLATE`;
+  `ask_keyring_with` is tested with a keyring of the test's own, its
+  prompts counted); `agy_from_a_keyring_of_its_own` and
+  `secrets::tests::login_first` ask a real one (olo-bus and olo-secrets
+  on a bus under /var/tmp/olo-…, its runtime directory there too,
+  attributes of the run's own, taken away however the test ends,
+  `--ignored`). Each sign-in begun gets a number (`Ops`), and only the
+  latest begun or taken for the account it turns out to be (its target,
+  or the one Add Account finds by its email) is taken, whichever way it
+  was begun and whatever order the answers come in. Sign-ins read while
+  the pool's accounts aren't open yet (their keyring was shut, and
+  reading one may just have opened it) wait in the order they came
+  (`Held`), the
+  accounts opened at once (`Shared::open_again`); a failure to open them
+  since is said (`Pool::open_tries`), not "Opening…" for ever. Sign-ins
+  are taken in on one worker, one after another in the order they came,
+  never the window's thread: which account it is (its target, else the
+  one with its email, else a new one), whether a newer sign-in for it
+  began or was taken since, and its sign-in and what it says of it, where
+  it was signed in included, its email cleared where the sign-in can't
+  say whose it is, are all settled under one lock
+  (`Shared::take_sign_in`): two for one new email make one account, and
+  an older never lands over a newer. One removed meanwhile gets nothing.
+  "Joined" (or "signed in") is said, and a separate sign-in's own copy
+  removed, only on the saver's word that the vault holds it
+  (`Shared::keep`, `Save::Kept`): one that can't be written is said not
+  to be saved yet, and tried again every 30 seconds, and nothing more is
+  said of one removed meanwhile. A save that fails is the vault's
+  (`Pool::save_error`, said in the footer until one goes through), never
+  the gateway's `error`, which is its listener's ("Gateway Stopped"). A
+  renewal, a refusal or a keeper's loan begun with a sign-in changes the
+  account only if it still has that sign-in (`gateway::since`): a Sign
+  In Again made meanwhile is never undone, and is what's used, never the
+  old token, after a failed renewal or loan too; one carried to a keeper
+  meanwhile is the keeper's (nothing written here, nothing signed out,
+  the token just refused never handed back as fresh); a project found
+  meanwhile (Antigravity's) is kept with the renewed sign-in. A request's
+  refusal signs out only the sign-in it was sent with, kept where it was
+  then. The pool then refreshes the sign-in, so the client's own copy
+  goes stale: point the client at the pool.
+  *Separately* runs the official client's own sign-in in Terminal with
+  its config in a private directory on the runtime tmpfs (`/var/tmp`
+  where there's no runtime directory a PATH can hold; never /tmp), made,
+  with the client found and Terminal started, on a worker
+  (`import::begin_separate`; cancelled meanwhile, Terminal isn't
+  opened): `claude auth login`, `codex login` with file storage, or
+  `agy`. Its sign-in is looked for every two seconds until a deadline
+  (`Waiting::until`, the footer's countdown too): one still being written
+  is looked at again, one that can never be read (too big, not a file, no
+  access token) ends the wait at once with why (`import::Unread`), and at
+  the deadline "The agy sign-in timed out." A result read as the sign-in
+  was cancelled, or another begun, is dropped whole. The same email
+  again updates that account's sign-in. agy has no setting for where it
+  keeps its sign-in, so it's given that directory as its home and XDG
+  directories (state too), none of the pool's proxy variables, an API
+  key or Application Default Credentials, and a session bus that isn't
+  there (`import::no_bus_address`: `unix:path=DIR/no-dbus`): an empty
+  address, as before, is no address to agy's D-Bus (godbus), which then
+  finds the session's at `/run/user/UID/bus` and the computer's sign-in
+  in its keyring, so a "new" account was the one agy already had. (The
+  client capture's agy, `capture.rs`, has the same, under its sandbox:
+  with the empty address it read another account's sign-in from the
+  keyring and recorded its token. A capture whose authorization or API
+  key isn't placeholders the pool fills as it sends it
+  (`capture::FILLED`, held to `likeness::Fill`), or whose body (a
+  renewal's form or JSON) holds a token that isn't, a refresh grant's
+  refresh token anything but the account's own placeholder, carries
+  another account's sign-in: it's never kept, and one kept before is
+  removed as it's read and captured again, whatever the client's stamp
+  (`capture::templated`). Only the token the capture made up itself,
+  Codex's expired one, stands for the account's own: never another a run
+  sent.) agy is found where the
+  person has it before its home changes (`capture::on_path`: the first
+  they can run, by its absolute path); not there, nothing is begun. Only
+  Antigravity's sign-in asks for what its opener gives back of the
+  person's (`PERSON`). It opens its Google page with `xdg-open`; first
+  on its PATH, and as its `BROWSER` (Terminal's, olo-open, would open it
+  in agy's home), that's Token Pool itself (`DIR/bin/xdg-open`, a link to
+  olo-pool, which started by that name does only that, before anything
+  else in `main`), which puts the person's own HOME, XDG directories,
+  PATH, bus and BROWSER back (`OLO_POOL_OPENER_ENV`, those and nothing
+  else, no NUL) and opens it with `olo_xdg::open`: web pages with a host
+  written out only (no backslash), and what it says of one refused or not
+  opened is its scheme and that host (never an OAuth request's `state` or
+  `login_hint`, nor anything of an argument that isn't text). So the page
+  is in the person's browser and profile, not a new, empty one in agy's
+  home (Olo's Chrome keeps its profile in
+  `$XDG_CONFIG_HOME/google-chrome`), removed under it with the directory.
+  A sign-in begun from the menus on another tab shows Accounts, where its
+  wait and what came of it are. While one is waited for, Cancel Sign-In
+  stands in Add Account…'s place, as wide, at every width (nothing moves,
+  Edit Account… stays), and no other sign-in can be begun (the rows' Sign
+  In… and the menus' sign-ins are off); the footer says "Waiting for agy
+  in Terminal… 4:12 left" (claude, codex: the program in Terminal), in
+  the text's own ink, its time in the note's grey (`Note::quiet_from`),
+  counted down once a second while it's in sight (on Accounts, no other
+  note over it), and only then. agy goes on in Terminal
+  once signed in, so the footer then says so: "Pat joined. You can quit
+  agy." (or "signed in", again), in a row's details' size and ink on the
+  buttons' baseline, 16 points after Edit Account…, as "Updated HH:MM"
+  is set 16 points before Refresh Quota; only the name cut short where
+  the room is too little, a letter of it at least, nothing rather than a
+  lone "…"; the whole in a tip above the note (`PoolWindow::note_tip`,
+  `tip::on_above_of`), its words over the note's at every width (placed
+  by its true width, `tip_width`, a copy of the kit's), ending where the
+  list does where it would end past it or over its scroll bar, its foot
+  4 points over the list's. Narrower than 600 points (`NOTE_ROW`) the
+  note has a row of its own just above the buttons, always there ("Updated
+  HH:MM" where there's no note, so the list is as tall in every state),
+  10 points from the list to its capitals, 6 from its baseline to them
+  (`NOTE_ROW_UNDER`). A long account name is cut short with "…" 12
+  points before the machine's name (or Sign In…), its whole in a tip. It
+  goes at the first quota read
+  a minute after (any other note in its place clears its time,
+  `Hub::set_note`), and the account is chosen and brought into view
+  (`Reveal`, kept while the window settles) with the edge of the group
+  band pinned over the list between two lines, never through one, as
+  near a gap's middle as leaves 7 points under its ledge to the line
+  after it where there's room (`row_cuts`, `reveal_offset`,
+  `UNDER_LEDGE`; the cuts are worked out only while a row's being
+  revealed); scrolled under, the band has a line below it, the well's
+  inner edge's grey by day, the bevel's shadow by night. The window opens
+  712 points tall (`OPENS_TALL`: its list's foot between two lines of the
+  accounts as they open), no taller than its screen's room (a height
+  kept from before is brought down to it, never in a tile or a zoom,
+  where app_server holds its size), and is at least 400 points wide,
+  where three buttons fit (at 380, its least before, Refresh Quota ran 16
+  points out of it). `tests/opener.rs` holds
+  the opener to it with the built program; the demo shows each state for
+  pictures (`OLO_POOL_DEMO_NOTE` with `_ERROR=1`, `OLO_POOL_DEMO_JOINED`
+  with `_NAME`, `OLO_POOL_DEMO_WAITING=1`).
 - **Clients** (`clients.rs`): "Claude Code uses the pool" sets
   `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS` (the authority's certificate,
   added to what it trusts) and `NO_PROXY` (loopback) in Claude Code's

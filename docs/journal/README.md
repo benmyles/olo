@@ -6,6 +6,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Token Pool narrow footer note row and aligned tooltip
+
+*12:42* — Dedicated 24 pt narrow note row below 600 pt, truncated long account name with 12 pt machine gap, and aligned two-line tooltip
+
+![Token Pool narrow footer note row and aligned tooltip](2026-11-28/124230-token-pool-narrow-footer-note-row-and-aligned-to.png)
+
+### Token Pool sign-in reveal and ledge polish
+
+*12:42* — Pinned provider header ledge placed in inter-line gap with 8 pt clearance and joined account revealed
+
+![Token Pool sign-in reveal and ledge polish](2026-11-28/124229-token-pool-sign-in-reveal-and-ledge-polish.png)
+
+### Token Pool Antigravity sign-in waiting footer
+
+*12:42* — Primary-ink waiting status, quiet tabular countdown, Cancel Sign-In, and disabled row Sign In while waiting
+
+![Token Pool Antigravity sign-in waiting footer](2026-11-28/124228-token-pool-antigravity-sign-in-waiting-footer.png)
+
 ### Notifications History List polish
 
 *12:20* — Aligned Mark All Read right edge, compact open-row buttons, read-on-close, and clean section dividers

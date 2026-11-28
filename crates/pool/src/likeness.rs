@@ -940,6 +940,14 @@ mod tests {
         }
     }
 
+    /// What a capture may hold (`capture::templated`) is what's filled
+    /// as it's sent.
+    #[test]
+    fn the_placeholders_kept_are_those_filled() {
+        let filled: Vec<&str> = Fill::default().pairs().into_iter().map(|(p, _)| p).collect();
+        assert_eq!(filled, capture::FILLED);
+    }
+
     #[test]
     fn bodies_decoded() {
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());

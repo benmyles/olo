@@ -80,6 +80,190 @@ something nobody here has is in "Blocked", with what it waits for.
   - *Astra #18 (vault rollback compatibility):* keep Antigravity accounts
     in a backwards-compatible sidecar or downgrade-safe vault schema so
     rolling back to a pre-Antigravity binary cannot reject the vault.
+- **Token Pool sign-ins, left of `pool-agy-signin`** (Round 1 and Round 2
+  reviews, 2026-11-28: `astra-a1d8e77ed3`, `agyrev-a806337466`,
+  `astra-5c02309c09`, `agyrev-b6442d2515`, and the looks in
+  `/var/tmp/olo-agents/pool-agy-signin/shots/` and `shots-pool-r2/`; each
+  wants more than the change, so it's here):
+  - *A sign-in across an upgrade* (Astra #9, R1 and R2): "If the pool
+    upgrades while the Google page is open, the old pool can exit or exec
+    its keeper … When agy writes its token, the new pool has neither the
+    directory nor a worker to import or clean it. The new account never
+    appears. Keep the active sign-in alive across handover or defer
+    handover until that operation finishes, is canceled, or reaches its
+    deadline." Round 2: "The saved handover state carries only the
+    window and tab … Include active and deferred imports in the handover
+    gate through durable adoption, cancellation, or expiry"
+    (`apps/pool/src/ui.rs`: `Open::state`, `start`'s `on_upgrade` and
+    `on_upgrade_due`; the Hub's `waiting`, `held` and adoption workers).
+  - *The sign-in's command, followed* (Astra #10 R1, #8 R2): "Completing
+    authorization after cancellation can recreate its token directory
+    after cleanup, with no reader left. This wait also retains the
+    pre-existing two-second polling loop … for up to 20 minutes,
+    including after Terminal exits early. Track the launched Terminal
+    command's lifetime, end that specific sign-in on cancellation, and
+    clean up after its writer exits." Round 3 checks Cancel before
+    Terminal opens and ends the wait at once on a sign-in that can never
+    be read (`import::Unread::Never`); following Terminal's command to
+    its exit, and waiting on the directory's changes (inotify) rather
+    than every two seconds, are left (`apps/pool/src/ui.rs`:
+    `wait_for_sign_in`; `olo_xdg::open::spawn` gives no handle).
+  - *Imports this computer's: progress, Cancel, one at a time* (Astra
+    #10 R2): "A missing unlock reply disables all local imports … Give
+    local imports visible progress and cancellation, and coalesce
+    duplicate requests by provider and target." Round 3 bounds the
+    unlock's wait (`olo_system::secrets::unlock`, five minutes); a
+    prompt's `Completed` never coming is still unbounded (below), and the
+    window still shows nothing while `Hub::importing`.
+  - *Two prompts, the vault's and an import's* (Astra #11 R2): "After the
+    two-minute quiet period, a vault retry can activate the Secret
+    Service and start an automatic unlock. While that prompt is open, the
+    import reads the still-locked status and queues an explicit unlock.
+    Dismiss the first prompt and the queued explicit request bypasses
+    the quiet period and prompts again … Have overlapping requests join
+    the same outstanding unlock attempt and receive its answer, including
+    dismissal." Across processes: `crates/pool/src/import.rs`
+    (`ask_keyring_with`), `crates/pool/src/gateway.rs` (`pool-open`),
+    `apps/secrets/src/activated.rs` and `apps/secrets/src/main.rs`.
+  - *The person's own proxy and certificates* (Astra #13): a separate
+    Antigravity sign-in clears every proxy variable and `SSL_CERT_FILE`
+    (the pool's own among them), and its opener gives the browser back
+    none of them: "On a network requiring a corporate proxy or custom CA,
+    a cold-started browser that relies on that setting cannot load the
+    Google page … Distinguish pool-managed overrides from independently
+    configured network settings. Restore the browser's original settings
+    via the pool or a private channel so proxy passwords stay out of
+    Terminal's argv." (A browser already running is unaffected.) Round 2
+    adds: "The expanded launch still delegates environment handling to
+    the external `/usr/bin/env` utility. A native Token Pool child entry
+    point can apply the environment and exec the official client inside
+    Terminal" (`crates/pool/src/import.rs`: `command_for`, `AGY_UNSET`).
+  - *What the client tests prove* (Astra #24 R2): "The sandbox test's
+    fake agy never attempts D-Bus. Its listener would remain untouched
+    even if a real client fell back to the session bus. The real-client
+    test checks the bearer after the proxy substitutes the pooled one.
+    Assert the synthetic file token at the incoming test boundary with a
+    private keyring holding a distinct synthetic identity"
+    (`crates/pool/src/capture.rs`: `a_sandboxed_agy_finds_no_bus`;
+    `crates/pool/tests/clients.rs`:
+    `agy_on_its_subscription_through_the_proxy`).
+    What a real agy does was checked by hand, in a sandbox with a private
+    keyring (`/var/tmp/olo-agents/pool-agy-signin/exp`, E0–E6).
+  - *A keyring's prompt that never answers* (Astra #7):
+    `olo_system::secrets` waits on a prompt's `Completed` with no end:
+    "If its service stays connected but never emits Completed, the
+    iterator at `crates/system/src/secrets.rs:97` waits indefinitely."
+    Bound or cancel that wait.
+  - *The kit's tip for cut words* (Opus #5, Neon #3 of the looks; Round
+    3 puts the footer note's tip above it, its words over the note's,
+    with the kit's `tip::on_above_of`, so what's left is the kit's own
+    cut-text tip, which opens below, and its padding): its
+    text sits lower than its middle ("the clearance between the bottom
+    border and the descenders … about 2–3pt" against 5–6 above), and it
+    covers what's above in a second line; Opus: "Show the full text in
+    place: one line, in the same font and size as the note; box shifted
+    about 7pt left (by its padding) and up, so its text sits exactly on
+    the note's x position and baseline." Measured in Round 2, light and
+    dark, on a one-line tip: padding 7 pt on the left against 10 (1×) or
+    10.5 (2×) on the right, 5 on top against 4 (1×) or 3.5 (2×) below.
+  - *"…" two ways* (Neon #4 of the looks): "The buttons use three
+    wider-spaced ASCII periods (`...`), whereas the truncated note right
+    beside `Edit Account...` ends with a noticeably tighter single-glyph
+    ellipsis (`…`)": one ellipsis for buttons and cut text, in the kit.
+  - *Quota bars on a row not chosen* (Opus #8): "On the selected row,
+    the empty part of each bar is a visible sunken well. On every other
+    row the well has the same fill as the row background … Give the well
+    its own fill, one step away from the list background (dark: about
+    #0A121A on the list's #111C26; light: about #E6EAF0)."
+  - *Machines rows the lint finds uneven* (`ui-lint --dev --review
+    --tiles "Token Pool"`; the Machines tab isn't the change's): "rows
+    at x 55 are 80 px apart, but “build” to “dev-box” is 81" (light and
+    dark 1.5×, 2× in a vertical third and a vertical half), and "rows at
+    x 40 are 24 px apart, but “Gateway” to “Claude Code” is 25" (a
+    horizontal third). Round 2 has them again, with 82 against 80 for
+    “build” to “dev-box”, and on the smallest screen (`--screen
+    2560x1600 --scales 2`) also on the Activity tab: "“4 running” (x 543)
+    and “Status” under it (x 546) almost line up on the left: line them
+    up" (a quarter).
+  - *Left of Round 3* (`astra-83d1f4411b`; the landing pass fixed #1, #5–#8,
+    #11, #14, #17, #19, #23, #25, part of #9 and #18, and Neon's
+    `agyrev-9d1990085d`; what's left wants more than a landing):
+    - #2, an identity's revision: "A keeper can acknowledge the previous
+      identity and cost the desktop the replacement … Give explicit
+      reauthentication an identity revision and acknowledge that specific
+      revision after a successful host vault write. Keep the new refresh
+      token locally when an older peer cannot confirm it"
+      (`gateway/hosted.rs`: the custody check, `flush` before reporting).
+    - #3, a renewal across a carry: "While the desktop is waiting for a
+      renewal of R1, `gateway/hosted.rs:537` can mark the host as keeper
+      and carry R1. If the provider rotates R1 to R2, the desktop drops R2
+      … Take the same per-account renewal lock across the ownership
+      transition." (The landing pass hands R2 to the request it was for
+      and writes nothing, as the keeper's now: `gateway::Since::Moved`.)
+    - #4 and #9, the vault's acknowledgment: across an upgrade's overlap
+      the saver can put an older sign-in back (`adopt_newer`, `newer`),
+      and `Save::Kept` answers for the whole snapshot: "Record the explicit
+      sign-in revision under the shared store lock and compare it on
+      merge, late renewal, and save acknowledgment … Include the account
+      ID and sign-in revision in the acknowledgment … Preserve or transfer
+      a pending directory on retirement." (One removed while its save is
+      tried again is said nothing of now.)
+    - #10, a pending import's renewal: "Keep a pending import out of
+      renewal, request serving, and host handoff until its first durable
+      save, or durably journal token rotations for pending imports."
+    - #12, an identity's routing state: signed in as another account, a
+      row keeps "model cooldowns, paid-usage marks, windows, credits"
+      and a late quota read can write the old account's: "Reset
+      identity-specific routing state on replacement and advance/check its
+      generation inside the same pool lock as the mutation."
+    - #13, Terminal and the gateway's sockets: "`for_a_copy` clears
+      close-on-exec on the parent's listener descriptors … A long-lived
+      Terminal started in that interval inherits the listening ports …
+      make the designated descriptors inheritable only in the successor
+      child before exec."
+    - #15, a separate directory's middle parts: `O_NOFOLLOW` covers the
+      last name only: "Resolve all components beneath an open descriptor
+      for the private directory with symlinks disallowed"
+      (`import::read_separate`).
+    - #16, a capture removed as it's read: "One pool can read the
+      contaminated file, a concurrent capture worker … can atomically
+      install a clean file, and the reader then removes the clean file …
+      Report a removal error … bound the read and require a regular file
+      before deserializing" (`capture::load_from`).
+    - #18, the keyring's size: `secret_of` looks at the reply's size once
+      the bus has it whole: "A strict receive-memory guarantee requires a
+      bound before the complete message is buffered." (`lookup` takes any
+      size again, as `store` does; only `lookup_login` is held to one.)
+    - #20, a session closed on another keyring: "Bind the guard to the
+      unique sender of the successful `OpenSession` reply, and have the
+      service verify the owner on close" (`secrets::Opened`,
+      `apps/secrets/src/service.rs`).
+    - #21, a prompt that unlocked: opened through `lookup_login`'s
+      prompt with no Antigravity item there, `Imported::unlocked` is
+      false and the vault waits for its next try: "Propagate successful
+      prompt completion from lookup."
+    - #22, a malformed sign-in: every parse error is `Unread::NotYet`,
+      so a finished file of error text is read again for 20 minutes:
+      "Distinguish incomplete input from a finished invalid write,
+      preferably using close-write or rename notification."
+    - #24, a reveal that needed no scroll: "`apps/pool/src/ui.rs:1990`
+      retains the ID only when `reveal_row` moved … Tiling the window
+      smaller on the next configure, even within the advertised 1.5
+      seconds, can hide the selected account. Keep the ID through the
+      settling deadline and retry on actual layout, viewport, or
+      row-order changes", with a test that goes between the two layouts.
+    - #26, the private keyring's test: "checks whether the entire address
+      contains a scratch-directory substring … Require a single explicit
+      private socket associated with the fixture, and verify the default
+      alias points to the login collection before using `store`"
+      (`secrets::tests::login_first`).
+    - The kit's tip, sized and placed: the footer's note tip copies the
+      kit's private `tip_size` (`ui::tip_width`) to know where it ends,
+      and can't be made wider than its words: Opus asked for its box to
+      run to the list's end where it ends over the scroll bar ("extend the
+      box, not the text"), so it moves there instead, its words a few
+      points right of the note's. Give `tip::Reach` an end to run to, or
+      expose the size.
 - **Token Pool, left of "usage credits come last"** (fixed
   2026-11-26; HACKING, Gateway): (1) *reset claiming across pools*
   (desktop + Rex host keeper done 2026-11-27: claiming follows keeper

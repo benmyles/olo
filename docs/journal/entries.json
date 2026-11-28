@@ -5626,5 +5626,23 @@
   "title": "Notifications History List polish",
   "caption": "Aligned Mark All Read right edge, compact open-row buttons, read-on-close, and clean section dividers",
   "image": "2026-11-28/122045-notifications-history-list-polish.png"
+ },
+ {
+  "time": "2026-11-28T12:42:28",
+  "title": "Token Pool Antigravity sign-in waiting footer",
+  "caption": "Primary-ink waiting status, quiet tabular countdown, Cancel Sign-In, and disabled row Sign In while waiting",
+  "image": "2026-11-28/124228-token-pool-antigravity-sign-in-waiting-footer.png"
+ },
+ {
+  "time": "2026-11-28T12:42:29",
+  "title": "Token Pool sign-in reveal and ledge polish",
+  "caption": "Pinned provider header ledge placed in inter-line gap with 8 pt clearance and joined account revealed",
+  "image": "2026-11-28/124229-token-pool-sign-in-reveal-and-ledge-polish.png"
+ },
+ {
+  "time": "2026-11-28T12:42:30",
+  "title": "Token Pool narrow footer note row and aligned tooltip",
+  "caption": "Dedicated 24 pt narrow note row below 600 pt, truncated long account name with 12 pt machine gap, and aligned two-line tooltip",
+  "image": "2026-11-28/124230-token-pool-narrow-footer-note-row-and-aligned-to.png"
  }
 ]

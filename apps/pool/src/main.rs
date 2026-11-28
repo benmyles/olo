@@ -463,8 +463,58 @@ fn follow_clients(shared: std::sync::Arc<olo_token_pool::gateway::Shared>) {
     });
 }
 
+/// Token Pool as a separate Antigravity sign-in's `xdg-open`
+/// (`import::prepare_sign_in`): the page agy opens to sign in, opened as
+/// the person opens one, their own environment put back
+/// (`import::opening`), natively, and nothing but a web page. xdg-open's
+/// exit statuses: 1, refused; 4, it couldn't be opened.
+fn opener() -> std::process::ExitCode {
+    let carrier = std::env::var(olo_token_pool::import::OPENER_ENV).ok();
+    // (An argument that isn't text is never shown, nor anything of it: it
+    // may hold a sign-in's own query. Astra's and Neon's reviews,
+    // 2026-11-28: it was printed whole.)
+    let args: Option<Vec<String>> = std::env::args_os().skip(1).map(|a| a.into_string().ok()).collect();
+    let opening = match args {
+        Some(args) => olo_token_pool::import::opening(carrier.as_deref(), &args),
+        None if carrier.is_none() => Err("only the page a sign-in in Token Pool asks for is opened".to_owned()),
+        None => Err("only a web page (http or https) is opened, not something that isn’t text".to_owned()),
+    };
+    let o = match opening {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("xdg-open (Token Pool’s): {e}");
+            return std::process::ExitCode::from(1);
+        }
+    };
+    for (k, v) in &o.env {
+        // SAFETY: main's first work, before any thread (the crash handler
+        // starts none).
+        unsafe {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
+    }
+    let mut status = 0;
+    for url in o.urls {
+        if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.clone())) {
+            // (Its scheme and host alone: what follows is the sign-in's
+            // own, its `state` and the account it's for.)
+            eprintln!("xdg-open (Token Pool’s): {}: {e}", olo_token_pool::import::shown(&url));
+            status = 4;
+        }
+    }
+    std::process::ExitCode::from(status)
+}
+
 fn main() -> std::process::ExitCode {
     olo_crash::install();
+    // Started as a separate Antigravity sign-in's `xdg-open`: that alone,
+    // before anything of the pool's or a window's.
+    if std::env::args_os().next().is_some_and(|a| std::path::Path::new(&a).file_name().is_some_and(|n| n == "xdg-open")) {
+        return opener();
+    }
     // The demo (made-up accounts, for pictures and the lint) is no pool:
     // it listens on ports of its own, any that are free, never the
     // gateway's and the proxy's. Where no pool ran, a demo took 17891 and

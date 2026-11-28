@@ -2556,3 +2556,90 @@ async fn antigravity_round2_quota_claims_body_validation_and_profile_coalescing(
         assert_eq!(refresh_calls.load(SeqCst), 0, "HTTP 403 from loadCodeAssist must NOT force token refresh");
     }
 }
+
+/// Signed in again: kept only for the account that's still there (one
+/// removed while its sign-in was read, as the keyring asked for a password,
+/// kept its sign-in with no account), with what the sign-in says of it and
+/// where it was signed in, whichever way that changed (this computer's
+/// client's, then apart from it, then back).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sign_in_again_is_kept_only_for_its_account() {
+    let mut saved = Saved::default();
+    saved.accounts.push(account("a", 1, 100));
+    saved.credentials.insert("a".into(), cred("first"));
+    let s = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+    let said = |separate| gateway::SignedInAs { email: Some("a@example.com".into()), plan: Some("max".into()), org: None, separate };
+    assert_eq!(s.reauth_as("a", cred("second"), said(true)).as_deref(), Some("a"));
+    {
+        let p = s.pool.lock().unwrap();
+        let a = p.account("a").unwrap();
+        assert_eq!((a.separate, a.email.as_deref(), a.plan.as_deref()), (true, Some("a@example.com"), Some("max")));
+        assert_eq!(p.saved.credentials["a"].access, "second");
+    }
+    assert_eq!(s.reauth_as("a", cred("third"), said(false)).as_deref(), Some("a"));
+    assert!(!s.pool.lock().unwrap().account("a").unwrap().separate, "back to this computer's");
+    s.remove("a").unwrap();
+    assert_eq!(s.reauth_as("a", cred("orphan"), said(true)), None);
+    assert!(!s.reauth("a", cred("orphan")));
+    assert!(!s.pool.lock().unwrap().saved.credentials.contains_key("a"), "a sign-in kept with no account");
+}
+
+/// A request's refusal that comes after the account was signed in again
+/// (its retry, sent with the renewed sign-in, answered as the person
+/// signed in again) signs nothing out: it was of the sign-in it was sent
+/// with, not the account's now (Astra's review, 2026-11-28: the last 401
+/// signed the new sign-in out). With nothing in between, the refusal
+/// signs the account out, as before.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refusal_of_an_old_sign_in_signs_out_nothing_newer() {
+    for again in [true, false] {
+        let (held_tx, mut held) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let go = Arc::new(tokio::sync::Notify::new());
+        let gate = go.clone();
+        let fake = Router::new()
+            .route(
+                "/v1/messages",
+                post(move |h: HeaderMap| {
+                    let (held_tx, gate) = (held_tx.clone(), gate.clone());
+                    async move {
+                        // (The retry, with the renewed sign-in: answered
+                        // once the test lets it go.)
+                        if token(&h) == "fresh" {
+                            let _ = held_tx.send(());
+                            gate.notified().await;
+                        }
+                        StatusCode::UNAUTHORIZED.into_response()
+                    }
+                }),
+            )
+            .route("/oauth", post(|| async { axum::Json(json!({"access_token": "fresh", "refresh_token": "r2", "expires_in": 3600})) }));
+        let base = format!("http://{}", serve(fake).await);
+        let mut saved = Saved::default();
+        saved.accounts.push(account("a", 1, 100));
+        saved.credentials.insert("a".into(), cred("stale"));
+        let shared = Shared::new(saved, None, Upstreams::fake(&base), || {});
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let app = gateway::router(shared.clone(), addr.port());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        let ask = tokio::spawn(
+            reqwest::Client::new().post(format!("http://{addr}/claude/v1/messages")).header("authorization", "Bearer olo-pool").json(&json!({"model": "claude-opus-5-5", "messages": []})).send(),
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(10), held.recv()).await.expect("the retry was sent").unwrap();
+        if again {
+            let said = gateway::SignedInAs { email: Some("a@example.com".into()), separate: true, ..Default::default() };
+            assert_eq!(shared.reauth_as("a", cred("signed-in-again"), said).as_deref(), Some("a"));
+        }
+        go.notify_one();
+        let r = ask.await.unwrap().unwrap();
+        assert_ne!(r.status(), 200);
+        let p = shared.snapshot();
+        let signed_out = p.account("a").unwrap().signed_out.clone();
+        if again {
+            assert!(signed_out.is_none(), "the new sign-in signed out by the old one's refusal: {signed_out:?}");
+            assert_eq!(p.saved.credentials["a"].access, "signed-in-again");
+        } else {
+            assert!(signed_out.is_some(), "a refused sign-in left signed in");
+        }
+    }
+}
