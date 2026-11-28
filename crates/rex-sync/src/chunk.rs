@@ -265,18 +265,60 @@ pub(crate) fn probe_extent(file: &fs::File, offset: u64, max_len: u64) -> (bool,
 /// (`SEEK_DATA`/`SEEK_HOLE`) and feeds holes as synthetic zeros without reading
 /// them from disk, producing the exact same digest as reading the whole file.
 pub fn hash_and_chunk_file_in(buf: &mut Vec<u8>, file: &mut fs::File, file_size: u64) -> io::Result<FileDigest> {
+    hash_and_chunk_file_in_cancel(buf, file, file_size, None)
+}
+
+/// Like [`hash_and_chunk_file_in`], aborting promptly with
+/// [`io::ErrorKind::ConnectionAborted`] when `cancel` becomes true while still
+/// preserving sparse hole probing (`SEEK_DATA`/`SEEK_HOLE`).
+pub fn hash_and_chunk_file_in_cancel(buf: &mut Vec<u8>, file: &mut fs::File, file_size: u64, cancel: Option<&std::sync::atomic::AtomicBool>) -> io::Result<FileDigest> {
+    use std::sync::atomic::Ordering;
+    struct CancelRead<'a, R> {
+        inner: R,
+        cancel: &'a std::sync::atomic::AtomicBool,
+    }
+    impl<R: io::Read> io::Read for CancelRead<'_, R> {
+        fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
+            if self.cancel.load(Ordering::Acquire) {
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+            }
+            self.inner.read(dst)
+        }
+    }
+    if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+    }
     if file_size < CHUNK_MIN_SIZE {
-        return hash_only_in(buf, file);
+        return match cancel {
+            Some(c) => hash_only_in(buf, &mut CancelRead { inner: file, cancel: c }),
+            None => hash_only_in(buf, file),
+        };
     }
     if file_size < SPARSE_HASH_MIN_SIZE {
-        return hash_and_chunk_in(buf, file);
+        return match cancel {
+            Some(c) => hash_and_chunk_in(buf, &mut CancelRead { inner: file, cancel: c }),
+            None => hash_and_chunk_in(buf, file),
+        };
     }
     let (first_hole, first_len) = probe_extent(file, 0, file_size);
     if !first_hole && first_len >= file_size {
         file.seek(SeekFrom::Start(0))?;
-        return hash_and_chunk_in(buf, file);
+        return match cancel {
+            Some(c) => hash_and_chunk_in(buf, &mut CancelRead { inner: file, cancel: c }),
+            None => hash_and_chunk_in(buf, file),
+        };
     }
-    hash_and_chunk_sparse_with(buf, file_size, |off, max_len| probe_extent(file, off, max_len), |off, dst| file.read_at(dst, off))
+    hash_and_chunk_sparse_with(
+        buf,
+        file_size,
+        |off, max_len| probe_extent(file, off, max_len),
+        |off, dst| {
+            if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+            }
+            file.read_at(dst, off)
+        },
+    )
 }
 
 /// Sparse-aware hash and chunk driven by an extent prober and positional reader

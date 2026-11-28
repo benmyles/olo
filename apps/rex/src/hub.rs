@@ -5367,6 +5367,8 @@ impl RexHub {
             let script = |script: &str| format!("sh -c {}", shell_quote(script));
             let result = match (thing, op) {
                 (HostThing::Helper, HostOp::Install | HostOp::Update) => {
+                    let helper_lock = crate::files_sock::helper_host_lock(&host_key);
+                    let _helper_guard = helper_lock.lock().await;
                     inner.helper_kept_off(&host_key, false);
                     if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
                         host.helper_sync_err = None;
@@ -5385,19 +5387,29 @@ impl RexHub {
                     said
                 }
                 (HostThing::Helper, HostOp::Remove) => {
+                    let helper_lock = crate::files_sock::helper_host_lock(&host_key);
+                    let _helper_guard = helper_lock.lock().await;
+                    let was_off = inner.state.lock().unwrap_or_else(|e| e.into_inner()).settings.helper_hosts.get(&host_key).map(String::as_str) == Some("off");
+                    // Publish opt-out and clear readiness BEFORE running REMOVE
+                    // so concurrent files_sock preparations see DisabledForHost
+                    // immediately and cannot reinstall after REMOVE runs.
+                    inner.helper_kept_off(&host_key, true);
+                    if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
+                        host.helper_current = None;
+                        host.helper_sync_err = None;
+                    }
                     let ran = run(script(olo_rex_client::helper::REMOVE)).await;
                     if ran.is_ok() {
-                        inner.helper_kept_off(&host_key, true);
                         // (A connection that goes through it goes on
                         // through it: said so while it does.)
-                        if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
-                            host.helper_current = None;
-                            host.helper_sync_err = None;
-                            if host.helper != HostHelper::Used {
-                                host.helper = HostHelper::None;
-                            }
+                        if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key)
+                            && host.helper != HostHelper::Used
+                        {
+                            host.helper = HostHelper::None;
                         }
                         inner.screens_service.wake_host_follower(&inner.rt_handle, &host_key, inst_id);
+                    } else if !was_off {
+                        inner.helper_kept_off(&host_key, false);
                     }
                     ran
                 }
@@ -6197,6 +6209,11 @@ impl RexHubInner {
     /// (it is asked before its next connection).
     fn helper_known(&self, host_key: &str, known: Option<bool>) {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        // Never overwrite an explicit per-host opt-out ("off") with a stale "yes"
+        // from an in-flight automatic helper check.
+        if known == Some(true) && st.settings.helper_hosts.get(host_key).is_some_and(|w| w == "off") {
+            return;
+        }
         let word = known.map(|has| if has { "yes".to_owned() } else { format!("no:{}", crate::link::ID) });
         if st.settings.helper_hosts.get(host_key) != word.as_ref() {
             match word {
@@ -6637,7 +6654,25 @@ impl RexHubInner {
             host.helper = HostHelper::Installing;
         }
         tokio::spawn(async move {
+            let host_lock = crate::files_sock::helper_host_lock(&host_key);
+            let _guard = host_lock.lock().await;
+            let allowed = {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                let cant = st.settings.helper_hosts.get(&host_key).is_some_and(|word| word == "off" || word.strip_prefix("no:") == Some(crate::link::ID));
+                crate::link::carried() && st.settings.host_helper && !cant
+            };
+            if !allowed {
+                return;
+            }
             let stands = olo_rex_client::helper::ensure(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await;
+            let still_allowed = {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                let cant = st.settings.helper_hosts.get(&host_key).is_some_and(|word| word == "off");
+                st.settings.host_helper && !cant
+            };
+            if !still_allowed {
+                return;
+            }
             hub.helper_stands(&host_key, inst_id, stands, false);
         });
     }

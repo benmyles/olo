@@ -35,6 +35,9 @@ pub struct HostFolder {
     pub exclude: Vec<String>,
     pub shallow: bool,
     pub scoped: bool,
+    /// Pass `--no-cache` to the remote helper so one-shot UUID staging folders
+    /// never accumulate permanent orphaned `.idx` files in the host's cache dir.
+    pub no_cache: bool,
 }
 
 impl HostFolder {
@@ -52,6 +55,9 @@ impl HostFolder {
         }
         if self.scoped {
             c.push_str(" --scoped");
+        }
+        if self.no_cache {
+            c.push_str(" --no-cache");
         }
         for p in &self.exclude {
             c.push_str(" --exclude ");
@@ -101,17 +107,66 @@ impl HostFolder {
             // files: what it receives is the person's to have.)
             protect: Vec::new(),
             progress: None,
+            request_sender_summary: false,
+            cancel: None,
         }
     }
 }
 
 /// How far a session is, and a word to stop it: shared with whoever shows
-/// it (bytes each way as the channel carries them).
-#[derive(Clone, Debug, Default)]
+/// it (bytes each way as the channel carries them). Call [`Stop::cancel`] to
+/// immediately wake blocked I/O instead of waiting for the peer.
+#[derive(Clone, Debug)]
 pub struct Stop {
     pub stop: Arc<AtomicBool>,
     pub sent: Arc<AtomicU64>,
     pub received: Arc<AtomicU64>,
+    /// Logical payload bytes reported by the sync engine (e.g. uncompressed
+    /// file bytes sent, rather than compressed wire traffic).
+    pub logical_bytes: Arc<AtomicU64>,
+    wake: Arc<tokio::sync::Notify>,
+    progress: Arc<tokio::sync::Notify>,
+    idle_timeout: Option<std::time::Duration>,
+}
+
+impl Default for Stop {
+    fn default() -> Self {
+        Self {
+            stop: Arc::new(AtomicBool::new(false)),
+            sent: Arc::new(AtomicU64::new(0)),
+            received: Arc::new(AtomicU64::new(0)),
+            logical_bytes: Arc::new(AtomicU64::new(0)),
+            wake: Arc::new(tokio::sync::Notify::new()),
+            progress: Arc::new(tokio::sync::Notify::new()),
+            idle_timeout: None,
+        }
+    }
+}
+
+impl Stop {
+    /// Request cancellation and wake any blocked sync I/O immediately.
+    pub fn cancel(&self) {
+        self.stop.store(true, Ordering::Release);
+        self.wake.notify_waiters();
+    }
+
+    /// Whether cancellation has been requested.
+    pub fn is_stopped(&self) -> bool {
+        self.stop.load(Ordering::Acquire)
+    }
+
+    /// Expire individual blocked reads/writes/flushes if the peer goes silent
+    /// for longer than `timeout`.
+    pub fn with_idle_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.idle_timeout = Some(timeout);
+        self
+    }
+
+    /// Notified whenever bytes are read or written on the underlying stream
+    /// (zero wakeups while idle).
+    pub fn progress_notify(&self) -> Arc<tokio::sync::Notify> {
+        self.progress.clone()
+    }
 }
 
 /// Summary of one two-way reconciliation pass ([`sync_both`]).
@@ -150,7 +205,8 @@ impl TwoWayReport {
 }
 
 /// The channel's stream as the engine takes it: blocking reads and writes
-/// on this thread, driven on the runtime; refused once stopped.
+/// on this thread, driven on the runtime; refused once stopped or idle past
+/// `stop.idle_timeout`.
 struct Carried {
     stream: Pin<Box<dyn AsyncReadWrite + Send>>,
     rt: tokio::runtime::Handle,
@@ -159,16 +215,51 @@ struct Carried {
 
 impl Carried {
     fn stopped(&self) -> io::Result<()> {
-        if self.stop.stop.load(Ordering::Relaxed) { Err(io::Error::new(io::ErrorKind::Interrupted, "stopped")) } else { Ok(()) }
+        if self.stop.stop.load(Ordering::Acquire) {
+            // Terminal error: NEVER use ErrorKind::Interrupted, which
+            // Read::read_exact and Write::write_all silently retry in a spin loop.
+            Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"))
+        } else {
+            Ok(())
+        }
     }
 }
 
 impl Read for Carried {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.stopped()?;
-        let (stream, rt) = (&mut self.stream, &self.rt);
-        let n = rt.block_on(stream.read(buf))?;
-        self.stop.received.fetch_add(n as u64, Ordering::Relaxed);
+        let stop_flag = self.stop.stop.clone();
+        let wake = self.stop.wake.clone();
+        let idle = self.stop.idle_timeout;
+        let n = {
+            let stream = &mut self.stream;
+            self.rt.block_on(async {
+                let notified = wake.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                if stop_flag.load(Ordering::Acquire) {
+                    return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+                }
+                let fut = stream.read(buf);
+                match idle {
+                    Some(limit) => tokio::select! {
+                        biased;
+                        () = &mut notified => Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")),
+                        res = fut => res,
+                        () = tokio::time::sleep(limit) => Err(io::Error::new(io::ErrorKind::TimedOut, "transfer timed out waiting for host")),
+                    },
+                    None => tokio::select! {
+                        biased;
+                        () = &mut notified => Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")),
+                        res = fut => res,
+                    },
+                }
+            })?
+        };
+        if n > 0 {
+            self.stop.received.fetch_add(n as u64, Ordering::Relaxed);
+            self.stop.progress.notify_one();
+        }
         Ok(n)
     }
 }
@@ -176,14 +267,93 @@ impl Read for Carried {
 impl Write for Carried {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.stopped()?;
-        let (stream, rt) = (&mut self.stream, &self.rt);
-        let n = rt.block_on(stream.write(buf))?;
-        self.stop.sent.fetch_add(n as u64, Ordering::Relaxed);
+        let stop_flag = self.stop.stop.clone();
+        let wake = self.stop.wake.clone();
+        let idle = self.stop.idle_timeout;
+        let n = {
+            let stream = &mut self.stream;
+            self.rt.block_on(async {
+                let notified = wake.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                if stop_flag.load(Ordering::Acquire) {
+                    return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+                }
+                let fut = stream.write(buf);
+                match idle {
+                    Some(limit) => tokio::select! {
+                        biased;
+                        () = &mut notified => Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")),
+                        res = fut => res,
+                        () = tokio::time::sleep(limit) => Err(io::Error::new(io::ErrorKind::TimedOut, "transfer timed out waiting for host")),
+                    },
+                    None => tokio::select! {
+                        biased;
+                        () = &mut notified => Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")),
+                        res = fut => res,
+                    },
+                }
+            })?
+        };
+        if n > 0 {
+            self.stop.sent.fetch_add(n as u64, Ordering::Relaxed);
+            self.stop.progress.notify_one();
+        }
         Ok(n)
     }
     fn flush(&mut self) -> io::Result<()> {
-        let (stream, rt) = (&mut self.stream, &self.rt);
-        rt.block_on(stream.flush())
+        self.stopped()?;
+        let stop_flag = self.stop.stop.clone();
+        let wake = self.stop.wake.clone();
+        let idle = self.stop.idle_timeout;
+        let stream = &mut self.stream;
+        self.rt.block_on(async {
+            let notified = wake.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if stop_flag.load(Ordering::Acquire) {
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+            }
+            let fut = stream.flush();
+            match idle {
+                Some(limit) => tokio::select! {
+                    biased;
+                    () = &mut notified => Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")),
+                    res = fut => res,
+                    () = tokio::time::sleep(limit) => Err(io::Error::new(io::ErrorKind::TimedOut, "transfer timed out waiting for host")),
+                },
+                None => tokio::select! {
+                    biased;
+                    () = &mut notified => Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")),
+                    res = fut => res,
+                },
+            }
+        })
+    }
+}
+
+async fn race_stop<F, T>(stop: &Stop, fut: F) -> Result<T, RexError>
+where
+    F: std::future::Future<Output = Result<T, RexError>>,
+{
+    let notified = stop.wake.notified();
+    tokio::pin!(notified);
+    notified.as_mut().enable();
+    if stop.is_stopped() {
+        return Err(RexError::Io(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped")));
+    }
+    match stop.idle_timeout {
+        Some(limit) => tokio::select! {
+            biased;
+            () = &mut notified => Err(RexError::Io(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"))),
+            res = fut => res,
+            () = tokio::time::sleep(limit) => Err(RexError::Timeout),
+        },
+        None => tokio::select! {
+            biased;
+            () = &mut notified => Err(RexError::Io(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"))),
+            res = fut => res,
+        },
     }
 }
 
@@ -207,8 +377,25 @@ pub async fn send_to(
     there: &HostFolder,
     stop: Stop,
 ) -> Result<Report, RexError> {
-    let stream = pool.exec_io(target, askpass, &there.command(helper_id, "receive")).await?;
-    let (rt, options) = (tokio::runtime::Handle::current(), there.options());
+    let stream = race_stop(&stop, pool.exec_io(target, askpass, &there.command(helper_id, "receive"))).await?;
+    let rt = tokio::runtime::Handle::current();
+    let logical = stop.logical_bytes.clone();
+    let notify = stop.progress.clone();
+    let progress_cb: olo_rex_sync::wire::ProgressCallback = Arc::new(move |p| {
+        match p.phase {
+            olo_rex_sync::wire::Phase::Sending | olo_rex_sync::wire::Phase::Done => {
+                logical.store(p.bytes, Ordering::Relaxed);
+                notify.notify_one();
+            }
+            olo_rex_sync::wire::Phase::Indexing => {
+                // Keep progress heartbeat alive during large-folder indexing so
+                // Tracker's idle timeout observes active indexing progress.
+                notify.notify_one();
+            }
+            olo_rex_sync::wire::Phase::Planned => {}
+        }
+    });
+    let options = Options { cancel: Some(stop.stop.clone()), progress: Some(progress_cb), ..there.options() };
     let ran = tokio::task::spawn_blocking(move || olo_rex_sync::wire::send(Carried { stream, rt, stop }, &*source, options)).await;
     ran.map_err(|e| RexError::Protocol(format!("sending to {}: {e}", target.display())))?.map_err(|e| failed(e, &format!("sending to {}", target.display())))
 }
@@ -216,6 +403,7 @@ pub async fn send_to(
 /// The host's folder `there` received into `here` on this computer (the
 /// host's helper sends). What `there` says to delete or keep is this
 /// side's to do, as the receiver.
+#[allow(clippy::too_many_arguments)]
 pub async fn receive_from(
     pool: &SshSessionPool,
     target: &SshTarget,
@@ -227,9 +415,9 @@ pub async fn receive_from(
     stop: Stop,
 ) -> Result<Report, RexError> {
     let sending = HostFolder { delete: false, keep_newer: false, ..there.clone() };
-    let stream = pool.exec_io(target, askpass, &sending.command(helper_id, "send")).await?;
+    let stream = race_stop(&stop, pool.exec_io(target, askpass, &sending.command(helper_id, "send"))).await?;
     let rt = tokio::runtime::Handle::current();
-    let options = Options { cache_path: cache, ..there.options() };
+    let options = Options { cache_path: cache, request_sender_summary: true, ..there.options() };
     let ran = tokio::task::spawn_blocking(move || olo_rex_sync::wire::receive(Carried { stream, rt, stop }, &here, options)).await;
     ran.map_err(|e| RexError::Protocol(format!("receiving from {}: {e}", target.display())))?.map_err(|e| failed(e, &format!("receiving from {}", target.display())))
 }
@@ -253,6 +441,7 @@ pub async fn fetch_index(pool: &SshSessionPool, target: &SshTarget, askpass: Opt
 
 /// Run `olo-rex-link sync mutate ROOT` on the host to copy conflict losers,
 /// remove deleted entries, and create/chmod directories atomically.
+#[allow(clippy::too_many_arguments)]
 pub async fn mutate_host(
     pool: &SshSessionPool,
     target: &SshTarget,
@@ -283,6 +472,7 @@ pub async fn mutate_host(
 
 /// Pull an explicit set of relative paths from host `there` into `here` via
 /// scoped `olo-rex-sync` transfer without touching any other files or caches.
+#[allow(clippy::too_many_arguments)]
 pub async fn receive_paths(
     pool: &SshSessionPool,
     target: &SshTarget,
@@ -323,15 +513,16 @@ pub async fn receive_paths(
         cmd.push_str(" --only-file ");
         cmd.push_str(&shell_word(tmp));
     }
-    let stream = pool.exec_io(target, askpass, &cmd).await?;
+    let stream = race_stop(&stop, pool.exec_io(target, askpass, &cmd)).await?;
     let rt = tokio::runtime::Handle::current();
-    let options = Options { scoped: true, cache_path: None, ..Default::default() };
+    let options = Options { scoped: true, cache_path: None, request_sender_summary: true, ..Default::default() };
     let ran = tokio::task::spawn_blocking(move || olo_rex_sync::wire::receive(Carried { stream, rt, stop }, &here, options)).await;
     ran.map_err(|e| RexError::Protocol(format!("pulling from {}: {e}", target.display())))?.map_err(|e| failed(e, &format!("pulling from {}", target.display())))
 }
 
 /// Push an explicit set of relative paths from `here` into host `there_path`
 /// via scoped `olo-rex-sync` transfer without touching any other files or caches.
+#[allow(clippy::too_many_arguments)]
 pub async fn send_paths(
     pool: &SshSessionPool,
     target: &SshTarget,
@@ -346,10 +537,27 @@ pub async fn send_paths(
         return Ok(Report::default());
     }
     let cmd = format!("{} sync receive {} --scoped --no-cache", crate::helper::file(helper_id), shell_word(there_path));
-    let stream = pool.exec_io(target, askpass, &cmd).await?;
+    let stream = race_stop(&stop, pool.exec_io(target, askpass, &cmd)).await?;
     let rt = tokio::runtime::Handle::current();
-    let source = FolderSource { root: here, filter: Filter { only: paths, ..Default::default() }, cache_path: None };
-    let options = Options { scoped: true, ..Default::default() };
+    let filter = Filter { only: paths, ..Default::default() };
+    let source = FolderSource { root: here, filter: filter.clone(), cache_path: None };
+    let logical = stop.logical_bytes.clone();
+    let notify = stop.progress.clone();
+    let progress_cb: olo_rex_sync::wire::ProgressCallback = Arc::new(move |p| {
+        match p.phase {
+            olo_rex_sync::wire::Phase::Sending | olo_rex_sync::wire::Phase::Done => {
+                logical.store(p.bytes, Ordering::Relaxed);
+                notify.notify_one();
+            }
+            olo_rex_sync::wire::Phase::Indexing => {
+                // Keep progress heartbeat alive during large-folder indexing so
+                // Tracker's idle timeout observes active indexing progress.
+                notify.notify_one();
+            }
+            olo_rex_sync::wire::Phase::Planned => {}
+        }
+    });
+    let options = Options { scoped: true, filter, cancel: Some(stop.stop.clone()), progress: Some(progress_cb), ..Default::default() };
     let ran = tokio::task::spawn_blocking(move || olo_rex_sync::wire::send(Carried { stream, rt, stop }, &source, options)).await;
     ran.map_err(|e| RexError::Protocol(format!("pushing to {}: {e}", target.display())))?.map_err(|e| failed(e, &format!("pushing to {}", target.display())))
 }
@@ -432,17 +640,23 @@ pub async fn sync_both(
     // 2. Pull host -> desktop, then push desktop -> host.
     if !plan.pull_paths.is_empty() {
         let pulled = receive_paths(pool, target, askpass.clone(), helper_id, &there.path, here.clone(), &plan.pull_paths, stop.clone()).await?;
-        report.pulled = plan.pull_paths.len() as u64;
+        let pull_errs = collect_pull_incomplete_errors(&pulled, &plan.pull_paths, &here, &remote_idx);
+        if pull_errs.is_empty() {
+            report.pulled = plan.pull_paths.len() as u64;
+        }
         report.bytes_sent += pulled.bytes_sent;
         report.bytes_received += pulled.bytes_received;
-        report.errors.extend(pulled.errors);
+        report.errors.extend(pull_errs);
     }
     if !plan.push_paths.is_empty() {
         let pushed = send_paths(pool, target, askpass.clone(), helper_id, &there.path, here.clone(), plan.push_paths.clone(), stop).await?;
-        report.pushed = plan.push_paths.len() as u64;
+        let push_errs = collect_push_incomplete_errors(&pushed, &plan.push_paths, &here);
+        if push_errs.is_empty() {
+            report.pushed = plan.push_paths.len() as u64;
+        }
         report.bytes_sent += pushed.bytes_sent;
         report.bytes_received += pushed.bytes_received;
-        report.errors.extend(pushed.errors);
+        report.errors.extend(push_errs);
     }
 
     // 3. Advance baseline deterministically when both transfers succeeded cleanly,
@@ -465,15 +679,71 @@ pub async fn sync_both(
     Ok(report)
 }
 
+/// Gather every error, skipped entry, missing sender confirmation, or absent
+/// planned path from a scoped pull [`Report`] so `sync_both` never advances
+/// the two-way baseline over an incomplete or unconfirmed pull.
+fn collect_pull_incomplete_errors(r: &Report, planned: &[String], here: &std::path::Path, remote_idx: &Index) -> Vec<PathError> {
+    let mut errs = collect_transfer_incomplete_errors("pull", r);
+    if !r.sender_confirmed {
+        errs.push(PathError { path: String::new(), reason: "pull did not receive sender completeness confirmation".into() });
+    }
+    for rel in planned {
+        match std::fs::symlink_metadata(here.join(rel)) {
+            Ok(md) => {
+                if let Some(expected) = remote_idx.entries.get(rel)
+                    && matches!(expected.kind, olo_rex_sync::index::EntryKind::File)
+                    && (!md.file_type().is_file() || md.len() != expected.size)
+                {
+                    errs.push(PathError { path: rel.clone(), reason: "pulled file does not match planned entry".into() });
+                }
+            }
+            Err(_) => {
+                errs.push(PathError { path: rel.clone(), reason: "planned pull path was absent from sender".into() });
+            }
+        }
+    }
+    errs
+}
+
+fn collect_push_incomplete_errors(r: &Report, planned: &[String], here: &std::path::Path) -> Vec<PathError> {
+    let mut errs = collect_transfer_incomplete_errors("push", r);
+    for rel in planned {
+        if std::fs::symlink_metadata(here.join(rel)).is_err() {
+            errs.push(PathError { path: rel.clone(), reason: "planned push path vanished before transfer completed".into() });
+        }
+    }
+    errs
+}
+
+/// Gather every error or skipped entry from a scoped pull/push [`Report`] so
+/// `sync_both` never advances the two-way baseline over an incomplete transfer.
+fn collect_transfer_incomplete_errors(dir: &str, r: &Report) -> Vec<PathError> {
+    let mut errs = r.errors.clone();
+    if !r.skipped.is_empty() {
+        let mut pushed_any = false;
+        for (kind, label) in [(&r.skipped.unread, "unreadable"), (&r.skipped.non_utf8, "non-UTF-8"), (&r.skipped.special, "special file"), (&r.skipped.mounts, "different filesystem")] {
+            for p in &kind.paths {
+                errs.push(PathError { path: p.clone(), reason: format!("{dir} skipped ({label})") });
+                pushed_any = true;
+            }
+        }
+        if !pushed_any {
+            errs.push(PathError { path: String::new(), reason: format!("{dir} skipped {} entries", r.skipped.total()) });
+        }
+    }
+    errs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     /// The helper's command, its folder and patterns quoted for the
     /// host's shell, its options as the folder says.
     #[test]
     fn the_helpers_command_is_the_folders() {
-        let f = HostFolder { path: "src/my app".into(), delete: true, keep_newer: true, exclude: vec!["target".into(), "*.o".into()], shallow: false, scoped: false };
+        let f = HostFolder { path: "src/my app".into(), delete: true, keep_newer: true, exclude: vec!["target".into(), "*.o".into()], shallow: false, scoped: false, no_cache: false };
         let c = f.command("abc", "receive");
         assert!(c.starts_with("\"$HOME\"/.local/share/olo/rex-link/olo-rex-link-abc-$(uname -m) sync receive "), "{c}");
         assert!(c.ends_with(" --delete --keep-newer --exclude target --exclude '*.o'"), "{c}");
@@ -486,5 +756,93 @@ mod tests {
         let f_shallow = HostFolder { shallow: true, ..f };
         assert!(f_shallow.watch_command("abc").contains(" --shallow"));
         assert!(f_shallow.index_command("abc", true).contains(" --create --shallow"));
+    }
+
+    #[tokio::test]
+    async fn carried_stop_returns_terminal_error_and_wakes_silent_peer() {
+        let (a, _peer_kept_silent) = tokio::io::duplex(64);
+        let stop = Stop::default();
+        let rt = tokio::runtime::Handle::current();
+
+        // 1. Pre-stopped Carried must return a terminal error (NOT Interrupted)
+        // so read_exact / write_all terminate immediately instead of spinning.
+        let stopped_now = Stop::default();
+        stopped_now.cancel();
+        let (b, _keep_b) = tokio::io::duplex(64);
+        let mut c_now = Carried { stream: Box::pin(b), rt: rt.clone(), stop: stopped_now };
+        let err = c_now.read_exact(&mut [0u8; 4]).unwrap_err();
+        assert_ne!(err.kind(), io::ErrorKind::Interrupted, "must never return Interrupted");
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionAborted);
+        let werr = c_now.write_all(b"hi").unwrap_err();
+        assert_ne!(werr.kind(), io::ErrorKind::Interrupted);
+        assert_eq!(werr.kind(), io::ErrorKind::ConnectionAborted);
+
+        // 2. Stop::cancel wakes a read_exact blocked on a silent peer immediately.
+        let cancel_trigger = stop.clone();
+        let mut carried = Carried { stream: Box::pin(a), rt, stop };
+        let reader = tokio::task::spawn_blocking(move || {
+            let mut buf = [0u8; 8];
+            carried.read_exact(&mut buf)
+        });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        cancel_trigger.cancel();
+        let err = tokio::time::timeout(Duration::from_secs(2), reader).await.expect("Stop::cancel must wake blocked read").unwrap().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionAborted);
+    }
+
+    #[tokio::test]
+    async fn carried_idle_timeout_expires_silent_peer() {
+        let (a, _silent) = tokio::io::duplex(64);
+        let stop = Stop::default().with_idle_timeout(std::time::Duration::from_millis(50));
+        let mut carried = Carried { stream: Box::pin(a), rt: tokio::runtime::Handle::current(), stop };
+        let err = tokio::task::spawn_blocking(move || carried.read_exact(&mut [0u8; 4])).await.unwrap().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn twoway_incomplete_skipped_unconfirmed_or_absent_pull_prevents_baseline_advance() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-rex-sync-twoway-chk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("present.txt"), b"hello").unwrap();
+
+        let mut remote_idx = Index::default();
+        remote_idx.entries.insert(
+            "present.txt".into(),
+            olo_rex_sync::index::Entry {
+                path: "present.txt".into(),
+                kind: olo_rex_sync::index::EntryKind::File,
+                size: 5,
+                mtime_ns: 0,
+                ctime_ns: 0,
+                ino: 1,
+                mode: 0o644,
+                hash: [0; 32],
+                chunks: vec![],
+            },
+        );
+
+        // 1. Skipped entry blocks baseline advance.
+        let mut pulled = Report { sender_confirmed: true, ..Report::default() };
+        pulled.skipped.unread.push("secret.txt".into());
+        let errs = collect_pull_incomplete_errors(&pulled, &["present.txt".into()], &dir, &remote_idx);
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].path, "secret.txt");
+
+        // 2. Unconfirmed pull (sender_confirmed == false) blocks baseline advance!
+        let unconfirmed = Report::default();
+        let errs = collect_pull_incomplete_errors(&unconfirmed, &["present.txt".into()], &dir, &remote_idx);
+        assert!(errs.iter().any(|e| e.reason.contains("confirmation")), "{errs:?}");
+
+        // 3. Absent planned path (file disappeared before scoped scan) blocks baseline advance!
+        let confirmed_empty = Report { sender_confirmed: true, ..Report::default() };
+        let errs = collect_pull_incomplete_errors(&confirmed_empty, &["vanished.txt".into()], &dir, &remote_idx);
+        assert!(errs.iter().any(|e| e.path == "vanished.txt" && e.reason.contains("absent")), "{errs:?}");
+
+        // 4. Confirmed pull with present matching file succeeds cleanly.
+        let confirmed_ok = Report { sender_confirmed: true, ..Report::default() };
+        assert!(collect_pull_incomplete_errors(&confirmed_ok, &["present.txt".into()], &dir, &remote_idx).is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

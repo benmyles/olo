@@ -135,6 +135,13 @@ pub enum ToHub {
         dest: Option<PathBuf>,
         origin: Option<u64>,
     },
+    /// A clipboard paste or content drop into a remote `rex://` folder, run as
+    /// a tracked background job with live progress and Stop support (zero UI copy).
+    RemoteSave {
+        dir: PathBuf,
+        save: PendingRemoteSave,
+        origin: Option<u64>,
+    },
     /// A step done there and then (a new folder, a paste, icons placed).
     Done(String, undo::Change),
     /// Edit ▸ Undo (false) or Redo, asked in a window.
@@ -379,6 +386,168 @@ pub fn now_on_disk(changes: &[watch::Change], path: &Path) -> Option<Option<Entr
     })
 }
 
+fn clipping_file_name(text: &str) -> String {
+    // Bound word/character scanning strictly to the characters the filename can
+    // actually use (40 chars across up to 6 words) so a single multi-MB word
+    // never allocates a multi-MB intermediate string.
+    let mut name = String::with_capacity(48);
+    let mut words = 0usize;
+    let mut in_word = false;
+    let mut count = 0usize;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            if in_word {
+                in_word = false;
+                if words >= 6 {
+                    break;
+                }
+            }
+            continue;
+        }
+        if !in_word {
+            if words > 0 {
+                if count >= 40 {
+                    break;
+                }
+                name.push(' ');
+                count += 1;
+            }
+            words += 1;
+            in_word = true;
+        }
+        if ch != '/' && !ch.is_control() {
+            if count >= 40 {
+                break;
+            }
+            name.push(ch);
+            count += 1;
+        }
+    }
+    let trimmed = name.trim_matches(['.', ' ']);
+    let base = if trimmed.is_empty() { "Clipping" } else { trimmed };
+    format!("{base} clipping.txt")
+}
+
+fn link_clipping_file_name(url: &str, title: &str) -> String {
+    let site = url.split_once("://").map_or(url, |(_, r)| r).split(['/', '?', '#']).next().unwrap_or("").trim_start_matches("www.");
+    let words = if title.trim().is_empty() || title.trim() == url { site } else { title };
+    let mut name: String = words.chars().filter(|c| *c != '/' && !c.is_control()).take(40).collect();
+    name = name.trim_matches(['.', ' ']).to_owned();
+    if name.is_empty() {
+        name = "Link".into();
+    }
+    olo_kit::tr!("{} link clipping.txt", name)
+}
+
+/// Owned payload handed off from UI paste/drop to the background
+/// `tracker-paste` worker without scanning or copying large buffers on the UI
+/// looper.
+pub enum PendingRemoteSave {
+    /// Already-named binary payload (e.g. `image/*` or `named_file`).
+    Exact { name: String, data: Vec<u8> },
+    /// Raw text clipping bytes (UTF-8 normalization, blank check, and exact
+    /// filename generation run on the worker thread; `preview_name` is derived
+    /// from at most the first 4 KiB on the UI thread).
+    Text { preview_name: String, data: Vec<u8> },
+    /// Raw `text/x-moz-url` bytes (decoded on the worker thread).
+    MozUrl { preview_name: String, data: Vec<u8> },
+}
+
+impl PendingRemoteSave {
+    fn preview_name(&self) -> &str {
+        match self {
+            Self::Exact { name, .. } => name,
+            Self::Text { preview_name, .. } | Self::MozUrl { preview_name, .. } => preview_name,
+        }
+    }
+
+    fn raw_len(&self) -> usize {
+        match self {
+            Self::Exact { data, .. } | Self::Text { data, .. } | Self::MozUrl { data, .. } => data.len(),
+        }
+    }
+
+    /// Resolve final `(filename, bytes)` on the worker thread, returning `None`
+    /// for whitespace-only text clippings.
+    fn materialize(self) -> Option<(String, Vec<u8>)> {
+        match self {
+            Self::Exact { name, data } => Some((name, data)),
+            Self::MozUrl { data, .. } => {
+                if let Some((url, title)) = olo_kit_base::files::moz_url(&data) {
+                    return Some((link_clipping_file_name(&url, &title), format!("{url}\n").into_bytes()));
+                }
+                Self::Text { preview_name: String::new(), data }.materialize()
+            }
+            Self::Text { data, .. } => match String::from_utf8(data) {
+                Ok(text) => (!text.trim().is_empty()).then(|| (clipping_file_name(&text), text.into_bytes())),
+                Err(err) => {
+                    let text = String::from_utf8_lossy(err.as_bytes()).into_owned();
+                    (!text.trim().is_empty()).then(|| (clipping_file_name(&text), text.into_bytes()))
+                }
+            },
+        }
+    }
+}
+
+fn bounded_text_preview_name(data: &[u8]) -> String {
+    let prefix = &data[..data.len().min(4096)];
+    let sample = String::from_utf8_lossy(prefix);
+    clipping_file_name(&sample)
+}
+
+/// Prepare a clipboard paste for a remote `rex://` folder without scanning or
+/// copying the owned `data` buffer on the UI thread.
+pub fn prepare_remote_paste(mime: &str, data: Vec<u8>) -> Option<PendingRemoteSave> {
+    if let Some(kind) = mime.strip_prefix("image/") {
+        let ext = match kind.trim_start_matches("x-") {
+            "jpeg" | "jpg" | "pjpeg" => "jpg",
+            "svg+xml" => "svg",
+            "vnd.microsoft.icon" | "icon" => "ico",
+            other => other,
+        };
+        let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
+        let file_name = olo_kit::tr!("Pasted Picture.{}", if ext.is_empty() { "img" } else { &ext });
+        return Some(PendingRemoteSave::Exact { name: file_name, data });
+    }
+    if mime.starts_with("text/") || mime == "UTF8_STRING" {
+        if data.is_empty() {
+            return None;
+        }
+        let preview_name = bounded_text_preview_name(&data);
+        return Some(PendingRemoteSave::Text { preview_name, data });
+    }
+    None
+}
+
+fn prepare_remote_drop(mime: &str, data: Vec<u8>) -> Option<PendingRemoteSave> {
+    if let Some(name) = olo_kit_base::files::named_file(mime) {
+        return Some(PendingRemoteSave::Exact { name, data });
+    }
+    if data.is_empty() {
+        return None;
+    }
+    if mime == "text/x-moz-url" {
+        return Some(PendingRemoteSave::MozUrl { preview_name: "Link clipping.txt".into(), data });
+    }
+    let preview_name = bounded_text_preview_name(&data);
+    Some(PendingRemoteSave::Text { preview_name, data })
+}
+
+/// Owned version of [`dropped_into`] so folder drops move `drop.data` into a
+/// background remote save job with zero UI-thread payload copy.
+pub fn dropped_into_owned(mut drop: Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: Option<u64>, cx: &mut WindowCx) -> Result<Vec<String>, String> {
+    let wants_link = drop.types.iter().any(|t| t == olo_kit::dnd::LINK_TYPE);
+    let is_deskbar_app_link = wants_link && drop.mime == "text/uri-list" && drop.action != DragAction::Ask;
+    if !is_deskbar_app_link && (drop.mime != "text/uri-list" || paths.is_empty()) && fs::is_remote(&dest) {
+        let data = std::mem::take(&mut drop.data);
+        if let Some(save) = prepare_remote_drop(&drop.mime, data) {
+            to_hub(ToHub::RemoteSave { dir: dest, save, origin });
+        }
+        return Ok(Vec::new());
+    }
+    dropped_into(&drop, paths, dest, origin, cx)
+}
+
 /// What was dropped on folder `dest` (in window `origin`, whose `cx`
 /// this is) goes into it: files moved or copied (a job), or asked about
 /// (a menu where they fell); an application dragged out of Deskbar, a
@@ -411,23 +580,9 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
         // A file offered by its contents (a picture from a web page),
         // else text or a link: a clipping file, as BeOS made.
         if fs::is_remote(&dest) {
-            let mime = drop.mime.clone();
-            let data = drop.data.clone();
-            std::thread::spawn(move || {
-                let saved = if let Some(name) = olo_kit_base::files::named_file(&mime) {
-                    Some(fs::save_new(&dest, &name, &data))
-                } else if let Some((url, title)) = (mime == "text/x-moz-url").then(|| olo_kit_base::files::moz_url(&data)).flatten() {
-                    Some(fs::link_clipping(&dest, &url, &title))
-                } else {
-                    let text = String::from_utf8_lossy(&data).into_owned();
-                    (!text.trim().is_empty()).then(|| fs::clipping(&dest, &text))
-                };
-                match saved {
-                    Some(Ok(_)) => to_hub(ToHub::ReloadAll),
-                    Some(Err(e)) => to_hub(ToHub::Said(olo_kit::tr!("Couldn't save what was dropped: {}", e))),
-                    None => {}
-                }
-            });
+            if let Some(save) = prepare_remote_drop(&drop.mime, drop.data.clone()) {
+                to_hub(ToHub::RemoteSave { dir: dest, save, origin });
+            }
             return Ok(Vec::new());
         }
         let saved = if let Some(name) = olo_kit_base::files::named_file(&drop.mime) {
@@ -1046,6 +1201,76 @@ impl Hub {
         self.run_job_with(kind, sources, dest, targets, origin, record, None);
     }
 
+    fn start_remote_save(&mut self, dir: PathBuf, save: PendingRemoteSave, origin: Option<u64>) {
+        let Some(rex_dir) = fs::rex_path(&dir) else { return };
+        let id = self.next_job;
+        self.next_job += 1;
+        let preview_name = save.preview_name().to_owned();
+        let initial_len = save.raw_len() as u64;
+        let to = format!(" to “{}”", fs::display_name(&dir));
+        let title = format!("Saving “{preview_name}”{to}");
+        let finished = format!("Finished saving “{preview_name}”{to}");
+        let progress = Arc::new(ops::Progress::default());
+        progress.total_bytes.store(initial_len, Ordering::Relaxed);
+        progress.total_items.store(1, Ordering::Relaxed);
+        progress.counting.store(false, Ordering::Relaxed);
+        if let Ok(mut c) = progress.current.lock() {
+            c.clone_from(&preview_name);
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_wake = Arc::new(ops::CancelWake::new());
+        let job = Arc::new(ops::Job {
+            id,
+            kind: ops::Kind::Copy,
+            title,
+            finished,
+            dest: Some(dir),
+            sources: vec![PathBuf::from(&preview_name)],
+            progress: progress.clone(),
+            cancel: cancel.clone(),
+            cancel_wake: cancel_wake.clone(),
+            started: Instant::now(),
+        });
+        std::thread::Builder::new()
+            .name("tracker-paste".into())
+            .spawn(move || {
+                let mut out = ops::Outcome::default();
+                let Some((name, data)) = save.materialize() else {
+                    to_hub(ToHub::JobDone(id, out));
+                    return;
+                };
+                progress.total_bytes.store(data.len() as u64, Ordering::Relaxed);
+                if let Ok(mut c) = progress.current.lock() {
+                    c.clone_from(&name);
+                }
+                let target = rex_dir.join(&name);
+                match rex::write_file_with_progress(&target, true, &data, &progress, &cancel, Some(&cancel_wake)) {
+                    Ok(made) => {
+                        progress.done_bytes.store(data.len() as u64, Ordering::Relaxed);
+                        progress.done_items.store(1, Ordering::Relaxed);
+                        out.created.push(made.to_path_buf());
+                    }
+                    // Classify cancellation strictly from the operation result
+                    // so a simultaneous Stop never masks an independent disk or
+                    // permission error.
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                        out.cancelled = true;
+                    }
+                    Err(e) => {
+                        out.error = Some(e.to_string());
+                    }
+                }
+                to_hub(ToHub::JobDone(id, out));
+            })
+            .expect("thread");
+        std::thread::spawn(move || {
+            std::thread::sleep(STATUS_DELAY);
+            to_hub(ToHub::JobSlow(id));
+        });
+        self.jobs.push((job, origin));
+        self.share_jobs();
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run_job_with(
         &mut self,
@@ -1248,6 +1473,7 @@ impl Hub {
                 }
             }
             ToHub::Job { kind, sources, dest, origin } => self.start_job(kind, sources, dest, origin),
+            ToHub::RemoteSave { dir, save, origin } => self.start_remote_save(dir, save, origin),
             ToHub::OpenArchive(path) => {
                 let options = archive_win::options(&path);
                 olo_kit::open_window(options, move |cx| archive_win::ArchiveWin::new(path, cx));
@@ -1288,7 +1514,7 @@ impl Hub {
             }
             ToHub::StopJob(id) => {
                 if let Some((job, _)) = self.jobs.iter().find(|(j, _)| j.id == id) {
-                    job.cancel.store(true, Ordering::Relaxed);
+                    job.request_cancel();
                 }
             }
             ToHub::Gone(id) => {

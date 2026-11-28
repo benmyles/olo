@@ -1931,7 +1931,7 @@ impl FolderWin {
             DropTarget::Place => return,
             DropTarget::Folder(dest) => dest,
         };
-        if let Err(e) = crate::dropped_into(&drop, paths, dest, Some(self.id), cx) {
+        if let Err(e) = crate::dropped_into_owned(drop, paths, dest, Some(self.id), cx) {
             self.error(e, cx);
         }
     }
@@ -2180,8 +2180,12 @@ impl FolderWin {
     /// What a Paste found on the clipboard: files (copied, or cut to move
     /// them), a picture (a file of it), or text (a clipping, as a drop of
     /// text makes).
-    fn pasted(&mut self, dir: &Path, mime: &str, data: &[u8], cx: &mut Cx<Self>) {
-        if let Some((paths, cut)) = olo_kit_base::clipboard::copied_files(mime, data) {
+    fn pasted(&mut self, dir: &Path, mime: &str, data: Vec<u8>, cx: &mut Cx<Self>) {
+        // Check MIME BEFORE calling `copied_files` so large binary/image pastes
+        // never incur a lossy UTF-8 allocation on Tracker's UI thread.
+        if matches!(mime, "x-special/gnome-copied-files" | "text/uri-list")
+            && let Some((paths, cut)) = olo_kit_base::clipboard::copied_files(mime, &data)
+        {
             // Nothing goes into itself.
             if let Some(p) = paths.iter().find(|p| (fs::is_remote(p) || p.is_dir()) && fs::starts_with_dir(dir, p)) {
                 let name = fs::leaf_name(p);
@@ -2196,32 +2200,13 @@ impl FolderWin {
             return to_hub(ToHub::Job { kind, sources: paths, dest: Some(dir.to_owned()), origin: Some(self.id) });
         }
         if fs::is_remote(dir) {
-            let dir = dir.to_owned();
-            let mime = mime.to_owned();
-            let data = data.to_vec();
-            std::thread::spawn(move || {
-                let saved = if let Some(kind) = mime.strip_prefix("image/") {
-                    fs::pasted_picture(&dir, kind, &data)
-                } else if mime.starts_with("text/") || mime == "UTF8_STRING" {
-                    let text = String::from_utf8_lossy(&data);
-                    if text.trim().is_empty() {
-                        return;
-                    }
-                    fs::clipping(&dir, &text)
-                } else {
-                    return;
-                };
-                match saved {
-                    Ok(_) => to_hub(ToHub::ReloadAll),
-                    Err(e) => to_hub(ToHub::Said(olo_kit::tr!("Couldn't paste: {}", e))),
-                }
-            });
-            return;
+            let Some(save) = crate::prepare_remote_paste(mime, data) else { return };
+            return to_hub(ToHub::RemoteSave { dir: dir.to_owned(), save, origin: Some(self.id) });
         }
         let saved = if let Some(kind) = mime.strip_prefix("image/") {
-            fs::pasted_picture(dir, kind, data)
+            fs::pasted_picture(dir, kind, &data)
         } else if mime.starts_with("text/") || mime == "UTF8_STRING" {
-            let text = String::from_utf8_lossy(data);
+            let text = String::from_utf8_lossy(&data);
             if text.trim().is_empty() {
                 return;
             }
@@ -2353,7 +2338,7 @@ impl View for FolderWin {
             }
             FolderMsg::Pasted(dir, found) => {
                 if let Some((mime, data)) = found {
-                    self.pasted(&dir, &mime, &data, cx);
+                    self.pasted(&dir, &mime, data, cx);
                 }
             }
             FolderMsg::DragOver => {

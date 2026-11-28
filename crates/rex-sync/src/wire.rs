@@ -9,11 +9,12 @@ use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::chunk::{self, ChunkId, ChunkRef, StreamDigest};
-use crate::index::{Entry, EntryKind, Filter, Index, PART_PREFIX, Skipped, dir_mode, final_dir_mode, validate_rel_path};
+use crate::index::{Entry, EntryKind, Filter, Index, MAX_SKIPPED_PATHS, PART_PREFIX, Skipped, SkippedKind, dir_mode, final_dir_mode, validate_rel_path};
 use crate::recipe::{self, AppendProbe, DataCodec, MAX_DATA_PIECE_LEN, Piece, Plan, REF_PREFIX_MAX, RecipeKind, SuperChunk};
 
 /// Wire protocol version exchanged in the opening handshake.
@@ -47,6 +48,9 @@ const FLAG_DELETE_EXTRA: u8 = 1 << 0;
 const FLAG_KEEP_NEWER: u8 = 1 << 1;
 /// The receiver looks only at what the sender names (`Options::scoped`).
 const FLAG_SCOPED: u8 = 1 << 2;
+/// The receiver asks the sender to confirm its skipped entries and sender-side
+/// errors in a `TAG_SENDER_SUMMARY` frame before finishing.
+const FLAG_SENDER_SUMMARY: u8 = 1 << 3;
 
 // Frame tags.
 const TAG_HELLO: u8 = 1;
@@ -70,6 +74,9 @@ const TAG_DONE: u8 = 18;
 const TAG_REPORT: u8 = 19;
 const TAG_HARDLINK: u8 = 20;
 const TAG_FILE_ABORT: u8 = 21;
+/// Sender-side completeness summary (errors + skipped entries) delivered to a
+/// receiver that requested `FLAG_SENDER_SUMMARY`.
+const TAG_SENDER_SUMMARY: u8 = 22;
 
 const REASON_PROTECTED: &str = "kept: the receiver's own";
 const REASON_CHANGED: &str = "changed while it was sent";
@@ -98,12 +105,24 @@ pub trait Source {
         self.index()
     }
 
+    /// Like [`Source::index_with_progress`], aborting promptly with
+    /// [`io::ErrorKind::ConnectionAborted`] when `cancel` becomes true.
+    fn index_with_progress_cancel(&self, on_entry: &mut dyn FnMut(&str, u64), _cancel: Option<&AtomicBool>) -> io::Result<Index> {
+        self.index_with_progress(on_entry)
+    }
+
     /// Optional stat-only index pass: returns `(index, unhashed_paths)` where
     /// uncached regular files in `unhashed_paths` have not been read yet.
     /// Brand-new files are then streamed once with their BLAKE3 computed on the
     /// fly and sent in `TAG_FILE_END`. Default: `Ok(None)` (eager indexing).
     fn index_lazy_with_progress(&self, _on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(Index, HashSet<String>)>> {
         Ok(None)
+    }
+
+    /// Like [`Source::index_lazy_with_progress`], aborting promptly with
+    /// [`io::ErrorKind::ConnectionAborted`] when `cancel` becomes true.
+    fn index_lazy_with_progress_cancel(&self, on_entry: &mut dyn FnMut(&str, u64), _cancel: Option<&AtomicBool>) -> io::Result<Option<(Index, HashSet<String>)>> {
+        self.index_lazy_with_progress(on_entry)
     }
 
     /// Hash (and chunk when `size >= chunk::CHUNK_MIN_SIZE`) a single unhashed
@@ -162,8 +181,12 @@ impl Source for FolderSource {
     }
 
     fn index_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Index> {
+        self.index_with_progress_cancel(on_entry, None)
+    }
+
+    fn index_with_progress_cancel(&self, on_entry: &mut dyn FnMut(&str, u64), cancel: Option<&AtomicBool>) -> io::Result<Index> {
         let prev = self.cache_path.as_deref().and_then(|p| Index::load(p).ok());
-        let idx = Index::scan_with_progress(&self.root, &self.filter, prev.as_ref(), on_entry)?;
+        let idx = Index::scan_with_progress_cancel(&self.root, &self.filter, prev.as_ref(), on_entry, cancel)?;
         if let Some(cache) = &self.cache_path {
             idx.save(cache)?;
         }
@@ -171,14 +194,19 @@ impl Source for FolderSource {
     }
 
     fn index_lazy_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(Index, HashSet<String>)>> {
-        // (Lazily only where a cache keeps the hashes for next time: a
-        // sender without one hashes it all, so an unchanged tree is told in
-        // one round trip by its tree's hash.)
-        if self.cache_path.is_none() {
+        self.index_lazy_with_progress_cancel(on_entry, None)
+    }
+
+    fn index_lazy_with_progress_cancel(&self, on_entry: &mut dyn FnMut(&str, u64), cancel: Option<&AtomicBool>) -> io::Result<Option<(Index, HashSet<String>)>> {
+        // Use stat-only lazy indexing whenever a cache is configured OR when
+        // scoped via `filter.only` (single-file transfers never use the
+        // tree-hash fast path, and lazy indexing avoids pre-handshake hashing
+        // of large files before streaming).
+        if self.cache_path.is_none() && self.filter.only.is_empty() {
             return Ok(None);
         }
         let prev = self.cache_path.as_deref().and_then(|p| Index::load(p).ok());
-        let (idx, unhashed) = Index::scan_stat_with_progress(&self.root, &self.filter, prev.as_ref(), on_entry)?;
+        let (idx, unhashed) = Index::scan_stat_with_progress_cancel(&self.root, &self.filter, prev.as_ref(), on_entry, cancel)?;
         Ok(Some((idx, unhashed)))
     }
 
@@ -240,6 +268,58 @@ impl Source for FolderSource {
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "file shrunk"));
         }
         Ok(chunk::probe_extent(&f, offset, max_len))
+    }
+}
+
+/// A [`Source`] backed by a local folder that ALWAYS performs stat-only lazy
+/// indexing even with `cache_path: None` (ideal for uploading a folder into a
+/// brand-new empty remote stage without pre-hashing the whole tree upfront).
+pub struct LazyFolderSource {
+    inner: FolderSource,
+}
+
+impl LazyFolderSource {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { inner: FolderSource::new(root) }
+    }
+}
+
+impl Source for LazyFolderSource {
+    fn index(&self) -> io::Result<Index> {
+        self.inner.index()
+    }
+
+    fn index_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Index> {
+        self.inner.index_with_progress(on_entry)
+    }
+
+    fn index_with_progress_cancel(&self, on_entry: &mut dyn FnMut(&str, u64), cancel: Option<&AtomicBool>) -> io::Result<Index> {
+        self.inner.index_with_progress_cancel(on_entry, cancel)
+    }
+
+    fn index_lazy_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(Index, HashSet<String>)>> {
+        self.index_lazy_with_progress_cancel(on_entry, None)
+    }
+
+    fn index_lazy_with_progress_cancel(&self, on_entry: &mut dyn FnMut(&str, u64), cancel: Option<&AtomicBool>) -> io::Result<Option<(Index, HashSet<String>)>> {
+        let (idx, unhashed) = Index::scan_stat_with_progress_cancel(&self.inner.root, &self.inner.filter, None, on_entry, cancel)?;
+        Ok(Some((idx, unhashed)))
+    }
+
+    fn hash_entry(&self, path: &str, size: u64) -> io::Result<chunk::FileDigest> {
+        self.inner.hash_entry(path, size)
+    }
+
+    fn read(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
+        self.inner.read(path, offset, len)
+    }
+
+    fn check_unchanged(&self, entry: &Entry) -> bool {
+        self.inner.check_unchanged(entry)
+    }
+
+    fn extent_at(&self, path: &str, offset: u64, max_len: u64) -> io::Result<(bool, u64)> {
+        self.inner.extent_at(path, offset, max_len)
     }
 }
 
@@ -374,6 +454,14 @@ pub struct Options {
     /// Optional observer called by [`send`] no more than ten times a second
     /// within a phase and once at each phase's end.
     pub progress: Option<ProgressCallback>,
+    /// Receiver option: ask the sender to transmit its skipped-entry and
+    /// sender-error summary on the wire (`FLAG_SENDER_SUMMARY`) so the receiver
+    /// can confirm a complete copy via [`Report::sender_confirmed`]. Older
+    /// senders ignore the flag and leave `sender_confirmed == false`.
+    pub request_sender_summary: bool,
+    /// Optional cancellation flag checked during local indexing and sending so
+    /// a stopped transfer aborts promptly even before transport I/O blocks.
+    pub cancel: Option<Arc<AtomicBool>>,
 }
 
 impl std::fmt::Debug for Options {
@@ -386,6 +474,8 @@ impl std::fmt::Debug for Options {
             .field("scoped", &self.scoped)
             .field("protect", &self.protect)
             .field("progress", &self.progress.as_ref().map(|_| ".."))
+            .field("request_sender_summary", &self.request_sender_summary)
+            .field("cancel", &self.cancel.as_ref().map(|c| c.load(Ordering::Relaxed)))
             .finish()
     }
 }
@@ -442,6 +532,10 @@ pub struct Report {
     /// Everything the sender's scan passed over (unread, non-UTF-8 names,
     /// special files, mounts on other filesystems), counted and named.
     pub skipped: Skipped,
+    /// Whether the sender explicitly confirmed its final error/skipped summary
+    /// on the wire (when [`Options::request_sender_summary`] was set). Always
+    /// `true` on the sender's own returned report.
+    pub sender_confirmed: bool,
 }
 
 impl Report {
@@ -461,10 +555,14 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         indexed_bytes += size;
         progress.maybe_emit(&Progress { phase: Phase::Indexing, files: indexed_files, bytes: indexed_bytes, files_total: 0, bytes_total: 0, current: path.to_owned() });
     };
-    let (mut raw_index, mut unhashed, used_lazy) = match source.index_lazy_with_progress(&mut on_index_entry)? {
+    let cancel_ref = options.cancel.as_deref();
+    let (mut raw_index, mut unhashed, used_lazy) = match source.index_lazy_with_progress_cancel(&mut on_index_entry, cancel_ref)? {
         Some((idx, unhashed)) => (idx, unhashed, true),
-        None => (source.index_with_progress(&mut on_index_entry)?, HashSet::new(), false),
+        None => (source.index_with_progress_cancel(&mut on_index_entry, cancel_ref)?, HashSet::new(), false),
     };
+    if cancel_ref.is_some_and(|c| c.load(Ordering::Acquire)) {
+        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+    }
     filter_index(&mut raw_index, &options.filter, &mut unhashed);
     let mut sender_index = raw_index;
     let (final_indexed_files, final_indexed_bytes) = sender_index.entries.values().filter(|e| e.kind == EntryKind::File).fold((0u64, 0u64), |(f, b), e| (f + 1, b + e.size));
@@ -484,6 +582,7 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     let effective_keep_newer = options.keep_newer || (hello.flags & FLAG_KEEP_NEWER != 0);
     let scoped = hello.flags & FLAG_SCOPED != 0;
     let effective_delete_extra = hello.flags & FLAG_DELETE_EXTRA != 0 && !scoped;
+    let want_sender_summary = hello.flags & FLAG_SENDER_SUMMARY != 0;
 
     if scoped {
         send_scope(&mut wire, &sender_index)?;
@@ -491,8 +590,14 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     } else if unhashed.is_empty() && hello.tree_hash == sender_index.tree_hash() {
         let mut ack = Vec::with_capacity(5);
         ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
-        ack.push(1); // in_sync = true
+        // 1 = legacy in_sync (no summary follows);
+        // 2 = in_sync + TAG_SENDER_SUMMARY follows (only sent when receiver asked for FLAG_SENDER_SUMMARY).
+        ack.push(if want_sender_summary { 2 } else { 1 });
         wire.write_frame(TAG_HELLO_ACK, &ack)?;
+        let skipped = sender_index.skipped();
+        if want_sender_summary {
+            send_sender_summary(&mut wire, &[], &skipped)?;
+        }
         wire.flush()?;
         if used_lazy {
             source.save_cache(&sender_index)?;
@@ -500,7 +605,7 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         progress.emit_now(&Progress { phase: Phase::Planned, files: 0, bytes: 0, files_total: 0, bytes_total: 0, current: String::new() });
         progress.emit_now(&Progress { phase: Phase::Sending, files: 0, bytes: 0, files_total: 0, bytes_total: 0, current: String::new() });
         progress.emit_now(&Progress { phase: Phase::Done, files: 0, bytes: 0, files_total: 0, bytes_total: 0, current: String::new() });
-        return Ok(Report { same: sender_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, skipped: sender_index.skipped(), ..Report::default() });
+        return Ok(Report { same: sender_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, skipped, sender_confirmed: true, ..Report::default() });
     } else {
         let mut ack = Vec::with_capacity(5);
         ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
@@ -919,14 +1024,21 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     if effective_delete_extra {
         // Remove extra paths in reverse order so children are removed before parents.
         // (Nor what the sender couldn't read or didn't enter, nor anything under it:
-        // what it holds isn't known.)
-        let unknown = |p: &str| sender_index.unread.keys().chain(sender_index.mounts.iter()).any(|u| p == u || p.strip_prefix(u.as_str()).is_some_and(|rest| rest.starts_with('/')));
+        // what it holds isn't known. A root-level unread marker "." or "" covers
+        // the entire tree so an incomplete root listing never deletes peer files.)
+        let root_unread = sender_index.unread.contains_key(".") || sender_index.unread.contains_key("");
+        let unknown = |p: &str| root_unread || sender_index.unread.keys().chain(sender_index.mounts.iter()).any(|u| p == u || p.strip_prefix(u.as_str()).is_some_and(|rest| rest.starts_with('/')));
         let extras: Vec<&String> = recv_manifest.keys().rev().filter(|p| !sender_index.entries.contains_key(*p) && !unknown(p)).collect();
         for path in extras {
             let mut buf = Vec::with_capacity(path.len() + 4);
             write_str(&mut buf, path);
             wire.write_frame(TAG_REMOVE, &buf)?;
         }
+    }
+
+    let skipped = sender_index.skipped();
+    if want_sender_summary {
+        send_sender_summary(&mut wire, &sender_errors, &skipped)?;
     }
 
     let mut done_buf = Vec::with_capacity(32);
@@ -939,7 +1051,6 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
 
     // 6. Read final report from receiver (may span multiple frames).
     let mut report = read_report(&mut wire)?;
-    let skipped = sender_index.skipped();
     if used_lazy {
         // Persist only entries whose hashes were actually computed (never
         // aborted or unhashed keep_newer entries).
@@ -950,6 +1061,7 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     }
     report.errors.extend(sender_errors);
     report.skipped = skipped;
+    report.sender_confirmed = true;
     report.bytes_sent = wire.bytes_sent;
     report.bytes_received = wire.bytes_received;
     progress.emit_now(&Progress { phase: Phase::Done, files: plan_files, bytes: plan_bytes, files_total: plan_files, bytes_total: plan_bytes, current: String::new() });
@@ -978,6 +1090,9 @@ fn receive_inner<S: Read + Write, R: Read>(conn: S, root: &Path, options: Option
     }
     if options.keep_newer {
         flags |= FLAG_KEEP_NEWER;
+    }
+    if options.request_sender_summary {
+        flags |= FLAG_SENDER_SUMMARY;
     }
     let recv_index = if options.scoped {
         // Scoped: the hello says so, the sender names its paths, and only
@@ -1033,14 +1148,32 @@ fn receive_inner<S: Read + Write, R: Read>(conn: S, root: &Path, options: Option
         return Err(invalid_data(format!("unsupported wire version {peer_version}")));
     }
     let in_sync = payload[4];
-    if in_sync > 1 {
+    if in_sync > 2 || (in_sync == 2 && !options.request_sender_summary) {
         return Err(invalid_data("invalid in_sync flag in HelloAck"));
     }
-    if in_sync == 1 {
+    if in_sync >= 1 {
+        let mut report = Report { same: recv_index.file_count(), ..Report::default() };
+        if in_sync == 2 {
+            // Capable sender explicitly advertised TAG_SENDER_SUMMARY in HelloAck:
+            // require the complete summary frame (mid-frame EOF is a hard error).
+            let (tag, summary_payload) = wire.read_frame()?;
+            if tag != TAG_SENDER_SUMMARY {
+                return Err(invalid_data(format!("expected SenderSummary, got tag {tag}")));
+            }
+            let (sender_errors, skipped) = read_sender_summary_frames(&mut wire, &summary_payload)?;
+            report.errors.extend(sender_errors);
+            report.skipped = skipped;
+            report.sender_confirmed = true;
+        }
+        // in_sync == 1: legacy sender that never sends TAG_SENDER_SUMMARY.
+        // Do NOT read ahead (would block on a kept-open duplex stream); leave
+        // `sender_confirmed = false` so destructive callers know not to delete.
         if let Some(cache) = &options.cache_path {
             recv_index.save(cache)?;
         }
-        return Ok(Report { same: recv_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, ..Report::default() });
+        report.bytes_sent = wire.bytes_sent;
+        report.bytes_received = wire.bytes_received;
+        return Ok(report);
     }
 
     receive_after_hello(wire, root, options, recv_index, checkpoint_files)
@@ -1055,6 +1188,8 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
 
     // 3. Process negotiation and transfer frames until TAG_DONE.
     let mut report = Report::default();
+    let mut sender_errors_from_wire: Vec<PathError> = Vec::new();
+    let mut summary_received = false;
     let mut super_cache: HashMap<String, Vec<SuperChunk>> = HashMap::new();
     let mut active_file: Option<ActiveFile> = None;
     let mut copy_buf = vec![0u8; 64 << 10];
@@ -1101,6 +1236,9 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 return Err(e);
             }
         };
+        if summary_received && tag != TAG_DONE {
+            return Err(invalid_data(format!("unexpected frame tag {tag} after SenderSummary")));
+        }
         match tag {
             TAG_NEED_CHUNKS => {
                 if active_file.is_some() {
@@ -1289,6 +1427,22 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                     }
                 }
             }
+            TAG_SENDER_SUMMARY => {
+                if !options.request_sender_summary {
+                    return Err(invalid_data("unexpected SenderSummary"));
+                }
+                if active_file.is_some() {
+                    return Err(invalid_data("SenderSummary while file transfer active"));
+                }
+                if summary_received {
+                    return Err(invalid_data("duplicate SenderSummary"));
+                }
+                let (sender_errors, skipped) = read_sender_summary_frames(&mut wire, &payload)?;
+                sender_errors_from_wire.extend(sender_errors);
+                report.skipped = skipped;
+                report.sender_confirmed = true;
+                summary_received = true;
+            }
             TAG_DONE => {
                 if active_file.is_some() {
                     return Err(invalid_data("Done while file transfer active"));
@@ -1317,6 +1471,9 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
     send_report(&mut wire, &report)?;
     wire.flush()?;
 
+    // Attach sender-side errors only after sending the receiver's own report
+    // back so the sender does not see its own errors duplicated.
+    report.errors.extend(sender_errors_from_wire);
     report.bytes_sent = wire.bytes_sent;
     report.bytes_received = wire.bytes_received;
     Ok(report)
@@ -2450,7 +2607,14 @@ fn filter_index(index: &mut Index, filter: &Filter, unhashed: &mut HashSet<Strin
     unhashed.retain(|path| index.entries.contains_key(path));
     index.mounts.retain(|path| keep_path(path, &EntryKind::Dir));
     index.special.retain(|path| keep_path(path, &EntryKind::File));
-    index.unread.retain(|path, _| keep_path(path, &EntryKind::File) || keep_path(path, &EntryKind::Dir));
+    if !filter.only.is_empty() {
+        // `filter.only` names only valid UTF-8 paths; non-UTF-8 siblings are
+        // outside the requested scope.
+        index.non_utf8.clear();
+    } else {
+        index.non_utf8.retain(|path| keep_path(path, &EntryKind::File));
+    }
+    index.unread.retain(|path, _| path == "." || keep_path(path, &EntryKind::File) || keep_path(path, &EntryKind::Dir));
 }
 
 // ---------------------------------------------------------------------------
@@ -3537,7 +3701,162 @@ fn read_report<S: Read + Write>(wire: &mut Wire<S>) -> io::Result<Report> {
         more = next_more;
     }
 
-    Ok(Report { same, copied, appended, patched, new, removed, left_newer, bytes_sent: 0, bytes_received: 0, data_bytes_raw, data_bytes_compressed, errors, skipped: Skipped::default() })
+    Ok(Report {
+        same,
+        copied,
+        appended,
+        patched,
+        new,
+        removed,
+        left_newer,
+        bytes_sent: 0,
+        bytes_received: 0,
+        data_bytes_raw,
+        data_bytes_compressed,
+        errors,
+        skipped: Skipped::default(),
+        sender_confirmed: false,
+    })
+}
+
+/// Maximum encoded sample-path bytes per skipped category in frame 1 of
+/// `TAG_SENDER_SUMMARY` (4 categories × 128 KiB <= 512 KiB, always fitting
+/// well inside `MAX_MANIFEST_CHUNK_RAW`). The exact `count` is always sent.
+const MAX_SKIPPED_SAMPLE_BYTES_PER_KIND: usize = 128 << 10;
+
+fn write_skipped_kind(buf: &mut Vec<u8>, kind: &SkippedKind) {
+    buf.extend_from_slice(&kind.count.to_le_bytes());
+    let mut paths: Vec<&str> = Vec::new();
+    let mut used = 0usize;
+    for p in kind.paths.iter().take(MAX_SKIPPED_PATHS) {
+        let p = truncate_str(p, MAX_PATH_LEN);
+        let need = 4 + p.len();
+        if used + need > MAX_SKIPPED_SAMPLE_BYTES_PER_KIND {
+            break;
+        }
+        used += need;
+        paths.push(p);
+    }
+    buf.extend_from_slice(&(paths.len() as u32).to_le_bytes());
+    for p in paths {
+        write_str(buf, p);
+    }
+}
+
+fn read_skipped_kind(cur: &mut Cursor<'_>) -> io::Result<SkippedKind> {
+    let count = cur.read_u64()?;
+    let n = cur.read_u32()? as usize;
+    if n > MAX_SKIPPED_PATHS || (n as u64) > count {
+        return Err(invalid_data("too many skipped paths in sender summary"));
+    }
+    let mut paths = Vec::with_capacity(n);
+    for _ in 0..n {
+        paths.push(cur.read_str(MAX_PATH_LEN)?);
+    }
+    Ok(SkippedKind { count, paths })
+}
+
+/// Send the sender's final `errors` and `skipped` summary to a receiver that
+/// asked for `FLAG_SENDER_SUMMARY` (may span multiple frames if many errors).
+fn send_sender_summary<S: Read + Write>(wire: &mut Wire<S>, errors: &[PathError], skipped: &Skipped) -> io::Result<()> {
+    let mut pos = 0usize;
+    let mut first = true;
+    loop {
+        let mut raw = Vec::with_capacity(if first { 128 } else { 64 });
+        if first {
+            write_skipped_kind(&mut raw, &skipped.unread);
+            write_skipped_kind(&mut raw, &skipped.non_utf8);
+            write_skipped_kind(&mut raw, &skipped.special);
+            write_skipped_kind(&mut raw, &skipped.mounts);
+        }
+        let count_off = raw.len();
+        raw.extend_from_slice(&0u32.to_le_bytes());
+        let mut batch_count = 0u32;
+        while pos < errors.len() {
+            let err = &errors[pos];
+            let p = truncate_str(&err.path, MAX_PATH_LEN);
+            let reason = truncate_str(&err.reason, MAX_PATH_LEN);
+            let item_sz = 4 + p.len() + 4 + reason.len();
+            // On frame 1, allow 0 errors if skipped samples already fill the
+            // chunk so errors spill cleanly to frame 2 without exceeding the cap.
+            if (batch_count > 0 || first) && (raw.len() + item_sz > MAX_MANIFEST_CHUNK_RAW || batch_count as usize >= MAX_ITEMS_PER_FRAME) {
+                break;
+            }
+            write_str(&mut raw, p);
+            write_str(&mut raw, reason);
+            batch_count += 1;
+            pos += 1;
+        }
+        raw[count_off..count_off + 4].copy_from_slice(&batch_count.to_le_bytes());
+        let more = pos < errors.len();
+        write_compressed_batch(wire, TAG_SENDER_SUMMARY, more, &raw)?;
+        first = false;
+        if !more {
+            return Ok(());
+        }
+    }
+}
+
+/// Hard bounds on cumulative `TAG_SENDER_SUMMARY` continuation frames and
+/// decoded error text so a misbehaving peer cannot loop forever or exhaust RAM.
+const MAX_SENDER_SUMMARY_FRAMES: usize = 64;
+const MAX_SENDER_SUMMARY_BYTES: usize = 16 << 20;
+
+fn read_sender_summary_frames<S: Read + Write>(wire: &mut Wire<S>, first_payload: &[u8]) -> io::Result<(Vec<PathError>, Skipped)> {
+    // Frame 1 may carry up to 4 × 200 × 4 KiB legacy samples + errors; cap at MAX_FRAME_LEN.
+    let (mut more, raw) = read_compressed_batch(first_payload, MAX_FRAME_LEN)?;
+    let mut total_decoded_bytes = raw.len();
+    let mut frames_seen = 1usize;
+    let mut cur = Cursor::new(&raw);
+    let unread = read_skipped_kind(&mut cur)?;
+    let non_utf8 = read_skipped_kind(&mut cur)?;
+    let special = read_skipped_kind(&mut cur)?;
+    let mounts = read_skipped_kind(&mut cur)?;
+    let skipped = Skipped { unread, non_utf8, special, mounts };
+    let err_count = cur.read_u32()? as usize;
+    if err_count > MAX_ITEMS_PER_FRAME || err_count > MAX_ITEMS {
+        return Err(invalid_data("too many errors in sender summary"));
+    }
+    let mut errors = Vec::with_capacity(err_count.min(1024));
+    for _ in 0..err_count {
+        let path = cur.read_str(MAX_PATH_LEN)?;
+        let reason = cur.read_str(MAX_PATH_LEN)?;
+        errors.push(PathError { path, reason });
+    }
+    cur.expect_eof()?;
+
+    while more {
+        frames_seen += 1;
+        if frames_seen > MAX_SENDER_SUMMARY_FRAMES {
+            return Err(invalid_data("too many SenderSummary continuation frames"));
+        }
+        let (tag, payload) = wire.read_frame()?;
+        if tag != TAG_SENDER_SUMMARY {
+            return Err(invalid_data(format!("expected continuation SenderSummary, got tag {tag}")));
+        }
+        let (next_more, raw) = read_compressed_batch(&payload, MAX_MANIFEST_CHUNK_RAW + (256 << 10))?;
+        total_decoded_bytes = total_decoded_bytes.saturating_add(raw.len());
+        if total_decoded_bytes > MAX_SENDER_SUMMARY_BYTES {
+            return Err(invalid_data("SenderSummary decoded bytes exceed limit"));
+        }
+        let mut cur = Cursor::new(&raw);
+        let count = cur.read_u32()? as usize;
+        if count == 0 {
+            return Err(invalid_data("empty SenderSummary continuation frame"));
+        }
+        if count > MAX_ITEMS_PER_FRAME || errors.len().saturating_add(count) > MAX_ITEMS {
+            return Err(invalid_data("too many errors in sender summary"));
+        }
+        for _ in 0..count {
+            let path = cur.read_str(MAX_PATH_LEN)?;
+            let reason = cur.read_str(MAX_PATH_LEN)?;
+            errors.push(PathError { path, reason });
+        }
+        cur.expect_eof()?;
+        more = next_more;
+    }
+
+    Ok((errors, skipped))
 }
 
 fn write_compressed_batch<S: Read + Write>(wire: &mut Wire<S>, tag: u8, more: bool, raw: &[u8]) -> io::Result<()> {
@@ -5600,5 +5919,280 @@ mod tests {
             println!("pass {pass}: {:.2} s, wire {} bytes, received {} new {} copied, errors {}", began.elapsed().as_secs_f64(), sr.wire_bytes(), r.new, r.copied, r.errors.len());
         }
         let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn sender_summary_reports_non_utf8_and_confirms_clean_copies() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let dir = PathBuf::from(format!("/var/tmp/olo-sync-summary-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let (src, dst, empty_src, empty_dst) = (dir.join("src"), dir.join("dst"), dir.join("empty-src"), dir.join("empty-dst"));
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&dst).unwrap();
+        fs::create_dir_all(&empty_src).unwrap();
+        fs::create_dir_all(&empty_dst).unwrap();
+
+        // 1. Non-empty folder containing both a valid UTF-8 file and a non-UTF-8 file.
+        fs::write(src.join("good.txt"), b"ok").unwrap();
+        let bad_name = OsStr::from_bytes(b"bad-\xff-name.txt");
+        fs::write(src.join(bad_name), b"skipped").unwrap();
+
+        let (a, b) = UnixStream::pair().unwrap();
+        let src_c = src.clone();
+        let t = thread::spawn(move || send(a, &FolderSource::new(src_c), Options::default()).unwrap());
+        let r = receive(b, &dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        let s = t.join().unwrap();
+        assert!(r.sender_confirmed, "receiver must see sender_confirmed = true");
+        assert_eq!(r.skipped.non_utf8.count, 1, "receiver must receive skipped non-UTF-8 count");
+        assert!(!r.skipped.is_empty());
+        assert_eq!(s.skipped.non_utf8.count, 1);
+
+        // 2. Folder containing ONLY a non-UTF-8 file hits the tree-hash in_sync fast path:
+        // receiver MUST STILL learn that 1 non-UTF-8 entry was skipped!
+        fs::write(empty_src.join(bad_name), b"only-non-utf8").unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+        let es = empty_src.clone();
+        let t = thread::spawn(move || send(a, &FolderSource::new(es), Options::default()).unwrap());
+        let r_fast = receive(b, &empty_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        let _ = t.join().unwrap();
+        assert!(r_fast.sender_confirmed, "fast path must still confirm sender summary");
+        assert_eq!(r_fast.skipped.non_utf8.count, 1, "in_sync fast path must report skipped non-UTF-8 entry");
+
+        // 3. Clean folder with zero skipped entries confirms complete.
+        fs::remove_file(src.join(bad_name)).unwrap();
+        let clean_dst = dir.join("clean-dst");
+        let (a, b) = UnixStream::pair().unwrap();
+        let src_c = src.clone();
+        let t = thread::spawn(move || send(a, &FolderSource::new(src_c), Options::default()).unwrap());
+        let r_clean = receive(b, &clean_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        let _ = t.join().unwrap();
+        assert!(r_clean.sender_confirmed);
+        assert!(r_clean.skipped.is_empty());
+        assert!(r_clean.errors.is_empty());
+
+        // 4. Legacy sender simulation (ignores FLAG_SENDER_SUMMARY and sends TAG_DONE without TAG_SENDER_SUMMARY):
+        // receiver finishes with sender_confirmed == false so callers refuse source deletion.
+        let legacy_dst = dir.join("legacy-dst");
+        let (a, b) = UnixStream::pair().unwrap();
+        let t = thread::spawn(move || {
+            let mut w = Wire::new(a);
+            let (tag, _hello) = w.read_frame().unwrap();
+            assert_eq!(tag, TAG_HELLO);
+            let mut ack = Vec::with_capacity(5);
+            ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+            ack.push(0); // not in_sync
+            w.write_frame(TAG_HELLO_ACK, &ack).unwrap();
+            w.flush().unwrap();
+            let (mtag, _) = w.read_frame().unwrap();
+            assert_eq!(mtag, TAG_MANIFEST);
+            // Send TAG_DONE directly without TAG_SENDER_SUMMARY (as an older helper does).
+            w.write_frame(TAG_DONE, &[0u8; 32]).unwrap();
+            w.flush().unwrap();
+            let _ = read_report(&mut w).unwrap();
+        });
+        let r_legacy = receive(b, &legacy_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        t.join().unwrap();
+        assert!(!r_legacy.sender_confirmed, "legacy sender without TAG_SENDER_SUMMARY must leave sender_confirmed = false");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sender_summary_hardening_scoped_siblings_limits_duplicates_and_in_sync_compat() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let dir = PathBuf::from(format!("/var/tmp/olo-sync-summary-hard-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let (src, dst) = (dir.join("src"), dir.join("dst"));
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&dst).unwrap();
+
+        // 1. Scoped single-file transfer with a non-UTF-8 sibling and reserved part sibling
+        //    must succeed with empty skipped summary.
+        fs::write(src.join("report.pdf"), b"pdf-bytes").unwrap();
+        fs::write(src.join(OsStr::from_bytes(b"legacy-\xff.txt")), b"ignore").unwrap();
+        fs::write(src.join("notes.olo-sync-part"), b"part").unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+        let src_c = src.clone();
+        let t = thread::spawn(move || {
+            let filter = Filter { only: vec!["report.pdf".into()], ..Default::default() };
+            let source = FolderSource { root: src_c, filter: filter.clone(), cache_path: None };
+            send(a, &source, Options { scoped: true, filter, ..Options::default() }).unwrap()
+        });
+        let r_scoped = receive(b, &dst, Options { scoped: true, request_sender_summary: true, ..Options::default() }).unwrap();
+        let s_scoped = t.join().unwrap();
+        assert!(r_scoped.sender_confirmed);
+        assert!(r_scoped.skipped.is_empty(), "unrelated siblings broke scoped transfer: {:?}", r_scoped.skipped);
+        assert!(s_scoped.skipped.is_empty());
+        assert_eq!(fs::read(dst.join("report.pdf")).unwrap(), b"pdf-bytes");
+
+        // 2. Full-folder transfer with reserved part file MUST report it as skipped
+        //    (so Move never silently deletes user files named `*.olo-sync-part`).
+        let part_src = dir.join("part-src");
+        let part_dst = dir.join("part-dst");
+        fs::create_dir_all(&part_src).unwrap();
+        fs::write(part_src.join("notes.olo-sync-part"), b"important").unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+        let ps = part_src.clone();
+        let t = thread::spawn(move || send(a, &FolderSource::new(ps), Options::default()).unwrap());
+        let r_part = receive(b, &part_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        let _ = t.join().unwrap();
+        assert!(r_part.sender_confirmed);
+        assert_eq!(r_part.skipped.unread.count, 1, "reserved part file must be reported in skipped");
+
+        // 3. Large skipped-path summary (4 × 200 × 3000-byte paths + errors) round-trips cleanly.
+        let big_path = "a/".repeat(1500);
+        let mk_kind = || SkippedKind { count: 250, paths: vec![big_path.clone(); MAX_SKIPPED_PATHS] };
+        let big_skipped = Skipped { unread: mk_kind(), non_utf8: mk_kind(), special: mk_kind(), mounts: mk_kind() };
+        let errs = vec![PathError { path: "x".into(), reason: "denied".into() }; 5];
+        let (a, b) = UnixStream::pair().unwrap();
+        let errs_c = errs.clone();
+        let skipped_c = big_skipped.clone();
+        let t = thread::spawn(move || {
+            let mut w = Wire::new(a);
+            send_sender_summary(&mut w, &errs_c, &skipped_c).unwrap();
+            w.flush().unwrap();
+        });
+        let mut rw = Wire::new(b);
+        let (tag, payload) = rw.read_frame().unwrap();
+        assert_eq!(tag, TAG_SENDER_SUMMARY);
+        let (got_errs, got_skipped) = read_sender_summary_frames(&mut rw, &payload).unwrap();
+        t.join().unwrap();
+        assert_eq!(got_errs.len(), 5);
+        assert_eq!(got_skipped.unread.count, 250);
+        assert_eq!(got_skipped.non_utf8.count, 250);
+        assert_eq!(got_skipped.special.count, 250);
+        assert_eq!(got_skipped.mounts.count, 250);
+
+        // 4. Duplicate TAG_SENDER_SUMMARY is rejected (cannot overwrite skipped counts).
+        let dup_dst = dir.join("dup-dst");
+        let (a, b) = UnixStream::pair().unwrap();
+        let t = thread::spawn(move || {
+            let mut w = Wire::new(a);
+            let _ = w.read_frame().unwrap();
+            let mut ack = Vec::with_capacity(5);
+            ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+            ack.push(0);
+            w.write_frame(TAG_HELLO_ACK, &ack).unwrap();
+            w.flush().unwrap();
+            let _ = w.read_frame().unwrap();
+            let mut sk = Skipped::default();
+            sk.non_utf8.push("bad".into());
+            send_sender_summary(&mut w, &[], &sk).unwrap();
+            send_sender_summary(&mut w, &[], &Skipped::default()).unwrap();
+            let _ = w.flush();
+        });
+        let err = receive(b, &dup_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap_err();
+        let _ = t.join();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("SenderSummary"), "{err}");
+
+        // 5. Legacy equal-tree sender (`in_sync = 1`) over a KEPT-OPEN duplex stream
+        //    must return immediately with `sender_confirmed = false` (never block).
+        let open_dst = dir.join("open-dst");
+        let (a, b) = UnixStream::pair().unwrap();
+        let (hold_tx, hold_rx) = std::sync::mpsc::channel::<()>();
+        let t = thread::spawn(move || {
+            let mut w = Wire::new(a);
+            let (tag, _) = w.read_frame().unwrap();
+            assert_eq!(tag, TAG_HELLO);
+            let mut ack = Vec::with_capacity(5);
+            ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+            ack.push(1); // legacy in_sync without summary
+            w.write_frame(TAG_HELLO_ACK, &ack).unwrap();
+            w.flush().unwrap();
+            // Keep socket open until receiver returns!
+            let _ = hold_rx.recv();
+        });
+        let r_open = receive(b, &open_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        let _ = hold_tx.send(());
+        t.join().unwrap();
+        assert!(!r_open.sender_confirmed, "legacy in_sync=1 must return immediately with sender_confirmed=false");
+
+        // 6. Capable equal-tree sender (`in_sync = 2`) that disconnects mid-summary
+        //    MUST fail with UnexpectedEof instead of returning Ok.
+        let trunc_dst = dir.join("trunc-dst");
+        let (a, b) = UnixStream::pair().unwrap();
+        let t = thread::spawn(move || {
+            let mut w = Wire::new(a);
+            let _ = w.read_frame().unwrap();
+            let mut ack = Vec::with_capacity(5);
+            ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+            ack.push(2); // promises TAG_SENDER_SUMMARY
+            w.write_frame(TAG_HELLO_ACK, &ack).unwrap();
+            w.flush().unwrap();
+            // Write only 2 bytes of the 5-byte frame header and drop.
+            let _ = w.inner.write_all(&[0x10, 0x00]);
+        });
+        let err = receive(b, &trunc_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap_err();
+        t.join().unwrap();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+
+        // 7. Root-level unread "." suppresses ALL mirror deletions on the receiver.
+        struct RootUnreadSource;
+        impl Source for RootUnreadSource {
+            fn index(&self) -> io::Result<Index> {
+                let mut idx = Index::default();
+                idx.unread.insert(".".into(), "reading folder: EIO".into());
+                Ok(idx)
+            }
+            fn read(&self, _path: &str, _offset: u64, _len: usize) -> io::Result<Vec<u8>> {
+                unreachable!()
+            }
+        }
+        let mirror_dst = dir.join("mirror-dst");
+        fs::create_dir_all(&mirror_dst).unwrap();
+        fs::write(mirror_dst.join("intact.pdf"), b"keep-me").unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+        let t = thread::spawn(move || send(a, &RootUnreadSource, Options::default()).unwrap());
+        let r_mirror = receive(b, &mirror_dst, Options { delete_extra: true, request_sender_summary: true, ..Options::default() }).unwrap();
+        let _ = t.join().unwrap();
+        assert_eq!(r_mirror.removed, 0, "root unread '.' must suppress all mirror deletions");
+        assert!(mirror_dst.join("intact.pdf").exists(), "intact peer file must survive root unread error");
+        assert_eq!(r_mirror.skipped.unread.count, 1);
+
+        // 8. Continuation frame with more=1 and count=0 is rejected immediately (no infinite loop).
+        let loop_dst = dir.join("loop-dst");
+        let (a, b) = UnixStream::pair().unwrap();
+        let t = thread::spawn(move || {
+            let mut w = Wire::new(a);
+            let _ = w.read_frame().unwrap();
+            let mut ack = Vec::with_capacity(5);
+            ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+            ack.push(0);
+            w.write_frame(TAG_HELLO_ACK, &ack).unwrap();
+            w.flush().unwrap();
+            let _ = w.read_frame().unwrap();
+            // Frame 1: empty skipped + 0 errors, more = true.
+            let mut f1 = Vec::new();
+            for _ in 0..4 {
+                write_skipped_kind(&mut f1, &SkippedKind::default());
+            }
+            f1.extend_from_slice(&0u32.to_le_bytes());
+            write_compressed_batch(&mut w, TAG_SENDER_SUMMARY, true, &f1).unwrap();
+            // Continuation frame: 0 errors, more = true -> must be rejected!
+            write_compressed_batch(&mut w, TAG_SENDER_SUMMARY, true, &0u32.to_le_bytes()).unwrap();
+            let _ = w.flush();
+        });
+        let err = receive(b, &loop_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap_err();
+        let _ = t.join();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("empty SenderSummary continuation"), "{err}");
+
+        // 9. LazyFolderSource streams brand-new files without eager pre-hashing.
+        let lazy_src = dir.join("lazy-src");
+        let lazy_dst = dir.join("lazy-dst");
+        fs::create_dir_all(&lazy_src).unwrap();
+        fs::write(lazy_src.join("big.bin"), vec![0x42u8; 64 * 1024]).unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+        let ls = lazy_src.clone();
+        let t = thread::spawn(move || send(a, &LazyFolderSource::new(ls), Options::default()).unwrap());
+        let r_lazy = receive(b, &lazy_dst, Options { request_sender_summary: true, ..Options::default() }).unwrap();
+        let _ = t.join().unwrap();
+        assert!(r_lazy.sender_confirmed);
+        assert_eq!(fs::read(lazy_dst.join("big.bin")).unwrap().len(), 64 * 1024);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

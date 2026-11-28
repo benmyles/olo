@@ -4,7 +4,6 @@
 //! disappears, or `error: …`, and exits cleanly when stdin closes.
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use olo_rex_sync::index::Filter;
 use olo_rex_sync::watch::{DEFAULT_SETTLE_MS, WatchEvent, watch_dir};
@@ -22,11 +21,13 @@ pub fn run(args: Vec<String>) -> ! {
         std::process::exit(2)
     };
     let mut it = args.into_iter();
-    let Some(root) = it.next() else { fail("say which folder") };
-    let root = PathBuf::from(root);
-    let root = match std::env::var_os("HOME") {
-        Some(home) if root.is_relative() => PathBuf::from(home).join(root),
-        _ => root,
+    let Some(raw_root) = it.next() else { fail("say which folder") };
+    let root = match crate::sync::resolve_root(&raw_root) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = say(&format!("error: {e}"));
+            std::process::exit(1);
+        }
     };
     let (mut filter, mut settle) = (Filter::default(), DEFAULT_SETTLE_MS);
     while let Some(a) = it.next() {

@@ -47,13 +47,27 @@ impl Write for Stdio {
     }
 }
 
-/// Resolve `root` under `$HOME` when relative.
-fn resolve_root(raw: String) -> PathBuf {
-    let root = PathBuf::from(raw);
-    match std::env::var_os("HOME") {
-        Some(home) if root.is_relative() => PathBuf::from(home).join(root),
-        _ => root,
+/// Resolve `~`, `~/…`, or relative sync roots against `$HOME` WITHOUT lexically
+/// popping `..` (so kernel symlink resolution for `link/../docs` is preserved)
+/// and failing explicitly if `$HOME` is unset rather than defaulting to `/`.
+pub(crate) fn resolve_root(raw: &str) -> io::Result<PathBuf> {
+    let need_home = || -> io::Result<PathBuf> {
+        match std::env::var_os("HOME") {
+            Some(h) if !h.is_empty() => Ok(PathBuf::from(h)),
+            _ => Err(io::Error::new(io::ErrorKind::NotFound, "HOME is not set")),
+        }
+    };
+    if raw == "~" {
+        return need_home();
     }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return Ok(need_home()?.join(rest));
+    }
+    let p = PathBuf::from(raw);
+    if p.is_relative() {
+        return Ok(need_home()?.join(p));
+    }
+    Ok(p)
 }
 
 /// Where the index of `root` is kept between sessions: one file a folder,
@@ -69,7 +83,13 @@ fn cache_for(root: &Path) -> Option<PathBuf> {
 fn run_index(args: Vec<String>, fail: &impl Fn(&str) -> !) -> ! {
     let mut it = args.into_iter();
     let Some(raw_root) = it.next() else { fail("say which folder") };
-    let root = resolve_root(raw_root);
+    let root = match resolve_root(&raw_root) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("olo-rex-link sync index: {raw_root}: {e}");
+            std::process::exit(1);
+        }
+    };
     let (mut filter, mut cached, mut cache_file, mut create) = (Filter::default(), true, None, false);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -123,7 +143,13 @@ fn run_mutate(args: Vec<String>, fail: &impl Fn(&str) -> !) -> ! {
     if let Some(other) = it.next() {
         fail(&format!("{other} isn't one of its options"));
     }
-    let root = resolve_root(raw_root);
+    let root = match resolve_root(&raw_root) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("olo-rex-link sync mutate: {raw_root}: {e}");
+            std::process::exit(1);
+        }
+    };
     let mut body = Vec::new();
     if let Err(e) = io::stdin().read_to_end(&mut body) {
         eprintln!("olo-rex-link sync mutate: read stdin: {e}");
@@ -171,7 +197,13 @@ pub fn run(args: Vec<String>) -> ! {
     }
     let mut it = args.into_iter();
     let (Some(side), Some(raw_root)) = (it.next(), it.next()) else { fail("say which side and its folder") };
-    let root = resolve_root(raw_root);
+    let root = match resolve_root(&raw_root) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("olo-rex-link sync: {raw_root}: {e}");
+            std::process::exit(1);
+        }
+    };
     let (mut options, mut filter, mut cached, mut cache_file) = (Options::default(), Filter::default(), true, None);
     let mut only_file: Option<PathBuf> = None;
     while let Some(a) = it.next() {
@@ -221,5 +253,22 @@ pub fn run(args: Vec<String>) -> ! {
             eprintln!("olo-rex-link sync: {}: {e}", root.display());
             std::process::exit(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_root_expands_tilde_and_preserves_dotdot_for_kernel() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME set in test env"));
+        assert_eq!(resolve_root("~").unwrap(), home);
+        assert_eq!(resolve_root("~/docs/pic.png").unwrap(), home.join("docs/pic.png"));
+        assert_eq!(resolve_root("rel/dir").unwrap(), home.join("rel/dir"));
+        assert_eq!(resolve_root("/var/tmp/abs").unwrap(), PathBuf::from("/var/tmp/abs"));
+        // Preserves `..` so kernel symlink resolution is NOT altered lexically!
+        assert_eq!(resolve_root("link/../docs").unwrap(), home.join("link/../docs"));
+        assert_eq!(resolve_root("/var/tmp/link/../docs").unwrap(), PathBuf::from("/var/tmp/link/../docs"));
     }
 }

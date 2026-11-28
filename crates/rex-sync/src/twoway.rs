@@ -268,7 +268,7 @@ fn is_dir_entry(e: &Entry) -> bool {
 }
 
 fn covered_by_unread(unread: &BTreeMap<String, String>, path: &str) -> bool {
-    if unread.contains_key(path) {
+    if unread.contains_key(".") || unread.contains_key("") || unread.contains_key(path) {
         return true;
     }
     let mut end = path.len();
@@ -935,6 +935,15 @@ mod tests {
 
         let p = plan(Some(&base), &local, &remote, "far", "20261125-100000");
         assert!(p.is_empty(), "{p:?}");
+
+        // A root-level unread marker (".") suppresses ALL peer deletions in the tree.
+        let base_root = idx(vec![file_entry("report.pdf", b"pdf", 10, 0o644), file_entry("sub/a.txt", b"a", 10, 0o644)]);
+        let local_root = idx(vec![file_entry("report.pdf", b"pdf", 10, 0o644), file_entry("sub/a.txt", b"a", 10, 0o644)]);
+        let mut remote_root = idx(vec![]);
+        remote_root.unread.insert(".".into(), "reading folder: EIO".into());
+        let p_root = plan(Some(&base_root), &local_root, &remote_root, "far", "20261125-100000");
+        assert!(p_root.local_remove.is_empty(), "root unread '.' must suppress all peer deletions: {p_root:?}");
+        assert!(p_root.remote_remove.is_empty(), "{p_root:?}");
     }
 
     #[test]

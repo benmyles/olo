@@ -1289,6 +1289,15 @@ something nobody here has is in "Blocked", with what it waits for.
     quoted; "a legend rendered across two rows also fails the one-line
     match". To check against a capture of the real box.
 
+- **Rex `files_sock` / `russh` non-critical follow-ups (`astra-fb9dc7fe83` & `astra-27ff885900`, 2026-11-27/28; reviewer's words / Lead-deferred):**
+  - "Close an abandoned open when confirmation arrives" (`vendor/russh/src/client/encrypted.rs:503` channel open leak on cancellation before confirmation; defer until Agent Screens `vendor/russh` lands — pre-`exec` `CloseWhenLetGo` guard arming in `crates/rex/src/ssh.rs` is already done).
+  - "Record the capability per target build and use it on both paths" (`apps/rex/build.rs` global `OLO_REX_LINK_SYNC` vs per-target `fs`/`sync` capability).
+  - Non-UTF-8 remote filenames in `fs list` / `stat` / Tracker `RexPath` (`astra-27ff885900` #8): carry raw/encoded remote entry names instead of lossy UTF-8 so non-UTF-8 entries cannot collide or point at another file.
+  - Lexical `..` normalization in `fs_op::try_resolve_path` vs kernel `..` symlink traversal in `rex-link/src/sync.rs` (`astra-27ff885900` #10): align both paths when traversing `..` through a symlinked directory.
+  - Non-blocking Unix socket `connect()` with bounded timeout in Tracker (`astra-27ff885900` #26): avoid blocking a worker thread if Rex's accept queue stalls.
+  - Rolling-upgrade capability negotiation for `fs rename --default-mode` (`astra-27ff885900` #29): advertise/check `--default-mode` support explicitly when talking to older remote `olo-rex-link` binaries.
+  - Per-entry verified remote removal manifest for cross-filesystem remote directory moves (currently cross-fs remote folder moves copy safely and leave the remote source directory untouched rather than recursively deleting from root-only metadata).
+
 - **Rex server limits (the Host window's tweak): left by its reviews**
   (2026-11-27).
   - The confirming code review (Astra 6.2, `/var/tmp/olo-reviews/

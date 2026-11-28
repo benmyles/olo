@@ -255,6 +255,9 @@ async fn ensure_remote_helper(
 ) -> Result<(olo_rex_client::SshTarget, Arc<olo_rex_client::SshSessionPool>, Option<Arc<dyn olo_rex_client::SshAskpass>>), String> {
     let (target, pool, askpass, ready) = {
         let st = state.lock().unwrap_or_else(|e| e.into_inner());
+        if !st.settings.host_helper || st.settings.helper_hosts.get(host_key).is_some_and(|w| w == "off") {
+            return Err("Olo’s helper is turned off for this host.".into());
+        }
         let Some(h) = st.hosts.get(host_key) else { return Err("Host not found.".into()) };
         if !matches!(h.conn_state, HostConnState::Connected) {
             return Err("Host is not connected.".into());
@@ -262,18 +265,38 @@ async fn ensure_remote_helper(
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = h.endpoint.clone() else {
             return Err("Not an SSH host.".into());
         };
-        (target, pool, askpass, matches!(h.helper, HostHelper::Used | HostHelper::Ready))
+        (target, pool, askpass, matches!(h.helper, HostHelper::Used | HostHelper::Ready) && h.helper_current == Some(true))
     };
     if !ready {
+        let host_lock = crate::files_sock::helper_host_lock(host_key);
+        let _guard = host_lock.lock().await;
+        {
+            let st = state.lock().unwrap_or_else(|e| e.into_inner());
+            if !st.settings.host_helper || st.settings.helper_hosts.get(host_key).is_some_and(|w| w == "off") {
+                return Err("Olo’s helper is turned off for this host.".into());
+            }
+            if st.hosts.get(host_key).is_some_and(|h| matches!(h.helper, HostHelper::Used | HostHelper::Ready) && h.helper_current == Some(true)) {
+                return Ok((target, pool, askpass));
+            }
+        }
         match helper_ask(&pool, &target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await {
             Ok(Ok(Asked::Here)) => {}
             Ok(Ok(Asked::Needs(build) | Asked::Outdated(build))) => {
+                {
+                    let st = state.lock().unwrap_or_else(|e| e.into_inner());
+                    if !st.settings.host_helper || st.settings.helper_hosts.get(host_key).is_some_and(|w| w == "off") {
+                        return Err("Olo’s helper is turned off for this host.".into());
+                    }
+                }
                 helper_put(&pool, &target, askpass.clone(), crate::link::ID, build).await.map_err(|e| e.why)?;
             }
             Ok(Err(kind)) => return Err(format!("No helper build for {kind}")),
             Err(e) => return Err(e.why),
         }
         let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+        if !st.settings.host_helper || st.settings.helper_hosts.get(host_key).is_some_and(|w| w == "off") {
+            return Err("Olo’s helper is turned off for this host.".into());
+        }
         if let Some(h) = st.hosts.get_mut(host_key) {
             h.helper_current = Some(true);
             h.helper_sync_err = None;

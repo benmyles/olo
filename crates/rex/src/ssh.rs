@@ -310,6 +310,7 @@ async fn network_timeout<T>(limit: Duration, waiting: &mut tokio::sync::watch::R
 struct SshClientHandler {
     host: String,
     port: u16,
+    user: String,
     askpass: Option<Prompts>,
     /// How long the host's TCP connection took to open: a round trip
     /// of its link, near enough ([`next_window`]). Not known through a
@@ -422,7 +423,7 @@ impl client::Handler for SshClientHandler {
 
         let verified = |openssh_key: Option<&str>| {
             if let Some(key) = openssh_key {
-                *self.verified.lock().unwrap_or_else(|e| e.into_inner()) = Some(Verified { hostname: self.host.clone(), port: self.port, key: key.to_owned() });
+                *self.verified.lock().unwrap_or_else(|e| e.into_inner()) = Some(Verified { hostname: self.host.clone(), port: self.port, user: self.user.clone(), key: key.to_owned() });
             }
         };
         match check_known_hosts(&self.host, self.port, &pubkey) {
@@ -589,6 +590,7 @@ struct PooledHandle {
     handle: Handle<SshClientHandler>,
     runtime: tokio::runtime::Handle,
     pinned: PinnedEndpoint,
+    verified: Option<Verified>,
 }
 
 impl PooledHandle {
@@ -801,6 +803,7 @@ type PeerCell = Arc<std::sync::Mutex<Option<(std::net::IpAddr, Duration)>>>;
 pub struct Verified {
     pub hostname: String,
     pub port: u16,
+    pub user: String,
     pub key: String,
 }
 
@@ -947,6 +950,7 @@ impl SshSessionPool {
             st.screens.clear();
             st.screen_secondary_disabled_gen = None;
         }
+        self.keys.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
         // (A link that is up or starting went with its SSH lifecycle; one that
         // couldn't be made is still not tried before its time.)
         let mut links = self.links.lock().unwrap_or_else(|e| e.into_inner());
@@ -1240,6 +1244,12 @@ impl SshSessionPool {
     /// across `.await`, and sharing the unified [`MAX_CONNECTIONS_PER_TARGET`]
     /// budget; Findings 6, 8, 9, 10).
     async fn session(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<GuardedChannel, RexError> {
+        self.session_with_verified(target, askpass).await.map(|(ch, _)| ch)
+    }
+
+    /// A session channel on the host paired with the exact authenticated
+    /// [`Verified`] identity of the live SSH handle that opened that channel.
+    async fn session_with_verified(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<(GuardedChannel, Option<Verified>), RexError> {
         let failed = |e: SessionOpenErr| match e {
             SessionOpenErr::Timeout => RexError::Timeout,
             SessionOpenErr::Full => RexError::Ssh("open ssh session channel: MaxSessions reached".into()),
@@ -1248,7 +1258,7 @@ impl SshSessionPool {
         let tp = self.target_pool(target);
         let primary = self.get_or_connect(target, askpass.clone()).await?;
         match Self::open_session_guarded(&tp, &primary, SSH_OPEN_TIMEOUT).await {
-            Ok(channel) => return Ok(channel),
+            Ok(channel) => return Ok((channel, primary.verified.clone())),
             Err(SessionOpenErr::Full) => {}
             Err(SessionOpenErr::Timeout) => {
                 // Retire the nonresponding handle from the pool so retries do
@@ -1260,7 +1270,7 @@ impl SshSessionPool {
                 Self::drop_stale_primary(&tp, &primary);
                 let fresh = self.get_or_connect(target, askpass.clone()).await?;
                 match Self::open_session_guarded(&tp, &fresh, SSH_OPEN_TIMEOUT).await {
-                    Ok(channel) => return Ok(channel),
+                    Ok(channel) => return Ok((channel, fresh.verified.clone())),
                     Err(SessionOpenErr::Full) => {}
                     Err(SessionOpenErr::Timeout) => {
                         Self::drop_stale_primary(&tp, &fresh);
@@ -1279,7 +1289,7 @@ impl SshSessionPool {
         };
         for handle in &snapshot {
             match Self::open_session_guarded(&tp, handle, SSH_OPEN_TIMEOUT).await {
-                Ok(channel) => return Ok(channel),
+                Ok(channel) => return Ok((channel, handle.verified.clone())),
                 Err(SessionOpenErr::Full) => {}
                 Err(SessionOpenErr::Timeout) => {
                     Self::drop_stale_further(&tp, handle);
@@ -1300,7 +1310,7 @@ impl SshSessionPool {
         };
         for handle in &fresh_further {
             match Self::open_session_guarded(&tp, handle, SSH_OPEN_TIMEOUT).await {
-                Ok(channel) => return Ok(channel),
+                Ok(channel) => return Ok((channel, handle.verified.clone())),
                 Err(SessionOpenErr::Full) => {}
                 Err(SessionOpenErr::Timeout) => {
                     Self::drop_stale_further(&tp, handle);
@@ -1335,7 +1345,8 @@ impl SshSessionPool {
             return Err(RexError::Ssh("SSH connection closed".into()));
         }
         drop(_sec);
-        Self::open_session_guarded(&tp, &handle, SSH_OPEN_TIMEOUT).await.map_err(failed)
+        let channel = Self::open_session_guarded(&tp, &handle, SSH_OPEN_TIMEOUT).await.map_err(failed)?;
+        Ok((channel, handle.verified.clone()))
     }
 
     /// Install a newly opened handle under `tp.state` ONLY if `tp` is still
@@ -1700,7 +1711,42 @@ impl SshSessionPool {
     /// Unbounded so whole-record callers (Tracker directory listings,
     /// base64 accounts files) never lose data.
     pub async fn exec(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, RexError> {
-        self.exec_inner(target, askpass, command, None, said).await
+        let (ran, _) = self.exec_inner(target, askpass, command, None, None, said).await?;
+        Ok(ran)
+    }
+
+    /// Runs `command` like [`Self::exec_bounded`], also returning the exact
+    /// authenticated [`Verified`] identity of the live SSH handle that ran it.
+    pub async fn exec_bounded_verified(
+        &self,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        command: &str,
+        max_output: usize,
+        max_line: usize,
+        said: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<(crate::provision::Ran, Option<Verified>), RexError> {
+        self.exec_inner(target, askpass, command, Some((max_output, max_line)), None, said).await
+    }
+
+    /// Runs `command` like [`Self::exec_bounded`], verifying `check` against the
+    /// exact authenticated [`Verified`] identity of the acquired channel's live
+    /// SSH handle BEFORE sending `exec` on the wire.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn exec_bounded_expect_verified(
+        &self,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        command: &str,
+        max_output: usize,
+        max_line: usize,
+        check: impl FnOnce(Option<&Verified>) -> Result<(), String> + Send,
+        said: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<crate::provision::Ran, RexError> {
+        let mut check_opt = Some(check);
+        let mut wrapper = |v: Option<&Verified>| -> Result<(), String> { if let Some(f) = check_opt.take() { f(v) } else { Ok(()) } };
+        let (ran, _) = self.exec_inner(target, askpass, command, Some((max_output, max_line)), Some(&mut wrapper), said).await?;
+        Ok(ran)
     }
 
     /// Runs `command` like [`Self::exec`], capping stored output at
@@ -1717,21 +1763,30 @@ impl SshSessionPool {
         max_line: usize,
         said: &mut (dyn FnMut(&str) + Send),
     ) -> Result<crate::provision::Ran, RexError> {
-        self.exec_inner(target, askpass, command, Some((max_output, max_line)), said).await
+        let (ran, _) = self.exec_inner(target, askpass, command, Some((max_output, max_line)), None, said).await?;
+        Ok(ran)
     }
 
+    #[allow(clippy::type_complexity)]
     async fn exec_inner(
         &self,
         target: &SshTarget,
         askpass: Option<Arc<dyn SshAskpass>>,
         command: &str,
         bounds: Option<(usize, usize)>,
+        verify_handle: Option<&mut (dyn FnMut(Option<&Verified>) -> Result<(), String> + Send)>,
         said: &mut (dyn FnMut(&str) + Send),
-    ) -> Result<crate::provision::Ran, RexError> {
+    ) -> Result<(crate::provision::Ran, Option<Verified>), RexError> {
         use russh::ChannelMsg;
-        let mut channel = self.session(target, askpass).await?;
+        let (mut channel, verified) = self.session_with_verified(target, askpass).await?;
+        if let Some(check) = verify_handle
+            && let Err(msg) = check(verified.as_ref())
+        {
+            return Err(RexError::Ssh(msg));
+        }
         channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, &format!("exec on {} refused", target.display())).await?;
         let mut collector = ExecCollector::new(bounds);
+        let mut closed_cleanly = false;
         loop {
             match channel.wait().await {
                 Some(ChannelMsg::Data { data }) => {
@@ -1747,7 +1802,15 @@ impl SshSessionPool {
                     }
                 }
                 Some(ChannelMsg::ExitStatus { exit_status }) => collector.ran.status = Some(exit_status),
-                Some(ChannelMsg::Close) | None => {
+                Some(ChannelMsg::ExitSignal { .. }) => {
+                    collector.ran.status.get_or_insert(128);
+                }
+                Some(ChannelMsg::Close) => {
+                    channel.mark_peer_closed();
+                    closed_cleanly = true;
+                    break;
+                }
+                None => {
                     channel.mark_peer_closed();
                     break;
                 }
@@ -1756,7 +1819,11 @@ impl SshSessionPool {
         }
         // If we broke early on truncation, `channel` drops here with its guard
         // still armed, immediately sending EOF + CLOSE on the driver runtime.
-        Ok(collector.finish(said))
+        let ran = collector.finish(said);
+        if !closed_cleanly && !ran.truncated && ran.status.is_none() && ran.output.trim().is_empty() {
+            return Err(RexError::Ssh(format!("connection to {} closed unexpectedly", target.display())));
+        }
+        Ok((ran, verified))
     }
 
     /// [`Self::exec`] with `input` given to the command on its input,
@@ -1766,39 +1833,25 @@ impl SshSessionPool {
     /// each 20 kB: a command that stops reading, or a link that stops,
     /// isn't waited for longer.
     pub async fn put(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, input: &[u8]) -> Result<crate::provision::Ran, RexError> {
-        use russh::ChannelMsg;
         let within = Duration::from_secs(120 + input.len() as u64 / 20_000);
         let sent = async {
-            let mut channel = self.session(target, askpass).await?;
-            channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT.min(within), &format!("exec on {} refused", target.display())).await?;
-            channel.data(input).await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
-            channel.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
-            let mut ran = crate::provision::Ran::default();
-            let mut written = Vec::new();
-            let mut stdout = Vec::new();
-            let mut stderr = Vec::new();
-            loop {
-                match channel.wait().await {
-                    Some(ChannelMsg::Data { data }) => {
-                        written.extend_from_slice(&data);
-                        stdout.extend_from_slice(&data);
-                    }
-                    Some(ChannelMsg::ExtendedData { data, .. }) => {
-                        written.extend_from_slice(&data);
-                        stderr.extend_from_slice(&data);
-                    }
-                    Some(ChannelMsg::ExitStatus { exit_status }) => ran.status = Some(exit_status),
-                    Some(ChannelMsg::Close) | None => {
-                        channel.mark_peer_closed();
+            let channel = self.session(target, askpass).await?;
+            let (rx, tx) = channel.into_parts();
+            let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+            let feed = async {
+                for chunk in input.chunks(64 * 1024) {
+                    if chunk_tx.send(chunk.to_vec()).await.is_err() {
                         break;
                     }
-                    _ => {}
                 }
-            }
-            ran.output = String::from_utf8_lossy(&written).into_owned();
-            ran.stdout = String::from_utf8_lossy(&stdout).into_owned();
-            ran.stderr = String::from_utf8_lossy(&stderr).into_owned();
-            Ok(ran)
+                drop(chunk_tx);
+            };
+            let target_display = target.display();
+            // Whole-reply callers (such as carried-settings comparisons) can
+            // legitimately return more than `PUT_STREAM_MAX_OUTPUT` (1 MiB).
+            let run = put_stream_driver(&target_display, rx, tx, command, chunk_rx, PUT_STREAM_SEND_TIMEOUT, PUT_STREAM_DRAIN_IDLE_TIMEOUT, PUT_STREAM_EXIT_DRAIN_TIMEOUT, None, None);
+            let ((), res) = tokio::join!(feed, run);
+            res
         };
         tokio::time::timeout(within, sent).await.map_err(|_| RexError::Timeout)?
     }
@@ -1854,6 +1907,18 @@ impl SshSessionPool {
         Ok(channel.into_exec_stream(kind))
     }
 
+    /// Run a one-shot command on the host and stream its raw stdout chunks
+    /// (for `olo-rex-link fs read`, where zero stdout bytes is valid when exit
+    /// status is 0). Checks the exit status on close, collects stderr for
+    /// error messages, and closes the SSH channel immediately if dropped early.
+    pub async fn exec_stdout(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str) -> Result<ExecStdout, RexError> {
+        let mut channel = self.session(target, askpass).await?;
+        channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, &format!("exec on {} refused", target.display())).await?;
+        let _ = channel.eof().await;
+        let (rx, tx) = channel.into_parts();
+        Ok(ExecStdout { target: target.display(), rx, tx, exit_status: None, exit_signal: None, stderr: Vec::new(), done: false })
+    }
+
     /// Run a command on the host inside a remote PTY (`xterm-256color`, `cols × rows`):
     /// used for read-only `tmux attach -r -f ignore-size` viewers of nested subagents.
     /// Waits for the server's PTY allocation reply before issuing `exec`, and
@@ -1877,66 +1942,30 @@ impl SshSessionPool {
     /// [`Self::put`] for input too large to hold at once (a week of an
     /// agent's sessions can be gigabytes): `chunks` given to the command
     /// on its input as they come, its input ending when they end; what
-    /// it writes back whole, with its exit status. Let go of before it
-    /// ends (Stop), its channel is closed and the command ends on the
-    /// host. A link that takes nothing for a minute is given up on.
-    pub async fn put_stream(
+    /// it writes back whole (up to 1 MiB), with its exit status. Let go of
+    /// before it ends (Stop), its channel is closed and the command ends on
+    /// the host. Drains `channel.wait()` concurrently while writing so an
+    /// early remote exit returns the helper's reply immediately instead of
+    /// stalling for 60 s once the channel window fills.
+    pub async fn put_stream(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, chunks: tokio::sync::mpsc::Receiver<Vec<u8>>) -> Result<crate::provision::Ran, RexError> {
+        self.put_stream_tracked(target, askpass, command, chunks, None).await
+    }
+
+    /// Like [`Self::put_stream`], flipping `eof_sent` to `true` ONLY after
+    /// `channel.eof().await` succeeds on the SSH channel (the exact remote
+    /// commit boundary for one-shot helpers like `olo-rex-link fs write --len`).
+    pub async fn put_stream_tracked(
         &self,
         target: &SshTarget,
         askpass: Option<Arc<dyn SshAskpass>>,
         command: &str,
-        mut chunks: tokio::sync::mpsc::Receiver<Vec<u8>>,
+        chunks: tokio::sync::mpsc::Receiver<Vec<u8>>,
+        eof_sent: Option<Arc<std::sync::atomic::AtomicBool>>,
     ) -> Result<crate::provision::Ran, RexError> {
-        use russh::ChannelMsg;
-        let mut channel = self.session(target, askpass).await?;
-        channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, &format!("exec on {} refused", target.display())).await?;
-        let mut refused = None;
-        while let Some(chunk) = chunks.recv().await {
-            match tokio::time::timeout(Duration::from_secs(60), channel.data(&chunk[..])).await {
-                Ok(Ok(())) => {}
-                // (The command ended, or the link went: what it said is
-                // read below.)
-                Ok(Err(e)) => {
-                    refused = Some(format!("sending to {} failed: {e}", target.display()));
-                    break;
-                }
-                Err(_) => return Err(RexError::Timeout),
-            }
-        }
-        if refused.is_none() {
-            channel.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
-        }
-        let mut ran = crate::provision::Ran::default();
-        let mut written = Vec::new();
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        loop {
-            match tokio::time::timeout(Duration::from_secs(120), channel.wait()).await {
-                Ok(Some(ChannelMsg::Data { data })) => {
-                    written.extend_from_slice(&data);
-                    stdout.extend_from_slice(&data);
-                }
-                Ok(Some(ChannelMsg::ExtendedData { data, .. })) => {
-                    written.extend_from_slice(&data);
-                    stderr.extend_from_slice(&data);
-                }
-                Ok(Some(ChannelMsg::ExitStatus { exit_status })) => ran.status = Some(exit_status),
-                Ok(Some(ChannelMsg::Close)) | Ok(None) => {
-                    channel.mark_peer_closed();
-                    break;
-                }
-                Ok(Some(_)) => {}
-                Err(_) => return Err(RexError::Timeout),
-            }
-        }
-        ran.output = String::from_utf8_lossy(&written).into_owned();
-        ran.stdout = String::from_utf8_lossy(&stdout).into_owned();
-        ran.stderr = String::from_utf8_lossy(&stderr).into_owned();
-        if let Some(refused) = refused.filter(|_| ran.output.trim().is_empty()) {
-            ran.output = refused;
-            ran.status.get_or_insert(1);
-        }
-        Ok(ran)
+        let channel = self.session(target, askpass).await?;
+        let (rx, tx) = channel.into_parts();
+        put_stream_driver(&target.display(), rx, tx, command, chunks, PUT_STREAM_SEND_TIMEOUT, PUT_STREAM_DRAIN_IDLE_TIMEOUT, PUT_STREAM_EXIT_DRAIN_TIMEOUT, Some(PUT_STREAM_MAX_OUTPUT), eof_sent)
+            .await
     }
 
     async fn channel(&self, pooled: &PooledHandle, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, helper: Option<&str>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
@@ -1981,6 +2010,7 @@ impl SshSessionPool {
             }
         }
         self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
+        self.keys.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
         let mut handles = Vec::new();
         if let Some(tp) = self.targets.lock().unwrap_or_else(|e| e.into_inner()).remove(target) {
             let _ = tp.closed_tx.send(true);
@@ -2260,6 +2290,10 @@ impl GuardedChannel {
         tokio::time::timeout(within, fut).await.map_err(|_| RexError::Timeout)?
     }
 
+    fn into_parts(self) -> (GuardedChannelRx, ChannelDropGuard) {
+        (GuardedChannelRx { read: self.read, prefetched: self.prefetched }, self.guard)
+    }
+
     fn into_exec_stream(self, kind: ExecKind) -> Pin<Box<dyn AsyncReadWrite + Send>> {
         let shared = self.guard.shared.clone();
         let writer = ExecWriter { inner: self.write_half().make_writer(), shared: shared.clone() };
@@ -2278,6 +2312,392 @@ impl GuardedChannel {
             _guard: self.guard,
         };
         Box::pin(tokio::io::join(reader, writer))
+    }
+}
+
+struct GuardedChannelRx {
+    read: russh::ChannelReadHalf,
+    prefetched: VecDeque<russh::ChannelMsg>,
+}
+
+const PUT_STREAM_SEND_TIMEOUT: Duration = Duration::from_secs(60);
+const PUT_STREAM_DRAIN_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+const PUT_STREAM_EXIT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+const PUT_STREAM_MAX_OUTPUT: usize = 1024 * 1024;
+const EXEC_STDOUT_MAX_STDERR: usize = 64 * 1024;
+
+trait ChannelRx {
+    async fn wait(&mut self) -> Option<russh::ChannelMsg>;
+}
+
+trait ChannelTx {
+    async fn exec(&self, command: &str) -> Result<(), String>;
+    async fn data(&self, chunk: &[u8]) -> Result<(), String>;
+    async fn eof(&self) -> Result<(), String>;
+    fn disarm_close(&mut self);
+}
+
+impl ChannelRx for GuardedChannelRx {
+    async fn wait(&mut self) -> Option<russh::ChannelMsg> {
+        if let Some(msg) = self.prefetched.pop_front() {
+            return Some(msg);
+        }
+        self.read.wait().await
+    }
+}
+
+impl ChannelTx for ChannelDropGuard {
+    async fn exec(&self, command: &str) -> Result<(), String> {
+        let Some(writer) = self.write_half.as_ref() else {
+            return Err("channel closed".to_owned());
+        };
+        writer.exec(true, command).await.map_err(|e| e.to_string())
+    }
+
+    async fn data(&self, chunk: &[u8]) -> Result<(), String> {
+        let Some(writer) = self.write_half.as_ref() else {
+            return Err("channel closed".to_owned());
+        };
+        writer.data(chunk).await.map_err(|e| e.to_string())
+    }
+
+    async fn eof(&self) -> Result<(), String> {
+        let Some(writer) = self.write_half.as_ref() else {
+            return Err("channel closed".to_owned());
+        };
+        self.shared.shutdown_started.store(true, Ordering::Release);
+        let res = writer.eof().await.map_err(|e| e.to_string());
+        if res.is_ok() {
+            self.shared.eof_sent.store(true, Ordering::Release);
+        }
+        res
+    }
+
+    fn disarm_close(&mut self) {
+        self.shared.mark_peer_closed();
+    }
+}
+
+enum PutMsgAction {
+    Continue,
+    Exited,
+    ClosedClean,
+    TransportLost,
+}
+
+fn handle_put_msg(
+    target_display: &str,
+    msg: Option<russh::ChannelMsg>,
+    written: &mut Vec<u8>,
+    max_output: Option<usize>,
+    ran: &mut crate::provision::Ran,
+    refused: &mut Option<String>,
+) -> Result<(PutMsgAction, bool), RexError> {
+    use russh::ChannelMsg;
+    match msg {
+        Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+            if let Some(limit) = max_output
+                && written.len().saturating_add(data.len()) > limit
+            {
+                return Err(RexError::Ssh(format!("output from {target_display} exceeded {limit} byte limit")));
+            }
+            written.extend_from_slice(&data);
+            Ok((PutMsgAction::Continue, true))
+        }
+        Some(ChannelMsg::ExitStatus { exit_status }) => {
+            ran.status = Some(exit_status);
+            Ok((PutMsgAction::Exited, true))
+        }
+        Some(ChannelMsg::ExitSignal { signal_name, .. }) => {
+            ran.status.get_or_insert(128);
+            refused.get_or_insert_with(|| format!("remote command on {target_display} terminated by signal {signal_name:?}"));
+            Ok((PutMsgAction::Exited, true))
+        }
+        Some(ChannelMsg::Failure) => Err(RexError::Ssh(format!("exec on {target_display} was refused"))),
+        Some(ChannelMsg::Close) => Ok((PutMsgAction::ClosedClean, true)),
+        None => {
+            refused.get_or_insert_with(|| format!("connection to {target_display} closed unexpectedly"));
+            Ok((PutMsgAction::TransportLost, false))
+        }
+        Some(ChannelMsg::Success | ChannelMsg::Eof) => Ok((PutMsgAction::Continue, true)),
+        Some(_) => Ok((PutMsgAction::Continue, false)),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn put_stream_driver<R: ChannelRx, W: ChannelTx>(
+    target_display: &str,
+    mut rx: R,
+    mut tx: W,
+    command: &str,
+    mut chunks: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    send_timeout: Duration,
+    drain_idle_timeout: Duration,
+    exit_drain_timeout: Duration,
+    max_output: Option<usize>,
+    eof_sent: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<crate::provision::Ran, RexError> {
+    tx.exec(command).await.map_err(|e| RexError::Ssh(format!("exec on {target_display} failed: {e}")))?;
+
+    let mut ran = crate::provision::Ran::default();
+    let mut written = Vec::new();
+    let mut refused = None;
+    let mut remote_closed = false;
+    let mut closed_cleanly = false;
+    let mut transport_lost = false;
+    let mut remote_exited = false;
+
+    'send: loop {
+        let chunk = tokio::select! {
+            c = chunks.recv() => match c {
+                Some(chunk) => chunk,
+                None => break 'send,
+            },
+            msg = rx.wait() => {
+                let (action, _) = handle_put_msg(target_display, msg, &mut written, max_output, &mut ran, &mut refused)?;
+                match action {
+                    PutMsgAction::Continue => continue 'send,
+                    PutMsgAction::Exited => {
+                        remote_exited = true;
+                        break 'send;
+                    }
+                    PutMsgAction::ClosedClean => {
+                        remote_closed = true;
+                        closed_cleanly = true;
+                        break 'send;
+                    }
+                    PutMsgAction::TransportLost => {
+                        remote_closed = true;
+                        transport_lost = true;
+                        break 'send;
+                    }
+                }
+            }
+        };
+        let send = tx.data(&chunk[..]);
+        tokio::pin!(send);
+        let deadline = tokio::time::sleep(send_timeout);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                res = &mut send => match res {
+                    Ok(()) => break,
+                    Err(e) => {
+                        refused = Some(format!("sending to {target_display} failed: {e}"));
+                        break 'send;
+                    }
+                },
+                msg = rx.wait() => {
+                    let (action, _) = handle_put_msg(target_display, msg, &mut written, max_output, &mut ran, &mut refused)?;
+                    match action {
+                        PutMsgAction::Continue => {}
+                        PutMsgAction::Exited => {
+                            remote_exited = true;
+                            break 'send;
+                        }
+                        PutMsgAction::ClosedClean => {
+                            remote_closed = true;
+                            closed_cleanly = true;
+                            break 'send;
+                        }
+                        PutMsgAction::TransportLost => {
+                            remote_closed = true;
+                            transport_lost = true;
+                            break 'send;
+                        }
+                    }
+                }
+                () = &mut deadline => return Err(RexError::Timeout),
+            }
+        }
+    }
+
+    if !remote_closed && !remote_exited && refused.is_none() {
+        let eof = tx.eof();
+        tokio::pin!(eof);
+        let deadline = tokio::time::sleep(send_timeout);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                res = &mut eof => match res {
+                    Ok(()) => {
+                        if let Some(flag) = &eof_sent {
+                            flag.store(true, std::sync::atomic::Ordering::Release);
+                        }
+                        break;
+                    }
+                    Err(e) => {
+                        refused = Some(format!("sending to {target_display} failed: {e}"));
+                        break;
+                    }
+                },
+                msg = rx.wait() => {
+                    let (action, _) = handle_put_msg(target_display, msg, &mut written, max_output, &mut ran, &mut refused)?;
+                    match action {
+                        PutMsgAction::Continue => {}
+                        PutMsgAction::Exited => {
+                            remote_exited = true;
+                            break;
+                        }
+                        PutMsgAction::ClosedClean => {
+                            remote_closed = true;
+                            closed_cleanly = true;
+                            break;
+                        }
+                        PutMsgAction::TransportLost => {
+                            remote_closed = true;
+                            transport_lost = true;
+                            break;
+                        }
+                    }
+                }
+                () = &mut deadline => return Err(RexError::Timeout),
+            }
+        }
+    }
+
+    if !remote_closed {
+        let mut post_exit_deadline = remote_exited.then(|| tokio::time::Instant::now() + exit_drain_timeout);
+        let initial_deadline = post_exit_deadline.unwrap_or_else(|| tokio::time::Instant::now() + drain_idle_timeout);
+        let deadline = tokio::time::sleep_until(initial_deadline);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                msg = rx.wait() => {
+                    let (action, progress) = handle_put_msg(target_display, msg, &mut written, max_output, &mut ran, &mut refused)?;
+                    match action {
+                        PutMsgAction::ClosedClean => {
+                            closed_cleanly = true;
+                            break;
+                        }
+                        PutMsgAction::TransportLost => {
+                            transport_lost = true;
+                            break;
+                        }
+                        PutMsgAction::Exited => {
+                            remote_exited = true;
+                            // Set ONE fixed post-exit drain deadline on the first terminal
+                            // exit message; never renew it on subsequent descendant output.
+                            if post_exit_deadline.is_none() {
+                                let fixed = tokio::time::Instant::now() + exit_drain_timeout;
+                                post_exit_deadline = Some(fixed);
+                                deadline.as_mut().reset(fixed);
+                            }
+                        }
+                        PutMsgAction::Continue if progress && !remote_exited => {
+                            deadline.as_mut().reset(tokio::time::Instant::now() + drain_idle_timeout);
+                        }
+                        PutMsgAction::Continue => {}
+                    }
+                }
+                () = &mut deadline => {
+                    if remote_exited {
+                        // Command already exited and reported status; do not wait
+                        // indefinitely for a lingering Close and leave the close
+                        // guard armed so the channel closes on drop.
+                        break;
+                    }
+                    return Err(RexError::Timeout);
+                }
+            }
+        }
+    }
+
+    if closed_cleanly {
+        tx.disarm_close();
+    }
+    ran.output = String::from_utf8_lossy(&written).into_owned();
+    if transport_lost && !(ran.status.is_some_and(|s| s != 0) && !ran.output.trim().is_empty()) {
+        return Err(RexError::Ssh(refused.unwrap_or_else(|| format!("connection to {target_display} closed unexpectedly"))));
+    }
+    if let Some(refused) = refused.filter(|_| ran.output.trim().is_empty()) {
+        ran.output = refused;
+        ran.status.get_or_insert(1);
+    }
+    Ok(ran)
+}
+
+/// Streaming stdout reader for one-shot remote commands (such as `olo-rex-link
+/// fs read`) where 0 bytes of stdout is a valid result when exit status is 0.
+pub struct ExecStdout {
+    target: String,
+    rx: GuardedChannelRx,
+    tx: ChannelDropGuard,
+    exit_status: Option<u32>,
+    exit_signal: Option<String>,
+    stderr: Vec<u8>,
+    done: bool,
+}
+
+impl ExecStdout {
+    /// Read the next non-empty stdout chunk, `Ok(None)` when the command exited
+    /// cleanly with status 0 and closed its channel, or `Err` on non-zero exit,
+    /// refused exec, or unexpected transport disconnect.
+    pub async fn next_chunk(&mut self) -> Result<Option<bytes::Bytes>, RexError> {
+        exec_stdout_next(&self.target, &mut self.rx, &mut self.tx, &mut self.exit_status, &mut self.exit_signal, &mut self.stderr, &mut self.done).await
+    }
+}
+
+async fn exec_stdout_next<R: ChannelRx, W: ChannelTx>(
+    target: &str,
+    rx: &mut R,
+    tx: &mut W,
+    exit_status: &mut Option<u32>,
+    exit_signal: &mut Option<String>,
+    stderr: &mut Vec<u8>,
+    done: &mut bool,
+) -> Result<Option<bytes::Bytes>, RexError> {
+    use russh::ChannelMsg;
+    if *done {
+        return Ok(None);
+    }
+    loop {
+        match rx.wait().await {
+            Some(ChannelMsg::Data { data }) => {
+                if !data.is_empty() {
+                    return Ok(Some(data));
+                }
+            }
+            Some(ChannelMsg::ExtendedData { data, .. }) => {
+                let room = EXEC_STDOUT_MAX_STDERR.saturating_sub(stderr.len());
+                if room > 0 {
+                    stderr.extend_from_slice(&data[..data.len().min(room)]);
+                }
+            }
+            Some(ChannelMsg::ExitStatus { exit_status: code }) => {
+                *exit_status = Some(code);
+            }
+            Some(ChannelMsg::ExitSignal { signal_name, .. }) => {
+                *exit_signal = Some(format!("{signal_name:?}"));
+            }
+            Some(ChannelMsg::Failure) => {
+                *done = true;
+                return Err(RexError::Ssh(format!("exec on {target} was refused")));
+            }
+            Some(ChannelMsg::Close) => {
+                *done = true;
+                tx.disarm_close();
+                if *exit_status == Some(0) {
+                    return Ok(None);
+                }
+                let err_text = String::from_utf8_lossy(stderr).trim().to_owned();
+                if !err_text.is_empty() {
+                    return Err(RexError::Ssh(err_text));
+                }
+                if let Some(sig) = exit_signal.as_deref() {
+                    return Err(RexError::Ssh(format!("remote command on {target} terminated by signal {sig}")));
+                }
+                if let Some(code) = *exit_status {
+                    return Err(RexError::Ssh(format!("remote command on {target} exited with status {code}")));
+                }
+                return Err(RexError::Ssh(format!("remote command on {target} closed without exit status")));
+            }
+            None => {
+                *done = true;
+                return Err(RexError::Ssh(format!("connection to {target} closed unexpectedly")));
+            }
+            Some(_) => {}
+        }
     }
 }
 
@@ -2768,15 +3188,19 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
 
     let (waiting_tx, mut waiting) = tokio::sync::watch::channel(false);
     let askpass = if silent { None } else { askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() }) };
+    // Keep Verified identity private to this attempt until user authentication
+    // actually succeeds so failed auth attempts never poison the pool's cell.
+    let attempt_verified: KeyCell = Arc::new(std::sync::Mutex::new(None));
     let mut handler = SshClientHandler {
         host: resolved.hostname.clone(),
         port: resolved.port,
+        user: resolved.user.clone(),
         askpass: askpass.clone(),
         round_trip: None,
         came: (std::time::Instant::now(), 0),
         fixed: window_knob.is_some(),
         agent,
-        verified: verified.clone(),
+        verified: attempt_verified.clone(),
         expected_key: expected_key.clone(),
     };
     // (A key nobody could be asked about is its own error: what to do
@@ -2836,8 +3260,15 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
     let session = network_timeout(connect_limit, &mut waiting, connection).await?;
     let handle = network_timeout(auth_limit, &mut waiting, authenticate(session, target, &resolved, askpass)).await?;
     let peer_addr = *connected_addr.lock().unwrap_or_else(|e| e.into_inner());
-    let verified_key = expected_key.or_else(|| verified.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|v| v.key.clone()));
-    Ok(PooledHandle { handle, runtime: tokio::runtime::Handle::current(), pinned: PinnedEndpoint { resolved, peer_addr, verified_key, generation } })
+    // Bind and publish Verified identity ONLY after user authentication succeeds.
+    let handle_verified = attempt_verified
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .or_else(|| expected_key.clone().map(|key| Verified { hostname: resolved.hostname.clone(), port: resolved.port, user: resolved.user.clone(), key }));
+    *verified.lock().unwrap_or_else(|e| e.into_inner()) = handle_verified.clone();
+    let verified_key = expected_key.or_else(|| handle_verified.as_ref().map(|v| v.key.clone()));
+    Ok(PooledHandle { handle, runtime: tokio::runtime::Handle::current(), pinned: PinnedEndpoint { resolved, peer_addr, verified_key, generation }, verified: handle_verified })
 }
 
 fn expand_proxy(command: &str, resolved: &ResolvedSshConfig) -> Result<String, RexError> {
@@ -4317,6 +4748,7 @@ mod round3_mock_server_tests {
         let handler = SshClientHandler {
             host: "127.0.0.1".into(),
             port: addr.port(),
+            user: "tester".into(),
             askpass: None,
             round_trip: Some(Duration::from_millis(1)),
             came: (std::time::Instant::now(), 0),
@@ -4344,9 +4776,10 @@ mod round3_mock_server_tests {
                     compression: None,
                 },
                 peer_addr: Some(addr),
-                verified_key: Some(pub_openssh),
+                verified_key: Some(pub_openssh.clone()),
                 generation: tp.generation,
             },
+            verified: Some(Verified { hostname: "127.0.0.1".into(), port: addr.port(), user: "tester".into(), key: pub_openssh }),
         });
         tp.state.lock().unwrap().primary = Some(pooled.clone());
         (pooled, srv_task)
@@ -4941,5 +5374,326 @@ mod round3_mock_server_tests {
         assert_eq!(run(None, &["list"]), (0, "helponly:screen list".to_owned()));
         assert_eq!(run(None, &["history", "qa", "--wire"]), (0, "helponly:screen history qa --wire".to_owned()));
         assert_eq!(run(None, &["follow"]), (69, String::new()));
+    }
+
+    struct MockChannelRx(tokio::sync::mpsc::UnboundedReceiver<russh::ChannelMsg>);
+    impl ChannelRx for MockChannelRx {
+        async fn wait(&mut self) -> Option<russh::ChannelMsg> {
+            self.0.recv().await
+        }
+    }
+
+    struct MockChannelTx {
+        closed: Arc<std::sync::atomic::AtomicBool>,
+        armed: bool,
+        block_exec: bool,
+        block_data: bool,
+        eof_err: bool,
+        eof_notify: Option<Arc<tokio::sync::Notify>>,
+    }
+    impl Drop for MockChannelTx {
+        fn drop(&mut self) {
+            if self.armed {
+                self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+    }
+    impl ChannelTx for MockChannelTx {
+        async fn exec(&self, _command: &str) -> Result<(), String> {
+            if self.block_exec {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        }
+        async fn data(&self, _chunk: &[u8]) -> Result<(), String> {
+            if self.block_data {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        }
+        async fn eof(&self) -> Result<(), String> {
+            if let Some(n) = &self.eof_notify {
+                n.notify_one();
+            }
+            if self.eof_err {
+                return Err("eof failed".into());
+            }
+            Ok(())
+        }
+        fn disarm_close(&mut self) {
+            self.armed = false;
+        }
+    }
+
+    #[tokio::test]
+    async fn put_stream_early_exit_with_full_window_and_delayed_close_returns_helper_error() {
+        use russh::ChannelMsg;
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(4);
+        chunk_tx.send(vec![b'x'; 64 * 1024]).await.unwrap();
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let eof_sent = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx = MockChannelTx { closed: closed.clone(), armed: true, block_exec: false, block_data: true, eof_err: false, eof_notify: None };
+
+        // Simulate helper rejecting early with JSON error + ExitStatus(1), and
+        // delaying Close forever (e.g. lingering child holds stdout).
+        msg_tx.send(ChannelMsg::Data { data: bytes::Bytes::from_static(b"{\"ok\":false,\"error\":\"disk full\"}\n") }).unwrap();
+        msg_tx.send(ChannelMsg::ExitStatus { exit_status: 1 }).unwrap();
+
+        let ran = put_stream_driver(
+            "ssh://test",
+            MockChannelRx(msg_rx),
+            tx,
+            "fs write",
+            chunk_rx,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            Duration::from_millis(50),
+            Some(PUT_STREAM_MAX_OUTPUT),
+            Some(eof_sent.clone()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ran.status, Some(1));
+        assert!(ran.output.contains("disk full"), "got: {}", ran.output);
+        assert!(closed.load(std::sync::atomic::Ordering::SeqCst), "delayed-close channel must be closed on drop");
+        assert!(!eof_sent.load(std::sync::atomic::Ordering::SeqCst), "eof_sent must remain false when channel exited before tx.eof()");
+    }
+
+    #[tokio::test]
+    async fn put_stream_refused_exec_fails_immediately_and_closes_channel() {
+        use russh::ChannelMsg;
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(4);
+        chunk_tx.send(vec![b'a'; 1024]).await.unwrap();
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx = MockChannelTx { closed: closed.clone(), armed: true, block_exec: false, block_data: true, eof_err: false, eof_notify: None };
+
+        msg_tx.send(ChannelMsg::Failure).unwrap();
+        let began = std::time::Instant::now();
+        let err = put_stream_driver(
+            "ssh://test",
+            MockChannelRx(msg_rx),
+            tx,
+            "fs write",
+            chunk_rx,
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+            Duration::from_millis(50),
+            Some(PUT_STREAM_MAX_OUTPUT),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(began.elapsed() < Duration::from_secs(2), "must fail immediately on ChannelMsg::Failure");
+        assert!(err.to_string().contains("refused"), "{err}");
+        assert!(closed.load(std::sync::atomic::Ordering::SeqCst), "refused exec must close channel on drop");
+    }
+
+    #[tokio::test]
+    async fn put_stream_unexpected_disconnect_errors_instead_of_empty_ok() {
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(4);
+        chunk_tx.send(vec![b'a'; 1024]).await.unwrap();
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx = MockChannelTx { closed: closed.clone(), armed: true, block_exec: false, block_data: true, eof_err: false, eof_notify: None };
+
+        // Drop sender without ChannelMsg::Close (unexpected transport drop).
+        drop(msg_tx);
+        let err = put_stream_driver(
+            "ssh://test",
+            MockChannelRx(msg_rx),
+            tx,
+            "fs write",
+            chunk_rx,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            Duration::from_millis(50),
+            Some(PUT_STREAM_MAX_OUTPUT),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("closed unexpectedly"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn put_stream_enforces_combined_stdout_stderr_cap_and_allows_unbounded_put() {
+        use russh::ChannelMsg;
+        // 1. Just at cap succeeds and sets eof_sent=true after tx.eof() succeeds.
+        //    Wait for `eof_notify` before replying ExitStatus+Close, matching a real remote helper.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        drop(_chunk_tx);
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let eof_sent = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let eof_notify = Arc::new(tokio::sync::Notify::new());
+        let eof_wait = eof_notify.clone();
+        let tx = MockChannelTx { closed: closed.clone(), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: Some(eof_notify) };
+        tokio::spawn(async move {
+            eof_wait.notified().await;
+            let _ = msg_tx.send(ChannelMsg::Data { data: bytes::Bytes::from(vec![b'a'; 60]) });
+            let _ = msg_tx.send(ChannelMsg::ExtendedData { data: bytes::Bytes::from(vec![b'b'; 40]), ext: 1 });
+            let _ = msg_tx.send(ChannelMsg::ExitStatus { exit_status: 0 });
+            let _ = msg_tx.send(ChannelMsg::Close);
+        });
+        let ran =
+            put_stream_driver("ssh://test", MockChannelRx(msg_rx), tx, "cmd", chunk_rx, Duration::from_secs(2), Duration::from_secs(2), Duration::from_millis(50), Some(100), Some(eof_sent.clone()))
+                .await
+                .unwrap();
+        assert_eq!(ran.output.len(), 100);
+        assert!(!closed.load(std::sync::atomic::Ordering::SeqCst), "clean close disarms guard");
+        assert!(eof_sent.load(std::sync::atomic::Ordering::SeqCst), "eof_sent must be true after tx.eof() succeeds");
+
+        // 1b. Failed tx.eof() must NOT set eof_sent.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        drop(_chunk_tx);
+        let closed_eof = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let eof_sent_fail = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx_eof = MockChannelTx { closed: closed_eof.clone(), armed: true, block_exec: false, block_data: false, eof_err: true, eof_notify: None };
+        msg_tx.send(ChannelMsg::ExitStatus { exit_status: 1 }).unwrap();
+        msg_tx.send(ChannelMsg::Close).unwrap();
+        let _ = put_stream_driver(
+            "ssh://test",
+            MockChannelRx(msg_rx),
+            tx_eof,
+            "cmd",
+            chunk_rx,
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+            Duration::from_millis(50),
+            Some(100),
+            Some(eof_sent_fail.clone()),
+        )
+        .await;
+        assert!(!eof_sent_fail.load(std::sync::atomic::Ordering::SeqCst), "eof_sent must remain false when tx.eof() fails");
+
+        // 2. 1 byte over cap fails and triggers close guard.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        drop(_chunk_tx);
+        let closed2 = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx2 = MockChannelTx { closed: closed2.clone(), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        msg_tx.send(ChannelMsg::Data { data: bytes::Bytes::from(vec![b'a'; 60]) }).unwrap();
+        msg_tx.send(ChannelMsg::ExtendedData { data: bytes::Bytes::from(vec![b'b'; 41]), ext: 1 }).unwrap();
+        let err =
+            put_stream_driver("ssh://test", MockChannelRx(msg_rx), tx2, "cmd", chunk_rx, Duration::from_secs(2), Duration::from_secs(2), Duration::from_millis(50), Some(100), None).await.unwrap_err();
+        assert!(err.to_string().contains("exceeded 100 byte limit"), "{err}");
+        assert!(closed2.load(std::sync::atomic::Ordering::SeqCst), "overflow must close channel");
+
+        // 3. Unbounded `put` (max_output = None) accepts > 1 MiB replies (e.g. carried-settings comparisons).
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        drop(_chunk_tx);
+        let closed3 = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx3 = MockChannelTx { closed: closed3.clone(), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        let big = PUT_STREAM_MAX_OUTPUT + 64 * 1024;
+        msg_tx.send(ChannelMsg::Data { data: bytes::Bytes::from(vec![b'z'; big]) }).unwrap();
+        msg_tx.send(ChannelMsg::ExitStatus { exit_status: 0 }).unwrap();
+        msg_tx.send(ChannelMsg::Close).unwrap();
+        let ran = put_stream_driver("ssh://test", MockChannelRx(msg_rx), tx3, "cmd", chunk_rx, Duration::from_secs(2), Duration::from_secs(2), Duration::from_millis(50), None, None).await.unwrap();
+        assert_eq!(ran.output.len(), big);
+        assert!(!closed3.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn put_stream_drain_renews_pre_exit_only_and_fixes_post_exit_deadline() {
+        use russh::ChannelMsg;
+        // 1. Pre-exit drain receives 5 progress lines 60 ms apart (300 ms total) with a 180 ms
+        //    idle timeout: total > idle timeout proves pre-exit renewal actually fires, while
+        //    60 ms << 180 ms gives 3x scheduling headroom.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        drop(_chunk_tx);
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx = MockChannelTx { closed: closed.clone(), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        tokio::spawn(async move {
+            for i in 0..5 {
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                let _ = msg_tx.send(ChannelMsg::Data { data: bytes::Bytes::from(format!("step {i}\n")) });
+            }
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            let _ = msg_tx.send(ChannelMsg::ExitStatus { exit_status: 0 });
+            let _ = msg_tx.send(ChannelMsg::Close);
+        });
+        let ran =
+            put_stream_driver("ssh://test", MockChannelRx(msg_rx), tx, "cmd", chunk_rx, Duration::from_secs(2), Duration::from_millis(180), Duration::from_secs(2), Some(1024), None).await.unwrap();
+        assert_eq!(ran.status, Some(0));
+        assert!(ran.output.contains("step 4"), "{:?}", ran.output);
+
+        // 2. Post-exit drain deadline is FIXED (120 ms): a lingering descendant writing
+        //    every 40 ms for 800 ms must NOT keep renewing past the 120 ms post-exit deadline.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        drop(_chunk_tx);
+        let closed_post = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx_post = MockChannelTx { closed: closed_post.clone(), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        tokio::spawn(async move {
+            let _ = msg_tx.send(ChannelMsg::ExitStatus { exit_status: 0 });
+            for i in 0..20 {
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                if msg_tx.send(ChannelMsg::Data { data: bytes::Bytes::from(format!("child {i}\n")) }).is_err() {
+                    break;
+                }
+            }
+        });
+        let started = tokio::time::Instant::now();
+        let ran_post = put_stream_driver("ssh://test", MockChannelRx(msg_rx), tx_post, "cmd", chunk_rx, Duration::from_secs(2), Duration::from_secs(10), Duration::from_millis(120), Some(4096), None)
+            .await
+            .unwrap();
+        let elapsed = started.elapsed();
+        assert_eq!(ran_post.status, Some(0));
+        assert!(elapsed < Duration::from_millis(550), "post-exit drain renewed past fixed 120 ms deadline: {elapsed:?}");
+        assert!(closed_post.load(std::sync::atomic::Ordering::SeqCst), "timed-out post-exit channel must close on drop");
+
+        // 3. Dropping put_stream while exec().await is pending must close the channel immediately.
+        let (_msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(1);
+        let closed_exec = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let tx_exec = MockChannelTx { closed: closed_exec.clone(), armed: true, block_exec: true, block_data: false, eof_err: false, eof_notify: None };
+        let res = tokio::time::timeout(
+            Duration::from_millis(20),
+            put_stream_driver("ssh://test", MockChannelRx(msg_rx), tx_exec, "cmd", chunk_rx, Duration::from_secs(2), Duration::from_secs(2), Duration::from_millis(50), Some(1024), None),
+        )
+        .await;
+        assert!(res.is_err(), "blocked exec must time out");
+        assert!(closed_exec.load(std::sync::atomic::Ordering::SeqCst), "guard armed before exec must close channel on cancellation");
+    }
+
+    #[tokio::test]
+    async fn exec_stdout_allows_empty_zero_exit_and_rejects_nonzero_or_disconnect() {
+        use russh::ChannelMsg;
+        // 1. Empty file / `--max 0`: ExitStatus(0) + Close with zero Data yields Ok(None).
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        msg_tx.send(ChannelMsg::ExitStatus { exit_status: 0 }).unwrap();
+        msg_tx.send(ChannelMsg::Close).unwrap();
+        let mut rx = MockChannelRx(msg_rx);
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut tx = MockChannelTx { closed: closed.clone(), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        let (mut status, mut sig, mut stderr, mut done) = (None, None, Vec::new(), false);
+        let first = exec_stdout_next("ssh://test", &mut rx, &mut tx, &mut status, &mut sig, &mut stderr, &mut done).await.unwrap();
+        assert!(first.is_none(), "zero-byte exit-0 stream must finish cleanly");
+        assert!(!closed.load(std::sync::atomic::Ordering::SeqCst), "clean close disarms guard");
+
+        // 2. Non-zero exit with stderr surfaces stderr error.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        msg_tx.send(ChannelMsg::ExtendedData { data: bytes::Bytes::from_static(b"permission denied\n"), ext: 1 }).unwrap();
+        msg_tx.send(ChannelMsg::ExitStatus { exit_status: 1 }).unwrap();
+        msg_tx.send(ChannelMsg::Close).unwrap();
+        let mut rx = MockChannelRx(msg_rx);
+        let mut tx = MockChannelTx { closed: Arc::new(std::sync::atomic::AtomicBool::new(false)), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        let (mut status, mut sig, mut stderr, mut done) = (None, None, Vec::new(), false);
+        let err = exec_stdout_next("ssh://test", &mut rx, &mut tx, &mut status, &mut sig, &mut stderr, &mut done).await.unwrap_err();
+        assert!(err.to_string().contains("permission denied"), "{err}");
+
+        // 3. Unexpected disconnect (None without Close) errors.
+        let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+        drop(msg_tx);
+        let mut rx = MockChannelRx(msg_rx);
+        let mut tx = MockChannelTx { closed: Arc::new(std::sync::atomic::AtomicBool::new(false)), armed: true, block_exec: false, block_data: false, eof_err: false, eof_notify: None };
+        let (mut status, mut sig, mut stderr, mut done) = (None, None, Vec::new(), false);
+        let err = exec_stdout_next("ssh://test", &mut rx, &mut tx, &mut status, &mut sig, &mut stderr, &mut done).await.unwrap_err();
+        assert!(err.to_string().contains("closed unexpectedly"), "{err}");
     }
 }

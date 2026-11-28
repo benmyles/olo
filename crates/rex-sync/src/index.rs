@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::chunk::{self, ChunkId, ChunkRef};
 
@@ -252,11 +252,11 @@ pub struct Skipped {
 
 impl Skipped {
     pub fn is_empty(&self) -> bool {
-        self.total() == 0
+        self.unread.count == 0 && self.non_utf8.count == 0 && self.special.count == 0 && self.mounts.count == 0
     }
 
     pub fn total(&self) -> u64 {
-        self.unread.count + self.non_utf8.count + self.special.count + self.mounts.count
+        self.unread.count.saturating_add(self.non_utf8.count).saturating_add(self.special.count).saturating_add(self.mounts.count)
     }
 }
 
@@ -291,7 +291,22 @@ impl Index {
     /// Like [`Index::scan`], calling `on_entry(rel_path, size)` as each regular
     /// file is indexed.
     pub fn scan_with_progress(root: &Path, filter: &Filter, previous: Option<&Index>, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Self> {
-        Self::scan_with_hasher(root, filter, previous, |p, size, buf| fs::File::open(p).and_then(|mut f| chunk::hash_and_chunk_file_in(buf, &mut f, size)), |_, m| m.dev(), on_entry)
+        Self::scan_with_progress_cancel(root, filter, previous, on_entry, None)
+    }
+
+    /// Like [`Index::scan_with_progress`], aborting promptly with
+    /// [`io::ErrorKind::ConnectionAborted`] when `cancel` becomes true while
+    /// preserving sparse hole hashing.
+    pub fn scan_with_progress_cancel(root: &Path, filter: &Filter, previous: Option<&Index>, on_entry: &mut dyn FnMut(&str, u64), cancel: Option<&AtomicBool>) -> io::Result<Self> {
+        Self::scan_with_hasher(
+            root,
+            filter,
+            previous,
+            |p, size, buf| fs::File::open(p).and_then(|mut f| chunk::hash_and_chunk_file_in_cancel(buf, &mut f, size, cancel)),
+            |_, m| m.dev(),
+            on_entry,
+            cancel,
+        )
     }
 
     /// Like [`Index::scan`], opening files through `open` (useful in tests to
@@ -314,6 +329,7 @@ impl Index {
             |p, size, buf| open(p).and_then(|r| if size >= chunk::CHUNK_MIN_SIZE { chunk::hash_and_chunk_in(buf, r) } else { chunk::hash_only_in(buf, r) }),
             dev_of,
             &mut |_, _| {},
+            None,
         )
     }
 
@@ -324,7 +340,11 @@ impl Index {
         mut hash_file: impl FnMut(&Path, u64, &mut Vec<u8>) -> io::Result<chunk::FileDigest>,
         mut dev_of: impl FnMut(&Path, &fs::Metadata) -> u64,
         on_entry: &mut dyn FnMut(&str, u64),
+        cancel: Option<&AtomicBool>,
     ) -> io::Result<Self> {
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+        }
         let mut index = Self::default();
         let mut chunk_buf = Vec::new();
         let mut seen_inodes: HashMap<(u64, u64), String> = HashMap::new();
@@ -335,7 +355,7 @@ impl Index {
             return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
         }
         let root_dev = dev_of(root, &root_meta);
-        scan_dir(root, "", root_dev, filter, previous, &mut hash_file, &mut dev_of, on_entry, &mut chunk_buf, &mut seen_inodes, &mut index)?;
+        scan_dir(root, "", root_dev, filter, previous, &mut hash_file, &mut dev_of, on_entry, &mut chunk_buf, &mut seen_inodes, &mut index, cancel)?;
         Ok(index)
     }
 
@@ -344,7 +364,21 @@ impl Index {
     /// uncached regular files unhashed (their paths returned in the second
     /// value so the sender can hash only files that need comparison or delta
     /// negotiation and stream brand-new files in a single read pass).
+    #[cfg(test)]
     pub(crate) fn scan_stat_with_progress(root: &Path, filter: &Filter, previous: Option<&Index>, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<(Self, HashSet<String>)> {
+        Self::scan_stat_with_progress_cancel(root, filter, previous, on_entry, None)
+    }
+
+    pub(crate) fn scan_stat_with_progress_cancel(
+        root: &Path,
+        filter: &Filter,
+        previous: Option<&Index>,
+        on_entry: &mut dyn FnMut(&str, u64),
+        cancel: Option<&AtomicBool>,
+    ) -> io::Result<(Self, HashSet<String>)> {
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+        }
         let mut index = Self::default();
         let mut unhashed = HashSet::new();
         let mut seen_inodes: HashMap<(u64, u64), String> = HashMap::new();
@@ -353,7 +387,7 @@ impl Index {
             return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
         }
         let root_dev = root_meta.dev();
-        scan_dir_stat(root, "", root_dev, filter, previous, on_entry, &mut seen_inodes, &mut index, &mut unhashed)?;
+        scan_dir_stat(root, "", root_dev, filter, previous, on_entry, &mut seen_inodes, &mut index, &mut unhashed, cancel)?;
         Ok((index, unhashed))
     }
 
@@ -715,7 +749,11 @@ fn scan_dir(
     chunk_buf: &mut Vec<u8>,
     seen_inodes: &mut HashMap<(u64, u64), String>,
     out: &mut Index,
+    cancel: Option<&AtomicBool>,
 ) -> io::Result<()> {
+    if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+    }
     let dir_path = if rel_prefix.is_empty() { root.to_path_buf() } else { root.join(rel_prefix) };
     // (A tree is read while it changes: what goes as it is read was never
     // there to send; what can't be read is said, and the rest goes on.)
@@ -731,18 +769,36 @@ fn scan_dir(
     let mut names: Vec<String> = Vec::new();
     let mut non_utf8_here: Vec<String> = Vec::new();
     for entry in listing {
-        let Ok(entry) = entry else { continue };
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                let key = if rel_prefix.is_empty() { ".".to_owned() } else { rel_prefix.to_owned() };
+                out.unread.entry(key).or_insert_with(|| format!("reading folder: {e}"));
+                continue;
+            }
+        };
         match entry.file_name().into_string() {
             Ok(name) => {
                 if is_part_name(&name) {
+                    let rel = if rel_prefix.is_empty() { name } else { format!("{rel_prefix}/{name}") };
+                    if filter.matches_entry(&rel) {
+                        out.unread.insert(rel, "reserved partial-transfer name".into());
+                    }
                     continue;
                 }
                 names.push(name);
             }
             Err(os_name) => {
-                let lossy = os_name.to_string_lossy();
-                let rel = if rel_prefix.is_empty() { lossy.into_owned() } else { format!("{rel_prefix}/{lossy}") };
-                non_utf8_here.push(rel);
+                if filter.only.is_empty() {
+                    let lossy = os_name.to_string_lossy();
+                    let rel = if rel_prefix.is_empty() { lossy.into_owned() } else { format!("{rel_prefix}/{lossy}") };
+                    if !filter.is_excluded(&rel) {
+                        non_utf8_here.push(rel);
+                    }
+                }
             }
         }
     }
@@ -753,6 +809,9 @@ fn scan_dir(
     names.sort();
 
     for name in names {
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+        }
         let rel = if rel_prefix.is_empty() { name } else { format!("{rel_prefix}/{name}") };
         let full = root.join(&rel);
         let meta = match fs::symlink_metadata(&full) {
@@ -780,7 +839,7 @@ fn scan_dir(
             }
             let mode = final_dir_mode(meta.permissions().mode());
             out.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Dir, size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
-            scan_dir(root, &rel, root_dev, filter, previous, hash_file, dev_of, on_entry, chunk_buf, seen_inodes, out)?;
+            scan_dir(root, &rel, root_dev, filter, previous, hash_file, dev_of, on_entry, chunk_buf, seen_inodes, out, cancel)?;
         } else if ft.is_symlink() {
             if !filter.matches_entry(&rel) {
                 continue;
@@ -829,6 +888,7 @@ fn scan_dir(
             }
             let digest = match hash_file(&full, size, chunk_buf) {
                 Ok(digest) => digest,
+                Err(e) if e.kind() == io::ErrorKind::ConnectionAborted => return Err(e),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(e) => {
                     out.unread.insert(rel, e.to_string());
@@ -859,7 +919,11 @@ fn scan_dir_stat(
     seen_inodes: &mut HashMap<(u64, u64), String>,
     out: &mut Index,
     unhashed: &mut HashSet<String>,
+    cancel: Option<&AtomicBool>,
 ) -> io::Result<()> {
+    if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+    }
     let dir_path = if rel_prefix.is_empty() { root.to_path_buf() } else { root.join(rel_prefix) };
     let listing = match fs::read_dir(&dir_path) {
         Ok(listing) => listing,
@@ -873,18 +937,36 @@ fn scan_dir_stat(
     let mut names: Vec<String> = Vec::new();
     let mut non_utf8_here: Vec<String> = Vec::new();
     for entry in listing {
-        let Ok(entry) = entry else { continue };
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                let key = if rel_prefix.is_empty() { ".".to_owned() } else { rel_prefix.to_owned() };
+                out.unread.entry(key).or_insert_with(|| format!("reading folder: {e}"));
+                continue;
+            }
+        };
         match entry.file_name().into_string() {
             Ok(name) => {
                 if is_part_name(&name) {
+                    let rel = if rel_prefix.is_empty() { name } else { format!("{rel_prefix}/{name}") };
+                    if filter.matches_entry(&rel) {
+                        out.unread.insert(rel, "reserved partial-transfer name".into());
+                    }
                     continue;
                 }
                 names.push(name);
             }
             Err(os_name) => {
-                let lossy = os_name.to_string_lossy();
-                let rel = if rel_prefix.is_empty() { lossy.into_owned() } else { format!("{rel_prefix}/{lossy}") };
-                non_utf8_here.push(rel);
+                if filter.only.is_empty() {
+                    let lossy = os_name.to_string_lossy();
+                    let rel = if rel_prefix.is_empty() { lossy.into_owned() } else { format!("{rel_prefix}/{lossy}") };
+                    if !filter.is_excluded(&rel) {
+                        non_utf8_here.push(rel);
+                    }
+                }
             }
         }
     }
@@ -895,6 +977,9 @@ fn scan_dir_stat(
     names.sort();
 
     for name in names {
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "stopped"));
+        }
         let rel = if rel_prefix.is_empty() { name } else { format!("{rel_prefix}/{name}") };
         let full = root.join(&rel);
         let meta = match fs::symlink_metadata(&full) {
@@ -921,7 +1006,7 @@ fn scan_dir_stat(
             }
             let mode = final_dir_mode(meta.permissions().mode());
             out.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Dir, size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
-            scan_dir_stat(root, &rel, root_dev, filter, previous, on_entry, seen_inodes, out, unhashed)?;
+            scan_dir_stat(root, &rel, root_dev, filter, previous, on_entry, seen_inodes, out, unhashed, cancel)?;
         } else if ft.is_symlink() {
             if !filter.matches_entry(&rel) {
                 continue;
@@ -1271,11 +1356,40 @@ mod tests {
         assert_eq!(idx.entries.len(), 2);
         assert_eq!(idx.entries["a.txt"].kind, EntryKind::File);
         assert_eq!(idx.entries["b.txt"].kind, EntryKind::HardLink("a.txt".into()));
+        // Reserved part names are excluded from entries AND recorded in `unread`
+        // so destructive moves never silently delete them.
+        assert_eq!(idx.unread.len(), 2);
+        assert!(idx.unread.contains_key(&format!("{PART_PREFIX}0123456789abcdef")));
+        assert!(idx.unread.contains_key(&format!("legacy{PART_SUFFIX}")));
+
+        let (lazy_idx, _unhashed) = Index::scan_stat_with_progress(&root, &Filter::all(), None, &mut |_, _| {}).unwrap();
+        assert_eq!(lazy_idx.unread.len(), 2);
 
         let decoded = Index::decode(&idx.encode()).unwrap();
-        assert_eq!(idx, decoded);
+        assert_eq!(idx.entries, decoded.entries);
         assert!(validate_rel_path(&format!("{PART_PREFIX}0123456789abcdef")).is_err());
         assert!(validate_rel_path(&format!("sub/{PART_PREFIX}deadbeef")).is_err());
+
+        // Scoped single-file filter ignores unrelated part files and non-UTF-8 siblings.
+        use std::os::unix::ffi::OsStrExt;
+        let bad_name = std::ffi::OsStr::from_bytes(b"sibling-\xff.txt");
+        fs::write(root.join(bad_name), b"x").unwrap();
+        let scoped_filter = Filter { only: vec!["a.txt".into()], ..Default::default() };
+        let scoped_eager = Index::scan(&root, &scoped_filter, None).unwrap();
+        assert!(scoped_eager.skipped().is_empty(), "scoped eager scan must ignore unrelated siblings: {:?}", scoped_eager.skipped());
+        let (scoped_lazy, _) = Index::scan_stat_with_progress(&root, &scoped_filter, None, &mut |_, _| {}).unwrap();
+        assert!(scoped_lazy.skipped().is_empty(), "scoped lazy scan must ignore unrelated siblings: {:?}", scoped_lazy.skipped());
+
+        // Cancellable scan aborts immediately when cancel flag is set.
+        let cancel = AtomicBool::new(true);
+        let err = Index::scan_with_progress_cancel(&root, &Filter::all(), None, &mut |_, _| {}, Some(&cancel)).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionAborted);
+
+        // Skipped::total saturates instead of overflowing/wrapping to zero.
+        let overflow =
+            Skipped { unread: SkippedKind { count: u64::MAX, paths: vec![] }, non_utf8: SkippedKind { count: 1, paths: vec![] }, special: SkippedKind::default(), mounts: SkippedKind::default() };
+        assert_eq!(overflow.total(), u64::MAX);
+        assert!(!overflow.is_empty());
 
         let _ = fs::remove_dir_all(&root);
     }
