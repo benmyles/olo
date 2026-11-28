@@ -310,14 +310,21 @@ are universal and non-negotiable:
   tool's quirk) goes in docs/AGENT-NOTES.md, in the same commit as the
   work, and what's there is kept current (corrected or removed when it
   stops being true). Never store memories in an agent's own memory
-  outside the repository. **Always disable Claude auto-memory on every
-  Claude launch** (Ben, 2026-11-28): whenever launching any Claude agent
-  (`claude`, `olo agent start claude`, `tools/dev/opus-look`), always
-  pass `--settings '{"autoMemoryEnabled":false}'` (or include
-  `"autoMemoryEnabled": false` in its `--settings` JSON file) and
+  outside the repository. **Always enable auto-approval mode and disable
+  Claude auto-memory on every developer/launcher Claude session** (Ben,
+  2026-11-28): whenever launching a Claude agent (`claude`, `olo agent
+  start claude`, builders via `tools/dev/agents start`,
+  `tools/dev/opus-look`), always pass `--permission-mode auto` (so routine
+  commands auto-approve and only important/blocked prompts escalate to the
+  minder; note that the service-created restricted Claude minder in
+  `crates/rex-link/src/agentd/ops.rs` intentionally retains
+  `--permission-mode dontAsk` to enforce its narrow tool allowlist),
+  `--settings '{"autoMemoryEnabled":false}'` (or `"autoMemoryEnabled":
+  false` in its `--settings` JSON file), and
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` — especially under `--restricted`,
-  which ignores `~/.claude/settings.json`. (`tools/dev/agents::launch_opus`
-  does this automatically.)
+  which ignores `~/.claude/settings.json`.
+  (`tools/dev/agents::launch_claude_builder` and `launch_opus` do this
+  automatically.)
 - **A work list beside you.** At the start of every session, open a
   pane to the right of yours with the list of the work (the
   `olo-worklist` skill: `tools/dev/worklist open`), one short line an
@@ -396,8 +403,9 @@ are universal and non-negotiable:
     (`gemini-4-neon-xhigh`, `--effort xhigh`; Ben, 2026-11-28: all Neon
     agents always run on `xhigh`).
   - **Builders:** **Claude Opus 5.5 on `max`** (`claude-opus-5-5`,
-    `--effort max`, with `"autoMemoryEnabled": false` +
-    `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`; Ben, 2026-11-28).
+    `--effort max`, `--permission-mode auto`, with
+    `"autoMemoryEnabled": false` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`;
+    Ben, 2026-11-28).
     Started, watched, and steered with `tools/dev/agents` (the
     `olo-agents` skill), **at most four active builders at once** (across
     worktrees), each scoped to its own crate(s) so none clobbers another.
@@ -425,7 +433,7 @@ are universal and non-negotiable:
     2. **Codex Astra 6.2 on `xhigh`** (`tools/dev/astra-review` for
        code).
     3. **Claude Opus 5.5 on `max`** (`claude-opus-5-5`, `--effort max`,
-       with `"autoMemoryEnabled": false` +
+       `--permission-mode auto`, with `"autoMemoryEnabled": false` +
        `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) via `tools/dev/opus-look` for
        visual design review of screenshots.
     Changes with no visual design work use only the `agy` (`xhigh`) and

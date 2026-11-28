@@ -6,15 +6,16 @@ where there is no Rex pane.
 Hierarchy and exact models / efforts (Ben, 2026-11-27 & 2026-11-28):
   - All Neon (agy) agents ALWAYS run on `xhigh` (`gemini-4-neon-xhigh`).
   - All Claude Opus 5.5 agents ALWAYS run on `max` (`claude-opus-5-5`, `--effort max`)
-    with auto-memory disabled (`"autoMemoryEnabled": false` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`).
+    with `--permission-mode auto` and auto-memory disabled
+    (`"autoMemoryEnabled": false` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`).
   Lead  (agy, Gemini 4 Neon at xhigh)
   └── minder  (agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
-      ├── builders      (claude, Opus 5.5 at max, auto-memory off, max 4 at once)
+      ├── builders      (claude, Opus 5.5 at max, --permission-mode auto, auto-memory off, max 4 at once)
       ├── investigator  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
       ├── code review 1 (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
       ├── code review 2 (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
       └── visual design (any visual change uses all three reviewers:
-                         agy-look [Neon 4 xhigh], opus-look [Opus 5.5 max, auto-memory off],
+                         agy-look [Neon 4 xhigh], opus-look [Opus 5.5 max, --permission-mode auto, auto-memory off],
                          plus astra-review [Astra 6.2 xhigh] & agy-review [Neon 4 xhigh])
 
 If critical outstanding issues remain after 2 review rounds, the minder
@@ -28,14 +29,14 @@ authorize additional review rounds.
                                      builders and reviewers under itself)
   agents start [--tree DIR] NAME CRATE BRIEF.md
                                      start a builder (Claude Opus 5.5 max,
-                                     auto-memory off) on CRATE with the task in
-                                     BRIEF.md; at most 4 at once
+                                     --permission-mode auto, auto-memory off) on
+                                     CRATE with the task in BRIEF.md; at most 4 at once
   agents investigate BRIEF.md [DIR]  start a second investigator (agy Neon 4 xhigh;
                                      tools/dev/agy-help is this)
   agents look [--by gemini|opus] [--about TEXT] [--no-wait] PICTURE…
                                      visual review of screenshots: Neon 4 xhigh
                                      (tools/dev/agy-look) or Opus 5.5 max
-                                     (--by opus: tools/dev/opus-look, auto-memory off)
+                                     (--by opus: tools/dev/opus-look, --permission-mode auto, auto-memory off)
   agents review [--by astra|agy] [--about TEXT] [--tree DIR] [--dry-run] [--no-wait] FROM..TO [PATH…]
   agents review [--by astra|agy] [--about TEXT] [--tree DIR] [--dry-run] [--no-wait] --working [PATH…]
                                      code review: Codex Astra 6.2 at xhigh
@@ -783,17 +784,19 @@ def refuse_nested():
 
 # What every agent is told of how it is run.
 APPROVALS = """Asking leave
-- Reading, searching, building and testing go ahead without anyone's
-  leave: ls, cat, head, tail, grep, find, sed -n, wc, cargo
+- Claude builders run with `--permission-mode auto` (routine work and
+  safe commands go ahead automatically); on `agy` helpers, reading,
+  searching, building and testing go ahead without anyone's leave: ls,
+  cat, head, tail, grep, find, sed -n, wc, cargo
   build/check/test/clippy/fmt -p, git status/diff/log/show,
   tools/dev/tsession and the like, alone or piped together.
-  Anything else stops and asks, and is answered within seconds by a
-  minder that reads your task: what your task reasonably needs is given
-  leave. So ask for what you need and say why in a word; don't go
-  without, and don't guess at what a look would settle. It goes faster
-  unasked, so where it's the same to you: make and change files with
-  your file tools, not with the shell (`>`, `cat <<`, `sed -i`), and
-  pipe a command's output to tail or grep rather than into a file.
+  Important or blocked prompts stop and ask, and are answered within
+  seconds by a minder that reads your task: what your task reasonably
+  needs is given leave. So ask for what you need and say why in a word;
+  don't go without, and don't guess at what a look would settle. It goes
+  faster unasked, so where it's the same to you: make and change files
+  with your file tools, not with the shell (`>`, `cat <<`, `sed -i`),
+  and pipe a command's output to tail or grep rather than into a file.
 - Your scratch folder is yours: output sent to a file there goes
   ahead, and leave to `rm` a file there (give its whole path) is given
   within seconds. You needn't tidy it: the lead removes the folder
@@ -1167,7 +1170,7 @@ def clean_env():
     return env
 
 
-def session(name, cwd, env, program, native=None, subagent=True):
+def session(name, cwd, env, program, native=None, subagent=True, extra_meta=None):
     """Where one agent's program runs, nothing of the person's screen in
     its reach: a child tab of the caller's Rex tab (`native`: what `olo
     agent start` is asked for, its agent first), or a tmux session of
@@ -1203,7 +1206,7 @@ def session(name, cwd, env, program, native=None, subagent=True):
         except ValueError:
             sys.exit(f"agents: olo agent start {name}: {r.stdout.strip() or r.stderr.strip()}")
         _SUBTREE_IDS[0] = None
-        m = meta(name) or {}
+        m = trusted_meta(name) or meta(name) or {}
         m.update({
             "via": "rex",
             "rex_id": said.get("id") or name,
@@ -1213,14 +1216,15 @@ def session(name, cwd, env, program, native=None, subagent=True):
             "root": ROOT,
             "minded": bool(os.environ.get("OLO_MINDER")),
             "start_cursor": said.get("cursor"),
+            **(extra_meta or {}),
         })
         save_meta(name, m)
         save_trusted_meta(name, m)
         return
     env = ["env", *[x for u in unset_vars for x in ("-u", u)], marker, *env]
     tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", cwd, *env, *program, check=True)
-    m = meta(name) or {}
-    m.update({"via": "tmux", "root": ROOT, "minded": bool(os.environ.get("OLO_MINDER"))})
+    m = trusted_meta(name) or meta(name) or {}
+    m.update({"via": "tmux", "root": ROOT, "minded": bool(os.environ.get("OLO_MINDER")), **(extra_meta or {})})
     save_meta(name, m)
     save_trusted_meta(name, m)
 
@@ -1246,9 +1250,11 @@ def claude_builder_settings(folders, own=()):
 
 def launch_claude_builder(name, d, cwd, others, target=None, again=None):
     """Claude Opus 5.5 at max, for a builder: working in `cwd` (and reading
-    `d` and `others`), with auto-memory disabled (`autoMemoryEnabled: false` in
-    settings + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), `Agent`/`Workflow` tools
-    disabled so builders cannot spawn subagents, and `acceptEdits` mode."""
+    `d` and `others`), with auto-approval mode (`--permission-mode auto`) so
+    routine commands auto-approve and only important/blocked prompts reach the
+    minder, auto-memory disabled (`autoMemoryEnabled: false` in settings +
+    `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), and `Agent`/`Workflow` tools disabled
+    so builders cannot spawn subagents."""
     folders = list(dict.fromkeys([cwd, d, *others]))
     settings_path = os.path.join(d, "settings.json")
     json.dump(claude_builder_settings(folders, own=[d, *others]), open(settings_path, "w"), indent=1)
@@ -1262,30 +1268,33 @@ def launch_claude_builder(name, d, cwd, others, target=None, again=None):
         taken_up, first = ["--resume", again[0]], again[1]
     base = [
         "claude", "--model", BUILDER_MODEL, "--effort", BUILDER_EFFORT,
-        "--permission-mode", "acceptEdits",
+        "--permission-mode", "auto",
         "--strict-mcp-config",
         "--disallowed-tools", "Agent", "Workflow",
         "--settings", settings_path,
         *add, *taken_up,
     ]
     session(name, cwd, env, [*base, "--", first],
-            native=[*base, "--trust", "--prompt", first])
+            native=[*base, "--trust", "--prompt", first],
+            extra_meta={"permission_mode": "auto"})
 
 
 def launch_opus(name, cwd, brief):
     """Opus 5.5 at max, for a visual design review: the Claude CLI in a
     child tab here, able to read and write files in `cwd` and to do nothing
-    else. Always disables Claude auto-memory explicitly (`--settings` +
+    else. Always enables auto-approval mode (`--permission-mode auto`) and
+    disables Claude auto-memory explicitly (`--settings` +
     `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) because `--restricted` ignores
     `~/.claude/settings.json` (Ben, 2026-11-28)."""
     first = f"Read {cwd}/brief.md (the rules, then what it is and what changed) and do what it says."
     env = ["CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"]
     session(name, cwd, env, ["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--restricted", "--strict-mcp-config",
                              "--settings", CLAUDE_NO_MEMORY, "--tools", "Read,Write",
-                             "--permission-mode", "acceptEdits", "--disable-slash-commands", brief],
-            native=["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--permission-mode", "acceptEdits",
+                             "--permission-mode", "auto", "--disable-slash-commands", brief],
+            native=["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--permission-mode", "auto",
                     "--strict-mcp-config", "--settings", CLAUDE_NO_MEMORY, "--trust", "--prompt", first,
-                    "--", "--restricted", "--tools", "Read,Write", "--disable-slash-commands"])
+                    "--", "--restricted", "--tools", "Read,Write", "--disable-slash-commands"],
+            extra_meta={"permission_mode": "auto"})
 
 
 def launch_astra(name, cwd):
@@ -1564,7 +1573,9 @@ def start(name, crate, brief, tree=None):
         if not is_crate:
             rules = rules.replace(f"- Change files under {crate}/ only", f"- Change {crate} only (it isn't a crate: build nothing of Olo's unless the task says how it is checked)")
         open(os.path.join(d, "brief.md"), "w").write(rules + task + "\n")
-        save_meta(name, {"cli": BUILDER_CLI, "crate": crate, "package": package, "root": ROOT, "worktree": repo, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
+        rec = {"cli": BUILDER_CLI, "permission_mode": "auto", "crate": crate, "package": package, "root": ROOT, "worktree": repo, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")}
+        save_meta(name, rec)
+        save_trusted_meta(name, rec)
         launch_claude_builder(name, d, repo, [], os.path.join(d, "target"))
         _open_initial_board(name, d, "Builder", crate, task)
     print(f"agents: {name} started on {crate} ({package}) in {repo}; its folder is {d}")
@@ -1602,7 +1613,9 @@ def investigate(brief, where, wait=True):
                 if os.path.exists(os.path.join(work, old)):
                     os.replace(os.path.join(work, old), os.path.join(work, old + ".before"))
             open(os.path.join(d, "brief.md"), "w").write(HELP_RULES.format(root=ROOT, dir=work, approvals=APPROVALS, board=BOARD_BIN, name=name) + open(brief).read().strip() + "\n")
-            save_meta(name, {"work": work, "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(work, "answer.md")})
+            rec = {"work": work, "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(work, "answer.md")}
+            save_meta(name, rec)
+            save_trusted_meta(name, rec)
             launch(name, d, ROOT, [work], os.path.join(work, "target"))
             _open_initial_board(name, d, "Investigator", "", open(brief).read().strip(), board_file=os.path.join(work, "board.json"))
             print(f"agents: {name} started on {brief}; its answer will be {work}/answer.md, its notes {work}/notes.md", flush=True)
@@ -2998,15 +3011,29 @@ def resume(name, text, result=None, session=None):
             check_crate_overlap(repo, m["crate"], skip_name=name)
         told_at = time.time()
         legacy_minded = bool(m.get("minded") and not m.get("root"))
+        # Pre-upgrade Claude helpers were launched with `--permission-mode acceptEdits`;
+        # NEVER replay stored `acceptEdits` via `olo agent resume` (Astra R1 #7,
+        # Astra R2 #19, Neon R2 #9). Resolve `cli_session_id` from `agentd` status
+        # when absent from launcher metadata (e.g. a builder that exited on its own
+        # or was stopped via `olo agent stop`), then relaunch builders via
+        # `launch_claude_builder(..., again=(session, text))` with `--permission-mode auto`.
+        stale_claude_mode = bool(m.get("cli") == "claude" and m.get("permission_mode") != "auto")
+        if stale_claude_mode and not (session or m.get("cli_session")):
+            st_r = olo("status", child(name), "--json")
+            if st_r.returncode == 0:
+                try:
+                    session = json.loads(st_r.stdout).get("cli_session_id") or session
+                except ValueError:
+                    pass
         said = {}
-        if not legacy_minded:
+        if not legacy_minded and not stale_claude_mode:
             r = olo("resume", child(name), "--prompt", text, "--json")
             try:
                 said = json.loads(r.stdout) if r.returncode == 0 else {}
             except ValueError:
                 said = {}
         else:
-            r = subprocess.CompletedProcess([], 1, "", "legacy pre-cutover helper")
+            r = subprocess.CompletedProcess([], 1, "", "legacy or pre-auto-mode helper (refusing to replay acceptEdits)")
         if not said.get("id"):
             session = session or m.get("cli_session")
             if not (session and m.get("crate")):
@@ -3016,7 +3043,7 @@ def resume(name, text, result=None, session=None):
                 launch_claude_builder(name, d, repo, [], os.path.join(d, "target"), again=(session, text))
             else:
                 launch(name, d, repo, [], os.path.join(d, "target"), again=(session, text), model=MODEL)
-            m = meta(name)
+            m = trusted_meta(name) or m
             m.update({"seen": "", "seen_state": "", "said_at": told_at, "cli_session": session, "root": ROOT, "worktree": repo})
             m.pop("ended", None)
             if result:

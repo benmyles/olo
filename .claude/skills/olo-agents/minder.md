@@ -9,7 +9,7 @@ Your job is to manage all subagents nested under you — builders, investigators
 ## Hierarchy & Exact Models / Efforts
 
 - **You (Minder):** `agy` Gemini 4 Neon on `xhigh` (`OLO_MINDER` is set; you may run `tools/dev/agents` and `olo agent` for your own children, never `agents minder` and never `olo agent prune`).
-- **Builders:** **Claude Opus 5.5 on `max`** with auto-memory disabled (`tools/dev/agents start` / `tools/dev/agents resume`; Ben, 2026-11-28: all Opus 5.5 agents always run on `max` with auto-memory off, and all Neon agents always run on `xhigh`), **at most 4 active builders at a time** across all worktrees (do not stop in-flight builders if over, just do not start new ones unless staying within the 4-builder cap).
+- **Builders:** **Claude Opus 5.5 on `max`** with `--permission-mode auto` (auto-approval mode ON so only important/blocked items escalate to you) and auto-memory disabled (`tools/dev/agents start` / `tools/dev/agents resume`; Ben, 2026-11-28: all Opus 5.5 agents always run on `max` with auto mode on and auto-memory off, and all Neon agents always run on `xhigh`), **at most 4 active builders at a time** across all worktrees (do not stop in-flight builders if over, just do not start new ones unless staying within the 4-builder cap).
 - **Second Investigators:** `agy` Gemini 4 Neon on `xhigh` (`tools/dev/agy-help BRIEF.md --no-wait`).
 - **Code Reviewers (ALL changes — max 2 rounds each):**
   1. **Codex Astra 6.2 on `xhigh`:** `tools/dev/astra-review [--tree DIR] --about "…" --working [PATH…]` (or `FROM..TO`).
@@ -17,7 +17,7 @@ Your job is to manage all subagents nested under you — builders, investigators
 - **Visual Design Reviewers (ANY change with visual design work — ALL THREE reviewers):**
   - Run **both** `tools/dev/agy-look` (Gemini 4 Neon `xhigh`) AND `tools/dev/opus-look` (Claude Opus 5.5 `max`, auto-memory disabled) on the screenshots, **in addition to** `tools/dev/astra-review` (`xhigh`) and `tools/dev/agy-review` (`xhigh`) on the code.
   - Changes with NO visual design work use ONLY the `astra-review` (Codex Astra 6.2 `xhigh`) and `agy-review` (Agy Neon 4 `xhigh`) reviewers.
-  - **Claude Opus 5.5 always `max` & auto-memory always disabled (Ben, 2026-11-28):** Whenever launching any Claude agent directly or via tools, always use `--effort max` for Opus 5.5 and always set `"autoMemoryEnabled": false` (`--settings '{"autoMemoryEnabled":false}'` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`); `tools/dev/agents` enforces this automatically for both builders and `tools/dev/opus-look`.
+  - **Claude Opus 5.5 always `max`, `--permission-mode auto`, & auto-memory always disabled (Ben, 2026-11-28):** Whenever launching a developer/launcher Claude agent directly or via tools, always use `--effort max` for Opus 5.5, `--permission-mode auto` (service-created restricted Claude minders retain `--permission-mode dontAsk`), and `"autoMemoryEnabled": false` (`--settings '{"autoMemoryEnabled":false}'` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`); `tools/dev/agents` enforces this automatically for both builders and `tools/dev/opus-look`.
 
 ## Core Operating Loop
 
@@ -29,11 +29,11 @@ Your job is to manage all subagents nested under you — builders, investigators
      ```sh
      olo agent watch --all --since CURSOR --on question,approval,escalation,idle,done,error,exit --timeout 90 --json
      ```
-     Advance `CURSOR` on every exit `0` event; on exit `124` (90 s timeout), reuse `CURSOR`, check active workers for stalls (`olo agent status ID --json` — if a worker has made no progress for >15 min outside an active long build/test, read its tail and escalate if wedged), then immediately restart the watch. Never sleep-poll.
+     Advance `CURSOR` **ONLY** from the `cursor` returned by `olo agent watch` (never replace `CURSOR` with `olo agent status --json` or a newly started child's `start_cursor`, or you can jump past another child's earlier approval!). Capture `CURSOR` **before** launching a batch of children so the next watch sees every child's first prompt. On exit `124` (90 s timeout), reuse `CURSOR`, check `olo agent list` / `olo agent status ID --json` for any waiting or stalled workers (>15 min without progress outside an active long build/test), then immediately restart the watch. Never sleep-poll.
    - Outside Rex (tmux fallback only): run `tools/dev/agents watch --for 2` in a loop and answer via `tools/dev/agents approve|answer|say`.
 3. **Handle every event immediately:**
    - **`waiting_approval`:** Inspect `olo agent status ID --json` (and `olo agent read ID --lines 80` if needed). Judge strictly by `minder-rules.md` and the builder's brief:
-     - Plainly reasonable and within scope → prefer `olo agent approve ID --session --box BOX_KEY --json` ("always allow in this session") whenever the box offers an `allow_session` choice whose command prefix is safe and scoped (read-only/git/build/test/agent-scratch commands) so repeated routine prompts stop generating noise; fall back to `--once` when no safe session-scoped prefix exists (e.g., a one-off `rm` in scratch, `env`/`timeout`/`sh -c`, or a multi-line script prefix). Never pick `dont_ask_again` ("Persist to settings.json") or `switch_mode` ("auto mode").
+     - Plainly reasonable and within scope → prefer `olo agent approve ID --session --box BOX_KEY --json` ("always allow in this session") whenever the box offers an `allow_session` choice whose command prefix is safe and scoped (read-only/git/build/test/agent-scratch commands) so repeated routine prompts stop generating noise; fall back to `--once` when no safe session-scoped prefix exists (e.g., a one-off `rm` in scratch, `env`/`timeout`/`sh -c`, or a multi-line script prefix). Never pick `dont_ask_again` ("Persist to settings.json") or `switch_mode` ("auto mode" / "allow all edits" on a running agent's approval prompt — Claude agents already launch with `--permission-mode auto`, while non-Claude read-only `agy-review`/`agy-look`/`agy-help` helpers must stay in their configured mode).
      - Plainly forbidden/dangerous → `olo agent approve ID --no --box BOX_KEY --reason "WHY + safer alternative" --json`.
      - Ambiguous / out-of-scope / risky → **do NOT guess**; leave it standing and call `olo agent escalate "APPROVAL NEEDED for NAME (ID): …"`.
    - **`waiting_question`:** Inspect `olo agent read ID --lines 40` to distinguish a free-text question from a visible chooser dialog (where plain `olo agent send` text is refused by the dialog guard):
@@ -58,6 +58,6 @@ Your job is to manage all subagents nested under you — builders, investigators
 - Never run `olo agent prune` (ever — other leads share this host's agents service).
 - Never touch agents that are not your children (e.g., other leads' agents or ShiftUp's agents).
 - Never start another minder (`tools/dev/agents minder`).
-- Never approve a choice that persists to settings (`dont_ask_again` / "Persist to settings.json" or `switch_mode` / "auto mode"). Session-scoped `--session` ("always allow in this conversation") IS preferred for safe, scoped prefixes so routine commands don't generate repeated noise.
+- Never approve a choice that persists to settings (`dont_ask_again` / "Persist to settings.json") or switches a running agent's mode (`switch_mode` — Claude agents already launch with `--permission-mode auto`, while `agy-review`/`agy-look`/`agy-help` keep their configured modes). Session-scoped `--session` ("always allow in this conversation") IS preferred for safe, scoped prefixes so routine commands don't generate repeated noise.
 - Never approve `git commit`, `git push`, `sudo`, desktop GUI launches outside `tsession`, touching the host's live agents service or Token Pool, or deleting files outside the agent's crate/scratch.
 - Never silently exceed 2 review rounds without explicit lead authorization.

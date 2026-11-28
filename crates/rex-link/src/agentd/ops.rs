@@ -103,6 +103,7 @@ mod tests {
 
 /// Who asks: the pane it was asked from, and the child that pane is, if
 /// it is one (which may then act on its own descendants alone).
+#[derive(Clone)]
 pub struct Caller {
     pub session: Option<String>,
     pub window: Option<String>,
@@ -595,7 +596,7 @@ impl Service {
             "list" | "ls" => self.list(&raw, caller).await,
             "status" => self.status(&raw, caller).await,
             "read" | "tail" => self.read(&raw, caller).await,
-            "watch" | "wait" => self.watch(&raw, caller).await,
+            "watch" | "wait" => self.watch(req, &raw, caller).await,
             "send" | "input" => self.send(req, &raw, caller).await,
             "approve" => self.approve(&raw, caller).await,
             "stop" | "close" | "kill" => self.stop(req, &raw, caller).await,
@@ -831,7 +832,7 @@ impl Service {
         self.lock().reg.entries.iter().rev().find(|e| e.id == id).cloned()
     }
 
-    fn cursor(&self) -> u64 {
+    pub(super) fn cursor(&self) -> u64 {
         self.lock().log.latest_seq()
     }
 
@@ -1781,7 +1782,7 @@ impl Service {
     /// from its minder (`--off`), record a fresh event strictly after any
     /// cursor the lead already holds so an ongoing lead `watch --since` wakes
     /// immediately with the open box.
-    async fn republish_standing_question(self: &Arc<Self>, entry: &NativeSubagent) {
+    pub(super) async fn republish_standing_question(self: &Arc<Self>, entry: &NativeSubagent) {
         if entry.exited_at.is_some() || !entry.cli.is_agent() {
             return;
         }
@@ -1812,13 +1813,13 @@ impl Service {
         let approval = looked.cls.approval.as_ref().map(|ap| Self::approval_json_with_box(ap, &pending, looked.boxed.as_ref().map(|b| b.key.as_str())));
         let key = super::service::subkey(&looked.cls);
         let dedupe = if eff_state == SubagentLiveState::WaitingApproval
-            && let Some(box_key) = approval.as_ref().and_then(|a| a["box"].as_str())
+            && let Some(lb) = looked.boxed.as_ref()
         {
-            format!("box:{box_key}")
+            format!("box:b{}-{:08x}", lb.number, lb.hash as u32)
         } else if !key.is_empty() {
             key
         } else {
-            "tx:waiting".to_owned()
+            super::service::transcript_question_key(info, info.and_then(|v| v["turn_started_ms"].as_u64()))
         };
         let mut ev = self.event_of(&entry, eff_state, looked.cls.summary.clone(), dedupe);
         ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
@@ -2482,7 +2483,7 @@ impl Service {
                             && (cls.recognized_question || cls.state != SubagentLiveState::WaitingQuestion)
                         {
                             let key = super::service::subkey(&cls);
-                            let token = if key.is_empty() { "tx:waiting".to_owned() } else { key };
+                            let token = if key.is_empty() { super::service::transcript_question_key(info, info.and_then(|v| v["turn_started_ms"].as_u64())) } else { key };
                             st.told.insert(pair, super::service::ToldGrant { token, is_approval: false, rules_gen, read_seq: looked.seq });
                         } else if (looked.live && looked.ordered) || looked.seq >= cur_accepted {
                             st.told.remove(&pair);
@@ -2616,10 +2617,59 @@ impl Service {
 
     // ---- watch ----
 
-    async fn watch(self: &Arc<Self>, raw: &Value, caller: &Caller) -> Response {
+    async fn watch(self: &Arc<Self>, req: &Request, raw: &Value, caller: &Caller) -> Response {
         let mut spec = match WatchSpec::parse(Some(raw)) {
             Ok(s) => s,
             Err(e) => return Response::err("watch", e, 2),
+        };
+        let standing_after = req.standing_after;
+        // Rollback guard for `watcher_seen` across `write_now().await`: if a
+        // graceful handover (`wait_retiring()`) or client EOF cancels this
+        // watch before the reply is returned, `Drop` reverts `watcher_seen`
+        // while `active_watches > 0` (before handover's `final_save`), so an
+        // undelivered prompt is never lost (Astra R2 #1 / #17, Neon R2 #4).
+        struct WatcherSeenGuard {
+            service: Arc<Service>,
+            wk: String,
+            agent_id: String,
+            inserted_seq: u64,
+            prev: Option<u64>,
+            armed: bool,
+        }
+        impl Drop for WatcherSeenGuard {
+            fn drop(&mut self) {
+                if !self.armed {
+                    return;
+                }
+                let reverted = {
+                    let mut st = self.service.lock();
+                    let pair = (self.wk.clone(), self.agent_id.clone());
+                    if st.watcher_seen.get(&pair).copied() == Some(self.inserted_seq) {
+                        match self.prev {
+                            Some(old) => {
+                                st.watcher_seen.insert(pair, old);
+                            }
+                            None => {
+                                st.watcher_seen.remove(&pair);
+                            }
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if reverted {
+                    self.service.saved();
+                    self.service.changed.notify_waiters();
+                }
+            }
+        }
+        let box_is_current_service = |box_key: &str, service_gen: u64, incarnation: u32| -> bool {
+            match (service_gen, incarnation) {
+                (0, 0) => true,
+                (g, 0) => box_key.contains(&format!("-g{g}-")),
+                (g, inc) => box_key.contains(&format!("-g{g}-{inc:08x}-")),
+            }
         };
         // (All of a minder's is the one agent it minds.)
         if spec.all
@@ -2801,9 +2851,49 @@ impl Service {
             live_ids.contains(&ev.id) || scope_parent.as_deref().is_some_and(|p| ev.parent_window_id == p || ev.ancestor_windows.iter().any(|a| a == p))
         };
         let wants_done = spec.events.iter().any(|e| e == "done");
+        // Stable, verified watcher identity for standing-prompt catch-up when a
+        // non-service-minder caller (tab-minder, lead, or `--watcher ID`) watches
+        // with `--since`:
+        // - Child callers ALWAYS retain their verified child owner (`child:<id>`
+        //   or `child:<id>:<label>`) so entries clean up when that child exits.
+        // - Window fallback requires `window_from_block == true`; parent fallback
+        //   requires an explicit `--parent` (never unverified `sess.active` focus).
+        let watcher_key: Option<String> = if let Some(ref c) = caller.child {
+            Some(match spec.watcher.as_deref() {
+                Some(w) => format!("child:{}:{w}", c.id),
+                None => format!("child:{}", c.id),
+            })
+        } else if let Some(ref w) = spec.watcher {
+            Some(format!("watcher:{w}"))
+        } else if let Some(ref win) = caller.window.as_ref().filter(|_| caller.window_from_block) {
+            Some(format!("win:{win}"))
+        } else if spec.parent.is_some()
+            && let Some(ref p) = scope_parent
+        {
+            Some(format!("parent:{p}"))
+        } else {
+            None
+        };
+        let wants_standing_prompt = spec.matches_state(SubagentLiveState::WaitingApproval) || spec.matches_state(SubagentLiveState::WaitingQuestion);
+        let timeout_response_at = |cur: u64| {
+            let payload = json!({ "ok": false, "cursor": cur, "event": "timeout", "elapsed_ms": started.elapsed().as_millis() as u64, "code": 124 });
+            Response {
+                ok: false,
+                stdout: if spec.json { format!("{payload}\n") } else { String::new() },
+                stderr: format!("olo agent watch: timed out after {}s\n", spec.timeout_secs),
+                code: 124,
+                data: payload,
+            }
+        };
+        let timeout_response = || timeout_response_at(self.cursor());
 
         loop {
+            // Pin and enable `changed` BEFORE inspecting `st.log` or awaiting
+            // `look_ordered()` / `inspect()` so no sibling `notify_waiters()`
+            // firing during async probes can ever be lost (Neon R2 #1).
             let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             if let Some(me) = &minding
                 && let Some(ended) = lost_named_target(me)
             {
@@ -2838,6 +2928,13 @@ impl Service {
             // (`minding` events) are delivered first, in order, once
             // each, so it reads each agent's rules before judging it.
             let retiring_handover = || Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) };
+            let mut earliest_retry: Option<tokio::time::Instant> = None;
+            let mut note_retry = |at: tokio::time::Instant| {
+                earliest_retry = Some(match earliest_retry {
+                    Some(cur) => cur.min(at),
+                    None => at,
+                });
+            };
             if let Some(me) = &minding {
                 if me.is_shared_minder() && spec.wants_minding() {
                     let roster_ev = {
@@ -3092,17 +3189,555 @@ impl Service {
                     return answer(&last, None, false);
                 }
             } else {
-                let queued = {
+                // 1a. Peek the earliest queued event strictly after `since_floor` AND
+                // gather O(1) unseen standing-prompt candidates (`WaitingApproval` /
+                // `WaitingQuestion`) from `live.latest_event` (with a single ring scan
+                // only for live children missing `live.latest_event` after restart).
+                // Standing prompts older than any queued sibling event are verified FIRST
+                // so a busy sibling can never starve a blocked child; ring-evicted live
+                // prompts newer than `since_floor` (including `--since 0` and mid-watch
+                // evictions) are admitted via `st.log.oldest_seq()`.
+                const STANDING_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+                const STANDING_BACKOFF_MS: [u64; 6] = [250, 500, 1000, 2000, 5000, 15_000];
+                let (queued_peek, standing_candidates, gap_now, skipped_retry) = {
                     let st = self.lock();
-                    st.log.find_since(since_floor, |ev| {
+                    let ring_oldest = st.log.oldest_seq();
+                    let now_inst = tokio::time::Instant::now();
+                    let found = st.log.find_since(since_floor, |ev| {
                         // (`minding` events are strictly for the shared minder they target.)
                         ev.event != minder::MINDING
                             && event_in_scope(ev, &live_ids)
                             && if ev.event == minder::ESCALATION { spec.wants_escalations() } else { spec.matches_state(ev.state) && !Self::minders_own(&st.reg, caller, &ev.id, ev.state) }
-                    })
+                    });
+                    let mut next_backoff: Option<tokio::time::Instant> = None;
+                    let candidates = if spec.since.is_some()
+                        && !spec.no_standing
+                        && wants_standing_prompt
+                        && let Some(ref wk) = watcher_key
+                    {
+                        let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                        if !caller_alive {
+                            Vec::new()
+                        } else {
+                            let missing: HashSet<&str> =
+                                current.iter().filter(|a| a.exited_at.is_none() && st.live.get(&a.id).and_then(|l| l.latest_event.as_ref()).is_none()).map(|a| a.id.as_str()).collect();
+                            let from_ring = st.log.last_states_for(&missing);
+                            let mut ready: Vec<(NativeSubagent, SubagentEvent, u64, u64)> = current
+                                .iter()
+                                .filter(|agent| agent.exited_at.is_none() && st.live.contains_key(&agent.id))
+                                .filter_map(|agent| {
+                                    let live = st.live.get(&agent.id)?;
+                                    let latest = live.latest_event.as_ref().or_else(|| from_ring.get(&agent.id))?;
+                                    if !matches!(latest.state, SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion) {
+                                        return None;
+                                    }
+                                    if !spec.matches_state(latest.state) {
+                                        return None;
+                                    }
+                                    if standing_after.is_some_and(|lb| latest.seq <= lb) {
+                                        return None;
+                                    }
+                                    let evicted = latest.seq > since_floor && ring_oldest > latest.seq;
+                                    let eligible = latest.seq <= since_floor || (evicted && found.as_ref().is_none_or(|q| latest.seq < q.seq));
+                                    if !eligible {
+                                        return None;
+                                    }
+                                    if found.as_ref().is_some_and(|q| latest.seq >= q.seq) {
+                                        return None;
+                                    }
+                                    let already = st.watcher_seen.get(&(wk.clone(), agent.id.clone())).copied().unwrap_or(0);
+                                    if latest.seq <= already {
+                                        return None;
+                                    }
+                                    // Defer `minders_own` until cheap O(1) sequence & watermark filters pass (Astra R2 #22).
+                                    if Self::minders_own(&st.reg, caller, &agent.id, latest.state) {
+                                        return None;
+                                    }
+                                    // Respect per-child backoff for persistently failing panes (Astra R2 #6 & #21).
+                                    if let Some(until) = live.standing_retry_after
+                                        && until > now_inst
+                                    {
+                                        next_backoff = Some(next_backoff.map_or(until, |c| c.min(until)));
+                                        return None;
+                                    }
+                                    Some((agent.clone(), latest.clone(), live.event_gen, live.given))
+                                })
+                                .collect();
+                            ready.sort_by_key(|(_, ev, _, _)| ev.seq);
+                            ready
+                        }
+                    } else {
+                        Vec::new()
+                    };
+                    let gap_now = had_gap || (since_floor == 0 && ring_oldest > 1) || (since_floor > 0 && ring_oldest > since_floor.saturating_add(1));
+                    (found, candidates, gap_now, next_backoff)
                 };
-                if let Some(ev) = queued {
-                    return answer(&ev, None, had_gap);
+                if let Some(at) = skipped_retry {
+                    note_retry(at);
+                }
+
+                if let Some(ref wk) = watcher_key {
+                    // Verify standing candidates in bounded concurrent chunks (max 4,
+                    // each capped to `STANDING_PROBE_TIMEOUT`) so one stalled pane
+                    // cannot starve later healthy standing prompts or queued siblings
+                    // (Astra R2 #6).
+                    for chunk in standing_candidates.chunks(4) {
+                        if tokio::time::Instant::now() >= deadline {
+                            break;
+                        }
+                        let probe_deadline = (tokio::time::Instant::now() + STANDING_PROBE_TIMEOUT).min(deadline);
+                        let mut probed: Vec<(usize, NativeSubagent, SubagentEvent, u64, u64, super::service::Looked)> = Vec::with_capacity(chunk.len());
+                        if chunk.len() == 1 {
+                            let (agent, last, cand_event_gen, cand_given) = chunk[0].clone();
+                            let looked = self.look_ordered(&agent, Some(probe_deadline)).await;
+                            probed.push((0, agent, last, cand_event_gen, cand_given, looked));
+                        } else {
+                            let mut set = tokio::task::JoinSet::new();
+                            for (idx, (agent, last, cand_event_gen, cand_given)) in chunk.iter().cloned().enumerate() {
+                                let svc = self.clone();
+                                set.spawn(async move {
+                                    let looked = svc.look_ordered(&agent, Some(probe_deadline)).await;
+                                    (idx, agent, last, cand_event_gen, cand_given, looked)
+                                });
+                            }
+                            while let Some(res) = set.join_next().await {
+                                if let Ok(item) = res {
+                                    probed.push(item);
+                                }
+                            }
+                            probed.sort_by_key(|(idx, _, _, _, _, _)| *idx);
+                        }
+
+                        for (_, agent, last, cand_event_gen, cand_given, looked) in probed {
+                            if tokio::time::Instant::now() >= deadline {
+                                break;
+                            }
+                            // Check `Exited` BEFORE `rpc_failed` / `is_fresh_ordered` so an
+                            // exited child never enters the retry backoff branch (Astra R2 #21).
+                            if looked.cls.state == SubagentLiveState::Exited {
+                                continue;
+                            }
+                            if looked.rpc_failed {
+                                let until = {
+                                    let mut st = self.lock();
+                                    st.live.get_mut(&agent.id).map(|live| {
+                                        live.standing_fails = live.standing_fails.saturating_add(1);
+                                        let idx = (live.standing_fails as usize).saturating_sub(1).min(STANDING_BACKOFF_MS.len() - 1);
+                                        let at = tokio::time::Instant::now() + Duration::from_millis(STANDING_BACKOFF_MS[idx]);
+                                        live.standing_retry_after = Some(at);
+                                        at
+                                    })
+                                };
+                                if let Some(at) = until {
+                                    note_retry(at);
+                                }
+                                continue;
+                            }
+                            if !looked.is_fresh_ordered() {
+                                note_retry(tokio::time::Instant::now() + Duration::from_millis(250));
+                                continue;
+                            }
+
+                            let mut refreshed_box_key: Option<String> = None;
+                            let mut positively_cleared = false;
+                            let holds = match last.state {
+                                SubagentLiveState::WaitingApproval => {
+                                    if looked.cls.state == SubagentLiveState::WaitingApproval
+                                        && let Some(lb) = looked.boxed.as_ref().filter(|b| !b.answered)
+                                    {
+                                        let content_key = format!("box:b{}-{:08x}", lb.number, lb.hash as u32);
+                                        if still_stands(&last, &looked.cls, Some(&lb.key)) || last.dedupe_key == content_key {
+                                            refreshed_box_key = Some(lb.key.clone());
+                                            true
+                                        } else {
+                                            positively_cleared = true;
+                                            self.poke(&agent.id);
+                                            false
+                                        }
+                                    } else {
+                                        if super::service::is_positively_elsewhere(&looked.cls) || looked.boxed.as_ref().is_some_and(|b| b.answered) {
+                                            positively_cleared = true;
+                                        }
+                                        false
+                                    }
+                                }
+                                SubagentLiveState::WaitingQuestion => {
+                                    if still_stands(&last, &looked.cls, None) {
+                                        true
+                                    } else if matches!(looked.cls.state, SubagentLiveState::Idle | SubagentLiveState::Working) && (last.dedupe_key.starts_with("tx:") || last.dedupe_key.is_empty()) {
+                                        let inspect_deadline = (tokio::time::Instant::now() + STANDING_PROBE_TIMEOUT).min(deadline);
+                                        match tokio::time::timeout_at(inspect_deadline, self.inspect(std::slice::from_ref(&agent))).await {
+                                            Ok(inspected) => {
+                                                let info = inspected.get(&agent.id);
+                                                let turn_ms = info.and_then(|v| v["turn_started_ms"].as_u64());
+                                                let its_turn = olo_rex_link::agents::state::of_the_turn_given(turn_ms, looked.expects);
+                                                let raw_tx = info.and_then(|v| v["transcript_state"].as_str());
+                                                let tx = raw_tx.filter(|_| its_turn);
+                                                let tx_error = info.and_then(|v| v["transcript_error"].as_str()).filter(|_| its_turn);
+                                                let (eff, _, _) = effective_state(&looked.cls, tx, tx_error, true);
+                                                if eff == SubagentLiveState::WaitingQuestion {
+                                                    if last.dedupe_key.starts_with("tx:q:") {
+                                                        // Bind to exact question/turn identity so question B cannot
+                                                        // validate saved text of question A (Astra R2 #8).
+                                                        let cur_q = super::service::transcript_question_key(info, turn_ms);
+                                                        if cur_q == last.dedupe_key {
+                                                            true
+                                                        } else {
+                                                            positively_cleared = true;
+                                                            if let Some(live) = self.lock().live.get_mut(&agent.id) {
+                                                                live.last_state = None;
+                                                                live.last_key = None;
+                                                                live.unconfirmed = true;
+                                                            }
+                                                            self.poke(&agent.id);
+                                                            false
+                                                        }
+                                                    } else {
+                                                        true
+                                                    }
+                                                } else {
+                                                    // Only advance `watcher_seen` on POSITIVE evidence that the
+                                                    // question ended (newer turn, active working screen `in_turn`,
+                                                    // or explicit non-unknown transcript state); a transient
+                                                    // unreadable/`unknown` transcript on an idle `AT_PROMPT`
+                                                    // screen stays retryable (Astra R2 #7).
+                                                    if !its_turn || looked.cls.in_turn || matches!(raw_tx, Some("done" | "working" | "aborted" | "error" | "idle")) {
+                                                        positively_cleared = true;
+                                                    } else {
+                                                        let mut st = self.lock();
+                                                        if let Some(live) = st.live.get_mut(&agent.id) {
+                                                            live.standing_fails = live.standing_fails.saturating_add(1);
+                                                            let idx = (live.standing_fails as usize).saturating_sub(1).min(STANDING_BACKOFF_MS.len() - 1);
+                                                            let at = tokio::time::Instant::now() + Duration::from_millis(STANDING_BACKOFF_MS[idx]);
+                                                            live.standing_retry_after = Some(at);
+                                                            note_retry(at);
+                                                        }
+                                                    }
+                                                    false
+                                                }
+                                            }
+                                            Err(_) => {
+                                                let mut st = self.lock();
+                                                if let Some(live) = st.live.get_mut(&agent.id) {
+                                                    live.standing_fails = live.standing_fails.saturating_add(1);
+                                                    let idx = (live.standing_fails as usize).saturating_sub(1).min(STANDING_BACKOFF_MS.len() - 1);
+                                                    let at = tokio::time::Instant::now() + Duration::from_millis(STANDING_BACKOFF_MS[idx]);
+                                                    live.standing_retry_after = Some(at);
+                                                    note_retry(at);
+                                                }
+                                                false
+                                            }
+                                        }
+                                    } else {
+                                        // Screen-chooser question (`q:...`) is no longer on screen: never
+                                        // let a different transcript question validate A; invalidate the
+                                        // producer's cached state and wake it so any replacement question
+                                        // is published fresh (Astra R2 #8, R3 #8 & #11).
+                                        if super::service::is_positively_elsewhere(&looked.cls) {
+                                            positively_cleared = true;
+                                            if let Some(live) = self.lock().live.get_mut(&agent.id) {
+                                                live.last_state = None;
+                                                live.last_key = None;
+                                                live.unconfirmed = true;
+                                            }
+                                            self.poke(&agent.id);
+                                        }
+                                        false
+                                    }
+                                }
+                                _ => false,
+                            };
+
+                            if (holds || positively_cleared)
+                                && let Some(live) = self.lock().live.get_mut(&agent.id)
+                            {
+                                live.standing_fails = 0;
+                                live.standing_retry_after = None;
+                            }
+                            if positively_cleared {
+                                let cleared = {
+                                    let mut st = self.lock();
+                                    if st.retiring || st.frozen {
+                                        return retiring_handover();
+                                    }
+                                    let agent_alive = st.reg.entries.iter().rev().any(|e| e.id == agent.id && e.exited_at.is_none()) && st.live.contains_key(&agent.id);
+                                    let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                                    let cur_seq = st.live.get(&agent.id).and_then(|l| l.latest_event.as_ref()).map(|e| e.seq).or_else(|| st.log.last_state_of(&agent.id).map(|e| e.seq));
+                                    let gen_ok = st.live.get(&agent.id).is_some_and(|l| l.read_seq == looked.seq && l.event_gen == cand_event_gen && l.given == cand_given);
+                                    if agent_alive && caller_alive && gen_ok && cur_seq == Some(last.seq) {
+                                        super::service::record_watcher_seen_locked(&mut st, wk.clone(), agent.id.clone(), last.seq).is_some()
+                                    } else {
+                                        false
+                                    }
+                                };
+                                if cleared {
+                                    self.saved();
+                                }
+                                continue;
+                            }
+                            if !holds {
+                                continue;
+                            }
+
+                            // Astra R3 #1: if this standing `WaitingApproval` carries a box key
+                            // from a predecessor service generation, re-inspect the live transcript
+                            // so we NEVER attach a new box's actionable key to a stale pre-handover
+                            // command description! (Same-generation exact matches keep their already
+                            // verified `delivered.approval` untouched.)
+                            let refreshed_approval = if let Some(ref key) = refreshed_box_key
+                                && last.approval.as_ref().and_then(|a| a["box"].as_str()) != Some(key.as_str())
+                                && let Some(ap) = looked.cls.approval.as_ref()
+                            {
+                                let inspect_deadline = (tokio::time::Instant::now() + STANDING_PROBE_TIMEOUT).min(deadline);
+                                match tokio::time::timeout_at(inspect_deadline, self.inspect(std::slice::from_ref(&agent))).await {
+                                    Ok(inspected) => {
+                                        let pending = Self::pending_tools(inspected.get(&agent.id));
+                                        Some(Self::approval_json_with_box(ap, &pending, Some(key)))
+                                    }
+                                    Err(_) => {
+                                        note_retry(tokio::time::Instant::now() + Duration::from_millis(250));
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+
+                            enum AcceptOutcome {
+                                Accepted(Option<u64>),
+                                StaleReadRetry,
+                                Skip,
+                                Retiring,
+                            }
+                            let outcome = {
+                                let mut st = self.lock();
+                                if st.retiring || st.frozen {
+                                    AcceptOutcome::Retiring
+                                } else {
+                                    let agent_alive = st.reg.entries.iter().rev().any(|e| e.id == agent.id && e.exited_at.is_none()) && st.live.contains_key(&agent.id);
+                                    let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                                    let latest_unchanged =
+                                        st.live.get(&agent.id).and_then(|l| l.latest_event.as_ref()).map(|e| e.seq).or_else(|| st.log.last_state_of(&agent.id).map(|e| e.seq)) == Some(last.seq);
+                                    let (read_unchanged, gen_unchanged) =
+                                        st.live.get(&agent.id).map_or((false, false), |l| (l.read_seq == looked.seq, l.event_gen == cand_event_gen && l.given == cand_given));
+                                    let already = st.watcher_seen.get(&(wk.clone(), agent.id.clone())).copied().unwrap_or(0);
+                                    if !agent_alive
+                                        || !caller_alive
+                                        || !latest_unchanged
+                                        || !gen_unchanged
+                                        || last.seq <= already
+                                        || Self::minders_own(&st.reg, caller, &agent.id, last.state)
+                                        || Self::question_suppressed_locked(&st, &agent.id, &looked.cls, looked.boxed.as_ref())
+                                    {
+                                        AcceptOutcome::Skip
+                                    } else if !read_unchanged {
+                                        // Concurrent read bumped `read_seq` while `inspect()` ran: retry
+                                        // promptly instead of stalling until timeout (Astra R2 #9, Neon R2 #3).
+                                        AcceptOutcome::StaleReadRetry
+                                    } else if let Some(prev) = super::service::record_watcher_seen_locked(&mut st, wk.clone(), agent.id.clone(), last.seq) {
+                                        AcceptOutcome::Accepted(prev)
+                                    } else {
+                                        AcceptOutcome::Skip
+                                    }
+                                }
+                            };
+                            let prev_seen = match outcome {
+                                AcceptOutcome::Retiring => return retiring_handover(),
+                                AcceptOutcome::StaleReadRetry => {
+                                    note_retry(tokio::time::Instant::now() + Duration::from_millis(250));
+                                    continue;
+                                }
+                                AcceptOutcome::Skip => continue,
+                                AcceptOutcome::Accepted(prev) => prev,
+                            };
+                            let mut seen_guard = WatcherSeenGuard { service: self.clone(), wk: wk.clone(), agent_id: agent.id.clone(), inserted_seq: last.seq, prev: prev_seen, armed: true };
+                            let post_write_ok = match tokio::time::timeout_at(deadline, self.write_now()).await {
+                                Err(_) => return timeout_response_at(since_floor),
+                                Ok(Err(e)) => return Response::err("watch", format!("couldn't save watcher state: {e}"), 1),
+                                Ok(Ok(())) => {
+                                    // Revalidate retirement, caller liveness, ownership, and standing
+                                    // state after `write_now()` before disarming rollback guard (Astra R3 #7).
+                                    let st = self.lock();
+                                    if st.retiring || st.frozen {
+                                        return retiring_handover();
+                                    }
+                                    let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                                    if !caller_alive {
+                                        return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                                    }
+                                    let latest_unchanged =
+                                        st.live.get(&agent.id).and_then(|l| l.latest_event.as_ref()).map(|e| e.seq).or_else(|| st.log.last_state_of(&agent.id).map(|e| e.seq)) == Some(last.seq);
+                                    let gen_unchanged = st.live.get(&agent.id).is_some_and(|l| l.event_gen == cand_event_gen && l.given == cand_given);
+                                    latest_unchanged
+                                        && gen_unchanged
+                                        && !Self::minders_own(&st.reg, caller, &agent.id, last.state)
+                                        && !Self::question_suppressed_locked(&st, &agent.id, &looked.cls, looked.boxed.as_ref())
+                                }
+                            };
+                            if !post_write_ok {
+                                continue;
+                            }
+                            seen_guard.armed = false;
+                            let mut delivered = last;
+                            if let Some(fresh_ap) = refreshed_approval {
+                                delivered.approval = Some(fresh_ap);
+                            } else if let Some(ref key) = refreshed_box_key {
+                                if let Some(obj) = delivered.approval.as_mut().and_then(Value::as_object_mut) {
+                                    obj.insert("box".into(), json!(key));
+                                } else if let Some(ap) = looked.cls.approval.as_ref() {
+                                    delivered.approval = Some(Self::approval_json_with_box(ap, &[], Some(key)));
+                                }
+                            }
+                            let reply_gap = gap_now || (delivered.seq > since_floor && self.lock().log.oldest_seq() > delivered.seq);
+                            delivered.seq = delivered.seq.max(since_floor);
+                            let mut resp = answer(&delivered, None, reply_gap);
+                            resp.data["standing"] = json!(true);
+                            if spec.json {
+                                resp.stdout = format!("{}\n", resp.data);
+                            }
+                            return resp;
+                        }
+                    }
+                }
+
+                // 1b. Normal ordered delivery from the event ring (`seq > since_floor`).
+                if let Some(mut ev) = queued_peek {
+                    // Re-evaluate minder ownership and caller liveness after any
+                    // standing-candidate awaits above (Astra R2 #10).
+                    let (recheck_ok, needs_box_refresh, refresh_entry, cached_approval) = {
+                        let st = self.lock();
+                        if st.retiring || st.frozen {
+                            return retiring_handover();
+                        }
+                        let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                        if !caller_alive {
+                            return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                        }
+                        if ev.event != minder::ESCALATION && Self::minders_own(&st.reg, caller, &ev.id, ev.state) {
+                            (false, false, None, None)
+                        } else {
+                            // Astra R2 #4 & R3 #1/#6, Neon R3 #7: if this queued `WaitingApproval`
+                            // is STILL the child's latest live approval and carries a pre-handover
+                            // box key from an older service generation, prefer an already-verified
+                            // current-generation payload in `live.latest_event`; otherwise probe
+                            // and re-inspect before delivering (retrying on transient RPC failure).
+                            let live_ev = st.live.get(&ev.id).and_then(|l| l.latest_event.as_ref());
+                            let is_latest = live_ev.map(|e| e.seq).or_else(|| st.log.last_state_of(&ev.id).map(|e| e.seq)) == Some(ev.seq);
+                            let stale_box = ev.event != minder::ESCALATION
+                                && ev.state == SubagentLiveState::WaitingApproval
+                                && is_latest
+                                && ev.approval.as_ref().and_then(|a| a["box"].as_str()).is_some_and(|bk| !box_is_current_service(bk, st.reg.service_gen, self.incarnation));
+                            if stale_box
+                                && let Some(le) = live_ev
+                                && le.seq == ev.seq
+                                && le.approval.as_ref().and_then(|a| a["box"].as_str()).is_some_and(|bk| box_is_current_service(bk, st.reg.service_gen, self.incarnation))
+                            {
+                                (true, false, None, le.approval.clone())
+                            } else {
+                                let entry = if stale_box { st.reg.entries.iter().rev().find(|e| e.id == ev.id && e.exited_at.is_none()).cloned() } else { None };
+                                (true, entry.is_some(), entry, None)
+                            }
+                        }
+                    };
+                    if !recheck_ok {
+                        continue;
+                    }
+                    if let Some(fresh_ap) = cached_approval {
+                        ev.approval = Some(fresh_ap);
+                    } else if needs_box_refresh && let Some(agent) = refresh_entry {
+                        let probe_deadline = (tokio::time::Instant::now() + STANDING_PROBE_TIMEOUT).min(deadline);
+                        let looked = self.look_ordered(&agent, Some(probe_deadline)).await;
+                        if looked.cls.state != SubagentLiveState::Exited && (looked.rpc_failed || !looked.is_fresh_ordered()) {
+                            // Never consume an unread latest approval with a dead predecessor box key
+                            // on a transient read failure (Astra R3 #6, Neon R3 #7).
+                            if tokio::time::Instant::now() >= deadline {
+                                return timeout_response_at(since_floor);
+                            }
+                            note_retry(tokio::time::Instant::now() + Duration::from_millis(250));
+                            continue;
+                        }
+                        if looked.is_fresh_ordered()
+                            && looked.cls.state == SubagentLiveState::WaitingApproval
+                            && let Some(lb) = looked.boxed.as_ref().filter(|b| !b.answered)
+                            && let Some(ap) = looked.cls.approval.as_ref()
+                        {
+                            let content_key = format!("box:b{}-{:08x}", lb.number, lb.hash as u32);
+                            if still_stands(&ev, &looked.cls, Some(&lb.key)) || ev.dedupe_key == content_key {
+                                let inspect_deadline = (tokio::time::Instant::now() + STANDING_PROBE_TIMEOUT).min(deadline);
+                                match tokio::time::timeout_at(inspect_deadline, self.inspect(std::slice::from_ref(&agent))).await {
+                                    Ok(inspected) => {
+                                        let pending = Self::pending_tools(inspected.get(&agent.id));
+                                        ev.approval = Some(Self::approval_json_with_box(ap, &pending, Some(&lb.key)));
+                                    }
+                                    Err(_) => {
+                                        if tokio::time::Instant::now() >= deadline {
+                                            return timeout_response_at(since_floor);
+                                        }
+                                        note_retry(tokio::time::Instant::now() + Duration::from_millis(250));
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        // Re-verify ownership & caller liveness even for callers without a watcher_key (Astra R3 #7).
+                        let st = self.lock();
+                        if st.retiring || st.frozen {
+                            return retiring_handover();
+                        }
+                        let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                        if !caller_alive {
+                            return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                        }
+                        if ev.event != minder::ESCALATION && Self::minders_own(&st.reg, caller, &ev.id, ev.state) {
+                            continue;
+                        }
+                    }
+                    let seen_guard = if ev.event != minder::ESCALATION
+                        && matches!(ev.state, SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion)
+                        && let Some(ref wk) = watcher_key
+                    {
+                        let mut st = self.lock();
+                        if st.retiring || st.frozen {
+                            return retiring_handover();
+                        }
+                        if Self::minders_own(&st.reg, caller, &ev.id, ev.state) {
+                            continue;
+                        }
+                        let agent_alive = st.reg.entries.iter().rev().any(|e| e.id == ev.id && e.exited_at.is_none()) && st.live.contains_key(&ev.id);
+                        let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                        if !caller_alive {
+                            return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                        }
+                        if agent_alive && let Some(prev) = super::service::record_watcher_seen_locked(&mut st, wk.clone(), ev.id.clone(), ev.seq) {
+                            Some(WatcherSeenGuard { service: self.clone(), wk: wk.clone(), agent_id: ev.id.clone(), inserted_seq: ev.seq, prev, armed: true })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(mut guard) = seen_guard {
+                        let post_ok = match tokio::time::timeout_at(deadline, self.write_now()).await {
+                            Err(_) => return timeout_response_at(since_floor),
+                            Ok(Err(e)) => return Response::err("watch", format!("couldn't save watcher state: {e}"), 1),
+                            Ok(Ok(())) => {
+                                let st = self.lock();
+                                if st.retiring || st.frozen {
+                                    return retiring_handover();
+                                }
+                                let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                                if !caller_alive {
+                                    return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                                }
+                                !(ev.event != minder::ESCALATION && Self::minders_own(&st.reg, caller, &ev.id, ev.state))
+                            }
+                        };
+                        if !post_ok {
+                            continue;
+                        }
+                        guard.armed = false;
+                    }
+                    return answer(&ev, None, gap_now);
                 }
             }
 
@@ -3165,14 +3800,21 @@ impl Service {
                         let is_text = name == "match" || name == "regex";
                         // (A state must hold on a fresh ordered read and remain unsuppressed; text that came is there.)
                         let confirmed_now = if first.state == SubagentLiveState::Exited || is_text {
-                            Some(self.look(&entry, false).await)
+                            let again = self.look(&entry, false).await;
+                            let (eg, gv) = self.lock().live.get(&entry.id).map_or((0, 0), |l| (l.event_gen, l.given));
+                            Some((again, eg, gv))
                         } else {
                             tokio::time::sleep(super::service::CONFIRM).await;
                             let again = self.look(&entry, true).await;
-                            let ok = again.is_fresh_ordered() && again.cls.state == first.state && !Self::question_suppressed_locked(&self.lock(), &entry.id, &again.cls, again.boxed.as_ref());
-                            ok.then_some(again)
+                            let (ok, eg, gv) = {
+                                let st = self.lock();
+                                let ok = again.is_fresh_ordered() && again.cls.state == first.state && !Self::question_suppressed_locked(&st, &entry.id, &again.cls, again.boxed.as_ref());
+                                let (eg, gv) = st.live.get(&entry.id).map_or((0, 0), |l| (l.event_gen, l.given));
+                                (ok, eg, gv)
+                            };
+                            ok.then_some((again, eg, gv))
                         };
-                        if let Some(now) = confirmed_now {
+                        if let Some((now, snap_event_gen, snap_given)) = confirmed_now {
                             let inspected = self.inspect(std::slice::from_ref(&entry)).await;
                             if let Some(me) = &minding {
                                 if let Some(ended) = lost_named_target(me) {
@@ -3196,7 +3838,20 @@ impl Service {
                             let in_turn_yet = !is_text && first.state == SubagentLiveState::Idle && state == SubagentLiveState::Working;
                             let not_asked = !is_text && !spec.matches_state(state);
                             if !in_turn_yet && !not_asked {
-                                let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());
+                                let turn_ms = info.and_then(|v| v["turn_started_ms"].as_u64());
+                                let dedupe = if is_text {
+                                    String::new()
+                                } else if state == SubagentLiveState::WaitingApproval
+                                    && let Some(lb) = now.boxed.as_ref()
+                                {
+                                    format!("box:b{}-{:08x}", lb.number, lb.hash as u32)
+                                } else if state == SubagentLiveState::WaitingQuestion {
+                                    let qk = super::service::subkey(&now.cls);
+                                    if qk.is_empty() { super::service::transcript_question_key(info, turn_ms) } else { qk }
+                                } else {
+                                    String::new()
+                                };
+                                let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), dedupe);
                                 ev.seq = self.cursor();
                                 if is_text {
                                     ev.event = name;
@@ -3205,6 +3860,118 @@ impl Service {
                                 ev.approval = now.cls.approval.as_ref().map(|ap| Self::approval_json_with_box(ap, &pending, now.boxed.as_ref().map(|b| b.key.as_str())));
                                 ev.error = error_words(state, error, &now.screen);
                                 ev.tail = tail_of(&now.screen, 10);
+                                // Atomically bind this cursorless prompt delivery to its exact
+                                // confirmed log entry and `watcher_seen` watermark under one lock:
+                                // verify `committed` (not provisional), `read_seq`/`event_gen`/`given`,
+                                // `--approve-all-but` list exclusion, and earlier sibling ring events
+                                // before pushing, and wake `self.changed` on any new commit
+                                // (Astra R2 #11, R3 #4/#5/#7/#20/#24; Neon R3 #2).
+                                if !is_text
+                                    && matches!(state, SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion)
+                                    && let Some(ref wk) = watcher_key
+                                {
+                                    let list_would_auto = state == SubagentLiveState::WaitingApproval
+                                        && now.cls.approval.as_ref().is_some_and(|ap| self.list_allows(&entry.id, ap).is_some())
+                                        && !now.survey
+                                        && !now.survey_pending;
+                                    let mut guard_opt: Option<WatcherSeenGuard> = None;
+                                    let mut pushed_new = false;
+                                    let mut earlier_sibling = false;
+                                    let ok_to_deliver = {
+                                        let mut st = self.lock();
+                                        if st.retiring || st.frozen {
+                                            return retiring_handover();
+                                        }
+                                        let agent_alive = st.reg.entries.iter().rev().any(|e| e.id == entry.id && e.exited_at.is_none()) && st.live.contains_key(&entry.id);
+                                        let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                                        if !caller_alive {
+                                            return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                                        }
+                                        let live_fresh = st.live.get(&entry.id).is_some_and(|l| l.committed && l.read_seq == now.seq && l.event_gen == snap_event_gen && l.given == snap_given);
+                                        let has_earlier = st
+                                            .log
+                                            .find_since(since_floor, |qe| {
+                                                qe.event != minder::MINDING
+                                                    && qe.id != entry.id
+                                                    && event_in_scope(qe, &live_ids)
+                                                    && if qe.event == minder::ESCALATION {
+                                                        spec.wants_escalations()
+                                                    } else {
+                                                        spec.matches_state(qe.state) && !Self::minders_own(&st.reg, caller, &qe.id, qe.state)
+                                                    }
+                                            })
+                                            .is_some();
+                                        if has_earlier {
+                                            earlier_sibling = true;
+                                            false
+                                        } else if !agent_alive
+                                            || !live_fresh
+                                            || list_would_auto
+                                            || Self::minders_own(&st.reg, caller, &entry.id, state)
+                                            || Self::question_suppressed_locked(&st, &entry.id, &now.cls, now.boxed.as_ref())
+                                        {
+                                            false
+                                        } else {
+                                            let before = st.log.latest_seq();
+                                            let committed_seq = st.log.push(ev.clone());
+                                            if committed_seq > before {
+                                                pushed_new = true;
+                                                st.reg.event_seq = committed_seq;
+                                                let mut stored = ev.clone();
+                                                stored.seq = committed_seq;
+                                                if let Some(live) = st.live.get_mut(&entry.id) {
+                                                    live.latest_event = Some(stored.clone());
+                                                    live.latest_event_gen = live.event_gen;
+                                                }
+                                                if let Ok(mut line) = serde_json::to_string(&stored) {
+                                                    use std::io::Write as _;
+                                                    line.push('\n');
+                                                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.paths.events) {
+                                                        let _ = f.write_all(line.as_bytes());
+                                                    }
+                                                }
+                                            }
+                                            ev.seq = committed_seq.max(st.log.latest_seq());
+                                            if let Some(prev) = super::service::record_watcher_seen_locked(&mut st, wk.clone(), entry.id.clone(), committed_seq) {
+                                                guard_opt =
+                                                    Some(WatcherSeenGuard { service: self.clone(), wk: wk.clone(), agent_id: entry.id.clone(), inserted_seq: committed_seq, prev, armed: true });
+                                            }
+                                            true
+                                        }
+                                    };
+                                    if pushed_new {
+                                        self.changed.notify_waiters();
+                                    }
+                                    if earlier_sibling {
+                                        break 'scan;
+                                    }
+                                    if !ok_to_deliver {
+                                        turned_down.insert(turned);
+                                        continue 'scan;
+                                    }
+                                    if let Some(mut guard) = guard_opt {
+                                        let post_ok = match tokio::time::timeout_at(deadline, self.write_now()).await {
+                                            Err(_) => return timeout_response_at(since_floor),
+                                            Ok(Err(e)) => return Response::err("watch", format!("couldn't save watcher state: {e}"), 1),
+                                            Ok(Ok(())) => {
+                                                let st = self.lock();
+                                                if st.retiring || st.frozen {
+                                                    return retiring_handover();
+                                                }
+                                                let caller_alive = caller.child.as_ref().is_none_or(|c| st.reg.entries.iter().rev().any(|e| e.id == c.id && e.exited_at.is_none()));
+                                                if !caller_alive {
+                                                    return Response::err("watch", "this child tab has exited and may no longer act on the agents service", 69);
+                                                }
+                                                !Self::minders_own(&st.reg, caller, &entry.id, state)
+                                            }
+                                        };
+                                        if !post_ok {
+                                            turned_down.insert(turned);
+                                            continue 'scan;
+                                        }
+                                        guard.armed = false;
+                                    }
+                                }
                                 return answer(&ev, matched_line, had_gap);
                             }
                         }
@@ -3213,17 +3980,17 @@ impl Service {
                 }
             }
 
+            let retry_at = earliest_retry.map(|at| at.min(deadline));
             tokio::select! {
-                _ = changed => {}
+                _ = &mut changed => {}
+                _ = async {
+                    match retry_at {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {}
                 _ = tokio::time::sleep_until(deadline) => {
-                    let payload = json!({ "ok": false, "cursor": self.cursor(), "event": "timeout", "elapsed_ms": started.elapsed().as_millis() as u64, "code": 124 });
-                    return Response {
-                        ok: false,
-                        stdout: if spec.json { format!("{payload}\n") } else { String::new() },
-                        stderr: format!("olo agent watch: timed out after {}s\n", spec.timeout_secs),
-                        code: 124,
-                        data: payload,
-                    };
+                    return timeout_response();
                 }
             }
         }
@@ -3378,20 +4145,22 @@ impl Service {
             // Also reconcile transcript-only questions (`transcript_state == "waiting"`
             // while raw screen looks `Idle`/`Working`) so they go through the same
             // grant and `rules_gen` gate instead of slipping into the steer branch.
-            let eff_state = if matches!(before.cls.state, SubagentLiveState::Idle | SubagentLiveState::Working) && entry.cli.is_agent() {
+            let (eff_state, cur_tx_q) = if matches!(before.cls.state, SubagentLiveState::Idle | SubagentLiveState::Working) && entry.cli.is_agent() {
                 had_intervening_await = true;
                 let inspected = self.inspect(std::slice::from_ref(&entry)).await;
                 let info = inspected.get(&entry.id);
-                effective_state(&before.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true).0
+                let eff = effective_state(&before.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true).0;
+                let tx_q = super::service::transcript_question_key(info, info.and_then(|v| v["turn_started_ms"].as_u64()));
+                (eff, Some(tx_q))
             } else {
-                before.cls.state
+                (before.cls.state, None)
             };
             if eff_state == SubagentLiveState::WaitingQuestion {
                 if !before.cls.recognized_question && !spec.raw_keys.is_empty() {
                     return err("a minder may only send chooser keys while a recognised screen question is active".into(), 69);
                 }
                 // Non-approval question (screen-recognized or transcript-only):
-                // bound to the exact question and current rules generation.
+                // bound to the exact question and current rules generation (Astra R3 #2, Neon R3 #5).
                 let q_key = super::service::subkey(&before.cls);
                 let pair = (me.id.clone(), entry.id.clone());
                 let mut st = self.lock();
@@ -3400,7 +4169,10 @@ impl Service {
                 }
                 let cur_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
                 let pending_rev = st.pending_rules_rev.contains_key(&pair);
-                let ok = !pending_rev && st.told.get(&pair).is_some_and(|g| !g.is_approval && g.rules_gen == cur_gen && (g.token == q_key || (q_key.is_empty() && g.token == "tx:waiting")));
+                let ok = !pending_rev
+                    && st.told.get(&pair).is_some_and(|g| {
+                        !g.is_approval && g.rules_gen == cur_gen && (g.token == q_key || (q_key.is_empty() && (g.token == "tx:waiting" || cur_tx_q.as_deref() == Some(g.token.as_str()))))
+                    });
                 if !ok {
                     drop(st);
                     let who = entry.name.as_deref().unwrap_or(&entry.id);
@@ -4845,6 +5617,7 @@ impl Service {
             st.reg.entries.retain(|e| !gone.contains(&e.id));
             for id in &gone {
                 st.live.remove(id);
+                st.watcher_seen.retain(|(w, a), _| a != id && super::service::watcher_owner_child(w) != Some(id.as_str()));
             }
             (gone, others)
         };

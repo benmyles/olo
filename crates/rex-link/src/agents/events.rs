@@ -154,6 +154,28 @@ impl SubagentEventLog {
         self.events.iter().rev().find(|e| e.id == id && e.event != super::minder::ESCALATION && e.event != super::minder::MINDING)
     }
 
+    /// Single reverse scan returning the latest state event for every child in
+    /// `ids` (excluding `escalation` and `minding`), stopping as soon as all
+    /// requested IDs are found.
+    pub fn last_states_for(&self, ids: &std::collections::HashSet<&str>) -> std::collections::HashMap<String, SubagentEvent> {
+        let mut out = std::collections::HashMap::with_capacity(ids.len());
+        if ids.is_empty() {
+            return out;
+        }
+        for e in self.events.iter().rev() {
+            if e.event == super::minder::ESCALATION || e.event == super::minder::MINDING {
+                continue;
+            }
+            if ids.contains(e.id.as_str()) && !out.contains_key(&e.id) {
+                out.insert(e.id.clone(), e.clone());
+                if out.len() == ids.len() {
+                    break;
+                }
+            }
+        }
+        out
+    }
+
     /// The last state and sequence recorded for `id` (tracked outside the
     /// 2,000-event ring buffer in `last_by_id`).
     pub fn last_recorded_of(&self, id: &str) -> Option<(SubagentLiveState, u64)> {

@@ -240,7 +240,7 @@ pub struct Live {
     /// that came while it was asked (`learn`).
     status_seq: u64,
     /// Counts what it has been given ([`state::Expected::seq`]).
-    given: u64,
+    pub(super) given: u64,
     /// A rest of its is kept back and will be looked at again (one
     /// timer, not one for each look: `transition`'s confirmation).
     relook: bool,
@@ -249,13 +249,13 @@ pub struct Live {
     pub pid: Option<i32>,
     rows: u16,
     pub last_state: Option<SubagentLiveState>,
-    last_key: Option<String>,
+    pub(super) last_key: Option<String>,
     check_gen: u64,
     /// Monotonic generation advanced whenever an answer is committed (`approve`
     /// or `send`): tags `latest_event` outside the 2,000-event log ring so
     /// pre-submission confirmations can never masquerade as post-answer events
     /// and ring eviction never duplicates a confirmed post-answer event.
-    event_gen: u64,
+    pub(super) event_gen: u64,
     /// Seen at work since it started (or since it was last typed to):
     /// really at work, not the word for an empty tab.
     seen_working: bool,
@@ -288,7 +288,7 @@ pub struct Live {
     /// True once durable registration has succeeded (suppresses public follower
     /// `Frame::Agent` broadcasts, event recording, and premature `exit()` during
     /// pre-commit `begin_attached` persistence so a rolled-back child never leaks).
-    committed: bool,
+    pub(super) committed: bool,
     /// Deferred process exit code observed while `!committed` (replayed once
     /// `begin_attached` commits, discarded on rollback).
     pending_exit_code: Option<i32>,
@@ -298,7 +298,7 @@ pub struct Live {
     /// True while a non-Working state transition awaits confirmation and has not
     /// yet recorded a confirmed event (prevents transient RPC failure or
     /// superseded confirmation reads from stranding a standing question).
-    unconfirmed: bool,
+    pub(super) unconfirmed: bool,
     /// `check_gen` of the currently sleeping confirmation task, if one is active,
     /// so blinking screens don't cancel a healthy in-flight confirmation while
     /// failed or superseded confirmations clear this to `None` and re-arm.
@@ -343,7 +343,7 @@ pub struct Live {
     /// The readings of its screen, in the order their RPCs were begun, and
     /// the last of them accepted: which box stands is what the latest
     /// accepted reading says, never an out-of-order or failed read.
-    read_seq: u64,
+    pub(super) read_seq: u64,
     pub(super) accepted_seq: u64,
     /// Explicit handoff flag kept true after `box_finish`, trust release, or
     /// relinquished survey claim until a live ordered reread publishes the
@@ -361,7 +361,17 @@ pub struct Live {
     /// is never lost when other host events evict the ring.
     pub latest_event: Option<SubagentEvent>,
     /// The `event_gen` at which `latest_event` was confirmed and recorded.
-    latest_event_gen: u64,
+    pub(super) latest_event_gen: u64,
+    /// Adopted pre-handover approval box `(number, hash32)` restored from the
+    /// event log in `reconcile()` so a standing box #2+ keeps its original
+    /// content dedupe key (`box:b{n}-{hash}`) across handover while minting a
+    /// fresh generation-specific `--box` key (Astra R2 #5).
+    adopted_box: Option<(u64, u32)>,
+    /// Consecutive standing-probe RPC failures and earliest backoff retry instant
+    /// so a persistently unreadable pane never turns `watch` into a 250 ms spin
+    /// loop or starves healthy siblings (Astra R2 #6 & #21).
+    pub(super) standing_fails: u8,
+    pub(super) standing_retry_after: Option<tokio::time::Instant>,
 }
 
 /// Generates a fresh non-zero per-process random 32-bit incarnation token
@@ -505,6 +515,7 @@ impl Live {
                     retired_answered = true;
                 }
                 self.list_skip = None;
+                self.adopted_box = None;
                 if self.adopted_pending && self.survey == SurveyState::Idle {
                     self.adopted_pending = false;
                 }
@@ -524,8 +535,21 @@ impl Live {
             Some(cur) if cur.hash == what => cur,
             Some(cur) if cur.answered && cur.prompt_hash == ph => cur,
             _ => {
-                self.boxes += 1;
-                let cur = BoxNow { hash: what, prompt_hash: ph, choice_count: choices, number: self.boxes, service_gen, incarnation, answered: false };
+                let number = match self.adopted_box.take() {
+                    Some((ad_n, ad_hash)) if ad_hash == (what as u32) => {
+                        self.boxes = self.boxes.max(ad_n);
+                        ad_n
+                    }
+                    Some((ad_n, _)) => {
+                        self.boxes = self.boxes.max(ad_n) + 1;
+                        self.boxes
+                    }
+                    None => {
+                        self.boxes += 1;
+                        self.boxes
+                    }
+                };
+                let cur = BoxNow { hash: what, prompt_hash: ph, choice_count: choices, number, service_gen, incarnation, answered: false };
                 self.box_now = Some(cur);
                 if adopted {
                     self.list_skip = Some(ListSkip::from_box(cur));
@@ -593,6 +617,9 @@ impl Live {
             trust: None,
             latest_event: None,
             latest_event_gen: 0,
+            adopted_box: None,
+            standing_fails: 0,
+            standing_retry_after: None,
         }
     }
 
@@ -700,6 +727,14 @@ pub struct State {
     /// about `agent_id` delivered to `minder_id`. Keyed per subject so a
     /// targeted watch on B never swallows an unread rules event for A.
     pub minding_seen: HashMap<(String, String), u64>,
+    /// By `(watcher_key, agent_id)`: the highest `WaitingApproval` /
+    /// `WaitingQuestion` event seq of `agent_id` already delivered to a
+    /// non-service-minder watcher (`tab-minder` or lead) via `watch`. Used so
+    /// `watch --since` immediately catches any standing unanswered prompt whose
+    /// event fell at or before `since` (e.g., two back-to-back starts or a
+    /// cursor bumped by `status`) without ever spin-looping on an already-seen
+    /// standing prompt.
+    pub watcher_seen: HashMap<(String, String), u64>,
     /// By `minder_id`: exited agents whose exit has not yet been reported
     /// via `escalate`. Early shutdown after a report waits until all
     /// pending exits for this minder have been reported.
@@ -901,7 +936,7 @@ pub struct Service {
     /// Fresh per-process random incarnation token embedded in approval box
     /// keys so two service processes can never collide even if `service_gen`
     /// is reset or dropped by an older helper.
-    incarnation: u32,
+    pub(super) incarnation: u32,
     /// Serializes `adopt` migrations through durable commit so concurrent
     /// desktop migrations never observe unpersisted staged entries.
     adopt_lock: tokio::sync::Mutex<()>,
@@ -961,6 +996,80 @@ pub fn subkey(cls: &ScreenClassification) -> String {
     } else {
         String::new()
     }
+}
+
+/// Parses a generation-independent box dedupe key (`box:b{n}-{hash32_hex}`)
+/// into `(number, hash32)` so an adopted standing box #2+ keeps its original
+/// box number across handover (Astra R2 #5).
+pub(super) fn parse_box_dedupe_key(dedupe: &str) -> Option<(u64, u32)> {
+    let rest = dedupe.strip_prefix("box:b")?;
+    let (n_str, h_str) = rest.split_once('-')?;
+    let n = n_str.parse::<u64>().ok()?;
+    let h = u32::from_str_radix(h_str, 16).ok()?;
+    Some((n, h))
+}
+
+/// Stable question identity for a transcript-only `WaitingQuestion` combining
+/// turn start time and pending tool call identity (or last message) so a
+/// second transcript question B cannot validate an earlier saved event A
+/// (Astra R2 #8).
+pub(super) fn transcript_question_key(info: Option<&Value>, turn_ms: Option<u64>) -> String {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let pending = Service::pending_tools(info);
+    if !pending.is_empty() {
+        for p in &pending {
+            p.to_string().hash(&mut h);
+        }
+    } else if let Some(pt) = info.and_then(|v| v["pending_tool"].as_str()) {
+        pt.hash(&mut h);
+    } else if let Some(msg) = info.and_then(|v| v["last_message"].as_str()) {
+        msg.hash(&mut h);
+    }
+    format!("tx:q:{}:{:016x}", turn_ms.unwrap_or(0), h.finish())
+}
+
+/// Extracts the owning child ID from a child-scoped watcher key
+/// (`child:<id>` or `child:<id>:<label>`).
+pub(super) fn watcher_owner_child(w: &str) -> Option<&str> {
+    w.strip_prefix("child:").map(|rest| rest.split(':').next().unwrap_or(rest))
+}
+
+/// True when `w` is subject to [`MAX_DETACHED_WATCHER_SEEN`] eviction: all
+/// non-child detached keys (`watcher:*`, `win:*`, `parent:*`) AND labelled
+/// child keys (`child:<id>:<label>`), so a live child cannot grow unbounded
+/// state by inventing fresh `--watcher` labels (Astra R3 #18, Neon R3 #6).
+pub(super) fn is_capped_watcher_key(w: &str) -> bool {
+    w.strip_prefix("child:").is_none_or(|rest| rest.contains(':'))
+}
+
+/// Cap on detached and labelled `watcher_seen` entries so supervisors or live
+/// children generating fresh `--watcher ID` labels cannot grow state without
+/// bound across a long-lived child (Astra R2 #20, R3 #18; Neon R3 #6).
+pub(super) const MAX_DETACHED_WATCHER_SEEN: usize = 512;
+
+/// Records `(wk, agent_id) -> seq` in `st.watcher_seen` if `seq` strictly
+/// advances the stored watermark, returning `Some(previous_value)` when
+/// inserted (so callers can roll back on cancellation/save error). Enforces
+/// [`MAX_DETACHED_WATCHER_SEEN`] on detached and labelled watcher keys.
+pub(super) fn record_watcher_seen_locked(st: &mut State, wk: String, agent_id: String, seq: u64) -> Option<Option<u64>> {
+    let pair = (wk, agent_id);
+    let prev = st.watcher_seen.get(&pair).copied();
+    if seq <= prev.unwrap_or(0) {
+        return None;
+    }
+    let is_capped = is_capped_watcher_key(&pair.0);
+    st.watcher_seen.insert(pair.clone(), seq);
+    if is_capped {
+        let capped_count = st.watcher_seen.keys().filter(|(w, _)| is_capped_watcher_key(w)).count();
+        if capped_count > MAX_DETACHED_WATCHER_SEEN {
+            let evict = st.watcher_seen.iter().filter(|(k, _)| is_capped_watcher_key(&k.0) && *k != &pair).min_by_key(|(_, v)| **v).map(|(k, _)| k.clone());
+            if let Some(old) = evict {
+                st.watcher_seen.remove(&old);
+            }
+        }
+    }
+    Some(prev)
 }
 
 pub fn tail_of(screen: &str, lines: usize) -> Vec<String> {
@@ -2371,6 +2480,15 @@ impl Service {
                             let _ = f.write_all(line.as_bytes());
                         }
                     }
+                } else if seq > 0 && live.latest_event.as_ref().is_none_or(|e| e.seq <= seq) {
+                    // Duplicate confirmation (e.g., after handover when `live.latest_event`
+                    // started as None): populate the live cache with the original `seq` and
+                    // current verified payload (including this generation's box key) so a
+                    // later ring rollover cannot evict this standing prompt (Astra R2 #3).
+                    let mut event = event;
+                    event.seq = seq;
+                    live.latest_event = Some(event);
+                    live.latest_event_gen = live.event_gen;
                 }
             }
             seq
@@ -2518,6 +2636,7 @@ impl Service {
                 }
                 return;
             }
+            st.watcher_seen.retain(|(w, a), _| a != id && watcher_owner_child(w) != Some(id));
             if entry.is_minder() {
                 st.seen.retain(|(m, _), _| m != &entry.id);
                 st.minding_seen.retain(|(m, _), _| m != &entry.id);
@@ -3328,6 +3447,8 @@ impl Service {
                 format!("box:b{}-{:08x}", lb.number, lb.hash as u32)
             } else if !key.is_empty() {
                 key
+            } else if state == SubagentLiveState::WaitingQuestion {
+                transcript_question_key(info, turn_ms)
             } else if let Some(message) = &last_message {
                 use std::hash::{Hash as _, Hasher as _};
                 let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -3800,6 +3921,17 @@ impl Service {
                     let mut st = self.lock();
                     let mut live = Live::new();
                     live.adopted_pending = true;
+                    // Restore the last confirmed box number and content hash for an adopted
+                    // child so a still-open box #2+ keeps its original `box:b{n}-{hash}`
+                    // dedupe identity across handover while minting a fresh generation key
+                    // (Astra R2 #5).
+                    if let Some(last_ev) = st.log.last_state_of(&entry.id)
+                        && last_ev.state == SubagentLiveState::WaitingApproval
+                        && let Some((bn, bh)) = parse_box_dedupe_key(&last_ev.dedupe_key)
+                    {
+                        live.boxes = bn;
+                        live.adopted_box = Some((bn, bh));
+                    }
                     if let Some(minder_id) = st.reg.minder_of(&entry.id).map(|m| m.id.clone())
                         && let Some((last_state, last_seq)) = st.log.last_recorded_of(&entry.id)
                         && (last_state == SubagentLiveState::WaitingApproval
@@ -5274,6 +5406,8 @@ struct MinderStateDisk {
     #[serde(default)]
     minding_seen: Vec<(String, String, u64)>,
     #[serde(default)]
+    watcher_seen: Vec<(String, String, u64)>,
+    #[serde(default)]
     rules_gen: HashMap<String, u64>,
     #[serde(default)]
     pending_rules_rev: Vec<(String, String, u64, String)>,
@@ -5286,6 +5420,7 @@ impl MinderStateDisk {
         Self {
             seen: st.seen.iter().map(|((m, a), s)| (m.clone(), a.clone(), *s)).collect(),
             minding_seen: st.minding_seen.iter().map(|((m, a), s)| (m.clone(), a.clone(), *s)).collect(),
+            watcher_seen: st.watcher_seen.iter().map(|((w, a), s)| (w.clone(), a.clone(), *s)).collect(),
             rules_gen: st.rules_gen.clone(),
             pending_rules_rev: st.pending_rules_rev.iter().map(|((m, a), (g, p))| (m.clone(), a.clone(), *g, p.clone())).collect(),
             pending_exit_reports: st.pending_exit_reports.iter().map(|(m, s)| (m.clone(), s.iter().cloned().collect())).collect(),
@@ -5297,7 +5432,7 @@ impl MinderStateDisk {
     }
 
     fn max_seen_seq(&self) -> u64 {
-        self.seen.iter().map(|(_, _, s)| *s).chain(self.minding_seen.iter().map(|(_, _, s)| *s)).max().unwrap_or(0)
+        self.seen.iter().map(|(_, _, s)| *s).chain(self.minding_seen.iter().map(|(_, _, s)| *s)).chain(self.watcher_seen.iter().map(|(_, _, s)| *s)).max().unwrap_or(0)
     }
 
     fn save_to(&self, path: &std::path::Path) -> std::io::Result<()> {
@@ -5632,6 +5767,23 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
     );
     let (frames, _) = broadcast::channel(1024);
     let (retiring_tx, retiring_rx) = tokio::sync::watch::channel(false);
+    let watcher_seen = {
+        let live_ids: HashSet<&str> = reg.entries.iter().filter(|e| e.exited_at.is_none()).map(|e| e.id.as_str()).collect();
+        let mut kept: HashMap<(String, String), u64> = minder_disk
+            .watcher_seen
+            .into_iter()
+            .filter(|(w, a, _)| live_ids.contains(a.as_str()) && watcher_owner_child(w).is_none_or(|cid| live_ids.contains(cid)))
+            .map(|(w, a, s)| ((w, a), s))
+            .collect();
+        while kept.keys().filter(|(w, _)| is_capped_watcher_key(w)).count() > MAX_DETACHED_WATCHER_SEEN {
+            if let Some(old) = kept.iter().filter(|(k, _)| is_capped_watcher_key(&k.0)).min_by_key(|(_, v)| **v).map(|(k, _)| k.clone()) {
+                kept.remove(&old);
+            } else {
+                break;
+            }
+        }
+        kept
+    };
     let service = Arc::new(Service {
         rex,
         paths: paths.clone(),
@@ -5659,6 +5811,7 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
             pending_rules_rev: minder_disk.pending_rules_rev.into_iter().map(|(m, a, g, p)| ((m, a), (g, p))).collect(),
             seen: minder_disk.seen.into_iter().map(|(m, a, s)| ((m, a), s)).collect(),
             minding_seen: minder_disk.minding_seen.into_iter().map(|(m, a, s)| ((m, a), s)).collect(),
+            watcher_seen,
             pending_exit_reports: minder_disk.pending_exit_reports.into_iter().map(|(m, v)| (m, v.into_iter().collect())).collect(),
             pending_minds: HashMap::new(),
             leave: HashMap::new(),
@@ -6255,6 +6408,7 @@ mod box_tests {
                 pending_rules_rev: HashMap::new(),
                 seen: HashMap::new(),
                 minding_seen: HashMap::new(),
+                watcher_seen: HashMap::new(),
                 pending_exit_reports: HashMap::new(),
                 pending_minds: HashMap::new(),
                 leave: HashMap::new(),
@@ -7515,5 +7669,1310 @@ mod box_tests {
         // Simulate a 150 ms blink calling `transition()` while confirmation is already in flight:
         mock.service.transition(&quiet_blink.id).await;
         assert_eq!(mock.service.lock().live[&quiet_blink.id].check_gen, gen_after_first, "N5: blink during pending_handoff must NOT cancel active confirm_in_flight");
+    }
+
+    /// Regression for the `watch --all --since CURSOR` standing-approval race:
+    /// when a tab-minder or lead starts multiple children back-to-back (or bumps its
+    /// cursor from `status`) and child A enters `waiting_approval` at or before `since`,
+    /// `watch --all --since` must immediately catch A's standing approval without
+    /// rewinding the cursor, must not spin-loop if A is left waiting, must catch child B
+    /// next, and must catch a newer approval box on A later.
+    #[tokio::test]
+    async fn watch_since_catches_standing_approval_without_spin_loop() {
+        let rule = "─".repeat(60);
+        let working = format!("✻ Thinking… (2s)\n{rule}\n❯ \n{rule}\n  esc to interrupt\n");
+        let screens: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::from([("blk-a".into(), asking_screen("rex whoami --json")), ("blk-b".into(), asking_screen("ls crates/pool"))])));
+        let sc = screens.clone();
+        let mock = spawn_mock_service(
+            "watch-standing",
+            Arc::new(move |_idx, method, payload| {
+                let sc = sc.clone();
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        let blk = payload["block_id"].as_str().unwrap_or_default();
+                        let text = sc.lock().unwrap().get(blk).cloned().unwrap_or_default();
+                        return Ok(json!({ "content": text }));
+                    }
+                    Ok(json!({ "modes": [] }))
+                })
+            }),
+        )
+        .await;
+
+        let mut minder = test_entry("sa-tabm", "minder");
+        minder.window_id = "win-tabm".into();
+        minder.block_id = "blk-tabm".into();
+        minder.role = Some("tab-minder".into());
+
+        let mut child_a = test_entry("sa-ca", "child-a");
+        child_a.window_id = "win-ca".into();
+        child_a.block_id = "blk-a".into();
+        child_a.parent_window_id = "win-tabm".into();
+
+        let mut child_b = test_entry("sa-cb", "child-b");
+        child_b.window_id = "win-cb".into();
+        child_b.block_id = "blk-b".into();
+        child_b.parent_window_id = "win-tabm".into();
+
+        {
+            let mut st = mock.service.lock();
+            st.sessions.insert(
+                "sess-1".into(),
+                Sess {
+                    windows: HashSet::from(["win-lead".into(), "win-tabm".into(), "win-ca".into(), "win-cb".into()]),
+                    blocks: HashMap::from([("blk-tabm".into(), "win-tabm".into()), ("blk-a".into(), "win-ca".into()), ("blk-b".into(), "win-cb".into())]),
+                    active: Some("win-tabm".into()),
+                    fresh: true,
+                    attached: true,
+                },
+            );
+            st.reg.register(minder.clone());
+            st.reg.register(child_a.clone());
+            st.reg.register(child_b.clone());
+            st.live.insert(child_a.id.clone(), Live::new());
+            st.live.insert(child_b.id.clone(), Live::new());
+        }
+
+        // Prime live box keys and record both standing approvals BEFORE the watcher's cursor.
+        let la = mock.service.look(&child_a, false).await;
+        let lb = mock.service.look(&child_b, false).await;
+        let box_a = la.boxed.as_ref().expect("child_a box").key.clone();
+        let box_b = lb.boxed.as_ref().expect("child_b box").key.clone();
+
+        let mut ev_a = mock.service.event_of(&child_a, SubagentLiveState::WaitingApproval, Some("rex whoami --json".into()), format!("ap:{box_a}"));
+        ev_a.approval = la.cls.approval.as_ref().map(|ap| Service::approval_json_with_box(ap, &[], Some(&box_a)));
+        let seq_a = mock.service.record(ev_a);
+
+        let mut ev_b = mock.service.event_of(&child_b, SubagentLiveState::WaitingApproval, Some("ls crates/pool".into()), format!("ap:{box_b}"));
+        ev_b.approval = lb.cls.approval.as_ref().map(|ap| Service::approval_json_with_box(ap, &[], Some(&box_b)));
+        let seq_b = mock.service.record(ev_b);
+
+        // Advance the log past BOTH approvals (simulating another event or a status cursor bump).
+        let other = mock.service.event_of(&minder, SubagentLiveState::Working, Some("watching".into()), "work".into());
+        let later_cursor = mock.service.record(other);
+        assert!(later_cursor > seq_b && seq_b > seq_a);
+
+        let caller =
+            crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-tabm".into()), window_from_block: true, block: Some("blk-tabm".into()), child: Some(minder.clone()) };
+
+        // 1. First watch --all --since later_cursor catches child_a immediately, cursor stays >= later_cursor!
+        let r1 = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), later_cursor.to_string(), "--on".into(), "approval,question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(r1.ok, "expected standing approval for child_a: {r1:?}");
+        assert_eq!(r1.data["id"], "sa-ca");
+        assert_eq!(r1.data["event"], "waiting_approval");
+        assert_eq!(r1.data["standing"], true);
+        assert_eq!(r1.data["cursor"], later_cursor, "returned cursor must never rewind below since");
+
+        // 2. Second watch --all --since later_cursor skips already-delivered child_a and catches child_b!
+        let r2 = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), later_cursor.to_string(), "--on".into(), "approval,question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(r2.ok, "expected standing approval for child_b: {r2:?}");
+        assert_eq!(r2.data["id"], "sa-cb");
+        assert_eq!(r2.data["standing"], true);
+        assert_eq!(r2.data["cursor"], later_cursor);
+
+        // 3. Third watch with both still waiting on the SAME boxes must NOT spin-loop (times out cleanly)!
+        let r3 = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), later_cursor.to_string(), "--on".into(), "approval,question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(!r3.ok && r3.code == 124, "already-seen standing boxes must not spin-loop: {r3:?}");
+
+        // 4. Child A clears box_a, then raises a brand-new box_a2 at seq_a2, and cursor jumps past it:
+        //    watch --all --since must catch box_a2 immediately!
+        screens.lock().unwrap().insert("blk-a".into(), working.clone());
+        let _ = mock.service.look(&child_a, true).await;
+        screens.lock().unwrap().insert("blk-a".into(), asking_screen("cargo test -p olo-rex"));
+        let la2 = mock.service.look(&child_a, true).await;
+        let box_a2 = la2.boxed.as_ref().expect("child_a second box").key.clone();
+        assert_ne!(box_a2, box_a);
+        let mut ev_a2 = mock.service.event_of(&child_a, SubagentLiveState::WaitingApproval, Some("cargo test -p olo-rex".into()), format!("ap:{box_a2}"));
+        ev_a2.approval = la2.cls.approval.as_ref().map(|ap| Service::approval_json_with_box(ap, &[], Some(&box_a2)));
+        let _seq_a2 = mock.service.record(ev_a2);
+        let jump_cursor = mock.service.record(mock.service.event_of(&minder, SubagentLiveState::Working, Some("bump".into()), "work2".into()));
+
+        let r4 = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), jump_cursor.to_string(), "--on".into(), "approval,question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(r4.ok && r4.data["id"] == "sa-ca" && r4.data["standing"] == true && r4.data["cursor"] == jump_cursor, "newer standing box_a2 must be caught: {r4:?}");
+    }
+
+    /// Round 1 review regressions (Astra #1, #2, #4, #5, #6, #8, #9, #11, #12 & Neon #1–#7):
+    /// handover box-key rotation with real `box:b{n}-{hash}` dedupe keys, busy-sibling
+    /// non-starvation, cursorless->cursor transition, answered/working child clearing
+    /// `watcher_seen`, `window_from_block == false` + `--watcher` + `--no-standing`,
+    /// ring-eviction (`had_gap`) catch-up, `WaitingQuestion` + `of_the_turn_given` turn
+    /// filtering, and `Service::exit` pruning of `watcher_seen`.
+    #[tokio::test]
+    async fn watch_standing_round2_handover_question_starvation_cursorless_and_cleanup() {
+        let rule = "─".repeat(60);
+        let working = format!("✻ Thinking… (2s)\n{rule}\n❯ \n{rule}\n  esc to interrupt\n");
+        let idle = format!("● Done.\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        let screens: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::from([("blk-a".into(), asking_screen("cargo test -p handover...")), ("blk-b".into(), working.clone()), ("blk-q".into(), idle.clone())])));
+        let rpc_counts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let sc = screens.clone();
+        let rc = rpc_counts.clone();
+        let mock = spawn_mock_service(
+            "watch-r2",
+            Arc::new(move |_idx, method, payload| {
+                let sc = sc.clone();
+                let rc = rc.clone();
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        let blk = payload["block_id"].as_str().unwrap_or_default().to_owned();
+                        *rc.lock().unwrap().entry(blk.clone()).or_insert(0) += 1;
+                        let text = sc.lock().unwrap().get(&blk).cloned().unwrap_or_default();
+                        return Ok(json!({ "content": text }));
+                    }
+                    Ok(json!({ "modes": [] }))
+                })
+            }),
+        )
+        .await;
+
+        let mut minder = test_entry("sa-tm", "minder");
+        minder.window_id = "win-tm".into();
+        minder.block_id = "blk-tm".into();
+        minder.role = Some("tab-minder".into());
+
+        // Live Claude transcript with pending Bash tool_use so handover refresh re-inspects the
+        // live transcript rather than blindly copying an unverified pre-handover payload (Astra R3 #1).
+        let a_tx_path = mock.service.paths.dir.join("a-transcript.jsonl");
+        std::fs::write(
+            &a_tx_path,
+            concat!(
+                "{\"type\":\"user\",\"timestamp\":\"2026-11-28T05:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"run tests\"}}\n",
+                "{\"type\":\"assistant\",\"timestamp\":\"2026-11-28T05:00:01Z\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"tu-a\",\"name\":\"Bash\",\"input\":{\"command\":\"cargo test -p handover -- --full-transcript-cmd\"}}]}}\n"
+            ),
+        )
+        .unwrap();
+        let mut child_a = test_entry("sa-a", "child-a");
+        child_a.window_id = "win-a".into();
+        child_a.block_id = "blk-a".into();
+        child_a.parent_window_id = "win-tm".into();
+        child_a.transcript_path = Some(a_tx_path.display().to_string());
+
+        let mut child_b = test_entry("sa-b", "child-b");
+        child_b.window_id = "win-b".into();
+        child_b.block_id = "blk-b".into();
+        child_b.parent_window_id = "win-tm".into();
+
+        // Transcript-only WaitingQuestion child (real Claude user + assistant tool_use with stop_reason, Astra R2 #23).
+        let tx_path = mock.service.paths.dir.join("q-transcript.jsonl");
+        let old_ts = "2026-11-28T05:00:00Z";
+        std::fs::write(
+            &tx_path,
+            format!(
+                concat!(
+                    "{{\"type\":\"user\",\"timestamp\":\"{ts}\",\"message\":{{\"role\":\"user\",\"content\":\"check port\"}}}}\n",
+                    "{{\"type\":\"assistant\",\"timestamp\":\"{ts}\",\"message\":{{\"role\":\"assistant\",\"stop_reason\":\"tool_use\",\"content\":[{{\"type\":\"tool_use\",\"id\":\"tu1\",\"name\":\"AskUserQuestion\",\"input\":{{\"questions\":[{{\"question\":\"Which port?\"}}]}}}}]}}}}\n"
+                ),
+                ts = old_ts
+            ),
+        )
+        .unwrap();
+        let mut child_q = test_entry("sa-q", "child-q");
+        child_q.cli = olo_rex_link::agents::AgentCli::Claude;
+        child_q.window_id = "win-q".into();
+        child_q.block_id = "blk-q".into();
+        child_q.parent_window_id = "win-tm".into();
+        child_q.transcript_path = Some(tx_path.display().to_string());
+
+        {
+            let mut st = mock.service.lock();
+            st.sessions.insert(
+                "sess-1".into(),
+                Sess {
+                    windows: HashSet::from(["win-lead".into(), "win-tm".into(), "win-a".into(), "win-b".into(), "win-q".into()]),
+                    blocks: HashMap::from([("blk-tm".into(), "win-tm".into()), ("blk-a".into(), "win-a".into()), ("blk-b".into(), "win-b".into()), ("blk-q".into(), "win-q".into())]),
+                    active: Some("win-lead".into()),
+                    fresh: true,
+                    attached: true,
+                },
+            );
+            st.reg.register(minder.clone());
+            st.reg.register(child_a.clone());
+            st.reg.register(child_b.clone());
+            st.reg.register(child_q.clone());
+            st.live.insert(child_a.id.clone(), Live::new());
+            st.live.insert(child_b.id.clone(), Live::new());
+            st.live.insert(child_q.id.clone(), Live::new());
+        }
+
+        // 1. Handover box-key rotation (Astra #1 / Neon #1): record child_a with an OLD-gen
+        //    box key (`b1-g0-oldinc-...`) but real generation-independent dedupe key `box:b1-{hash}`.
+        let la = mock.service.look(&child_a, false).await;
+        let lb_live = la.boxed.as_ref().expect("live box for child_a");
+        let content_key = format!("box:b{}-{:08x}", lb_live.number, lb_live.hash as u32);
+        let old_box_key = format!("b{}-g0-oldinc00-{:08x}", lb_live.number, lb_live.hash as u32);
+        assert_ne!(old_box_key, lb_live.key);
+        let mut ev_a = mock.service.event_of(&child_a, SubagentLiveState::WaitingApproval, Some("cargo test -p handover".into()), content_key);
+        let mut ap_json = la.cls.approval.as_ref().map(|ap| Service::approval_json_with_box(ap, &[], Some(&old_box_key))).unwrap();
+        // Inject a stale pre-handover command to prove cross-generation refresh ignores it and
+        // re-inspects the live transcript to recover the real full command (Astra R3 #1):
+        ap_json["command"] = json!("cargo test -p handover -- --stale-pre-handover");
+        ap_json["command_from"] = json!("transcript");
+        ap_json["arguments"] = json!({ "command": "cargo test -p handover -- --stale-pre-handover" });
+        ev_a.approval = Some(ap_json);
+        let seq_a = mock.service.record(ev_a);
+        // Simulate restart where `live.latest_event` is empty so single-pass ring fallback runs too!
+        mock.service.lock().live.get_mut(&child_a.id).unwrap().latest_event = None;
+
+        // 2. Sibling B records a queued Done event AFTER `since_floor` (Astra #6 starvation check).
+        let bump = mock.service.record(mock.service.event_of(&minder, SubagentLiveState::Working, Some("bump".into()), "b1".into()));
+        let mut ev_b_done = mock.service.event_of(&child_b, SubagentLiveState::Done, Some("b done".into()), "done:1".into());
+        ev_b_done.event = "done".into();
+        let seq_b_done = mock.service.record(ev_b_done);
+        assert!(seq_b_done > bump && bump > seq_a);
+
+        let caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-tm".into()), window_from_block: true, block: Some("blk-tm".into()), child: Some(minder.clone()) };
+
+        // `--no-standing` (used by cursorless `--follow`, Astra #12) skips standing child_a and returns B's queued event!
+        let follow_caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-lead".into()), window_from_block: false, block: None, child: None };
+        let r_no_stand = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "--all".into(),
+                        "--parent".into(),
+                        "win-tm".into(),
+                        "--since".into(),
+                        bump.to_string(),
+                        "--no-standing".into(),
+                        "--on".into(),
+                        "approval,done".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &follow_caller,
+            )
+            .await;
+        assert!(r_no_stand.ok && r_no_stand.data["id"] == "sa-b", "--no-standing must not emit pre-cursor standing approval: {r_no_stand:?}");
+        // Verify unverified `window_from_block == false` did NOT pollute `win:win-lead`!
+        assert!(!mock.service.lock().watcher_seen.keys().any(|(w, _)| w == "win:win-lead"));
+
+        // Normal watch from tab-minder MUST catch older standing child_a BEFORE newer queued child_b (Astra #6)
+        // AND refresh `approval.box` to the current live generation's box key (Astra #1 / Neon #1)!
+        let r_stand = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), bump.to_string(), "--on".into(), "approval,done".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(r_stand.ok && r_stand.data["id"] == "sa-a" && r_stand.data["standing"] == true, "older standing approval must beat busy sibling and survive handover key rotation: {r_stand:?}");
+        assert_eq!(r_stand.data["cursor"], bump);
+        assert_eq!(r_stand.data["approval"]["box"], lb_live.key, "handover standing delivery must refresh approval.box to live box key");
+        assert_eq!(r_stand.data["approval"]["command"], "cargo test -p handover -- --full-transcript-cmd", "box refresh must preserve transcript-recovered command");
+        assert_eq!(r_stand.data["approval"]["command_from"], "transcript", "box refresh must preserve command_from");
+        assert_eq!(r_stand.data["approval"]["arguments"]["command"], "cargo test -p handover -- --full-transcript-cmd", "box refresh must preserve arguments");
+
+        // Next watch from `bump` now delivers sibling B's queued event cleanly!
+        let r_sib = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), bump.to_string(), "--on".into(), "approval,done".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(r_sib.ok && r_sib.data["id"] == "sa-b" && r_sib.data["cursor"] == seq_b_done, "queued sibling event must remain intact after standing delivery: {r_sib:?}");
+
+        // 3. Cursorless watch -> cursor watch transition (Astra #11 / Neon #3): a fresh watcher
+        //    running WITHOUT `--since` receives child_a once and continuing with `--since <cur>`
+        //    must NOT duplicate it!
+        let w2_caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: None, window_from_block: false, block: None, child: None };
+        let r_curless = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-a".into(), "--watcher".into(), "det-1".into(), "--on".into(), "approval".into(), "--timeout".into(), "2".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &w2_caller,
+            )
+            .await;
+        assert!(r_curless.ok && r_curless.data["id"] == "sa-a", "cursorless watch must catch standing approval: {r_curless:?}");
+        let cur_after = r_curless.data["cursor"].as_u64().unwrap();
+        let r_cur_next = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "det-1".into(),
+                        "--since".into(),
+                        cur_after.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &w2_caller,
+            )
+            .await;
+        assert!(!r_cur_next.ok && r_cur_next.code == 124, "continuing after cursorless watch must not duplicate standing approval: {r_cur_next:?}");
+
+        // 4. Transcript-only WaitingQuestion + `of_the_turn_given` filter (Astra R1 #4 / R2 #23 / Neon R1 #2):
+        //    First verify the SAME real Claude transcript fixture IS delivered for a current turn (no newer expects),
+        //    then set `live.expects` to a NEWER send turn and verify a fresh watcher ignores & clears it!
+        let q_info = mock.service.inspect(std::slice::from_ref(&child_q)).await;
+        let q_turn_ms = q_info.get(&child_q.id).and_then(|v| v["turn_started_ms"].as_u64());
+        assert!(q_turn_ms.is_some(), "real Claude user+assistant fixture must report turn_started_ms: {q_info:?}");
+        assert_eq!(q_info.get(&child_q.id).and_then(|v| v["transcript_state"].as_str()), Some("waiting"), "fixture must parse as waiting: {q_info:?}");
+        let q_key = transcript_question_key(q_info.get(&child_q.id), q_turn_ms);
+        let mut ev_q = mock.service.event_of(&child_q, SubagentLiveState::WaitingQuestion, Some("Which port?".into()), q_key);
+        ev_q.event = "waiting_question".into();
+        let seq_q = mock.service.record(ev_q);
+        {
+            let mut st = mock.service.lock();
+            let ev_q_stored = st.log.last_state_of(&child_q.id).cloned();
+            st.live.get_mut(&child_q.id).unwrap().latest_event = ev_q_stored;
+        }
+        let q_bump = mock.service.record(mock.service.event_of(&minder, SubagentLiveState::Working, Some("qb".into()), "qb".into()));
+        assert!(q_bump > seq_q);
+        let r_q_live = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-q".into(),
+                        "--watcher".into(),
+                        "det-q-live".into(),
+                        "--since".into(),
+                        q_bump.to_string(),
+                        "--on".into(),
+                        "question".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &w2_caller,
+            )
+            .await;
+        assert!(r_q_live.ok && r_q_live.data["id"] == "sa-q" && r_q_live.data["standing"] == true, "current-turn transcript question must be delivered: {r_q_live:?}");
+        {
+            let mut st = mock.service.lock();
+            let lq = st.live.get_mut(&child_q.id).unwrap();
+            let newer = q_turn_ms.unwrap() + 60_000;
+            lq.expects = Some(olo_rex_link::agents::state::Expected { cursor: seq_q, given_ms: newer, until_ms: newer + 60_000, transcript_len: Some(0), turn_from_ms: newer, seq: 1 });
+        }
+        let r_q_stale = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-q".into(), "--since".into(), q_bump.to_string(), "--on".into(), "question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(!r_q_stale.ok && r_q_stale.code == 124, "stale pre-send transcript question must not fire after newer expects: {r_q_stale:?}");
+        assert_eq!(
+            mock.service.lock().watcher_seen.get(&("child:sa-tm".to_owned(), "sa-q".to_owned())).copied(),
+            Some(seq_q),
+            "positively cleared pre-send question must advance watcher_seen to avoid repeat inspect()"
+        );
+
+        // 5. Answered/Working child advances `watcher_seen` on first check so subsequent wakes do 0 RPCs (Neon #2):
+        screens.lock().unwrap().insert("blk-a".into(), working.clone());
+        let r_cleared = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "det-2".into(),
+                        "--since".into(),
+                        q_bump.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &w2_caller,
+            )
+            .await;
+        assert!(!r_cleared.ok && r_cleared.code == 124);
+        assert_eq!(mock.service.lock().watcher_seen.get(&("watcher:det-2".to_owned(), "sa-a".to_owned())).copied(), Some(seq_a));
+        let rpcs_before = rpc_counts.lock().unwrap().get("blk-a").copied().unwrap_or(0);
+        let _ = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "det-2".into(),
+                        "--since".into(),
+                        q_bump.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &w2_caller,
+            )
+            .await;
+        assert_eq!(rpc_counts.lock().unwrap().get("blk-a").copied().unwrap_or(0), rpcs_before, "already-cleared working child must trigger zero follow-up RPCs");
+
+        // 6. Ring eviction (`had_gap`) with unread live approval newer than `since` (Astra #2):
+        screens.lock().unwrap().insert("blk-a".into(), asking_screen("cargo check --evict"));
+        let la_ev = mock.service.look(&child_a, true).await;
+        let box_ev = la_ev.boxed.as_ref().expect("evict box");
+        let mut ev_evict = mock.service.event_of(&child_a, SubagentLiveState::WaitingApproval, Some("cargo check --evict".into()), format!("box:b{}-{:08x}", box_ev.number, box_ev.hash as u32));
+        ev_evict.approval = la_ev.cls.approval.as_ref().map(|ap| Service::approval_json_with_box(ap, &[], Some(&box_ev.key)));
+        let before_evict = mock.service.cursor();
+        let seq_evict = mock.service.record(ev_evict);
+        {
+            let mut st = mock.service.lock();
+            let ev_stored = st.log.last_state_of(&child_a.id).cloned();
+            st.live.get_mut(&child_a.id).unwrap().latest_event = ev_stored;
+            let outsider = test_entry("sa-other", "outsider");
+            for i in 0..2050u32 {
+                let mut e = SubagentEvent {
+                    seq: 0,
+                    timestamp_ms: 0,
+                    host_key: HOST.into(),
+                    session_id: "sess-other".into(),
+                    parent_window_id: "win-other".into(),
+                    ancestor_windows: Vec::new(),
+                    id: outsider.id.clone(),
+                    name: outsider.name.clone(),
+                    window_id: outsider.window_id.clone(),
+                    block_id: outsider.block_id.clone(),
+                    resume_id: None,
+                    cli_session_id: None,
+                    event: "done".into(),
+                    state: SubagentLiveState::Done,
+                    summary: None,
+                    last_message: None,
+                    approval: None,
+                    error: None,
+                    tail: Vec::new(),
+                    dedupe_key: format!("flood:{i}"),
+                    answers: None,
+                    minding: None,
+                };
+                let s = st.log.push(e.clone());
+                e.seq = s;
+                st.reg.event_seq = s;
+            }
+            assert!(st.log.has_gap(before_evict));
+        }
+        let r_gap = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), before_evict.to_string(), "--on".into(), "approval".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &caller,
+            )
+            .await;
+        assert!(r_gap.ok && r_gap.data["id"] == "sa-a" && r_gap.data["gap"] == true && r_gap.data["cursor"] == seq_evict, "ring-evicted live approval must still be caught with gap=true: {r_gap:?}");
+
+        // 7. Service::exit prunes watcher_seen for both exited child and exited child watcher (Neon #7):
+        assert!(mock.service.lock().watcher_seen.keys().any(|(_, a)| a == "sa-a"));
+        mock.service.exit("sa-a", Some(0));
+        assert!(!mock.service.lock().watcher_seen.keys().any(|(_, a)| a == "sa-a"));
+        assert!(mock.service.lock().watcher_seen.keys().any(|(w, _)| w == "child:sa-tm"));
+        mock.service.exit("sa-tm", Some(0));
+        assert!(!mock.service.lock().watcher_seen.keys().any(|(w, _)| w == "child:sa-tm"));
+    }
+
+    /// Round 2 review regressions (Astra R2 #1–#24 & Neon R2 #1–#9):
+    /// - Neon #1: `self.changed` enabled before `look_ordered().await` never drops sibling wakeups
+    /// - Astra #1 / Neon #4: cancelling watch while `write_now()` holds `write_lock` rolls back `watcher_seen`
+    /// - Astra #3: duplicate `record_confirmed` populates `live.latest_event` so ring rollover keeps prompt
+    /// - Astra #4: unread queued approval with predecessor box key refreshes `approval.box` in-place
+    /// - Astra #5: `adopted_box` preserves box #2 number & dedupe across handover
+    /// - Astra #6: hung first child does not starve healthy second child
+    /// - Astra #7 & #8: unreadable/unknown transcript does not clear question; question B does not validate A
+    /// - Astra #9 / Neon #3: concurrent `read_seq` bump retries within 250ms instead of stalling until timeout
+    /// - Astra #10: queued prompt reassigned to a service minder during await is not delivered to ordinary watcher
+    /// - Astra #11: cursorless watch on unrecorded prompt records & binds exact watermark
+    /// - Astra #12/#14/#15 / Neon #6: `Request::standing_after` excludes pre-start prompts while catching post-start evicted prompts
+    /// - Astra #13 / Neon #8: `--since 0` catches ring-evicted prompt at seq 1
+    /// - Astra #16 / Neon #7: unverified focus-derived `scope_parent` without `--parent` never writes `parent:*`
+    /// - Astra #20: child `--watcher` uses `child:<id>:<label>` (pruned on exit) + detached cap
+    /// - Astra #21: persistent RPC error uses exponential backoff (no 250ms spin)
+    #[tokio::test]
+    async fn watch_standing_round3_regressions() {
+        let rule = "─".repeat(60);
+        let working = format!("✻ Thinking… (2s)\n{rule}\n❯ \n{rule}\n  esc to interrupt\n");
+        let idle = format!("● Done.\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        let screens: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::from([("blk-a".into(), asking_screen("cargo test --box-a")), ("blk-b".into(), asking_screen("cargo test --box-b")), ("blk-q".into(), idle.clone())])));
+        let delay_blocks: Arc<Mutex<HashMap<String, u64>>> = Arc::new(Mutex::new(HashMap::new()));
+        let fail_blocks: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let rpc_counts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        type ReadHook = Arc<Mutex<Option<(String, Arc<Notify>)>>>;
+        let notify_on_read: ReadHook = Arc::new(Mutex::new(None));
+        let sc = screens.clone();
+        let db = delay_blocks.clone();
+        let fb = fail_blocks.clone();
+        let rc = rpc_counts.clone();
+        let nr = notify_on_read.clone();
+        let mock = spawn_mock_service(
+            "watch-r3",
+            Arc::new(move |_idx, method, payload| {
+                let sc = sc.clone();
+                let db = db.clone();
+                let fb = fb.clone();
+                let rc = rc.clone();
+                let nr = nr.clone();
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        let blk = payload["block_id"].as_str().unwrap_or_default().to_owned();
+                        *rc.lock().unwrap().entry(blk.clone()).or_insert(0) += 1;
+                        if let Some((target, n)) = nr.lock().unwrap().clone()
+                            && target == blk
+                        {
+                            n.notify_one();
+                        }
+                        let delay = db.lock().unwrap().get(&blk).copied().unwrap_or(0);
+                        if delay > 0 {
+                            tokio::time::sleep(Duration::from_millis(delay)).await;
+                        }
+                        if fb.lock().unwrap().contains(&blk) {
+                            return Err(("RPC_ERROR", "simulated rpc failure".into()));
+                        }
+                        let text = sc.lock().unwrap().get(&blk).cloned().unwrap_or_default();
+                        return Ok(json!({ "content": text }));
+                    }
+                    Ok(json!({ "modes": [] }))
+                })
+            }),
+        )
+        .await;
+
+        let mut tm = test_entry("sa-tm", "tab-minder");
+        tm.window_id = "win-tm".into();
+        tm.block_id = "blk-tm".into();
+        tm.role = Some("tab-minder".into());
+
+        let mut ca = test_entry("sa-a", "child-a");
+        ca.window_id = "win-a".into();
+        ca.block_id = "blk-a".into();
+        ca.parent_window_id = "win-tm".into();
+
+        let mut cb = test_entry("sa-b", "child-b");
+        cb.window_id = "win-b".into();
+        cb.block_id = "blk-b".into();
+        cb.parent_window_id = "win-tm".into();
+
+        let tx_path = mock.service.paths.dir.join("r3-q.jsonl");
+        let write_q = |question: &str| {
+            std::fs::write(
+                &tx_path,
+                format!(
+                    concat!(
+                        "{{\"type\":\"user\",\"timestamp\":\"2026-11-28T05:10:00Z\",\"message\":{{\"role\":\"user\",\"content\":\"ask\"}}}}\n",
+                        "{{\"type\":\"assistant\",\"timestamp\":\"2026-11-28T05:10:01Z\",\"message\":{{\"role\":\"assistant\",\"stop_reason\":\"tool_use\",\"content\":[{{\"type\":\"tool_use\",\"id\":\"tu-q\",\"name\":\"AskUserQuestion\",\"input\":{{\"questions\":[{{\"question\":\"{q}\"}}]}}}}]}}}}\n"
+                    ),
+                    q = question
+                ),
+            )
+            .unwrap();
+        };
+        write_q("Question Alpha?");
+        let mut cq = test_entry("sa-q", "child-q");
+        cq.cli = olo_rex_link::agents::AgentCli::Claude;
+        cq.window_id = "win-q".into();
+        cq.block_id = "blk-q".into();
+        cq.parent_window_id = "win-tm".into();
+        cq.transcript_path = Some(tx_path.display().to_string());
+
+        {
+            let mut st = mock.service.lock();
+            st.sessions.insert(
+                "sess-1".into(),
+                Sess {
+                    windows: HashSet::from(["win-lead".into(), "win-tm".into(), "win-a".into(), "win-b".into(), "win-q".into()]),
+                    blocks: HashMap::from([("blk-tm".into(), "win-tm".into()), ("blk-a".into(), "win-a".into()), ("blk-b".into(), "win-b".into()), ("blk-q".into(), "win-q".into())]),
+                    active: Some("win-tm".into()),
+                    fresh: true,
+                    attached: true,
+                },
+            );
+            st.reg.register(tm.clone());
+            st.reg.register(ca.clone());
+            st.reg.register(cb.clone());
+            st.reg.register(cq.clone());
+            st.live.insert(ca.id.clone(), Live::new());
+            st.live.insert(cb.id.clone(), Live::new());
+            st.live.insert(cq.id.clone(), Live::new());
+        }
+
+        let tm_caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-tm".into()), window_from_block: true, block: Some("blk-tm".into()), child: Some(tm.clone()) };
+        let det_caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: None, window_from_block: false, block: None, child: None };
+
+        // 1. Astra #5: adopted_box preserves box #2 identity across handover while minting a fresh generation key.
+        {
+            let mut adopted_live = Live::new();
+            let sample_cls = classify_screen_rich(ca.cli, Activity::Idle, &asking_screen("cargo test --box-a"), true);
+            let h = olo_rex_link::agents::state::box_hash(sample_cls.approval.as_ref().unwrap()) as u32;
+            adopted_live.boxes = 2;
+            adopted_live.adopted_box = Some((2, h));
+            let (b_adopted, _) = adopted_live.box_after(sample_cls.approval.as_ref(), false, 2, 0xabcdef01);
+            let b_adopted = b_adopted.expect("adopted box");
+            assert_eq!(b_adopted.number, 2, "adopted standing box #2 must keep number 2 across handover");
+            assert!(b_adopted.key.starts_with("b2-g2-abcdef01-"), "adopted box must mint fresh generation key: {}", b_adopted.key);
+        }
+
+        // 2. Astra #11: cursorless watch on an UNRECORDED standing prompt records it & sets exact watermark -> no duplicate on next `--since`.
+        let r_curless = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-a".into(), "--watcher".into(), "curless-1".into(), "--on".into(), "approval".into(), "--timeout".into(), "2".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(r_curless.ok && r_curless.data["id"] == "sa-a", "cursorless watch must catch unrecorded approval: {r_curless:?}");
+        let cur_c1 = r_curless.data["cursor"].as_u64().unwrap();
+        let r_cur_dup = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "curless-1".into(),
+                        "--since".into(),
+                        cur_c1.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(!r_cur_dup.ok && r_cur_dup.code == 124, "continuing after cursorless watch of unrecorded prompt must not duplicate: {r_cur_dup:?}");
+
+        // 3. Astra #16 / Neon #7: unverified focus-derived scope_parent (no --parent, window_from_block=false) never writes `parent:win-tm`.
+        let focus_caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-tm".into()), window_from_block: false, block: None, child: None };
+        let r_focus = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), "0".into(), "--on".into(), "approval".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &focus_caller,
+            )
+            .await;
+        assert!(r_focus.ok, "focus caller still gets queued approval: {r_focus:?}");
+        assert!(!mock.service.lock().watcher_seen.keys().any(|(w, _)| w == "parent:win-tm"), "focus-derived scope_parent without --parent must not write watcher_seen");
+
+        // 4. Astra #1 / Neon #4: cancelling watch while `write_now().await` holds `write_lock` rolls back `watcher_seen`.
+        let bump_1 = mock.service.record(mock.service.event_of(&tm, SubagentLiveState::Working, Some("b1".into()), "r3-b1".into()));
+        let held_wl = mock.service.write_lock.clone().lock_owned().await;
+        let svc_c = mock.service.clone();
+        let det_c = det_caller.clone();
+        let handle = tokio::spawn(async move {
+            svc_c
+                .agent_op(
+                    &Request {
+                        op: "watch".into(),
+                        args: vec![
+                            "sa-a".into(),
+                            "--watcher".into(),
+                            "rollback-1".into(),
+                            "--since".into(),
+                            bump_1.to_string(),
+                            "--on".into(),
+                            "approval".into(),
+                            "--timeout".into(),
+                            "5".into(),
+                            "--json".into(),
+                        ],
+                        ..Default::default()
+                    },
+                    &det_c,
+                )
+                .await
+        });
+        // Wait briefly until watch has acquired & inserted watcher_seen and is blocked on write_lock:
+        for _ in 0..50 {
+            if mock.service.lock().watcher_seen.contains_key(&("watcher:rollback-1".into(), "sa-a".into())) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(mock.service.lock().watcher_seen.contains_key(&("watcher:rollback-1".into(), "sa-a".into())));
+        handle.abort();
+        let _ = handle.await;
+        drop(held_wl);
+        assert!(!mock.service.lock().watcher_seen.contains_key(&("watcher:rollback-1".into(), "sa-a".into())), "aborting watch during write_now() must roll back watcher_seen");
+        // Next watch from same watcher MUST still receive the standing prompt!
+        let r_after_rb = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "rollback-1".into(),
+                        "--since".into(),
+                        bump_1.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "2".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(r_after_rb.ok && r_after_rb.data["id"] == "sa-a" && r_after_rb.data["standing"] == true, "prompt must remain deliverable after rollback: {r_after_rb:?}");
+
+        // 5. Astra R2 #4 & R3 #1: unread queued approval with stale predecessor box key refreshes
+        //    `approval.box` AND rebuilds from live screen + live transcript instead of blindly
+        //    carrying an unverified pre-handover command across generations.
+        let lb_b = mock.service.look(&cb, false).await;
+        let box_b = lb_b.boxed.as_ref().expect("box_b");
+        let old_b_key = format!("b{}-g0-oldinc99-{:08x}", box_b.number, box_b.hash as u32);
+        let mut ev_b = mock.service.event_of(&cb, SubagentLiveState::WaitingApproval, Some("cargo test --box-b".into()), format!("box:b{}-{:08x}", box_b.number, box_b.hash as u32));
+        let mut ap_b = Service::approval_json_with_box(lb_b.cls.approval.as_ref().unwrap(), &[], Some(&old_b_key));
+        ap_b["command"] = json!("cargo test --box-b --stale-pre-handover");
+        ap_b["command_from"] = json!("transcript");
+        ev_b.approval = Some(ap_b);
+        let pre_b = mock.service.cursor();
+        let seq_b = mock.service.record(ev_b);
+        {
+            let mut st = mock.service.lock();
+            let ev_b_stored = st.log.last_state_of(&cb.id).cloned();
+            st.live.get_mut(&cb.id).unwrap().latest_event = ev_b_stored;
+        }
+        let r_queued_ref = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-b".into(),
+                        "--watcher".into(),
+                        "qref-1".into(),
+                        "--since".into(),
+                        pre_b.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "2".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(r_queued_ref.ok && r_queued_ref.data["cursor"] == seq_b, "queued approval must deliver: {r_queued_ref:?}");
+        assert_eq!(r_queued_ref.data["approval"]["box"], box_b.key, "queued stale-generation approval must refresh box key in-place");
+        assert_eq!(r_queued_ref.data["approval"]["command"], "cargo test --box-b", "stale-gen refresh must not trust unverified pre-handover command (Astra R3 #1)");
+        assert_eq!(r_queued_ref.data["approval"]["command_from"], "screen");
+
+        // 6. Astra #6: hung first child (3.5s delay > 2s probe cap) does NOT starve healthy second child B!
+        let bump_2 = mock.service.record(mock.service.event_of(&tm, SubagentLiveState::Working, Some("b2".into()), "r3-b2".into()));
+        delay_blocks.lock().unwrap().insert("blk-a".into(), 3500);
+        let t_start = Instant::now();
+        let r_no_starve = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["--all".into(), "--since".into(), bump_2.to_string(), "--on".into(), "approval".into(), "--timeout".into(), "5".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &tm_caller,
+            )
+            .await;
+        delay_blocks.lock().unwrap().remove("blk-a");
+        assert!(r_no_starve.ok && r_no_starve.data["id"] == "sa-b", "healthy child B must be delivered even when older child A hangs: {r_no_starve:?}");
+        assert!(t_start.elapsed() < Duration::from_secs(4), "bounded probe must finish well under watch timeout");
+
+        // 7. Neon #1: `self.changed` wakeup firing DURING slow `look_ordered().await` wakes watch immediately!
+        screens.lock().unwrap().insert("blk-a".into(), working.clone());
+        let read_started = Arc::new(Notify::new());
+        *notify_on_read.lock().unwrap() = Some(("blk-a".into(), read_started.clone()));
+        delay_blocks.lock().unwrap().insert("blk-a".into(), 350);
+        // Clear backoff on sa-a so it gets probed:
+        {
+            let mut st = mock.service.lock();
+            let la = st.live.get_mut("sa-a").unwrap();
+            la.standing_fails = 0;
+            la.standing_retry_after = None;
+        }
+        let svc_n1 = mock.service.clone();
+        let det_n1 = det_caller.clone();
+        let w_n1 = tokio::spawn(async move {
+            svc_n1
+                .agent_op(
+                    &Request {
+                        op: "watch".into(),
+                        args: vec![
+                            "sa-a".into(),
+                            "sa-b".into(),
+                            "--watcher".into(),
+                            "neon1".into(),
+                            "--since".into(),
+                            bump_2.to_string(),
+                            "--on".into(),
+                            "approval,done".into(),
+                            "--timeout".into(),
+                            "4".into(),
+                            "--json".into(),
+                        ],
+                        ..Default::default()
+                    },
+                    &det_n1,
+                )
+                .await
+        });
+        read_started.notified().await;
+        // Record sibling B's Done event WHILE watch is awaiting `look_ordered(&ca)`!
+        let mut ev_b_done = mock.service.event_of(&cb, SubagentLiveState::Done, Some("b done mid-probe".into()), "r3-done-mid".into());
+        ev_b_done.event = "done".into();
+        let seq_b_mid = mock.service.record(ev_b_done);
+        let r_n1 = w_n1.await.unwrap();
+        *notify_on_read.lock().unwrap() = None;
+        delay_blocks.lock().unwrap().remove("blk-a");
+        assert!(r_n1.ok && r_n1.data["id"] == "sa-b" && r_n1.data["cursor"] == seq_b_mid, "sibling wakeup during look_ordered().await must not be lost (Neon #1): {r_n1:?}");
+
+        // 8. Astra #7 & #8: transient missing transcript does NOT clear `tx:q:` question, and question B does NOT validate A!
+        let qi1 = mock.service.inspect(std::slice::from_ref(&cq)).await;
+        let q_tms = qi1.get(&cq.id).and_then(|v| v["turn_started_ms"].as_u64());
+        let qk_a = transcript_question_key(qi1.get(&cq.id), q_tms);
+        let mut ev_qa = mock.service.event_of(&cq, SubagentLiveState::WaitingQuestion, Some("Question Alpha?".into()), qk_a);
+        ev_qa.event = "waiting_question".into();
+        let _seq_qa = mock.service.record(ev_qa);
+        {
+            let mut st = mock.service.lock();
+            let ev_stored = st.log.last_state_of(&cq.id).cloned();
+            st.live.get_mut(&cq.id).unwrap().latest_event = ev_stored;
+        }
+        let qb = mock.service.record(mock.service.event_of(&tm, SubagentLiveState::Working, Some("qb".into()), "r3-qb".into()));
+        // Temporarily hide transcript file -> inspect returns unknown; must NOT clear watcher_seen!
+        let hidden = mock.service.paths.dir.join("r3-q.hidden");
+        std::fs::rename(&tx_path, &hidden).unwrap();
+        let r_q_miss = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-q".into(), "--watcher".into(), "q7-1".into(), "--since".into(), qb.to_string(), "--on".into(), "question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(!r_q_miss.ok && r_q_miss.code == 124);
+        assert!(!mock.service.lock().watcher_seen.contains_key(&("watcher:q7-1".into(), "sa-q".into())), "transient missing transcript must NOT clear watcher_seen (Astra #7)");
+        assert!(
+            mock.service.lock().live.get("sa-q").unwrap().standing_fails >= 2,
+            "missing transcript must accumulate standing_fails backoff instead of resetting in look_until (Astra R3 #10 / Neon R3 #1)"
+        );
+        // Restore transcript -> same question Alpha IS now delivered!
+        std::fs::rename(&hidden, &tx_path).unwrap();
+        {
+            let mut st = mock.service.lock();
+            let lq = st.live.get_mut("sa-q").unwrap();
+            lq.standing_fails = 0;
+            lq.standing_retry_after = None;
+        }
+        let r_q_ok = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-q".into(), "--watcher".into(), "q7-1".into(), "--since".into(), qb.to_string(), "--on".into(), "question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(r_q_ok.ok && r_q_ok.data["id"] == "sa-q" && r_q_ok.data["summary"] == "Question Alpha?", "restored transcript must deliver Alpha: {r_q_ok:?}");
+        // Replace transcript with DIFFERENT Question Beta -> fresh watcher must NOT receive saved Alpha text (Astra #8)!
+        write_q("Question Beta?");
+        let r_q_beta = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-q".into(), "--watcher".into(), "q8-1".into(), "--since".into(), qb.to_string(), "--on".into(), "question".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(!r_q_beta.ok && r_q_beta.code == 124, "Question Beta in transcript must NOT validate saved Alpha event (Astra #8): {r_q_beta:?}");
+
+        // 9. Astra #3 + #13 / Neon #8 + #12/#14/#15: duplicate record_confirmed populates live.latest_event,
+        //    survives 2050-event ring rollover, is caught even with `--since 0`, AND `standing_after`
+        //    excludes pre-start prompts while catching post-start ring-evicted prompts!
+        screens.lock().unwrap().insert("blk-a".into(), asking_screen("cargo test --evict-r3"));
+        let la_r3 = mock.service.look(&ca, true).await;
+        let box_r3 = la_r3.boxed.as_ref().expect("box_r3");
+        let dedupe_r3 = format!("box:b{}-{:08x}", box_r3.number, box_r3.hash as u32);
+        let mut ev_r3 = mock.service.event_of(&ca, SubagentLiveState::WaitingApproval, Some("cargo test --evict-r3".into()), dedupe_r3);
+        ev_r3.approval = Some(Service::approval_json_with_box(la_r3.cls.approval.as_ref().unwrap(), &[], Some(&box_r3.key)));
+        let pre_r3 = mock.service.cursor();
+        let seq_r3 = mock.service.record(ev_r3.clone());
+        // Simulate handover clearing `live.latest_event`, then duplicate `record_confirmed` repopulating it (Astra #3):
+        let (cg, eg) = {
+            let mut st = mock.service.lock();
+            let la = st.live.get_mut("sa-a").unwrap();
+            la.latest_event = None;
+            (la.check_gen, la.event_gen)
+        };
+        assert_eq!(mock.service.record_confirmed("sa-a", cg, eg, &la_r3.cls, Some(box_r3), ev_r3), Some(seq_r3));
+        assert_eq!(mock.service.lock().live.get("sa-a").unwrap().latest_event.as_ref().map(|e| e.seq), Some(seq_r3), "duplicate record_confirmed must populate live.latest_event (Astra #3)");
+        // Flood ring with 2050 unrelated events so seq_r3 is evicted:
+        {
+            let mut st = mock.service.lock();
+            let outsider = test_entry("sa-out", "outsider");
+            for i in 0..2050u32 {
+                let e = SubagentEvent {
+                    seq: 0,
+                    timestamp_ms: 0,
+                    host_key: HOST.into(),
+                    session_id: "sess-o".into(),
+                    parent_window_id: "win-o".into(),
+                    ancestor_windows: Vec::new(),
+                    id: outsider.id.clone(),
+                    name: outsider.name.clone(),
+                    window_id: outsider.window_id.clone(),
+                    block_id: outsider.block_id.clone(),
+                    resume_id: None,
+                    cli_session_id: None,
+                    event: "done".into(),
+                    state: SubagentLiveState::Done,
+                    summary: None,
+                    last_message: None,
+                    approval: None,
+                    error: None,
+                    tail: Vec::new(),
+                    dedupe_key: format!("r3-flood:{i}"),
+                    answers: None,
+                    minding: None,
+                };
+                let s = st.log.push(e);
+                st.reg.event_seq = s;
+            }
+            assert!(st.log.oldest_seq() > seq_r3);
+        }
+        // `--since 0` MUST still catch ring-evicted seq_r3 (Astra #13 / Neon #8)!
+        let r_since0 = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec!["sa-a".into(), "--watcher".into(), "since0".into(), "--since".into(), "0".into(), "--on".into(), "approval".into(), "--timeout".into(), "1".into(), "--json".into()],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(r_since0.ok && r_since0.data["id"] == "sa-a" && r_since0.data["cursor"] == seq_r3, "--since 0 must catch ring-evicted live approval: {r_since0:?}");
+        // `standing_after: Some(seq_r3)` excludes seq_r3 (send --wait / follow_watch pre-start, Astra #12/#14):
+        let r_excl = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "sa-excl".into(),
+                        "--since".into(),
+                        seq_r3.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    standing_after: Some(seq_r3),
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(!r_excl.ok && r_excl.code == 124, "standing_after == seq_r3 must exclude pre-start prompt: {r_excl:?}");
+        // `standing_after: Some(pre_r3)` STILL catches post-start ring-evicted seq_r3 (Astra #14)!
+        let r_post = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "sa-post".into(),
+                        "--since".into(),
+                        pre_r3.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    standing_after: Some(pre_r3),
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(r_post.ok && r_post.data["id"] == "sa-a" && r_post.data["cursor"] == seq_r3, "standing_after < seq_r3 must still catch post-start ring-evicted prompt (Astra #14): {r_post:?}");
+
+        // 10. Astra #20: child caller with `--watcher` keys under `child:<id>:<label>` (pruned on exit) & detached cap enforced!
+        let r_child_w = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "lbl1".into(),
+                        "--since".into(),
+                        pre_r3.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "1".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &tm_caller,
+            )
+            .await;
+        assert!(r_child_w.ok);
+        assert!(mock.service.lock().watcher_seen.contains_key(&("child:sa-tm:lbl1".into(), "sa-a".into())));
+        {
+            let mut st = mock.service.lock();
+            for i in 0..(MAX_DETACHED_WATCHER_SEEN + 20) {
+                record_watcher_seen_locked(&mut st, format!("watcher:cap-{i}"), "sa-a".into(), (i as u64) + 1);
+            }
+            let detached = st.watcher_seen.keys().filter(|(w, _)| !w.starts_with("child:")).count();
+            assert!(detached <= MAX_DETACHED_WATCHER_SEEN, "detached watcher_seen must stay bounded at {MAX_DETACHED_WATCHER_SEEN}, got {detached}");
+        }
+        mock.service.exit("sa-tm", Some(0));
+        assert!(!mock.service.lock().watcher_seen.keys().any(|(w, _)| watcher_owner_child(w) == Some("sa-tm")), "exiting child must prune child:ID:label entries");
+
+        // 11. Astra #21: persistent RPC error backs off exponentially instead of spinning 4x/sec!
+        fail_blocks.lock().unwrap().insert("blk-a".into());
+        let before_fail_rpcs = rpc_counts.lock().unwrap().get("blk-a").copied().unwrap_or(0);
+        let r_fail = mock
+            .service
+            .agent_op(
+                &Request {
+                    op: "watch".into(),
+                    args: vec![
+                        "sa-a".into(),
+                        "--watcher".into(),
+                        "backoff-1".into(),
+                        "--since".into(),
+                        pre_r3.to_string(),
+                        "--on".into(),
+                        "approval".into(),
+                        "--timeout".into(),
+                        "2".into(),
+                        "--json".into(),
+                    ],
+                    ..Default::default()
+                },
+                &det_caller,
+            )
+            .await;
+        assert!(!r_fail.ok && r_fail.code == 124);
+        let fail_rpcs = rpc_counts.lock().unwrap().get("blk-a").copied().unwrap_or(0) - before_fail_rpcs;
+        assert!(fail_rpcs <= 4, "persistent RPC error must back off exponentially (<= 4 reads in 2s, got {fail_rpcs})");
+        assert!(mock.service.lock().live.get("sa-a").unwrap().standing_fails >= 2);
+        fail_blocks.lock().unwrap().remove("blk-a");
+        {
+            let mut st = mock.service.lock();
+            let la = st.live.get_mut("sa-a").unwrap();
+            la.standing_fails = 0;
+            la.standing_retry_after = None;
+        }
+
+        // 12. Round 3 polish regressions:
+        //  - Astra #18 / Neon #6: labelled `child:<id>:<label>` keys are also bounded at MAX_DETACHED_WATCHER_SEEN
+        //  - Astra #21: empty `--parent ""` is rejected
+        //  - Astra #3: `write_now()` timeout returns `since_floor` cursor (not `self.cursor()`)
+        //  - Astra #13 / Neon #3: `republish_standing_question` emits `tx:q:` and `box:b{n}-{hash32}` dedupe keys
+        //  - Astra #2 / Neon #5: `status` mints `tx:q:` and service-minder `send` rejects a stale `tx:q:` grant
+        {
+            let mut st = mock.service.lock();
+            for i in 0..(MAX_DETACHED_WATCHER_SEEN + 20) {
+                record_watcher_seen_locked(&mut st, format!("child:sa-b:lbl-{i}"), "sa-a".into(), (i as u64) + 1);
+            }
+            let capped = st.watcher_seen.keys().filter(|(w, _)| is_capped_watcher_key(w)).count();
+            assert!(capped <= MAX_DETACHED_WATCHER_SEEN, "labelled child:ID:label keys must stay bounded at {MAX_DETACHED_WATCHER_SEEN}, got {capped}");
+        }
+        let r_empty_p = mock.service.agent_op(&Request { op: "watch".into(), args: vec!["--parent".into(), "".into(), "--json".into()], ..Default::default() }, &det_caller).await;
+        assert!(!r_empty_p.ok && r_empty_p.code == 2, "empty --parent must be rejected (Astra R3 #21): {r_empty_p:?}");
+
+        let floor_w = mock.service.cursor();
+        {
+            let held_w2 = mock.service.write_lock.clone().lock_owned().await;
+            let svc_w = mock.service.clone();
+            let det_w = det_caller.clone();
+            let h_wto = tokio::spawn(async move {
+                svc_w
+                    .agent_op(
+                        &Request {
+                            op: "watch".into(),
+                            args: vec![
+                                "sa-a".into(),
+                                "--watcher".into(),
+                                "wto-1".into(),
+                                "--since".into(),
+                                floor_w.to_string(),
+                                "--on".into(),
+                                "approval".into(),
+                                "--timeout".into(),
+                                "1".into(),
+                                "--json".into(),
+                            ],
+                            ..Default::default()
+                        },
+                        &det_w,
+                    )
+                    .await
+            });
+            for _ in 0..50 {
+                if mock.service.lock().watcher_seen.contains_key(&("watcher:wto-1".into(), "sa-a".into())) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(mock.service.lock().watcher_seen.contains_key(&("watcher:wto-1".into(), "sa-a".into())), "watch must be blocked in write_now()");
+            // Record a newer event WHILE watch is blocked inside `write_now()`:
+            let seq_newer = mock.service.record(mock.service.event_of(&cb, SubagentLiveState::Working, Some("newer".into()), "r3-newer".into()));
+            assert!(seq_newer > floor_w);
+            let r_wto = h_wto.await.unwrap();
+            drop(held_w2);
+            assert!(!r_wto.ok && r_wto.code == 124, "blocked write_now must time out cleanly: {r_wto:?}");
+            assert_eq!(r_wto.data["cursor"], floor_w, "write_now timeout must return since_floor so newer events are not skipped (Astra R3 #3)");
+        }
+
+        // Republish standing approval & transcript question (`mind --off`, Astra R3 #13 / Neon R3 #3):
+        mock.service.republish_standing_question(&cb).await;
+        let rep_b = mock.service.lock().log.last_state_of("sa-b").cloned().expect("republished sa-b");
+        assert!(rep_b.dedupe_key.starts_with("box:b"), "republished approval must use box:b{{n}}-{{hash32}} dedupe key: {}", rep_b.dedupe_key);
+        mock.service.republish_standing_question(&cq).await;
+        let rep_q = mock.service.lock().log.last_state_of("sa-q").cloned().expect("republished sa-q");
+        assert!(rep_q.dedupe_key.starts_with("tx:q:"), "republished transcript question must use tx:q: dedupe key: {}", rep_q.dedupe_key);
+
+        // Service-minder exact `tx:q:` gate (Astra R3 #2 / Neon R3 #5):
+        let mut sm = test_entry("sa-sm", "svc-minder");
+        sm.window_id = "win-sm".into();
+        sm.block_id = "blk-sm".into();
+        sm.minds = Some("sa-q".into());
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(sm.clone());
+            let mut cq_m = cq.clone();
+            cq_m.minded_by = Some(sm.id.clone());
+            st.reg.register(cq_m);
+            st.told.insert((sm.id.clone(), cq.id.clone()), ToldGrant { token: "tx:q:stale-question-token".into(), rules_gen: 0, is_approval: false, read_seq: 0 });
+        }
+        let sm_caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-sm".into()), window_from_block: true, block: Some("blk-sm".into()), child: Some(sm.clone()) };
+        let r_stale_send = mock.service.agent_op(&Request { op: "send".into(), args: vec!["sa-q".into(), "answer".into(), "--json".into()], ..Default::default() }, &sm_caller).await;
+        assert!(!r_stale_send.ok && r_stale_send.stderr.contains("isn't what you were last told"), "mismatched tx:q: grant must be rejected: {r_stale_send:?}");
+        let r_sm_status = mock.service.agent_op(&Request { op: "status".into(), args: vec!["sa-q".into(), "--json".into()], ..Default::default() }, &sm_caller).await;
+        assert!(r_sm_status.ok, "minder status must succeed: {r_sm_status:?}");
+        let minted_tok = mock.service.lock().told.get(&(sm.id.clone(), cq.id.clone())).map(|g| g.token.clone());
+        assert_eq!(minted_tok.as_deref(), Some(rep_q.dedupe_key.as_str()), "status must mint exact transcript_question_key for service minder");
     }
 }

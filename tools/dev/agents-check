@@ -787,8 +787,8 @@ try:
         # All Neon launches (investigators, minders, reviewers) run on xhigh;
         # all Opus 5.5 launches (builders, opus-look) run on max with auto-memory disabled (Ben, 2026-11-28):
         seen_launch = []
-        def fake_session(name, cwd, env, cmd, native=None, subagent=True):
-            seen_launch.append((name, list(env), list(cmd), list(native or [])))
+        def fake_session(name, cwd, env, cmd, native=None, subagent=True, extra_meta=None):
+            seen_launch.append((name, list(env), list(cmd), list(native or []), dict(extra_meta or {})))
         agents.session = fake_session
         bd = os.path.join(td, "b1")
         os.makedirs(bd, exist_ok=True)
@@ -802,26 +802,157 @@ try:
         for idx in (0, 1, 3):
             assert "--model" in seen_launch[idx][3] and seen_launch[idx][3][seen_launch[idx][3].index("--model") + 1] == "gemini-4-neon-xhigh", seen_launch[idx]
             assert "--effort" in seen_launch[idx][3] and seen_launch[idx][3][seen_launch[idx][3].index("--effort") + 1] == "xhigh", seen_launch[idx]
-        # launch_opus ALWAYS runs Opus 5.5 on max with auto-memory disabled:
-        opus_env, opus_cmd, opus_native = seen_launch[2][1], seen_launch[2][2], seen_launch[2][3]
+        # launch_opus ALWAYS runs Opus 5.5 on max with auto-approval mode and auto-memory disabled:
+        opus_env, opus_cmd, opus_native, opus_em = seen_launch[2][1], seen_launch[2][2], seen_launch[2][3], seen_launch[2][4]
+        assert opus_em.get("permission_mode") == "auto", opus_em
         assert "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1" in opus_env, opus_env
         for argv in (opus_cmd, opus_native):
             assert argv[argv.index("--model") + 1] == "claude-opus-5-5", argv
             assert argv[argv.index("--effort") + 1] == "max", argv
+            assert argv[argv.index("--permission-mode") + 1] == "auto", argv
             assert "--settings" in argv, argv
             cfg = json.loads(argv[argv.index("--settings") + 1])
             assert cfg.get("autoMemoryEnabled") is False, cfg
-        # launch_claude_builder ALWAYS runs Opus 5.5 on max with auto-memory disabled & Agent/Workflow disallowed:
-        cb_env, cb_cmd, cb_native = seen_launch[4][1], seen_launch[4][2], seen_launch[4][3]
+        # launch_claude_builder ALWAYS runs Opus 5.5 on max with auto-approval mode, auto-memory disabled & Agent/Workflow disallowed:
+        cb_env, cb_cmd, cb_native, cb_em = seen_launch[4][1], seen_launch[4][2], seen_launch[4][3], seen_launch[4][4]
+        assert cb_em.get("permission_mode") == "auto", cb_em
         assert "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1" in cb_env, cb_env
         assert any(e.startswith("CARGO_TARGET_DIR=") for e in cb_env), cb_env
         for argv in (cb_cmd, cb_native):
             assert argv[argv.index("--model") + 1] == "claude-opus-5-5", argv
             assert argv[argv.index("--effort") + 1] == "max", argv
+            assert argv[argv.index("--permission-mode") + 1] == "auto", argv
             assert "--disallowed-tools" in argv and "Agent" in argv and "Workflow" in argv, argv
             sp = argv[argv.index("--settings") + 1]
             cb_cfg = json.load(open(sp))
             assert cb_cfg.get("autoMemoryEnabled") is False, cb_cfg
+        # Astra R2 #2: session() writes extra_meta atomically on top of parent-owned trusted_meta,
+        # NEVER clobbering the Rex start receipt from child-writable meta.json:
+        agents.session = orig_sess3
+        tamper_dir = os.path.join(td, "tamper-claude")
+        os.makedirs(tamper_dir, exist_ok=True)
+        agents.save_trusted_meta("tamper-claude", {"cli": "claude", "crate": "crates/pool", "root": agents.ROOT, "worktree": agents.ROOT})
+        # Poison child-writable meta.json with another child's rex_id:
+        agents.save_meta("tamper-claude", {"rex_id": "sa-victim", "owner_window": "win-evil"})
+        orig_olo_t = agents.olo
+        try:
+            def fake_olo_start(*a, **_kw):
+                if a and a[0] == "list":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"parent_certain": True, "parent_window_id": "win-lead", "subagents": []}), "")
+                if a and a[0] == "start":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"id": "sa-real-new", "window_id": "win-new", "block_id": "block:new", "parent_window_id": "win-lead", "cursor": 77}), "")
+                return subprocess.CompletedProcess(list(a), 0, "{}", "")
+            agents.olo = fake_olo_start
+            agents._SUBTREE_IDS[0] = None
+            agents.launch_claude_builder("tamper-claude", tamper_dir, agents.ROOT, [], target=os.path.join(tamper_dir, "target"))
+            tm = agents.trusted_meta("tamper-claude")
+            assert tm.get("rex_id") == "sa-real-new", tm
+            assert tm.get("owner_window") == "win-lead", tm
+            assert tm.get("permission_mode") == "auto", tm
+            assert tm.get("crate") == "crates/pool", tm
+        finally:
+            agents.olo = orig_olo_t
+            agents.session = fake_session
+        # Pre-upgrade Claude builder resume upgrades acceptEdits -> auto via launch_claude_builder
+        # BOTH when cli_session is in meta AND when absent from meta and resolved from agentd status
+        # (Astra R1 #7, Astra R2 #19, Neon R2 #9), and NEVER replays legacy acceptEdits for kind:look:
+        for case_name, has_meta_sid in (("pre-claude", True), ("pre-claude-nosid", False)):
+            pre_dir = os.path.join(td, case_name)
+            os.makedirs(pre_dir, exist_ok=True)
+            pre_meta = {
+                "via": "rex",
+                "rex_id": f"sa-old-{case_name}",
+                "cli": "claude",
+                "crate": "crates/pool",
+                "root": agents.ROOT,
+                "worktree": agents.ROOT,
+                "ended": True,
+                "window": "win-old",
+                "owner_window": "win-lead",
+                "block_id": "block:old",
+            }
+            if has_meta_sid:
+                pre_meta["cli_session"] = "11111111-2222-3333-4444-555555555555"
+            agents.save_meta(case_name, pre_meta)
+            agents.save_trusted_meta(case_name, pre_meta)
+            seen_launch.clear()
+            orig_olo_r = agents.olo
+            orig_live_r = agents.live
+            orig_room_r = agents.room
+            orig_overlap_r = agents.check_crate_overlap
+            orig_board_r = agents._open_initial_board
+            try:
+                agents.live = lambda _n: False
+                agents.room = lambda *_a, **_kw: None
+                agents.check_crate_overlap = lambda *_a, **_kw: None
+                agents._open_initial_board = lambda *_a, **_kw: None
+                def fail_if_olo_resume(*args, **_kw):
+                    if args and args[0] == "resume":
+                        raise AssertionError(f"pre-upgrade Claude helper must not replay acceptEdits via olo agent resume: {args}")
+                    if args and args[0] == "status":
+                        return subprocess.CompletedProcess(list(args), 0, json.dumps({"cli_session_id": "22222222-3333-4444-5555-666666666666"}), "")
+                    return subprocess.CompletedProcess(list(args), 0, "{}", "")
+                agents.olo = fail_if_olo_resume
+                agents.resume(case_name, "continue work")
+                assert len(seen_launch) == 1, seen_launch
+                res_native = seen_launch[0][3]
+                expected_sid = "11111111-2222-3333-4444-555555555555" if has_meta_sid else "22222222-3333-4444-5555-666666666666"
+                assert res_native[res_native.index("--permission-mode") + 1] == "auto", res_native
+                assert "--resume" in res_native and expected_sid in res_native, res_native
+                assert seen_launch[0][4].get("permission_mode") == "auto", seen_launch[0][4]
+            finally:
+                agents.olo = orig_olo_r
+                agents.live = orig_live_r
+                agents.room = orig_room_r
+                agents.check_crate_overlap = orig_overlap_r
+                agents._open_initial_board = orig_board_r
+        # Pre-upgrade Opus kind:look helper also refuses native acceptEdits replay:
+        look_dir = os.path.join(td, "pre-opus-look")
+        os.makedirs(look_dir, exist_ok=True)
+        look_meta = {"via": "rex", "rex_id": "sa-old-look", "cli": "claude", "kind": "look", "root": agents.ROOT, "ended": True, "owner_window": "win-lead"}
+        agents.save_meta("pre-opus-look", look_meta)
+        agents.save_trusted_meta("pre-opus-look", look_meta)
+        orig_olo_l = agents.olo
+        orig_live_l = agents.live
+        try:
+            agents.live = lambda _n: False
+            def fail_look_resume(*args, **_kw):
+                if args and args[0] == "resume":
+                    raise AssertionError(f"pre-upgrade kind:look Claude helper must not call olo resume: {args}")
+                return subprocess.CompletedProcess(list(args), 0, "{}", "")
+            agents.olo = fail_look_resume
+            expect_exit(lambda: agents.resume("pre-opus-look", "again"), "refusing to replay acceptEdits")
+        finally:
+            agents.olo = orig_olo_l
+            agents.live = orig_live_l
+        # Astra R3 #19: investigate() seeds trusted_meta BEFORE calling launch() so session()
+        # preserves parent-owned fields (`done`, `work`, `root`):
+        inv_work = os.path.join(td, "inv-case")
+        os.makedirs(inv_work, exist_ok=True)
+        inv_brief = os.path.join(inv_work, "brief.md")
+        open(inv_brief, "w").write("root cause test\n")
+        inv_trusted_at_launch = []
+        orig_launch_i = agents.launch
+        orig_room_i = agents.room
+        orig_live_i = agents.live
+        orig_board_i = agents._open_initial_board
+        try:
+            agents.room = lambda *_a, **_kw: None
+            agents.live = lambda _n: False
+            agents._open_initial_board = lambda *_a, **_kw: None
+            def fake_launch_i(name, d, root, dirs, target=None, **_kw):
+                inv_trusted_at_launch.append(agents.trusted_meta(name))
+            agents.launch = fake_launch_i
+            try:
+                agents.investigate(inv_brief, inv_work, wait=False)
+            except SystemExit as e:
+                assert e.code == 0, e
+            assert inv_trusted_at_launch and inv_trusted_at_launch[0].get("work") == inv_work and inv_trusted_at_launch[0].get("done") == os.path.join(inv_work, "answer.md"), inv_trusted_at_launch
+        finally:
+            agents.launch = orig_launch_i
+            agents.room = orig_room_i
+            agents.live = orig_live_i
+            agents._open_initial_board = orig_board_i
         # RULES & HELP_RULES pass the absolute BOARD_BIN path (works in older worktrees), and _open_initial_board auto-opens the pane:
         rendered_rules = agents.RULES.format(root="/var/tmp/wt", crate="crates/pool", package="olo-token-pool", name="pool-agy", dir=bd, approvals="", board=agents.BOARD_BIN)
         assert agents.BOARD_BIN in rendered_rules and "\n    tools/dev/agent-board " not in rendered_rules, rendered_rules

@@ -53,6 +53,13 @@ pub struct Request {
     /// earlier `PROTO == 1` services reject as an unknown `send` option).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wait: bool,
+    /// Optional lower bound for standing-prompt catch-up in `watch`: prompts
+    /// with `seq <= standing_after` are excluded, while prompts strictly after
+    /// `standing_after` (even if evicted from the ring) remain eligible. Passed
+    /// by `watch --follow` (without `--since`) and `send --wait` / `run` as an
+    /// optional JSON field so held older `PROTO == 1` services ignore it cleanly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standing_after: Option<u64>,
 }
 
 /// What the service writes the moment it has read a request and is

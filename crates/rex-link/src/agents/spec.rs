@@ -1331,15 +1331,21 @@ pub struct WatchSpec {
     pub regex_pat: Option<String>,
     pub timeout_secs: u64,
     pub json: bool,
+    /// When true, suppresses pre-cursor standing-prompt catch-up explicitly
+    /// via `--no-standing` (internal `watch --follow` and `send --wait` use
+    /// `Request::standing_after` instead to stay `PROTO == 1`-compatible).
+    pub no_standing: bool,
+    /// Optional explicit watcher identity (`--watcher ID`) for detached callers
+    /// watching named children outside a Rex pane.
+    pub watcher: Option<String>,
 }
+
+const WATCH_USAGE: &str = "usage: olo agent watch [<ID|NAME>... | --all] [--since CURSOR] [--parent WIN] [--watcher ID] [--no-standing] [--on question|approval|idle|done|error|exit|escalation|minding|any] [--match TEXT] [--regex PAT] [--timeout SEC] [--json]";
 
 impl WatchSpec {
     pub fn parse(raw: Option<&Value>) -> Result<Self, String> {
         let Some(v) = raw else {
-            return Err(
-                "usage: olo agent watch [<ID|NAME>... | --all] [--since CURSOR] [--parent WIN] [--on question|approval|idle|done|error|exit|any] [--match TEXT] [--regex PAT] [--timeout SEC] [--json]"
-                    .into(),
-            );
+            return Err(WATCH_USAGE.into());
         };
         let mut targets: Vec<String> = Vec::new();
         let mut all = false;
@@ -1350,6 +1356,8 @@ impl WatchSpec {
         let mut regex_pat: Option<String> = None;
         let mut timeout_secs: u64 = 600;
         let mut json = false;
+        let mut no_standing = false;
+        let mut watcher: Option<String> = None;
 
         if let Some(arr) = v.get("args").and_then(Value::as_array) {
             let args: Vec<String> = arr.iter().map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| x.to_string())).collect();
@@ -1386,6 +1394,11 @@ impl WatchSpec {
                         timeout_secs = t.trim_end_matches('s').parse::<u64>().map_err(|_| format!("invalid --timeout `{t}`"))?;
                     }
                     "--json" => json = true,
+                    "--no-standing" => no_standing = true,
+                    "--watcher" => {
+                        i += 1;
+                        watcher = Some(args.get(i).ok_or("--watcher requires an identifier")?.clone());
+                    }
                     s if s.starts_with("--parent=") => parent = Some(s["--parent=".len()..].to_owned()),
                     s if s.starts_with("--since=") => {
                         let c = &s["--since=".len()..];
@@ -1398,6 +1411,7 @@ impl WatchSpec {
                         let t = &s["--timeout=".len()..];
                         timeout_secs = t.trim_end_matches('s').parse::<u64>().map_err(|_| format!("invalid --timeout `{t}`"))?;
                     }
+                    s if s.starts_with("--watcher=") => watcher = Some(s["--watcher=".len()..].to_owned()),
                     s if s.starts_with('-') => return Err(format!("unknown watch option `{s}`")),
                     s => targets.push(s.to_owned()),
                 }
@@ -1438,10 +1452,23 @@ impl WatchSpec {
                 timeout_secs = tv.as_u64().ok_or_else(|| format!("invalid `timeout` `{tv}`; expected unsigned integer seconds"))?;
             }
             json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
+            no_standing = v.get("no_standing").and_then(Value::as_bool).unwrap_or(false);
+            watcher = v.get("watcher").and_then(Value::as_str).map(str::to_owned);
+        }
+
+        if let Some(ref p) = parent
+            && p.trim().is_empty()
+        {
+            return Err("--parent requires a non-empty window, block, or agent target".to_owned());
+        }
+        if let Some(ref w) = watcher
+            && (w.is_empty() || w.len() > 64 || !w.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'-')))
+        {
+            return Err(format!("invalid --watcher `{w}`; expected 1..=64 ASCII [A-Za-z0-9._:-] characters"));
         }
 
         if !all && targets.is_empty() {
-            return Err("usage: olo agent watch [<ID|NAME>... | --all] [--since CURSOR] [--on question|approval|idle|done|error|exit|any] [--match TEXT] [--regex PAT] [--timeout SEC]".to_owned());
+            return Err(WATCH_USAGE.to_owned());
         }
         // Validate every `--on` event name so typos fail loudly instead of hanging forever (`L6`).
         for ev in &events {
@@ -1458,7 +1485,7 @@ impl WatchSpec {
         if timeout_secs == 0 || timeout_secs > 3600 {
             return Err(format!("--timeout must be between 1 and 3600 seconds (got {timeout_secs})"));
         }
-        Ok(Self { targets, all, parent, since, events, match_text, regex_pat, timeout_secs, json })
+        Ok(Self { targets, all, parent, since, events, match_text, regex_pat, timeout_secs, json, no_standing, watcher })
     }
 
     /// Whether what a minder has for the parent is among what is waited

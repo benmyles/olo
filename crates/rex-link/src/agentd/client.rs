@@ -132,7 +132,8 @@ pub fn run(mut args: Vec<String>) -> i32 {
             }
             let env = |name: &str| std::env::var(name).unwrap_or_default();
             let cwd = Some(env("PWD")).filter(|p| p.starts_with('/')).or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string())).unwrap_or_default();
-            let req = Request { proto: PROTO, op: "send".into(), args: rest, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited(), wait: false };
+            let req =
+                Request { proto: PROTO, op: "send".into(), args: rest, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited(), wait: false, standing_after: None };
             print_answer(ask(&server, &paths, &req, false))
         }
         _ => {
@@ -148,17 +149,18 @@ pub fn run(mut args: Vec<String>) -> i32 {
             };
             let env = |name: &str| std::env::var(name).unwrap_or_default();
             let cwd = Some(env("PWD")).filter(|p| p.starts_with('/')).or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string())).unwrap_or_default();
-            let req = Request { proto: PROTO, op: sub.clone(), args, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited(), wait: false };
+            let req = Request { proto: PROTO, op: sub.clone(), args, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited(), wait: false, standing_after: None };
             // Two commands are several askings, made here: one agent for
             // one prompt, start to finish; and a watch that goes on.
             let asked = |op: &str, args: Vec<String>| ask(&server, &paths, &Request { op: op.to_owned(), args, ..req.clone() }, retriable(op));
+            let asked_watch = |args: Vec<String>, standing_after: Option<u64>| ask(&server, &paths, &Request { op: "watch".to_owned(), args, standing_after, ..req.clone() }, true);
             let asked_send_wait = |args: Vec<String>| ask(&server, &paths, &Request { op: "send".to_owned(), args, wait: true, ..req.clone() }, false);
             let has_wait_flag = req.args.iter().take_while(|a| a.as_str() != "--").any(|a| a == "--wait");
             match sub.as_str() {
-                "run" => one_shot(req.args.clone(), &asked),
+                "run" => one_shot(req.args.clone(), &asked, &asked_watch),
                 "send" if req.args.first().is_some_and(|a| a == "--all-errored") => send_to_all_errored(req.args[1..].to_vec(), &asked),
-                "send" if has_wait_flag => send_and_wait(req.args.clone(), &asked_send_wait, &asked),
-                "watch" | "wait" if req.args.iter().any(|a| a == "--follow") => follow_watch(req.args.clone(), &asked),
+                "send" if has_wait_flag => send_and_wait(req.args.clone(), &asked_send_wait, &asked, &asked_watch),
+                "watch" | "wait" if req.args.iter().any(|a| a == "--follow") => follow_watch(req.args.clone(), &asked, &asked_watch),
                 _ => print_answer(ask(&server, &paths, &req, retriable(&sub))),
             }
         }
@@ -305,17 +307,22 @@ pub const RUN_USAGE: &str = "usage: olo agent run <claude|codex|agy> --model MOD
 /// `given`, and a rest that answers anything else is the child never
 /// having taken it up; otherwise (a message sent into a turn already
 /// going) it is that turn's, and the next rest is its end.
-fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> Result<(&'static str, Value, u64), Box<Response>> {
+fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked_watch: &dyn Fn(Vec<String>, Option<u64>) -> Response) -> Result<(&'static str, Value, u64), Box<Response>> {
     let mut cursor = given;
+    let mut standing_after = Some(given);
     loop {
         let wait = match until {
             Some(until) if Instant::now() >= until => return Ok(("timeout", Value::Null, cursor)),
             Some(until) => until.saturating_duration_since(Instant::now()).as_secs().clamp(1, 90),
             None => 90,
         };
-        let told = asked(
-            "watch",
+        // Exclude pre-send standing prompts at or before `standing_after` (e.g. a
+        // chooser that `send ID --enter --wait` just answered) while still
+        // catching any prompt raised strictly after it even across ring eviction,
+        // rebasing on `"reset"` and staying wire-compatible with `PROTO == 1`.
+        let told = asked_watch(
             vec![id.to_owned(), "--since".into(), cursor.to_string(), "--on".into(), "question,approval,idle,done,error,exit".into(), "--timeout".into(), wait.to_string(), "--json".into()],
+            standing_after,
         );
         if let Some(c) = told.data["cursor"].as_u64() {
             cursor = c;
@@ -326,6 +333,10 @@ fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: 
                 continue;
             }
             return Err(Box::new(told));
+        }
+        if told.data["event"].as_str() == Some("reset") {
+            standing_after = Some(cursor);
+            continue;
         }
         let ev = told.data;
         match ev["state"].as_str().unwrap_or_default() {
@@ -350,7 +361,7 @@ fn turn_end(id: &str, given: u64, its_own: bool, until: Option<Instant>, asked: 
 /// of that child from the send's cursor until the rest that ends the
 /// message's turn; the child is left as it is. Its own options, beside
 /// `send`'s: `--wait`, `--timeout SECS`, `--out FILE`, `--json`.
-fn send_and_wait(args: Vec<String>, send_wait: &dyn Fn(Vec<String>) -> Response, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+fn send_and_wait(args: Vec<String>, send_wait: &dyn Fn(Vec<String>) -> Response, asked: &dyn Fn(&str, Vec<String>) -> Response, asked_watch: &dyn Fn(Vec<String>, Option<u64>) -> Response) -> i32 {
     let fail = |msg: &str, code: i32| {
         eprintln!("olo agent send: {msg}");
         code
@@ -406,7 +417,7 @@ fn send_and_wait(args: Vec<String>, send_wait: &dyn Fn(Vec<String>) -> Response,
     // (A service from before it said so: taken as a turn of its own.)
     let its_own = sent.data["began_turn"].as_bool().unwrap_or(true);
     let until = timeout.map(|secs| Instant::now() + Duration::from_secs(secs));
-    let (how, event, cursor) = match turn_end(&id, given, its_own, until, asked) {
+    let (how, event, cursor) = match turn_end(&id, given, its_own, until, asked_watch) {
         Ok(ended) => ended,
         Err(failed) => return print_answer(*failed),
     };
@@ -448,7 +459,7 @@ fn send_and_wait(args: Vec<String>, send_wait: &dyn Fn(Vec<String>) -> Response,
     code
 }
 
-fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response, asked_watch: &dyn Fn(Vec<String>, Option<u64>) -> Response) -> i32 {
     let fail = |msg: &str, code: i32| {
         eprintln!("olo agent run: {msg}");
         code
@@ -495,7 +506,7 @@ fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) ->
     let until = timeout.map(|secs| Instant::now() + Duration::from_secs(secs));
 
     // Its prompt's own turn's end, or what came in its place.
-    let (how, event, cursor) = match turn_end(&id, given, true, until, asked) {
+    let (how, event, cursor) = match turn_end(&id, given, true, until, asked_watch) {
         Ok(ended) => ended,
         Err(failed) => return print_answer(*failed),
     };
@@ -563,7 +574,7 @@ fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) ->
 /// parent with no wait of its own to keep: an escalation, a turn's end
 /// with its message whole, a failure, an end, each once. Without
 /// `--since` it begins from now (nothing that was is said again).
-fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response, asked_watch: &dyn Fn(Vec<String>, Option<u64>) -> Response) -> i32 {
     let (mut rest, mut since, mut as_json) = (Vec::with_capacity(args.len()), None::<u64>, false);
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
@@ -580,6 +591,7 @@ fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response
             _ => rest.push(arg),
         }
     }
+    let from_now = since.is_none();
     let mut cursor = match since {
         Some(cursor) => cursor,
         None => {
@@ -590,10 +602,15 @@ fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response
             }
         }
     };
+    // Preserve the initial cursor as a lower bound for standing catch-up when
+    // following from now (rebasing on `"reset"`): excludes pre-start prompts at
+    // or before `start_cursor`, still catches post-start prompts even if evicted
+    // from the ring, and stays wire-compatible with held `PROTO == 1` services.
+    let mut standing_after = from_now.then_some(cursor);
     loop {
         let mut args = rest.clone();
         args.extend(["--since".to_owned(), cursor.to_string(), "--timeout".to_owned(), "90".to_owned(), "--json".to_owned()]);
-        let told = asked("watch", args);
+        let told = asked_watch(args, standing_after);
         if let Some(c) = told.data["cursor"].as_u64() {
             cursor = c;
         }
@@ -602,6 +619,9 @@ fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response
                 continue;
             }
             return print_answer(told);
+        }
+        if told.data["event"].as_str() == Some("reset") && standing_after.is_some() {
+            standing_after = Some(cursor);
         }
         let ev = &told.data;
         if as_json {

@@ -8,7 +8,7 @@ Ben, 2026-11-27: "let them do whatever they need to reasonably do to do their jo
 
 Read each subagent's brief first (`/var/tmp/olo-agents/NAME/brief.md`). For every approval prompt:
 - Ask: is this safe and reasonable for this agent's assigned task?
-- If **yes**: approve immediately. Prefer **`--session`** ("always allow for this session/conversation") whenever the approval box offers an `allow_session` choice whose prefix is safe and immutable/scoped (read-only inspection, `git` reads, `jato`/`cargo`, `tsession`) to avoid approval noise — the goal is not to micromanage or babysit, only to surface important things. Use **`--once`** when no `allow_session` choice exists, for **mutable scripts** the agent wrote in its scratch folder (so any later edit to the script is inspected again), or when the prefix would be overly broad/destructive (e.g. bare `rm`, `bash -c`, `python3 -c`, `env`, `timeout`). **Never** pick `dont_ask_again` ("Persist to settings.json") or `switch_mode` ("auto mode").
+- If **yes**: approve immediately. Prefer **`--session`** ("always allow for this session/conversation") whenever the approval box offers an `allow_session` choice whose prefix is safe and immutable/scoped (read-only inspection, `git` reads, `jato`/`cargo`, `tsession`) to avoid approval noise — the goal is not to micromanage or babysit, only to surface important things (Claude agents already launch with `--permission-mode auto` enabled so routine commands auto-approve automatically). Use **`--once`** when no `allow_session` choice exists, for **mutable scripts** the agent wrote in its scratch folder (so any later edit to the script is inspected again), or when the prefix would be overly broad/destructive (e.g. bare `rm`, `bash -c`, `python3 -c`, `env`, `timeout`). **Never** pick `dont_ask_again` ("Persist to settings.json") or `switch_mode` ("auto mode" / "allow all edits" — protects read-only `agy-review`/`agy-look`/`agy-help`).
 - If **no** (dangerous, out of scope, or safer another way): refuse (`olo agent approve ID --no --box BOX_KEY --reason "…"`), explaining the safer way.
 - If **unsure**: do NOT guess — escalate word for word (`olo agent escalate "…"`) and leave the agent waiting.
 
@@ -34,7 +34,7 @@ Read each subagent's brief first (`/var/tmp/olo-agents/NAME/brief.md`). For ever
 - Signaling or killing processes by name (`pkill`, `killall`, `pgrep -f`) or touching processes the agent did not start.
 - Signing into another machine (`ssh`, `scp`) or sending private/machine data outside.
 - Speaking to the host's live agents service, live Rex server, or host Token Pool (`127.0.0.1:17891`/`17892`) without isolated scratch paths/ports; `olo agent prune` in ANY form; builders starting nested helpers.
-- Any choice that persists settings ("Persist to settings.json", "always allow access", "auto mode"). Session-scoped `--session` ("always allow in this conversation") IS preferred for safe, immutable/scoped prefixes.
+- Any choice that persists settings ("Persist to settings.json", "always allow access") or switches a running agent's mode (`switch_mode` — Claude agents already launch with `--permission-mode auto`, while non-Claude read-only `agy-review`/`agy-look`/`agy-help` helpers must stay in their configured modes). Session-scoped `--session` ("always allow in this conversation") IS preferred for safe, immutable/scoped prefixes.
 
 ## Escalate to the Lead (`olo agent escalate "…"`)
 

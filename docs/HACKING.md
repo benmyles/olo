@@ -22709,10 +22709,10 @@ helper runs interactively as a native Rex child tab through `olo agent`
   to approve or unstick the minder).
 - **Builders** (`tools/dev/agents start [--tree DIR] NAME CRATE
   BRIEF.md`, `agents resume`): **Claude Opus 5.5 on `max`**
-  (`claude-opus-5-5`, `--effort max`, `"autoMemoryEnabled": false` +
-  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `--disallowed-tools Agent
-  Workflow`; Ben, 2026-11-28), up to four active builders at once
-  across worktrees, each scoped to its own crate(s) with
+  (`claude-opus-5-5`, `--effort max`, `--permission-mode auto`,
+  `"autoMemoryEnabled": false` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`,
+  `--disallowed-tools Agent Workflow`; Ben, 2026-11-28), up to four active
+  builders at once across worktrees, each scoped to its own crate(s) with
   `OLO_SUBAGENT=<name>` set so it cannot spawn subagents of its own.
 - **Second investigator** (`tools/dev/agy-help BRIEF.md`, `agents
   investigate`): Antigravity (`agy`) **Gemini 4 Neon on `xhigh`**, for
@@ -22732,10 +22732,10 @@ helper runs interactively as a native Rex child tab through `olo agent`
   `agy-review` (`xhigh`) on the code, screenshots go to both
   `tools/dev/agy-look` (**Gemini 4 Neon on `xhigh`**, pixel-level
   spacing/alignment) and `tools/dev/opus-look` (**Claude Opus 5.5 on
-  `max`**, `claude --model claude-opus-5-5 --effort max --settings
-  '{"autoMemoryEnabled":false}' --restricted --tools Read,Write`,
-  product/visual design quality). Changes with no visual design work
-  use only the `agy` (`xhigh`) and `codex` (`xhigh`) reviewers.
+  `max`**, `claude --model claude-opus-5-5 --effort max --permission-mode
+  auto --settings '{"autoMemoryEnabled":false}' --restricted --tools
+  Read,Write`, product/visual design quality). Changes with no visual
+  design work use only the `agy` (`xhigh`) and `codex` (`xhigh`) reviewers.
 - **Subagent right-pane standup board (`tools/dev/agent-board`):**
   Every builder, investigator, and minder opens a right-hand Rex split
   pane (`rex split --split=right --ratio=38 --focus=false --shell=none`)
@@ -22896,11 +22896,12 @@ investigator's is.
 **And a designer's review of them** (`tools/dev/opus-look`, which is
 `agents look --by opus`): `opus-look --about "WHAT IT IS, WHAT CHANGED"
 PICTURE.png…` hands copies of the same pictures to Claude Opus 5.5 at
-`xhigh` in a session named `opus-FOLDER` (`claude --model claude-opus-5-5
---effort xhigh --restricted --strict-mcp-config --tools Read,Write
---permission-mode acceptEdits`: no tool that runs anything, the file
-tools kept to the look's folder, none of the person's settings, hooks
-or MCP servers) with a product designer's brief: composition,
+`max` in a session named `opus-FOLDER` (`claude --model claude-opus-5-5
+--effort max --restricted --strict-mcp-config --tools Read,Write
+--permission-mode auto --settings '{"autoMemoryEnabled":false}'`: no tool
+that runs anything, the file tools kept to the look's folder, none of the
+person's settings, hooks or MCP servers, auto-memory disabled) with a
+product designer's brief: composition,
 hierarchy, rhythm, colour, what looks amateur or unfinished or out of
 keeping with the desktop, and what to do about each, the most important
 first. It keeps its review as `opus-look.md` beside the first picture.
