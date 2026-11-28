@@ -570,7 +570,7 @@ pub fn has_approval_fragment(agent: Agent, screen: &str) -> bool {
         }
         if let Some(ci) = last_choice_idx {
             let (lo, hi) = if pi <= ci { (pi, ci) } else { (ci, pi) };
-            if hi - lo > 4 || lines[lo + 1..hi].iter().any(|l| is_dialog_header(l) || is_approval_q(lo + 1, l)) {
+            if hi - lo > 4 || (lo + 1 < hi && lines[lo + 1..hi].iter().enumerate().any(|(off, l)| is_dialog_header(l) || is_approval_q(lo + 1 + off, l))) {
                 return false;
             }
         }
@@ -3524,5 +3524,9 @@ esc to cancel              accept-edits · Gemini 4 Neon · xhigh · 1 task(s) �
         assert!(!has_strong_survey_fragment(Agent::Antigravity, &format!("  [1]\n{rule}\n> \n{rule}\n? for shortcuts\n")));
         let draft_quoting_survey = format!("{rule}\n❯ How is Claude doing this session?\n  1: Bad  2: Fine  3: Good  0: Dismiss\n{rule}\n  ? for shortcuts\n");
         assert!(parse_survey(Agent::Claude, &draft_quoting_survey).is_none(), "Astra #20: survey lines inside ruled draft must not trigger parse_survey");
+
+        // 7. Regression: plan chooser whose `Keep planning` row is ALSO the last choice row (`pi == ci`) must not panic!
+        let plan_with_no_keep_planning = "Would you like to proceed?\n❯ 1. Yes, clear context\n  2. No, keep planning\nEnter to select\n";
+        assert!(!has_approval_fragment(Agent::Claude, plan_with_no_keep_planning));
     }
 }

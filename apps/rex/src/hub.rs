@@ -9805,7 +9805,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             let _ = std::fs::remove_file(&path);
         } else {
             kept.entries = rest;
-            kept.save_to(&path);
+            if let Err(e) = kept.save_to(&path) {
+                eprintln!("rex: couldn't rewrite legacy subagents at {}: {e}", path.display());
+            }
         }
     }
 
