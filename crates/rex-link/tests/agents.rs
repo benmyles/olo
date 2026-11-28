@@ -10,13 +10,49 @@
 //! (The agents themselves, against a made-up API, are `agents_live.rs`.)
 
 use std::io::Write as _;
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+
+/// Reads field 22 (`starttime` in clock ticks) from `/proc/{pid}/stat` so a
+/// test waiting for a retired service PID to exit is immune to PID reuse.
+fn proc_start_ticks(pid: i32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let after_comm = stat.rsplit_once(')')?.1;
+    // Field 22 is index 19 after the closing ')' of comm (field 2).
+    after_comm.split_whitespace().nth(19)?.parse::<u64>().ok()
+}
+
+/// Writes `data` to a stand-in FIFO without ever blocking past `until`: uses
+/// `O_NONBLOCK` open and write retries so a dead stand-in can never hang `join`.
+fn write_fifo_within(fifo: &Path, data: &[u8], until: Instant) -> bool {
+    let mut file = loop {
+        match std::fs::OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open(fifo) {
+            Ok(f) => break f,
+            Err(_) if Instant::now() < until => std::thread::sleep(Duration::from_millis(10)),
+            Err(_) => return false,
+        }
+    };
+    let mut written = 0usize;
+    while written < data.len() {
+        match file.write(&data[written..]) {
+            Ok(0) => return false,
+            Ok(n) => written += n,
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {
+                if Instant::now() >= until {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => return false,
+        }
+    }
+    true
+}
 
 const HELPER: &str = env!("CARGO_BIN_EXE_olo-rex-link");
 const REX: &str = "/usr/bin/rex";
@@ -72,12 +108,22 @@ struct Rig {
 
 impl Drop for Rig {
     fn drop(&mut self) {
-        // (The service ends with its server; asked to first, so what it
-        // writes on its way out is written before the folder goes.)
+        // Capture the live service's `(pid, start_ticks)` BEFORE retiring and
+        // wait for that exact process to exit (with a deadline) BEFORE
+        // `remove_dir_all` so a delayed background writer never recreates the
+        // test folder after cleanup.
+        let retired_proc = self.service_pid().and_then(|pid| proc_start_ticks(pid).map(|ticks| (pid, ticks)));
         let _ = self.helper().args(["agent", "retire"]).output();
         let _ = self.server.kill();
         let _ = self.server.wait();
-        std::thread::sleep(Duration::from_millis(100));
+        if let Some((pid, start_ticks)) = retired_proc {
+            let until = Instant::now() + Duration::from_secs(5);
+            while proc_start_ticks(pid) == Some(start_ticks) && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(15));
+            }
+        } else {
+            std::thread::sleep(Duration::from_millis(100));
+        }
         if std::env::var_os("OLO_AGENTS_TEST_KEEP").is_none() {
             let _ = std::fs::remove_dir_all(&self.dir);
         }
@@ -152,10 +198,19 @@ impl Rig {
             .env_remove("REX_BLOCK")
             .env_remove("SSH_AUTH_SOCK");
         // (Run from an agent's own shell, the test carries that agent's
-        // marks: none of them is the scratch server's or its children's.)
+        // marks: none of them is the scratch server's or its children's.
+        // Likewise strip any desktop-bridge dirs from the inherited PATH so
+        // the scratch Rex server starts with a clean systemd-like base PATH
+        // even when `jato test` runs inside a desktop-connected Rex pane.)
         for (name, _) in std::env::vars_os() {
             if name.to_str().is_some_and(|n| n.starts_with("CLAUDE") || n.starts_with("CODEX") || n == "AI_AGENT") {
                 cmd.env_remove(name);
+            }
+        }
+        if let Ok(path) = std::env::var("PATH") {
+            let clean: Vec<&str> = path.split(':').filter(|d| !d.is_empty() && !d.ends_with("/rex-commands") && !d.ends_with("/olo/rex/bin")).collect();
+            if !clean.is_empty() {
+                cmd.env("PATH", clean.join(":"));
             }
         }
     }
@@ -289,16 +344,12 @@ impl Rig {
         self.start_child_from(Some(&self.lead_block), cli, name, more)
     }
 
-    /// Tells a stand-in one thing (waited for: it takes a line when it
-    /// has done with the last).
+    /// Tells a stand-in one thing (bounded non-blocking FIFO write so a dead
+    /// stand-in can never hang the test thread).
     fn tell(&self, name: &str, line: &str) {
         let (fifo, line) = (self.staged(name, "fifo"), format!("{line}\n"));
-        let (done, told) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let sent = std::fs::OpenOptions::new().write(true).open(&fifo).and_then(|mut f| f.write_all(line.as_bytes()));
-            let _ = done.send(sent.is_ok());
-        });
-        assert_eq!(told.recv_timeout(Duration::from_secs(10)), Ok(true), "the stand-in {name} didn't take a line");
+        let until = Instant::now() + Duration::from_secs(10);
+        assert!(write_fifo_within(&fifo, line.as_bytes(), until), "the stand-in {name} didn't take a line");
     }
 
     /// Has a stand-in draw a screen.
@@ -359,11 +410,51 @@ impl Rig {
                 std::thread::sleep(Duration::from_millis(5));
             }
             if !delay.is_zero() {
-                std::thread::sleep(delay);
+                let wake = (Instant::now() + delay).min(until);
+                if wake > Instant::now() {
+                    std::thread::sleep(wake.saturating_duration_since(Instant::now()));
+                }
             }
-            std::fs::write(&stage, then).unwrap();
-            std::fs::OpenOptions::new().write(true).open(&fifo).and_then(|mut f| f.write_all(format!("show {}\n", stage.display()).as_bytes())).is_ok()
+            if std::fs::write(&stage, then).is_err() {
+                return false;
+            }
+            write_fifo_within(&fifo, format!("show {}\n", stage.display()).as_bytes(), until)
         })
+    }
+
+    /// Deterministic barrier variant of [`Self::when_typed`]: once `keys`
+    /// arrive in `name`, signals the returned `seen` receiver and waits on the
+    /// returned `release` sender before drawing `then` via non-blocking FIFO
+    /// handoff (zero scheduling sleeps).
+    fn when_typed_gated(&self, name: &str, keys: &'static [u8], then: String) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>, std::thread::JoinHandle<bool>) {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let (file, from) = (self.staged(name, "keys"), self.keys(name).len());
+        let (fifo, stage) = (self.staged(name, "fifo"), self.staged(name, &format!("gated{}-{}", from, N.fetch_add(1, Ordering::Relaxed))));
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let until = Instant::now() + Duration::from_secs(15);
+            loop {
+                let typed = std::fs::read(&file).unwrap_or_default();
+                if typed.len() > from && typed[from..].windows(keys.len()).any(|w| w == keys) {
+                    break;
+                }
+                if Instant::now() >= until {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let _ = seen_tx.send(());
+            let rem = until.saturating_duration_since(Instant::now());
+            if release_rx.recv_timeout(rem).is_err() {
+                return false;
+            }
+            if std::fs::write(&stage, then).is_err() {
+                return false;
+            }
+            write_fifo_within(&fifo, format!("show {}\n", stage.display()).as_bytes(), until)
+        });
+        (seen_rx, release_tx, handle)
     }
 
     fn status(&self, name: &str) -> Value {
@@ -1027,7 +1118,7 @@ fn a_later_build_takes_over_and_kept_children_are_adopted() {
     });
     let gone = json!({ "id": "sa-0ld002", "name": "older", "host_key": "far", "session_id": "session:gone", "window_id": "window:gone", "block_id": "block:gone", "parent_window_id": "window:x", "cli": "agy", "model": "m", "effort": "high", "title": "older" });
     let mut adopt = rig.helper().args(["agent", "adopt"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
-    adopt.stdin.take().unwrap().write_all(json!({ "agents": [kept, gone] }).to_string().as_bytes()).unwrap();
+    adopt.stdin.take().unwrap().write_all(json!({ "agents": [&kept, &gone] }).to_string().as_bytes()).unwrap();
     let said = adopt.wait_with_output().unwrap();
     assert!(String::from_utf8_lossy(&said.stdout).contains("Took over 2"), "{said:?}");
     let listed = rig.json(&["list", "--all", "--json"]);
@@ -1037,8 +1128,9 @@ fn a_later_build_takes_over_and_kept_children_are_adopted() {
     assert_eq!(by_name("older")["state"], "exited", "its tab is gone: kept as exited");
     // (Given again, they are not taken twice.)
     let mut again = rig.helper().args(["agent", "adopt"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
-    again.stdin.take().unwrap().write_all(json!({ "agents": [by_name("old")] }).to_string().as_bytes()).unwrap();
-    assert!(String::from_utf8_lossy(&again.wait_with_output().unwrap().stdout).contains("Took over 0"));
+    again.stdin.take().unwrap().write_all(json!({ "agents": [&kept, &gone] }).to_string().as_bytes()).unwrap();
+    let again_out = again.wait_with_output().unwrap();
+    assert!(again_out.status.success() && String::from_utf8_lossy(&again_out.stdout).contains("Took over 0"), "{again_out:?}");
     rig.json(&["stop", "old", "--force", "--json"]);
     rig.json(&["stop", "steady", "--force", "--json"]);
 }
@@ -1220,6 +1312,7 @@ fn a_handover_is_one_step_whoever_else_asks() {
     let (code, said) = retire(&["--even-if-held", "--to", build(3).to_str().unwrap()]);
     assert_eq!(code, 0, "{said}");
     rig.wait("the second service to end", || !Path::new(&format!("/proc/{second}")).exists());
+    rig.wait("the successor service to listen", || rig.service_pid().is_some_and(|p| p != second));
     let third = pid(&build(3));
     assert_eq!(runs(third), build(3), "the service of the helper it was retired to");
     std::thread::sleep(Duration::from_millis(700));
@@ -1641,14 +1734,14 @@ fn a_question_is_answered_by_what_a_choice_means() {
     assert!(moved.join().unwrap() && gone.join().unwrap());
     assert_eq!(refused["chosen_label"], "No, and ask again next time", "{refused}");
     rig.typed_since("reader", before, b"\x1b[B\x1b[B\r", "what was typed into it");
-    // (Where the mark doesn't come to stand on it, Escape and not Return.)
+    // (Where the mark doesn't come to stand on it, abort cleanly WITHOUT sending Escape or Return.)
     rig.show("reader", &read_outside(0));
     rig.wait_state("reader", "waiting_approval");
     let before = rig.keys("reader").len();
     let (code, _, err) = rig.olo(&["approve", "reader", "--once", "--json"]);
     assert_eq!(code, 1, "{err}");
-    assert!(err.contains("Escape instead of Enter"), "{err}");
-    rig.typed_since("reader", before, b"\x1b[B\x1b[B\x1b[B\x1b", "never Return where the mark wasn't seen to land");
+    assert!(err.contains("without pressing Enter or Escape"), "{err}");
+    rig.typed_since("reader", before, b"\x1b[B\x1b[B\x1b[B", "never Return or Escape where the mark wasn't seen to land");
     // There is no yes for the session here: said, nothing typed.
     let before = rig.keys("reader").len();
     let (code, _, err) = rig.olo(&["approve", "reader", "--session"]);
@@ -2462,7 +2555,7 @@ fn a_rest_is_the_end_of_the_turn_it_says() {
     let Some(rig) = Rig::start("turns") else { return };
     rig.stand_in("claude");
     let started = rig.start_child("claude", "alpha", &[]);
-    let from = started["cursor"].as_u64().unwrap();
+    let mut from = started["cursor"].as_u64().unwrap();
     let watch = |since: u64, secs: &str| rig.olo(&["watch", "alpha", "--since", &since.to_string(), "--on", "idle,done,question,approval,error,exit", "--timeout", secs, "--json"]);
     let told = |since: u64| -> Value {
         let (code, out, err) = watch(since, "15");
@@ -2473,17 +2566,23 @@ fn a_rest_is_the_end_of_the_turn_it_says() {
     // What stands in its tab before its own screen is drawn (the tab's shell, here as it stood on the day)
     // is not the agent at rest, whatever was read of the tab first.
     rig.show("alpha", "[systemd]\nFailed Units: 1\n  systemd-zram-setup@zram0.service\n");
-    // (The rule holds for fifteen seconds from the child's start, `UNDRAWN_MS`. On a computer so busy
-    // that the start and this showing took most of them, what is told after is the rule's own end, not
-    // its breach: it failed so twice under a load of a hundred and more, 2026-11-27. Asked only while
-    // the rule still has the two seconds the watch waits, and a second to spare.)
+    // (The rule holds for fifteen seconds from the child's start, `UNDRAWN_MS`. Use the
+    // `started_at` from `start_child` directly; if the host was already past 12 s, advance
+    // `from` past any valid expired-shell event before checking the real prompt.)
     let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
-    let since_start = rig.status("alpha")["started_at"].as_u64().map(|at| Duration::from_millis(now_ms.saturating_sub(at)));
+    let since_start = started["started_at"].as_u64().map(|at| Duration::from_millis(now_ms.saturating_sub(at)));
     if since_start.is_none_or(|d| d < Duration::from_secs(12)) {
         let (code, out, _) = watch(from, "2");
         assert_eq!(code, 124, "the tab's shell was told as the agent at rest: {out}");
     } else {
-        eprintln!("a_rest_is_the_end_of_the_turn_it_says: {since_start:?} since the child's start: too busy a computer to ask of its first fifteen seconds");
+        eprintln!("a_rest_is_the_end_of_the_turn_it_says: {since_start:?} since the child's start: advancing past any expired-shell idle");
+        let (code, out, _) = watch(from, "1");
+        if code == 0
+            && let Ok(ev) = serde_json::from_str::<Value>(out.trim())
+            && let Some(c) = ev["cursor"].as_u64()
+        {
+            from = c;
+        }
     }
     // At its own prompt, with nothing to do: at rest, told at once, answering nothing.
     let at = Instant::now();
@@ -3141,7 +3240,7 @@ fn a_message_is_sent_and_its_answer_waited_for() {
         // It asks leave in the message's turn: status 3, said, and it still asks.
         let typed = rig.keys("partner").len();
         let asked = scope.spawn(|| ask(&["--timeout", "40"]));
-        rig.wait("the next message to be typed into it", || rig.keys("partner").len() > typed);
+        rig.wait("the next message and Enter to be typed into it", || rig.keys("partner")[typed..].contains(&b'\r'));
         rig.show("partner", &asking("git push origin main", 0));
         let (code, out, err) = asked.join().unwrap();
         assert!(code == 3 && out.is_empty() && err.contains("`partner` asks leave") && err.contains("git push origin main"), "{code}: {out}{err}");
@@ -3416,11 +3515,15 @@ fn a_folded_command_is_never_allowed_by_a_list() {
             }
         }
     };
-    let folded_asking = |head: &str, hidden: usize| -> String {
+    let folded_asking = |head: &str, hidden: usize, marked: usize| -> String {
         let dashed = "╌".repeat(60);
+        let mark = |i: usize| if i == marked { "❯" } else { " " };
         format!(
-            "● Bash({head})\n{0}\n Bash command\n Make it so\n{dashed}\n │ {head}\n │ ⋯ {hidden} lines hidden\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: {head}\n   3. No\n Esc to cancel · Tab to amend\n",
-            rule()
+            "● Bash({head})\n{0}\n Bash command\n Make it so\n{dashed}\n │ {head}\n │ ⋯ {hidden} lines hidden\n{dashed}\n Do you want to proceed?\n {1} 1. Yes\n {2} 2. Yes, and don’t ask again for: {head}\n {3} 3. No\n Esc to cancel · Tab to amend\n",
+            rule(),
+            mark(0),
+            mark(1),
+            mark(2)
         )
     };
     let woken = |since: u64, secs: &str| rig.olo(&["watch", "--all", "--since", &since.to_string(), "--on", "approval,question", "--timeout", secs, "--json"]);
@@ -3429,13 +3532,13 @@ fn a_folded_command_is_never_allowed_by_a_list() {
     write_pending_bash(Some("cargo test --workspace\necho step 2\ngit push origin main"));
     let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
     let before = rig.keys("worker").len();
-    rig.show("worker", &folded_asking("cargo test --workspace", 19));
+    rig.show("worker", &folded_asking("cargo test --workspace", 19, 0));
     let (code, out, err) = woken(c, "15");
     assert_eq!(code, 0, "folded command with hidden git push should wake parent: {out}{err}");
     assert_eq!(rig.keys("worker").len(), before, "list must NOT send Return when hidden tail matches exception");
     let ev: Value = serde_json::from_str(out.trim()).unwrap();
     assert!(ev["approval"]["command"].as_str().is_some_and(|s| s.contains("git push")), "expected whole reconciled command: {ev}");
-    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("cargo test --workspace", 2));
+    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", folded_asking("cargo test --workspace", 19, 2));
     let gone = rig.when_typed("worker", b"\r", working());
     rig.json(&["approve", "worker", "--no", "--json"]);
     assert!(moved.join().unwrap() && gone.join().unwrap());
@@ -3446,7 +3549,7 @@ fn a_folded_command_is_never_allowed_by_a_list() {
     write_pending_bash(Some("cargo test --workspace\necho all checks ok\necho done"));
     let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
     let before = rig.keys("worker").len();
-    rig.show("worker", &folded_asking("cargo test --workspace", 19));
+    rig.show("worker", &folded_asking("cargo test --workspace", 19, 0));
     let (code, out, err) = woken(c, "15");
     assert_eq!(code, 0, "a folded command is asked, its whole text known or not: {out}{err}");
     assert_eq!(rig.keys("worker").len(), before, "and no Return is sent for it");
@@ -3459,7 +3562,7 @@ fn a_folded_command_is_never_allowed_by_a_list() {
     write_pending_bash(None);
     let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
     let before = rig.keys("worker").len();
-    rig.show("worker", &folded_asking("cargo check --workspace", 12));
+    rig.show("worker", &folded_asking("cargo check --workspace", 12, 0));
     let (code, out, err) = woken(c, "15");
     assert_eq!(code, 0, "folded command without transcript match must wake parent: {out}{err}");
     assert_eq!(rig.keys("worker").len(), before, "list must NOT send Return when folded command has no transcript match");
@@ -5158,7 +5261,7 @@ fn round3_2_approve_no_keys_after_revocation_and_no_retry_into_second_box() {
     let added = minder.mind("watch --since 0 --on minding --timeout 15 --json");
     let mut cur = added["cursor"].as_u64().unwrap();
 
-    // (a) Revocation during arrow navigation / verify loop: `--no` moves 2 arrows down then waits 600ms
+    // (a) Revocation during arrow navigation / verify loop: `--no` moves 2 arrows down then waits 1.5s
     // for cursor to land (stand-in doesn't redraw). Revoking rules while in verify loop must NOT write Escape (`\x1b` alone) or Enter (`\r`)!
     rig.show("alpha", &asking("cargo test", 0));
     let ev1 = minder.mind(&format!("watch --since {cur} --on approval --timeout 15 --json"));
@@ -5772,11 +5875,12 @@ fn the_same_box_after_only_an_empty_screen_is_a_persons() {
     let blank = rig.when_typed("blank", b"\r", "\n\n".to_owned());
     rig.show("blank", &asking("cargo build -p olo-kit", 0));
     assert!(blank.join().unwrap(), "the list didn't answer\n{}", rig.said());
-    std::thread::sleep(Duration::from_millis(700));
+    // Wait deterministically until the service has finished the blank dismissal
+    // (list logged its one allowed entry in `mind blank --json`).
+    rig.wait("list answer recorded after blank dismissal", || rig.json(&["mind", "blank", "--json"])["answered"].as_array().is_some_and(|a| !a.is_empty()));
     rig.show("blank", &asking("cargo build -p olo-kit", 0));
     let asked = rig.json(&["watch", "blank", "--since", &started["cursor"].to_string(), "--on", "approval", "--timeout", "10", "--json"]);
     assert_eq!(asked["state"], "waiting_approval", "the same box after an empty screen wasn't told to anyone: {asked}");
-    std::thread::sleep(Duration::from_millis(600));
     assert_eq!(String::from_utf8_lossy(&rig.keys("blank")[before..]), "\r", "the same box after only an empty screen was answered again by the list\n{}", rig.said());
     // (At work, then the very same asked: another box, the list's.)
     rig.show("blank", &working());
@@ -5791,28 +5895,37 @@ fn the_same_box_after_only_an_empty_screen_is_a_persons() {
 /// Two askings with no box named, one behind the other: the second is
 /// told an answer is on its way, and the box that comes next, which its
 /// asker never saw, is not answered by it. One that names its box waits
-/// its turn, and is refused for the box that stands by then.
+/// its turn behind the active answer, and is refused for the box that
+/// stands by then. Uses deterministic barriers (zero scheduling sleeps).
 #[test]
 fn an_asking_behind_another_answers_nothing_it_never_saw() {
     let Some(rig) = Rig::start("once-queued") else { return };
     rig.stand_in("claude");
     rig.start_child("claude", "pair", &[]);
     rig.show("pair", &asking("make one", 0));
-    rig.wait_state("pair", "waiting_approval");
+    let box1_key = rig.wait_state("pair", "waiting_approval")["approval"]["box"].as_str().unwrap().to_owned();
     let before = rig.keys("pair").len();
-    let next = rig.when_typed_after("pair", b"\r", Duration::from_millis(500), asking("rm -rf build", 0));
-    let (first, second) = std::thread::scope(|scope| {
+    // Gate box 1's dismissal deterministically so `first` holds `answer_lock` while
+    // BOTH an unkeyed request (`second`) AND a concurrent keyed request (`third`) arrive!
+    let (seen_ret, release_next, next) = rig.when_typed_gated("pair", b"\r", asking("rm -rf build", 0));
+    let (first, second, third) = std::thread::scope(|scope| {
         let first = scope.spawn(|| rig.olo(&["approve", "pair", "--once", "--json"]));
-        std::thread::sleep(Duration::from_millis(150));
+        // Wait deterministically until `first` has written `\r` and is inside dismissal wait!
+        seen_ret.recv_timeout(Duration::from_secs(10)).expect("first approve did not write Enter");
+        // Unkeyed concurrent caller is refused immediately without blocking.
         let second = rig.olo(&["approve", "pair", "--once", "--json"]);
-        (first.join().unwrap(), second)
+        // Keyed concurrent caller (`--box box1_key`) waits behind `first`, then sees box 2 and is refused!
+        let third = scope.spawn(|| rig.olo(&["approve", "pair", "--once", "--box", &box1_key, "--json"]));
+        // Release box 2 now that `second` finished and `third` is queued behind `first`.
+        let _ = release_next.send(());
+        (first.join().unwrap(), second, third.join().unwrap())
     });
     assert!(next.join().unwrap());
     assert_eq!(first.0, 0, "{first:?}");
     rig.wait("the next box to stand", || rig.status("pair")["approval"]["command"].as_str().is_some_and(|c| c.contains("rm -rf build")));
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(String::from_utf8_lossy(&rig.keys("pair")[before..]), "\r", "the box that came next was answered by an asking that never saw it: {second:?}");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("pair")[before..]), "\r", "the box that came next was answered by an asking that never saw it: second={second:?} third={third:?}");
     assert!(second.0 != 0 && second.2.contains("being answered"), "{second:?}");
+    assert!(third.0 != 0 && (third.2.contains("isn't the one that stands now") || third.2.contains("already answered")), "concurrent keyed approve must refuse box 2: {third:?}");
     let named = rig.status("pair")["approval"]["box"].as_str().unwrap().to_owned();
     rig.show("pair", &asking("make two", 0));
     rig.wait("the box after", || rig.status("pair")["approval"]["command"].as_str().is_some_and(|c| c.contains("make two")));
@@ -5822,51 +5935,67 @@ fn an_asking_behind_another_answers_nothing_it_never_saw() {
 }
 
 /// A list taken away while the mark is walked to the yes allows
-/// nothing: the arrow, and no Return.
+/// nothing: the arrow, and no Return or Escape. Deterministic barrier.
 #[test]
 fn a_list_taken_away_mid_answer_allows_nothing() {
     let Some(rig) = Rig::start("once-revoked") else { return };
     rig.stand_in("claude");
     std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
-    rig.start_child("claude", "revoked", &["--approve-all-but", "not-these.txt"]);
+    let started = rig.start_child("claude", "revoked", &["--approve-all-but", "not-these.txt"]);
     let before = rig.keys("revoked").len();
-    let moved = rig.when_typed_after("revoked", b"\x1b[A", Duration::from_millis(900), asking("cargo fmt", 0));
+    let (seen_up, release_redraw, moved) = rig.when_typed_gated("revoked", b"\x1b[A", asking("cargo fmt", 0));
     rig.show("revoked", &asking("cargo fmt", 1));
-    rig.wait("the walk to the yes", || rig.keys("revoked").len() > before);
+    seen_up.recv_timeout(Duration::from_secs(10)).expect("list did not send Up arrow");
+    // Deterministically revoke the list BEFORE releasing the cursor-moved redraw!
     rig.json(&["mind", "revoked", "--approve-none", "--json"]);
+    let _ = release_redraw.send(());
     assert!(moved.join().unwrap());
-    std::thread::sleep(Duration::from_millis(1200));
+    // Wait until the revoked box is reported to the parent instead of auto-answered.
+    let ev = rig.json(&["watch", "revoked", "--since", &started["cursor"].to_string(), "--on", "approval", "--timeout", "10", "--json"]);
+    assert_eq!(ev["state"], "waiting_approval", "{ev}");
     let allowed = rig.json(&["mind", "revoked", "--json"])["answered"].as_array().map_or(0, Vec::len);
     assert_eq!((String::from_utf8_lossy(&rig.keys("revoked")[before..]).as_ref(), allowed), ("\x1b[A", 0), "a list taken away answered all the same\n{}", rig.said());
     rig.json(&["stop", "revoked", "--force", "--json"]);
 }
 
 /// A box that stood when the service was replaced is not the list's to
-/// answer again: the one before may have. It is told to a person.
+/// answer again: the one before may have. It is told to a person, strictly
+/// beyond the predecessor's last cursor. Owns the fixture service `Child`
+/// handle directly (NEVER `kill -9 <bare PID>` or `/proc/PID` wait).
 #[test]
 fn a_box_standing_at_a_takeover_is_a_persons() {
     let Some(rig) = Rig::start("once-takeover") else { return };
     rig.stand_in("claude");
     std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
-    let kept = rig.start_child("claude", "kept", &["--approve-all-but", "not-these.txt"]);
+
+    // Start the predecessor service as an owned `Child` handle before any client auto-spawns one.
+    let mut svc_child = rig.helper().args(["agent", "--server", &rig.sock.display().to_string(), "serve"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    rig.wait("owned fixture service answers ping", || {
+        rig.helper().args(["agent", "ping"]).output().ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()).is_some_and(|v| v["pid"].as_u64() == Some(svc_child.id() as u64))
+    });
+
+    rig.start_child("claude", "kept", &["--approve-all-but", "not-these.txt"]);
     let before = rig.keys("kept").len();
     rig.show("kept", &asking("cargo check", 0));
     rig.wait("the list's one Return", || rig.keys("kept").len() > before);
-    let first = rig.service_pid().expect("a service");
-    assert!(Command::new("kill").args(["-9", &first.to_string()]).status().unwrap().success());
-    rig.wait("the service to be gone", || !Path::new(&format!("/proc/{first}")).exists());
-    let asked = rig.json(&["watch", "kept", "--since", &kept["cursor"].to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    // Wait until the service has registered the standing approval and capture predecessor's last cursor.
+    let pred_cursor = rig.helper().args(["agent", "ping"]).output().ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()).and_then(|v| v["cursor"].as_u64()).unwrap_or(0);
+
+    // Kill and reap OUR owned `Child` handle directly (immune to PID reuse!).
+    svc_child.kill().unwrap();
+    let _ = svc_child.wait();
+
+    // Next client auto-starts the replacement service; watch strictly beyond `pred_cursor`.
+    let asked = rig.json(&["watch", "kept", "--since", &pred_cursor.to_string(), "--on", "approval", "--timeout", "15", "--json"]);
     assert_eq!(asked["state"], "waiting_approval", "{asked}");
-    std::thread::sleep(Duration::from_millis(1500));
+    assert!(asked["cursor"].as_u64().unwrap() > pred_cursor, "event must be strictly beyond predecessor cursor {pred_cursor}: {asked}");
     assert_eq!(String::from_utf8_lossy(&rig.keys("kept")[before..]), "\r", "the service that took the child over answered its standing box again");
     rig.json(&["stop", "kept", "--force", "--json"]);
 }
 
 /// A folder's trust at a child's start: one question whether or not its
 /// path is drawn yet, and not told to anyone while its answer is on
-/// its way (the same review: read with no path and then with one, it
-/// was answered twice; and `run --trust` came back "question" for one
-/// answered a moment before).
+/// its way. Uses deterministic barrier on `\r`.
 #[test]
 fn a_folders_trust_is_one_question_and_not_told_while_answered() {
     let Some(rig) = Rig::start("trust-once") else { return };
@@ -5880,18 +6009,18 @@ fn a_folders_trust_is_one_question_and_not_told_while_answered() {
             rule()
         )
     };
-    // (Its path not drawn yet, its mark on the yes: then the whole of it, for longer than a confirmation.)
     let started = rig.start_child("claude", "builder", &["--trust", "--cwd", &work, "--add-dir", &other.display().to_string()]);
     let before = rig.keys("builder").len();
-    let whole = rig.when_typed("builder", b"\r", asks(&work));
+    let (seen_ret, release_whole, whole) = rig.when_typed_gated("builder", b"\r", asks(&work));
     rig.show("builder", &asks(""));
-    assert!(whole.join().unwrap(), "the trust wasn't answered\n{}", rig.said());
+    seen_ret.recv_timeout(Duration::from_secs(10)).expect("the trust wasn't answered");
+    let _ = release_whole.send(());
+    assert!(whole.join().unwrap(), "the trust redraw didn't land\n{}", rig.said());
     // Not told as a question while its answer is on its way…
     let (code, out, _) = rig.olo(&["watch", "builder", "--since", &started["cursor"].to_string(), "--on", "question,approval", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "a trust question whose answer was on its way was told: {out}");
     rig.show("builder", &idle("Ready."));
     rig.wait_state("builder", "idle");
-    std::thread::sleep(Duration::from_millis(300));
     // …and answered once, though it was read two ways.
     assert_eq!(String::from_utf8_lossy(&rig.keys("builder")[before..]), "\r", "one question, read with and without its path, was answered twice");
     rig.json(&["stop", "builder", "--force", "--json"]);
@@ -5900,10 +6029,7 @@ fn a_folders_trust_is_one_question_and_not_told_while_answered() {
 /// A `--trust` child's own folder is the service's to answer from the
 /// child's start, not from the moment the answering comes to it: its
 /// question, standing with its mark not drawn yet for longer than a
-/// confirmation, is not told as one. (It was told wherever a reading
-/// came before the answering task had taken the question: one run in
-/// four of `a_folders_trust_is_one_question_…` on a busy host, and here
-/// every time.)
+/// confirmation, is not told as one.
 #[test]
 fn a_trust_at_a_start_is_the_services_before_it_is_answered() {
     let Some(rig) = Rig::start("trust-held") else { return };
@@ -5918,7 +6044,9 @@ fn a_trust_at_a_start_is_the_services_before_it_is_answered() {
     let started = rig.start_child("claude", "builder", &["--trust", "--cwd", &work]);
     let before = rig.keys("builder").len();
     rig.show("builder", &asks(" "));
-    std::thread::sleep(Duration::from_millis(800));
+    // Unmarked trust prompt held > CONFIRM must NOT be reported as a question.
+    let (code, out, _) = rig.olo(&["watch", "builder", "--since", &started["cursor"].to_string(), "--on", "question,approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "unmarked startup trust prompt was told: {out}");
     let gone = rig.when_typed("builder", b"\r", idle("Ready."));
     rig.show("builder", &asks("❯"));
     assert!(gone.join().unwrap(), "the trust wasn't answered\n{}", rig.said());
@@ -5951,7 +6079,6 @@ fn repro_case1_list_answers_twice_on_slow_redraw() {
     rig.show("worker", &asking("cd /w && cargo test -p olo-kit > test.log", 0));
     assert!(gone.join().unwrap(), "the service didn't answer box 1\n{}", rig.said());
     rig.wait_state("worker", "working");
-    std::thread::sleep(Duration::from_millis(200));
     let keys = rig.keys("worker");
     let typed = String::from_utf8_lossy(&keys[before..]).into_owned();
     let of = rig.json(&["mind", "worker", "--json"]);
@@ -5965,14 +6092,12 @@ fn repro_case1_list_answers_twice_on_slow_redraw() {
     rig.show("worker", &asking("cd /w && cargo test -p olo-kit > test.log", 0));
     assert!(gone2.join().unwrap(), "the service didn't answer identical box 2\n{}", rig.said());
     rig.wait_state("worker", "working");
-    std::thread::sleep(Duration::from_millis(200));
     let keys2 = rig.keys("worker");
     let typed2 = String::from_utf8_lossy(&keys2[before2..]).into_owned();
     let of2 = rig.json(&["mind", "worker", "--json"]);
     let allowed2: Vec<(&str, &str, &str)> = of2["answered"].as_array().unwrap().iter().map(|a| (a["did"].as_str().unwrap(), a["by"].as_str().unwrap(), a["said"].as_str().unwrap())).collect();
     assert_eq!(typed2, "\r", "expected 1 Enter for identical box 2, got {typed2:?}\n{of2}");
-    assert_eq!(allowed2, [("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log"), ("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log"),], "{of2}");
-    // Neither list-answered box woke a parent watch.
+    assert_eq!(allowed2, [("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log"), ("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log")], "{of2}");
     let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval,question", "--timeout", "1", "--json"]);
     assert_eq!(code, 124, "parent was woken for list-answered boxes: {out}");
 
@@ -5993,7 +6118,6 @@ fn repro_case1_list_answers_twice_on_slow_redraw() {
     assert!(m_gone.join().unwrap(), "manual approve did not send Enter");
     assert_eq!(usize::from(r1.0 == 0) + usize::from(r2.0 == 0), 1, "exactly one concurrent approve must succeed: r1={r1:?} r2={r2:?}");
     rig.wait_state("manual", "working");
-    std::thread::sleep(Duration::from_millis(200));
     let m_keys = rig.keys("manual");
     assert_eq!(String::from_utf8_lossy(&m_keys[m_before..]), "\r", "concurrent approves must write exactly one Enter");
     let (code, out, _) = rig.olo(&["watch", "manual", "--since", &after_ev1.to_string(), "--on", "approval", "--timeout", "1", "--json"]);
@@ -6031,7 +6155,6 @@ fn repro_case2_trust_presses_down_twice_on_slow_redraw() {
     rig.show("builder", &claudes(0));
     assert!(moved.join().unwrap() && gone.join().unwrap(), "trust wasn't answered\n{}", rig.said());
     rig.wait_state("builder", "idle");
-    std::thread::sleep(Duration::from_millis(200));
     let keys_c = rig.keys("builder");
     let typed_c = String::from_utf8_lossy(&keys_c[before..]).into_owned();
 
@@ -6042,7 +6165,6 @@ fn repro_case2_trust_presses_down_twice_on_slow_redraw() {
     rig.show("reader", &agys(&work));
     assert!(gone_a.join().unwrap(), "agy trust wasn't answered\n{}", rig.said());
     rig.wait_state("reader", "idle");
-    std::thread::sleep(Duration::from_millis(200));
     let keys_a = rig.keys("reader");
     let typed_a = String::from_utf8_lossy(&keys_a[before_a..]).into_owned();
 
@@ -6050,43 +6172,530 @@ fn repro_case2_trust_presses_down_twice_on_slow_redraw() {
     assert_eq!(typed_a, "\r", "agy trust typed: {typed_a:?}");
 }
 
-/// The registry is written one write at a time, what is newest last: a
-/// write of the writer's that is slow (a busy host: here by
-/// `OLO_REX_AGENTS_TEST_WRITER_DELAY_MS`) never lands over a later one.
-/// It did, two ways: over the last write of a service handing over,
-/// whose successor then knew nothing of the children started in
-/// between ("subagent `sa-…` not found", once in a suite under load);
-/// and over a new child's own write, the file a child short until the
-/// next. Found by a second investigator, 2026-11-27.
+/// Deterministic barrier test (Addendum Item 5) for serialized registry writes
+/// AND `retire --to` waiting successor handover:
+/// 1. Pins the background writer inside `write_lock` via `OLO_REX_AGENTS_TEST_WRITER_BARRIER`
+///    (zero sleep races!).
+/// 2. Starts a worker + minder AND calls `retire --to HELPER` while the background writer is
+///    pinned -> releases the barrier -> verifies the predecessor finishes its final save,
+///    drops its runtime before closing the handover pipe, and the successor takes over with a
+///    new PID knowing every child and persisting the newest registry!
 #[test]
 fn a_slow_write_of_the_registry_never_lands_over_a_newer_one() {
-    let Some(rig) = Rig::start_with_env("writer-race", &[("OLO_REX_AGENTS_TEST_WRITER_DELAY_MS", "900"), ("OLO_REX_AGENTS_MINDER_REPORTS_MS", "8000")]) else {
+    let barrier_dir = PathBuf::from(format!("/var/tmp/olo-writer-barrier-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&barrier_dir);
+    std::fs::create_dir_all(&barrier_dir).unwrap();
+    let enter = barrier_dir.join("entered");
+    let release = barrier_dir.join("release");
+    let barrier_env = format!("{}:{}", enter.display(), release.display());
+
+    let Some(rig) = Rig::start_with_env("writer-race", &[("OLO_REX_AGENTS_TEST_WRITER_BARRIER", &barrier_env), ("OLO_REX_AGENTS_MINDER_REPORTS_MS", "8000")]) else {
+        let _ = std::fs::remove_dir_all(&barrier_dir);
         return;
     };
     rig.stand_in("claude");
-    // A child's end has the writer write (slowly); a worker and its
-    // minder are started at once, the worker ends, the service is
-    // handed over: the next one knows both.
+
+    // Start `prev`, then stop it so the background writer triggers and pins on the barrier!
     let prev = rig.start_child("claude", "prev", &[]);
     rig.json(&["stop", prev["id"].as_str().unwrap(), "--force", "--json"]);
+    rig.wait("background writer to hit deterministic barrier", || enter.exists());
+
+    // Start a brand-new child `fresh` on a thread while the background writer holds `write_lock`
+    // (its `begin_attached::write_now` queues deterministically behind the pinned writer!),
+    // wait deterministically for `fresh` to register (proving it is queued on `write_lock`),
+    // verify the barrier did NOT expire on its own, then release it!
+    let expired = enter.with_extension("expired");
+    let fresh = std::thread::scope(|scope| {
+        let start_t = scope.spawn(|| rig.start_child("claude", "fresh", &[]));
+        rig.wait("fresh registered and queued on write_lock", || rig.json(&["list", "--fast", "--json"])["subagents"].as_array().is_some_and(|a| a.iter().any(|e| e["name"] == "fresh")));
+        assert!(!expired.exists(), "writer barrier timed out before fresh queued!");
+        std::fs::write(&release, b"go\n").unwrap();
+        start_t.join().unwrap()
+    });
+    assert!(!expired.exists(), "writer barrier must not have expired");
+    let file = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path().join("registry.json")).find(|p| p.exists()).expect("the registry's file");
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert!(written["entries"].as_array().unwrap().iter().any(|e| e["id"] == fresh["id"]), "a slow write landed over a newer one: the file has no `fresh`\n{written}");
+
+    // Now exercise `retire --to <HELPER>` with an actual waiting successor!
     Minding::expect(&rig, "em-hand");
     let hw = rig.start_child("claude", "hw", &["--minder", "claude:stand-in-big:max", "--rules-text", "r", "--minder-env", "STAND_IN_NAME=em-hand"]);
     let (minder, worker) = (hw["minder"]["id"].as_str().unwrap().to_owned(), hw["id"].as_str().unwrap().to_owned());
     rig.tell("hw", "exit 0");
     rig.wait_state("hw", "exited");
-    let old = rig.service_pid().expect("a service");
-    assert!(rig.helper().args(["agent", "retire"]).output().unwrap().status.success());
-    rig.wait("the retired service to be gone", || !Path::new(&format!("/proc/{old}")).exists());
-    let (code, out, said) = rig.olo(&["status", &minder, "--json"]);
-    assert_eq!(code, 0, "the service that took over doesn't know a child started before the handover: {out} {said}\n{}", rig.said());
+    let old_pid = rig.service_pid().expect("a service");
+    let old_ticks = proc_start_ticks(old_pid).expect("predecessor start_ticks");
+    let out = rig.helper().args(["agent", "retire", "--to", HELPER]).output().unwrap();
+    assert!(out.status.success(), "retire --to failed: {}", String::from_utf8_lossy(&out.stderr));
+    // Wait for predecessor to exit (checking start_ticks against PID reuse) AND successor to answer ping with a new PID.
+    rig.wait("predecessor service to exit", || proc_start_ticks(old_pid) != Some(old_ticks));
+    let mut new_pid = None;
+    rig.wait("successor service started via --to to answer ping", || {
+        new_pid = rig.service_pid().filter(|&p| p != old_pid);
+        new_pid.is_some()
+    });
+    let (code, out_s, said) = rig.olo(&["status", &minder, "--json"]);
+    assert_eq!(code, 0, "successor doesn't know minder started before handover: {out_s} {said}\n{}", rig.said());
     assert_eq!(rig.status(&worker)["running"], json!(false));
-    // And with no handover: the file has a child from the moment it is
-    // started, whatever the writer was in the middle of.
+    assert_eq!(rig.status("fresh")["running"], json!(true));
     rig.json(&["stop", &minder, "--force", "--json"]);
-    let fresh = rig.start_child("claude", "fresh", &[]);
-    std::thread::sleep(Duration::from_millis(1300));
-    let file = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path().join("registry.json")).find(|p| p.exists()).expect("the registry's file");
-    let written: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    assert!(written["entries"].as_array().unwrap().iter().any(|e| e["id"] == fresh["id"]), "a slow write landed over a newer one: the file has no `fresh`\n{written}");
     rig.json(&["stop", "fresh", "--force", "--json"]);
+    let _ = std::fs::remove_dir_all(&barrier_dir);
+}
+
+/// Update 11 Findings 1 & 8:
+/// - Empty `--box ""` / `--box=""` is rejected with exit code 2 (no accidental unkeyed fallback).
+/// - A queued minder `approve` without a pre-existing grant (or bound to box 1) can NEVER wait
+///   behind another answer and spend a future grant minted for box 2!
+#[test]
+fn update11_queued_minder_cannot_spend_future_grant_and_empty_box_exit_2() {
+    let Some(rig) = Rig::start("u11-minder-q") else { return };
+    rig.stand_in("claude");
+    Minding::expect(&rig, "u11m1");
+    let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", "Allow tests.", "--minder-env", "STAND_IN_NAME=u11m1"]);
+    let minder_id = started["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "u11m1", &minder_id);
+    let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+
+    rig.show("worker", &asking("cargo test -p one", 0));
+    let ev1 = minder.mind("watch --since 0 --on approval --timeout 15 --json");
+    assert_eq!(ev1["state"], "waiting_approval", "{ev1}");
+
+    // Empty `--box ""` and `--box=""` MUST exit 2 and send ZERO keys!
+    let before_empty = rig.keys("worker").len();
+    let (c1, _, e1) = rig.olo(&["approve", "worker", "--once", "--box", "", "--json"]);
+    let (c2, _, e2) = rig.olo(&["approve", "worker", "--once", "--box=", "--json"]);
+    assert_eq!(c1, 2, "empty --box must exit 2: {e1}");
+    assert_eq!(c2, 2, "empty --box= must exit 2: {e2}");
+    assert_eq!(rig.keys("worker").len(), before_empty, "empty --box must write zero bytes");
+
+    // Hold parent's approval of box 1 inside dismissal wait while box 2 is gated;
+    // fire a concurrent minder `approve` and release box 2 without any fixed sleep
+    // (deterministic poll-driven `answer_lock` contention is verified in
+    // `service.rs::box_tests::round2_confirm_retry_...`), confirming zero keys land on box 2!
+    let before = rig.keys("worker").len();
+    let (seen_ret, release_box2, draw_box2) = rig.when_typed_gated("worker", b"\r", asking("rm -rf /danger", 0));
+    let (parent_res, queued_minder_out) = std::thread::scope(|scope| {
+        let p = scope.spawn(|| rig.olo(&["approve", "worker", "--once", "--json"]));
+        seen_ret.recv_timeout(Duration::from_secs(10)).expect("parent approve did not send Enter");
+        let qm = scope.spawn(|| minder.run(&format!("{} {} approve worker --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display())));
+        let _ = release_box2.send(());
+        (p.join().unwrap(), qm.join().unwrap())
+    });
+    assert!(draw_box2.join().unwrap());
+    assert_eq!(parent_res.0, 0, "{parent_res:?}");
+    assert!(queued_minder_out.contains("status=1"), "queued minder approve bound to box 1 must fail on box 2: {queued_minder_out}");
+    rig.wait("box 2 stands unanswered", || rig.status("worker")["approval"]["command"].as_str().is_some_and(|c| c.contains("rm -rf /danger")));
+    assert_eq!(String::from_utf8_lossy(&rig.keys("worker")[before..]), "\r", "queued minder approve must NOT confirm box 2!");
+    rig.json(&["stop", "worker", "--force", "--json"]);
+}
+
+/// Update 11 Findings 2, 3, 19 + Addendum Item 4:
+/// (a) Foreign folder appearing after Down on startup `--trust` aborts WITHOUT pressing Return.
+/// (b) Partial `--add-dir` frame (`Yes, add it` without header/path) followed by full path gets
+///     a single Return (never confirmed on pathless frame).
+/// (c) Blank frame between primary trust and `--add-dir` trust does NOT end startup trust early.
+/// (d) Slow queued background registry write (`OLO_REX_AGENTS_TEST_WRITER_BARRIER`) does NOT
+///     eat the 15 s startup trust window: trust answers immediately while the writer is blocked!
+#[test]
+fn update11_startup_trust_foreign_partial_blank_and_slow_save() {
+    let barrier_dir = PathBuf::from(format!("/var/tmp/olo-trust-barrier-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&barrier_dir);
+    std::fs::create_dir_all(&barrier_dir).unwrap();
+    let enter = barrier_dir.join("entered");
+    let release = barrier_dir.join("release");
+    let barrier_env = format!("{}:{}", enter.display(), release.display());
+
+    let Some(rig) = Rig::start_with_env("u11-trust", &[("OLO_REX_AGENTS_TEST_WRITER_BARRIER", &barrier_env)]) else {
+        let _ = std::fs::remove_dir_all(&barrier_dir);
+        return;
+    };
+    rig.stand_in("claude");
+    let work = rig.work();
+    let extra = rig.dir.join("extra-dir");
+    std::fs::create_dir_all(&extra).unwrap();
+    let extra_s = extra.display().to_string();
+
+    let primary_prompt = |folder: &str, marked: usize| {
+        let m = |i: usize| if i == marked { "❯" } else { " " };
+        format!(
+            "{0}\n Accessing workspace:\n\n {folder}\n\n Quick safety check: Is this a project you created or one you trust?\n\n {1} No, exit\n {2} Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n",
+            rule(),
+            m(0),
+            m(1)
+        )
+    };
+    let partial_add_dir = format!("{0}\n Is this a directory you created or one you trust?\n\n ❯ Yes, add it\n   No, exit\n\n Enter to confirm · Esc to cancel\n", rule());
+    let full_add_dir =
+        format!("{0}\n Adding a new directory:\n\n {extra_s}\n\n Is this a directory you created or one you trust?\n\n ❯ Yes, add it\n   No, exit\n\n Enter to confirm · Esc to cancel\n", rule());
+
+    // (d) First pin the background writer at the barrier, then start a `--trust` child:
+    //     startup trust MUST run immediately BEFORE `write_now()` completes!
+    let decoy = rig.start_child("claude", "decoy", &[]);
+    rig.json(&["stop", decoy["id"].as_str().unwrap(), "--force", "--json"]);
+    rig.wait("writer pinned at barrier", || enter.exists());
+
+    // Start `trusty` in a thread (its `start` reply awaits `write_now` behind the barrier),
+    // wait for its stand-in FIFO to become ready, show primary trust prompt, and verify
+    // startup trust answers it BEFORE we even release the writer barrier!
+    let trusty_fifo = rig.staged("trusty", "fifo");
+    assert!(Command::new("mkfifo").arg(&trusty_fifo).status().unwrap().success());
+    let trusty_keys_file = rig.staged("trusty", "keys");
+    let trusty_ready = rig.staged("trusty", "ready");
+    let stage_env = format!("STAND_IN_DIR={}", rig.dir.join("stage").display());
+    let path_env = format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display());
+    let trusty_started = std::thread::scope(|scope| {
+        let start_t = scope.spawn(|| {
+            rig.json(&[
+                "start",
+                "claude",
+                "--model",
+                "stand-in",
+                "--effort",
+                "none",
+                "--name",
+                "trusty",
+                "--trust",
+                "--cwd",
+                &work,
+                "--add-dir",
+                &extra_s,
+                "--json",
+                "--env",
+                &stage_env,
+                "--env",
+                "STAND_IN_NAME=trusty",
+                "--env",
+                &path_env,
+            ])
+        });
+        // Wait for stand-in tab to boot while `start` is still blocked behind the writer barrier!
+        rig.wait("trusty stand-in ready while writer barrier still held", || trusty_ready.exists());
+        let gone_blank = rig.when_typed("trusty", b"\r", "\n\n".to_owned());
+        rig.show("trusty", &primary_prompt(&work, 1));
+        assert!(gone_blank.join().unwrap(), "startup trust MUST answer primary prompt immediately even while registry write is blocked!");
+        assert!(!release.exists(), "answered while barrier was still held");
+        assert!(!enter.with_extension("expired").exists(), "writer barrier timed out before trust answered!");
+        // Now release writer barrier so `start` finishes its durable write and returns.
+        std::fs::write(&release, b"go\n").unwrap();
+        start_t.join().unwrap()
+    });
+    assert!(!enter.with_extension("expired").exists(), "writer barrier must not have expired");
+    assert_eq!(trusty_started["ok"], true);
+    let keys_after_primary = std::fs::read(&trusty_keys_file).unwrap_or_default().len();
+    assert_eq!(keys_after_primary, 1, "exactly one Return for primary prompt");
+
+    // (b) & (c) After a blank frame between primary and `--add-dir`, show a partial `--add-dir`
+    //     frame (`Yes, add it` without path) -> must NOT press Return yet!
+    rig.show("trusty", &partial_add_dir);
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(rig.keys("trusty").len(), keys_after_primary, "partial pathless add-dir frame must NOT receive Return");
+    // Now draw the full `--add-dir` prompt with its path -> startup trust (still alive across the blank!) answers with ONE Return!
+    let add_done = rig.when_typed("trusty", b"\r", idle("All trusted."));
+    rig.show("trusty", &full_add_dir);
+    assert!(add_done.join().unwrap(), "full add-dir after blank frame was not answered by startup trust\n{}", rig.said());
+    rig.wait_state("trusty", "idle");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("trusty")), "\r\r", "expected exactly one Return for primary and one for add-dir");
+    rig.json(&["stop", "trusty", "--force", "--json"]);
+
+    // (a) Foreign folder appearing after Down on startup `--trust` MUST abort WITHOUT pressing Return!
+    rig.start_child("claude", "foreign", &["--trust", "--cwd", &work]);
+    let f_before = rig.keys("foreign").len();
+    let swapped = rig.when_typed("foreign", b"\x1b[B", primary_prompt("/var/tmp/not-my-folder", 1));
+    rig.show("foreign", &primary_prompt(&work, 0));
+    assert!(swapped.join().unwrap(), "foreign trust did not send initial Down");
+    // Wait for the foreign folder prompt to be escalated as a question (proving trust exited without Return).
+    let q = rig.json(&["watch", "foreign", "--since", "0", "--on", "question", "--timeout", "10", "--json"]);
+    assert_eq!(q["state"], "waiting_question", "{q}");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("foreign")[f_before..]), "\x1b[B", "foreign folder after Down must NEVER receive Return!");
+    rig.json(&["stop", "foreign", "--force", "--json"]);
+    let _ = std::fs::remove_dir_all(&barrier_dir);
+}
+
+/// Update 11 Findings 4, 6, 7:
+/// (a) `--approve-all-but` rechecks the LATEST prompt during navigation: if `⋯ 12 lines hidden`
+///     appears on the verifying frame, aborts immediately with ZERO Escape and ZERO Return.
+/// (b) Incomplete 2-choice repaint (`1. Yes` + `2. Yes, always`, no refusal) or bare
+///     `esc to interrupt` footer after `BoxEnd::Blank` does NOT rearm the list.
+/// (c) Positive intervening `Working` during dismissal retires box 1 immediately so an
+///     identical box 2 IS answered by the list.
+#[test]
+fn update11_list_rechecks_folded_lines_repaint_partial_and_positive_elsewhere() {
+    let Some(rig) = Rig::start("u11-list") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+(push|commit)\\b\n").unwrap();
+    let started = rig.start_child("claude", "listed", &["--approve-all-but", "not-these.txt"]);
+    let mut cur = started["cursor"].as_u64().unwrap();
+
+    // (a) Prompt initially starts on choice 1 (needs Up arrow) with no folded lines;
+    //     when Up arrives, redraws with `⋯ 12 lines hidden` on choice 0 -> MUST NOT press Return or Escape!
+    let dashed = "╌".repeat(60);
+    let folded_box = format!(
+        "● Bash(cargo test)\n{0}\n Bash command\n Make it so\n{dashed}\n │ cargo test\n   ⋯ 12 lines hidden\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: cargo test\n   3. No\n Esc to cancel · Tab to amend\n",
+        rule()
+    );
+    let before_a = rig.keys("listed").len();
+    let fold_redraw = rig.when_typed("listed", b"\x1b[A", folded_box);
+    rig.show("listed", &asking("cargo test", 1));
+    assert!(fold_redraw.join().unwrap(), "list did not send Up arrow");
+    let ev_fold = rig.json(&["watch", "listed", "--since", &cur.to_string(), "--on", "approval", "--timeout", "10", "--json"]);
+    assert_eq!(ev_fold["state"], "waiting_approval", "folded box must fall through to parent: {ev_fold}");
+    cur = ev_fold["cursor"].as_u64().unwrap();
+    assert_eq!(String::from_utf8_lossy(&rig.keys("listed")[before_a..]), "\x1b[A", "folded lines on verify frame must send ZERO Return and ZERO Escape");
+
+    // Clear with positive working state.
+    rig.show("listed", &working());
+    rig.wait_state("listed", "working");
+
+    // (b) Trigger `BoxEnd::Blank` on `cargo fmt`, then flash a bare `esc to interrupt` footer
+    //     and an incomplete 2-choice repaint -> neither may rearm `list_skip`!
+    let before_b = rig.keys("listed").len();
+    let blank_draw = rig.when_typed("listed", b"\r", "\n\n".to_owned());
+    rig.show("listed", &asking("cargo fmt", 0));
+    assert!(blank_draw.join().unwrap(), "list did not answer cargo fmt");
+    rig.wait("list recorded one answer", || rig.json(&["mind", "listed", "--json"])["answered"].as_array().is_some_and(|a| a.len() == 1));
+    // Flash bare `esc to interrupt` footer (NOT genuinely working!) and incomplete 2-choice repaint.
+    rig.show("listed", "  esc to interrupt\n");
+    std::thread::sleep(Duration::from_millis(200));
+    rig.show("listed", "Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: cargo fmt\n");
+    std::thread::sleep(Duration::from_millis(200));
+    // Redraw identical `cargo fmt` box -> must STILL be skipped by list and told to parent!
+    rig.show("listed", &asking("cargo fmt", 0));
+    let ev_b = rig.json(&["watch", "listed", "--since", &cur.to_string(), "--on", "approval", "--timeout", "10", "--json"]);
+    assert_eq!(ev_b["state"], "waiting_approval", "partial/bare footer must NOT rearm list: {ev_b}");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("listed")[before_b..]), "\r", "list must NOT answer cargo fmt a second time after bare footer");
+
+    // (c) Positive intervening `Working` clears `list_skip` so an identical `cargo fmt` IS answered!
+    rig.show("listed", &working());
+    rig.wait_state("listed", "working");
+    let before_c = rig.keys("listed").len();
+    let ok_c = rig.when_typed("listed", b"\r", working());
+    rig.show("listed", &asking("cargo fmt", 0));
+    assert!(ok_c.join().unwrap(), "identical box after positive Working must be answered by list");
+    assert_eq!(String::from_utf8_lossy(&rig.keys("listed")[before_c..]), "\r");
+    rig.json(&["stop", "listed", "--force", "--json"]);
+}
+
+/// Update 11 Findings 9 & 12:
+/// (a) Quiet ordinary chooser Q covered by startup `--trust` is confirmed and published once
+///     trust finishes (suppression records a dedupe boundary).
+/// (b) `approve --no --reason "FIX"` NEVER pastes `"FIX"` into a blank repaint (`BoxEnd::Blank`)
+///     or an ordinary chooser Q!
+#[test]
+fn update11_quiet_chooser_under_trust_and_no_reason_never_pastes_into_chooser() {
+    let Some(rig) = Rig::start("u11-reason") else { return };
+    rig.stand_in("claude");
+    let work = rig.work();
+    let trust_prompt = format!(
+        "{0}\n Accessing workspace:\n\n {work}\n\n Quick safety check: Is this a project you created or one you trust?\n\n ❯ Yes, I trust this folder\n   No, exit\n\n Enter to confirm · Esc to cancel\n",
+        rule()
+    );
+    let chooser_q = "Which deployment target should I use?\n ❯ 1. Staging\n   2. Production\n Enter to select · Esc to cancel\n";
+
+    // (a) Child starts with `--trust`: trust prompt answered -> immediately reveals quiet chooser Q ->
+    //     Q must be confirmed and published!
+    let started = rig.start_child("claude", "trustq", &["--trust", "--cwd", &work]);
+    let to_q = rig.when_typed("trustq", b"\r", chooser_q.to_owned());
+    rig.show("trustq", &trust_prompt);
+    assert!(to_q.join().unwrap(), "startup trust was not answered");
+    let q_ev = rig.json(&["watch", "trustq", "--since", &started["cursor"].to_string(), "--on", "question", "--timeout", "10", "--json"]);
+    assert_eq!(q_ev["state"], "waiting_question", "chooser Q after startup trust must be published: {q_ev}");
+    rig.json(&["stop", "trustq", "--force", "--json"]);
+
+    // (b) `approve --no --reason`: when refusal lands on blank screen (`BoxEnd::Blank`),
+    //     ZERO reason text is pasted (`dismissal == "blank"`, `reason_sent == false`)!
+    rig.start_child("claude", "refuse", &[]);
+    rig.show("refuse", &asking("git push origin main", 2));
+    rig.wait_state("refuse", "waiting_approval");
+    let b1 = rig.keys("refuse").len();
+    let to_blank = rig.when_typed("refuse", b"\r", "\n\n".to_owned());
+    let r_blank = rig.json(&["approve", "refuse", "--no", "--reason", "DO_NOT_PASTE_BLANK", "--json"]);
+    assert!(to_blank.join().unwrap());
+    assert_eq!(r_blank["dismissal"], "blank", "{r_blank}");
+    assert_eq!(r_blank["reason_sent"], false, "{r_blank}");
+    assert!(!String::from_utf8_lossy(&rig.keys("refuse")[b1..]).contains("DO_NOT_PASTE_BLANK"), "must NEVER paste reason on BoxEnd::Blank");
+
+    // When refusal lands on an ordinary chooser Q, ZERO reason text is pasted!
+    rig.show("refuse", &working());
+    rig.wait_state("refuse", "working");
+    rig.show("refuse", &asking("git push --force", 2));
+    rig.wait_state("refuse", "waiting_approval");
+    let b2 = rig.keys("refuse").len();
+    let to_chooser = rig.when_typed("refuse", b"\r", chooser_q.to_owned());
+    let r_chooser = rig.json(&["approve", "refuse", "--no", "--reason", "DO_NOT_PASTE_CHOOSER", "--json"]);
+    assert!(to_chooser.join().unwrap());
+    assert_eq!(r_chooser["reason_sent"], false, "{r_chooser}");
+    assert!(!String::from_utf8_lossy(&rig.keys("refuse")[b2..]).contains("DO_NOT_PASTE_CHOOSER"), "must NEVER paste reason into chooser Q");
+    rig.json(&["stop", "refuse", "--force", "--json"]);
+}
+
+/// Update 11 Finding 15 + Bonus Non-Bridge PATH Fix:
+/// (a) Standing approval already delivered to a shared minder before `retire --to` handover
+///     is redelivered ONCE by the successor service so the minder gets a fresh grant and can approve it!
+/// (b) Starting a child with `--desktop none` preserves non-bridge user bin dirs from caller `PATH`
+///     (even when `rex-server` has minimal `PATH`), while strictly stripping `/rex-commands` and `/olo/rex/bin`.
+#[test]
+fn update11_handover_redelivers_standing_minded_approval_and_preserves_non_bridge_path() {
+    let Some(rig) = Rig::start("u11-handover-path") else { return };
+    rig.stand_in("claude");
+
+    // (a) Shared minder receives approval before handover (`seen` updated), service retires `--to HELPER`
+    //     (`told` starts empty in successor) -> successor redelivers standing approval once so minder can approve!
+    Minding::expect(&rig, "u11m2");
+    let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", "Allow tests.", "--minder-env", "STAND_IN_NAME=u11m2"]);
+    let minder_id = started["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "u11m2", &minder_id);
+    let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+
+    rig.show("worker", &asking("cargo test -p handover", 0));
+    let ev1 = minder.mind("watch --since 0 --on approval --timeout 15 --json");
+    assert_eq!(ev1["state"], "waiting_approval", "{ev1}");
+    let old_box_key = ev1["approval"]["box"].as_str().expect("predecessor box key").to_owned();
+
+    // Hand over via `retire --to HELPER` while the approval is still standing!
+    let old_pid = rig.service_pid().expect("predecessor pid");
+    let old_ticks = proc_start_ticks(old_pid).expect("predecessor start_ticks");
+    assert!(rig.helper().args(["agent", "retire", "--to", HELPER]).output().unwrap().status.success());
+    rig.wait("predecessor exited", || proc_start_ticks(old_pid) != Some(old_ticks));
+    rig.wait("successor online", || rig.service_pid().is_some_and(|p| p != old_pid));
+
+    // Successor must redeliver the standing approval once to the minder with a FRESH generation box key!
+    let ev2 = minder.mind("watch --since 0 --on approval --timeout 15 --json");
+    assert_eq!(ev2["state"], "waiting_approval", "successor must redeliver standing approval to minder after handover: {ev2}");
+    let new_box_key = ev2["approval"]["box"].as_str().expect("successor box key").to_owned();
+    assert_ne!(old_box_key, new_box_key, "A8: successor box key must carry a new service_gen and NEVER equal predecessor's key");
+    // A delayed parent approve carrying the predecessor's old box key MUST be refused with ZERO keys written!
+    let keys_before_stale = rig.keys("worker").len();
+    let (stale_code, _, stale_err) = rig.olo(&["approve", "worker", "--once", "--box", &old_box_key, "--json"]);
+    assert_eq!(stale_code, 1, "stale predecessor box key must be refused after handover: {stale_err}");
+    assert_eq!(rig.keys("worker").len(), keys_before_stale, "stale predecessor box key must write zero bytes");
+    let gone = rig.when_typed("worker", b"\r", working());
+    let approved = minder.mind("approve worker --once --json");
+    assert!(gone.join().unwrap(), "minder could not approve redelivered box after handover: {approved}");
+    assert_eq!(approved["ok"], true, "{approved}");
+    rig.json(&["stop", "worker", "--force", "--json"]);
+
+    // (b) Non-bridge PATH fix: create a custom user bin dir AND two fake bridge dirs (`/rex-commands`, `/olo/rex/bin`).
+    //     Put a custom CLI in user bin dir and a decoy command in bridge dirs. Launch under `--desktop none`
+    //     with caller `PATH` containing all three -> child MUST find user bin CLI and MUST NOT have bridge dirs in PATH!
+    let user_bin = rig.dir.join("custom-user-bin");
+    let bridge1 = rig.dir.join("state/rex-commands");
+    let bridge2 = rig.dir.join("share/olo/rex/bin");
+    for d in [&user_bin, &bridge1, &bridge2] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let out_file = rig.dir.join("stage/path-check.txt");
+    let custom_cli = user_bin.join("my-custom-cli");
+    std::fs::write(&custom_cli, format!("#!/bin/sh\nprintf '%s\\n' \"$PATH\" > {}\n", out_file.display())).unwrap();
+    std::fs::set_permissions(&custom_cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let caller_path = format!("{}:{}:{}:/usr/bin:/bin", bridge1.display(), user_bin.display(), bridge2.display());
+    let mut cmd = rig.helper();
+    cmd.env("REX_BLOCK", &rig.lead_block).env("PATH", &caller_path).args(["agent", "start", "command", "--name", "pathcheck", "--desktop", "none", "--json", "--", "my-custom-cli"]);
+    let res = cmd.output().unwrap();
+    assert!(res.status.success(), "start command using non-bridge PATH failed: {}", String::from_utf8_lossy(&res.stderr));
+    rig.wait("custom CLI ran and wrote PATH", || out_file.exists());
+    let child_path = std::fs::read_to_string(&out_file).unwrap();
+    let dirs: Vec<&str> = child_path.trim().split(':').collect();
+    assert!(dirs.contains(&user_bin.to_str().unwrap()), "child PATH must preserve non-bridge user bin dir: {child_path}");
+    assert!(!dirs.iter().any(|d| d.ends_with("/rex-commands") || d.ends_with("/olo/rex/bin")), "child PATH under --desktop none must strip bridge dirs: {child_path}");
+}
+
+/// Round 3 Integration Tests (A7 / N3 + Astra Test Gap #2 / N12.1):
+/// (a) A standing `WaitingApproval` recorded BEFORE handover that its shared
+///     minder has NOT YET READ (`seen < last_seq`) MUST be redelivered with the
+///     successor's fresh box key after `retire --to` so the minder can approve it!
+/// (b) Handover drain-timeout abort & socket rebind via `OLO_REX_AGENTS_TEST_DRAIN_MS`:
+///     holding an admitted `start` across the shortened drain deadline causes the
+///     incumbent to abort handover, rebind its socket, complete the start, and
+///     continue serving under the SAME PID!
+#[test]
+fn round3_unread_minded_approval_survives_handover_and_drain_timeout_aborts_cleanly() {
+    // (a) Unread pre-handover minded approval (`seen < last_seq`).
+    let Some(rig) = Rig::start("r3-unread-ho") else { return };
+    rig.stand_in("claude");
+    Minding::expect(&rig, "r3m1");
+    let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", "Allow tests.", "--minder-env", "STAND_IN_NAME=r3m1"]);
+    let minder_id = started["minder"]["id"].as_str().unwrap().to_owned();
+    let minder = Minding::of(&rig, "r3m1", &minder_id);
+    let _ = minder.mind("watch --since 0 --on minding --timeout 15 --json");
+
+    // Show approval and wait specifically for the predecessor service to journal
+    // `WaitingApproval` for `worker` in `events.jsonl` WITHOUT the minder consuming
+    // it (`seen < last_seq` — Astra regression check)!
+    rig.show("worker", &asking("cargo test -p unread-handover", 0));
+    let worker_id = started["id"].as_str().unwrap().to_owned();
+    rig.wait("predecessor journals unread approval for worker", || {
+        let Some(service_dir) = std::fs::read_dir(rig.dir.join("agents")).ok().into_iter().flatten().flatten().map(|d| d.path()).find(|d| d.join("events.jsonl").exists()) else {
+            return false;
+        };
+        std::fs::read_to_string(service_dir.join("events.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .any(|ev| ev["id"] == worker_id && ev["state"] == "waiting_approval")
+    });
+
+    // Retire `--to HELPER` BEFORE the minder watches!
+    let old_pid = rig.service_pid().expect("predecessor pid");
+    let old_ticks = proc_start_ticks(old_pid).expect("predecessor ticks");
+    assert!(rig.helper().args(["agent", "retire", "--to", HELPER]).output().unwrap().status.success());
+    rig.wait("predecessor exited", || proc_start_ticks(old_pid) != Some(old_ticks));
+    rig.wait("successor online", || rig.service_pid().is_some_and(|p| p != old_pid));
+
+    // Minder now watches on the successor -> MUST receive the standing approval with the successor's box key and approve it!
+    let ev = minder.mind("watch --since 0 --on approval --timeout 15 --json");
+    assert_eq!(ev["state"], "waiting_approval", "A7/N3: unread pre-handover approval must be delivered after handover: {ev}");
+    let gone = rig.when_typed("worker", b"\r", working());
+    let approved = minder.mind("approve worker --once --json");
+    assert!(gone.join().unwrap(), "minder could not approve unread pre-handover box: {approved}");
+    assert_eq!(approved["ok"], true, "{approved}");
+    rig.json(&["stop", "worker", "--force", "--json"]);
+
+    // (b) Barrier-held handover drain-timeout abort + non-zero `retire` exit + socket rebind
+    //     via `OLO_REX_AGENTS_TEST_DRAIN_MS` + `OLO_REX_AGENTS_TEST_WRITER_BARRIER`!
+    let barrier_dir = PathBuf::from(format!("/var/tmp/olo-drain-barrier-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&barrier_dir);
+    std::fs::create_dir_all(&barrier_dir).unwrap();
+    let enter = barrier_dir.join("entered");
+    let release = barrier_dir.join("release");
+    let barrier_env = format!("{}:{}", enter.display(), release.display());
+    let Some(rig_d) = Rig::start_with_env("r3-drain-abort", &[("OLO_REX_AGENTS_TEST_DRAIN_MS", "300"), ("OLO_REX_AGENTS_TEST_WRITER_BARRIER", &barrier_env)]) else {
+        let _ = std::fs::remove_dir_all(&barrier_dir);
+        return;
+    };
+    rig_d.stand_in("claude");
+    // Pin the background writer at the barrier FIRST (so `slowstart`'s
+    // `write_now_committing` blocks deterministically on `write_lock` with `doing == 1`).
+    let decoy = rig_d.start_child("claude", "decoy", &[]);
+    rig_d.json(&["stop", decoy["id"].as_str().unwrap(), "--force", "--json"]);
+    rig_d.wait("writer pinned at barrier", || enter.exists());
+    let pid_before = rig_d.service_pid().expect("incumbent pid");
+    let ticks_before = proc_start_ticks(pid_before).expect("incumbent ticks");
+    let base_wins = rig_d.rex("session.view", json!({ "session_id": rig_d.session }))["windows"].as_array().unwrap().len();
+
+    let (start_res, retire_out) = std::thread::scope(|scope| {
+        let start_t = scope.spawn(|| rig_d.start_child("claude", "slowstart", &[]));
+        // Wait deterministically until `slowstart`'s tab exists in Rex
+        // (so `start` is now awaiting `write_now_committing` behind the barrier
+        // with `doing == 1`), then trigger `retire --to HELPER` which MUST hit
+        // the 300 ms drain deadline, abort handover, rebind the socket, and
+        // return NON-ZERO to the `retire` caller (Neon #1 / Astra #22)!
+        rig_d.wait("slowstart tab created and blocked at writer barrier", || {
+            rig_d.rex("session.view", json!({ "session_id": rig_d.session }))["windows"].as_array().is_some_and(|w| w.len() > base_wins)
+        });
+        let out = rig_d.helper().args(["agent", "retire", "--to", HELPER]).output().unwrap();
+        // Release the barrier ONLY AFTER `retire` has returned its abort outcome!
+        std::fs::write(&release, b"go\n").unwrap();
+        (start_t.join().unwrap(), out)
+    });
+    let _ = std::fs::remove_dir_all(&barrier_dir);
+    assert!(!retire_out.status.success(), "Neon #1/Astra #22: aborted retire must return non-zero, got: {retire_out:?}");
+    assert_eq!(start_res["ok"], true, "admitted start must complete cleanly despite drain-timeout handover abort: {start_res}");
+    // Incumbent MUST still be the running service (same PID & start_ticks) with its socket rebound and responsive!
+    rig_d.wait("incumbent service rebound and answering ping", || rig_d.service_pid() == Some(pid_before));
+    assert_eq!(proc_start_ticks(pid_before), Some(ticks_before), "incumbent PID must have survived handover abort");
+    assert!(rig_d.said().contains("handover aborted"), "log should record handover abort: {}", rig_d.said());
+    assert_eq!(rig_d.status("slowstart")["running"], json!(true));
+    rig_d.json(&["stop", "slowstart", "--force", "--json"]);
 }

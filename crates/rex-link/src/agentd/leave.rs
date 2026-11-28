@@ -58,19 +58,29 @@ impl LeaveList {
     }
 }
 
+/// Command-executing tools whose approval prompt MUST include the non-empty
+/// command body before a leave list may allow it (a partial repaint showing
+/// `Bash command / Do you want to proceed? / ❯ 1. Yes / 3. No` without the
+/// command text would otherwise match only the generic question and bypass
+/// command patterns).
+fn is_command_tool(tool: &str) -> bool {
+    matches!(tool.to_ascii_lowercase().as_str(), "bash" | "shell" | "command" | "terminal" | "run_command" | "exec_command")
+}
+
 /// What a child asks leave for, as one text for the list's patterns:
 /// `TOOL: COMMAND`, the command whole as the agent shows it (its lines
-/// joined by a space); for what has no command (a file to read, a page
-/// to fetch), the tool and the question's own words. None where neither
-/// tool nor command could be read off the screen: what isn't understood
-/// is never allowed by a list.
+/// joined by a space); for non-command tools whose question carries the whole
+/// request (a file to read/edit, a page to fetch), the tool and the question's
+/// own words. None where a command tool's command has not drawn or where
+/// neither tool nor command could be read off the screen: what isn't
+/// understood is never allowed by a list.
 pub fn asked(tool: Option<&str>, command: Option<&str>, question: &str) -> Option<String> {
     let one_line = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
     match (tool.map(str::trim).filter(|t| !t.is_empty()), command.map(one_line).filter(|c| !c.is_empty())) {
         (Some(tool), Some(command)) => Some(format!("{tool}: {command}")),
         (None, Some(command)) => Some(command),
-        (Some(tool), None) => Some(format!("{tool}: {}", one_line(question))),
-        (None, None) => None,
+        (Some(tool), None) if !is_command_tool(tool) => Some(format!("{tool}: {}", one_line(question))),
+        _ => None,
     }
 }
 
@@ -101,10 +111,13 @@ mod tests {
         for allowed in ["cargo test -p olo-kit", "git status && git diff", "rm target/debug/x.o", "ls /etc/", "echo pseudo > out.txt", "cat .env.example | wc -l"] {
             assert_eq!(list.excepts(&text("Bash", allowed)), None, "{allowed}");
         }
-        // What has no command is named by its tool and its question.
+        // What has no command is named by its tool and its question — EXCEPT command-executing
+        // tools (A3: Bash/Shell/Command with undrawn command body must NEVER be allowed by a list!).
         let edit = asked(Some("Edit"), None, "Do you want to make this edit to .env?").unwrap();
         assert_eq!((edit.as_str(), list.excepts(&edit).is_some()), ("Edit: Do you want to make this edit to .env?", true));
         assert_eq!(list.excepts(&asked(Some("Read"), None, "Allow this read?").unwrap()), None);
+        assert_eq!(asked(Some("Bash"), None, "Do you want to proceed?"), None, "A3: Bash without command body must return None");
+        assert_eq!(asked(Some("Shell"), Some("   "), "Do you want to proceed?"), None, "A3: blank command body must return None");
         // What couldn't be read off the screen is nothing a list allows.
         assert_eq!(asked(None, None, "Proceed?"), None);
         assert_eq!(asked(None, Some("  make\n  install "), "").as_deref(), Some("make install"));

@@ -173,12 +173,22 @@ impl Rex {
 
     /// A method of a terminal (`com.superlogical.terminal.METHOD`).
     pub async fn terminal(&self, session: &str, block: &str, method: &str, args: Value) -> Result<Value, RexErr> {
-        self.call(&format!("com.superlogical.terminal.{method}"), json!({ "session_id": session, "block_id": block, "args": args })).await
+        self.terminal_within(session, block, method, args, ANSWER_WITHIN).await
+    }
+
+    /// A method of a terminal bounded by `within`.
+    pub async fn terminal_within(&self, session: &str, block: &str, method: &str, args: Value, within: Duration) -> Result<Value, RexErr> {
+        self.call_within(&format!("com.superlogical.terminal.{method}"), json!({ "session_id": session, "block_id": block, "args": args }), within).await
     }
 
     /// Types into a terminal.
     pub async fn write(&self, session: &str, block: &str, data: &str) -> Result<(), RexErr> {
-        self.terminal(session, block, "write", json!({ "data": data })).await.map(|_| ())
+        self.write_within(session, block, data, ANSWER_WITHIN).await
+    }
+
+    /// Types into a terminal bounded by `within`.
+    pub async fn write_within(&self, session: &str, block: &str, data: &str, within: Duration) -> Result<(), RexErr> {
+        self.terminal_within(session, block, "write", json!({ "data": data }), within).await.map(|_| ())
     }
 
     /// What a terminal shows now, as text: the server's own reading of
@@ -187,7 +197,18 @@ impl Rex {
     /// Of a main screen with a long history only the end is fetched:
     /// asked whole, the server would keep each answer for minutes.
     pub async fn screen(&self, session: &str, block: &str, rows: usize) -> Result<String, RexErr> {
-        let first = self.terminal(session, block, "format", json!({ "format": "text", "trim": true, "max_bytes": SCREEN_MOST })).await?;
+        self.screen_within(session, block, rows, ANSWER_WITHIN).await
+    }
+
+    /// [`Self::screen`] bounded by a total wall-clock budget `within`.
+    pub async fn screen_within(&self, session: &str, block: &str, rows: usize, within: Duration) -> Result<String, RexErr> {
+        let deadline = tokio::time::Instant::now() + within;
+        let rem = || deadline.saturating_duration_since(tokio::time::Instant::now());
+        let first_rem = rem();
+        if first_rem.is_zero() {
+            return Err(RexErr::Timeout);
+        }
+        let first = self.terminal_within(session, block, "format", json!({ "format": "text", "trim": true, "max_bytes": SCREEN_MOST }), first_rem).await?;
         let mut text = first["content"].as_str().unwrap_or_default().to_owned();
         if let Some(id) = first["id"].as_u64() {
             // (More than was sent: the end of it, from a place that
@@ -197,7 +218,11 @@ impl Rex {
             let mut offset = total.saturating_sub(SCREEN_MOST / 4).max(text.len().min(total));
             let mut end = String::new();
             for _ in 0..8 {
-                let piece = self.terminal(session, block, "blob_read", json!({ "id": id, "offset": offset })).await?;
+                let left = rem();
+                if left.is_zero() {
+                    return Err(RexErr::Timeout);
+                }
+                let piece = self.terminal_within(session, block, "blob_read", json!({ "id": id, "offset": offset }), left).await?;
                 let data = piece["data"].as_str().unwrap_or_default();
                 offset += data.len();
                 end.push_str(data);

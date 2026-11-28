@@ -162,13 +162,20 @@ fn account_home(uid: u32) -> Option<PathBuf> {
     })
 }
 
+/// True when `val` selects an isolated test/sandbox agents directory, matching
+/// [`Paths::of`]'s own rule (only an absolute `OLO_REX_AGENTS_DIR` path redirects
+/// state away from the live account service).
+pub fn is_isolated_agents_dir(val: Option<&std::ffi::OsStr>) -> bool {
+    val.map(Path::new).is_some_and(Path::is_absolute)
+}
+
 impl Paths {
     /// For the Rex server whose socket is `server`, in the account
     /// whose home is `home` and number is `uid`. `OLO_REX_AGENTS_DIR`
     /// puts all of it in one folder (Olo's own tests).
     pub fn of(server: &Path, home: &Path, uid: u32) -> Self {
         let key = format!("{:016x}", fnv(server.as_os_str().as_encoded_bytes()));
-        if let Some(dir) = std::env::var_os("OLO_REX_AGENTS_DIR").map(PathBuf::from).filter(|p| p.is_absolute()) {
+        if let Some(dir) = std::env::var_os("OLO_REX_AGENTS_DIR").filter(|v| is_isolated_agents_dir(Some(v.as_os_str()))).map(PathBuf::from) {
             let dir = dir.join(&key);
             return Self { registry: dir.join("registry.json"), events: dir.join("events.jsonl"), lock: dir.join("lock"), log: dir.join("service.log"), socket: dir.join("sock"), dir };
         }

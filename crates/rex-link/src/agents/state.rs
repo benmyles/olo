@@ -77,9 +77,41 @@ impl SubagentLiveState {
 /// under its process, so it isn't among the shells found there; its
 /// turn may have ended on it, and it will be woken by it.
 pub fn agy_tasks(screen: &str) -> u32 {
-    let Some(footer) = screen.lines().rev().find(|l| !l.trim().is_empty()) else { return 0 };
-    let Some(at) = footer.find(" task(s)") else { return 0 };
-    footer[..at].rsplit(|c: char| !c.is_ascii_digit()).next().and_then(|n| n.parse().ok()).unwrap_or(0)
+    let lines: Vec<&str> = screen.lines().collect();
+    let is_rule = |l: &str| {
+        let t = l.trim();
+        t.starts_with("────") && t.ends_with("────")
+    };
+    let footer_slice: &[&str] = match lines.iter().rposition(|l| is_rule(l)) {
+        Some(rule_idx) => &lines[rule_idx + 1..],
+        None => lines.as_slice(),
+    };
+    let scan: Vec<&str> = if lines.iter().any(|l| is_rule(l)) {
+        footer_slice.iter().copied().filter(|l| !l.trim().is_empty()).collect()
+    } else {
+        footer_slice.iter().rev().copied().find(|l| !l.trim().is_empty()).into_iter().collect()
+    };
+    for line in scan.into_iter().rev() {
+        let trimmed = line.trim();
+        // Skip timestamped running-task rows (`● [HH:MM:SS] ... running`) so
+        // command text mentioning `"8 task(s)"` can never spoof `own_tasks`.
+        if trimmed.starts_with(['●', '•', '○', '✓', '✗']) {
+            continue;
+        }
+        for col in trimmed.split("  ") {
+            for seg in col.split(" · ") {
+                let seg = seg.trim();
+                if let Some(num) = seg.strip_suffix(" task(s)")
+                    && !num.is_empty()
+                    && num.bytes().all(|b| b.is_ascii_digit())
+                    && let Ok(n) = num.parse::<u32>()
+                {
+                    return n;
+                }
+            }
+        }
+    }
+    0
 }
 
 /// What makes an approval box the box it is: its tool, its command as
@@ -96,10 +128,23 @@ pub fn box_hash(ap: &olo_agent_screen::ApprovalPrompt) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     ap.tool.hash(&mut h);
     ap.command.hash(&mut h);
+    ap.folded_lines.hash(&mut h);
     ap.question.chars().map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
     for c in &ap.choices {
         (c.index, c.kind.as_str(), &c.label).hash(&mut h);
     }
+    h.finish()
+}
+
+/// Identity of an approval prompt independent of its rendered choice list
+/// (tool + command + normalized question): lets the service tell an incomplete
+/// repaint of the same prompt from a genuinely different replacement prompt.
+pub fn prompt_hash(ap: &olo_agent_screen::ApprovalPrompt) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    ap.tool.hash(&mut h);
+    ap.command.hash(&mut h);
+    ap.question.chars().map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
     h.finish()
 }
 
@@ -116,6 +161,10 @@ pub struct ScreenClassification {
     /// identified (`olo_agent_screen::parse_question`), distinct from
     /// `folder_trust` and unrecognised `Activity::Blocked` fallback screens.
     pub recognized_question: bool,
+    /// True when the screen shows an incomplete approval or folder-trust dialog
+    /// repaint (`olo_agent_screen::has_approval_fragment`) that must never be
+    /// misread as `"at prompt"` / `Idle` or retire an answered approval box.
+    pub approval_fragment: bool,
     /// The agent's own screen says a turn of the model's is on, or was
     /// cut short: it draws its working line, a tool call of its turn
     /// asks leave, or the API failed under it. Not Rex's word for the
@@ -276,7 +325,7 @@ pub fn error_cause(text: &str) -> (&'static str, Option<u16>) {
     } else {
         match status {
             Some(429) => "rate_limit",
-            Some(401 | 402 | 403) => "account",
+            Some(401..=403) => "account",
             Some(400 | 404 | 413 | 422) => "request",
             Some(n) if n >= 500 => "provider",
             _ if has(&[
@@ -371,6 +420,7 @@ pub const TURN_ON_LOOK_MS: u64 = 500;
 /// "at work" two and a half seconds after its start (the live suite,
 /// 2026-11-27: "resumed-after-kill Codex at rest must NEVER be stuck
 /// working").
+#[allow(clippy::too_many_arguments)]
 pub fn turn_on(cli: AgentCli, transcript_state: Option<&str>, turn_ms: Option<u64>, started_ms: u64, written_ms: u64, output_ms: u64, now_ms: u64, believed_ms: u64) -> bool {
     cli == AgentCli::Codex && transcript_state == Some("working") && turn_ms.is_some_and(|began| began >= started_ms) && now_ms < written_ms.max(output_ms).saturating_add(believed_ms)
 }
@@ -459,6 +509,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: None,
             usage: None,
             recognized_question: false,
+            approval_fragment: false,
             in_turn: false,
         };
     }
@@ -474,6 +525,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: None,
             usage: None,
             recognized_question: false,
+            approval_fragment: false,
             in_turn: false,
         };
     };
@@ -497,6 +549,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: None,
             usage,
             recognized_question: false,
+            approval_fragment: false,
             in_turn: false,
         };
     }
@@ -512,7 +565,25 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: None,
             usage,
             recognized_question: false,
+            approval_fragment: false,
             in_turn: true,
+        };
+    }
+
+    // 2b. Incomplete approval or folder-trust dialog repaint: never fall
+    // through to `parse_question` or `Idle("at prompt")` (which would retire
+    // an answered box on a half-drawn frame).
+    if !draft_in_front && olo_agent_screen::has_approval_fragment(agent, screen_text) {
+        return ScreenClassification {
+            state: SubagentLiveState::WaitingQuestion,
+            summary: Some("dialog redrawing".into()),
+            approval: None,
+            folder_trust: None,
+            api_error: None,
+            usage,
+            recognized_question: false,
+            approval_fragment: true,
+            in_turn: false,
         };
     }
 
@@ -526,6 +597,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: None,
             usage,
             recognized_question: true,
+            approval_fragment: false,
             in_turn: false,
         };
     }
@@ -540,6 +612,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: Some(err),
             usage,
             recognized_question: false,
+            approval_fragment: false,
             in_turn: true,
         };
     }
@@ -554,6 +627,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             api_error: None,
             usage,
             recognized_question: false,
+            approval_fragment: false,
             in_turn: true,
         };
     }
@@ -615,7 +689,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             }
         }
     };
-    ScreenClassification { state, summary, approval: None, folder_trust: None, api_error: None, usage, recognized_question: false, in_turn: false }
+    ScreenClassification { state, summary, approval: None, folder_trust: None, api_error: None, usage, recognized_question: false, approval_fragment: false, in_turn: false }
 }
 
 /// Shared state reconciliation across `status`, `list`, `watch`, and `record_subagent_transition` (`H10`, `M2`, `M3`, `M22`).

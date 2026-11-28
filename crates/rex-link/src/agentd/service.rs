@@ -107,6 +107,10 @@ pub struct Reading {
     /// reading *began* (`Expected::cursor`): a reading takes up only
     /// that ([`Looked::expected`]).
     expected: Option<u64>,
+    /// Whether a feedback survey covered this reading (preserved on cached reads).
+    survey: bool,
+    /// Monotonic sequence number of the live screen RPC that produced this reading.
+    seq: u64,
 }
 
 /// A child started with `--trust`: its own folders' trust questions in
@@ -117,20 +121,33 @@ pub struct Reading {
 /// host that reading had told it as a question, and `run --trust` came
 /// back "question" for one answered a moment later. 2026-11-27).
 pub(super) struct TrustAtStart {
-    /// Its folders: where it runs, and those added.
-    own: Vec<String>,
-    /// The questions whose keys were written ([`TrustAtStart::which`]):
-    /// one still standing after that is a person's.
+    /// Its primary launch folder (`entry.cwd`), trimmed of trailing `/`.
+    primary: Option<String>,
+    /// Its launch `--add-dir` folders, trimmed of trailing `/`.
+    add_dirs: Vec<String>,
+    /// The questions whose Return was submitted or whose attempt ended
+    /// ([`TrustAtStart::which`]): one still standing after that is a person's.
     answered: HashSet<Option<String>>,
     /// Keys are on their way just now.
     answering: bool,
     until: Instant,
 }
 
+/// Normalizes a directory path for startup `--trust` matching while preserving
+/// the root directory `"/"` (never collapsing `"/"` to `""`).
+pub(super) fn norm_dir(d: &str) -> Option<String> {
+    if d.is_empty() {
+        return None;
+    }
+    let trimmed = d.trim_end_matches('/');
+    Some(if trimmed.is_empty() { "/".to_owned() } else { trimmed.to_owned() })
+}
+
 impl TrustAtStart {
     fn of(entry: &NativeSubagent, until: Instant) -> Self {
-        let own = entry.cwd.iter().chain(entry.add_dirs.iter()).map(|d| d.trim_end_matches('/').to_owned()).collect();
-        Self { own, answered: HashSet::new(), answering: false, until }
+        let primary = entry.cwd.as_deref().and_then(norm_dir);
+        let add_dirs = entry.add_dirs.iter().filter_map(|d| norm_dir(d)).collect();
+        Self { primary, add_dirs, answered: HashSet::new(), answering: false, until }
     }
 
     /// Which question a reading shows: the one at the child's start
@@ -138,22 +155,63 @@ impl TrustAtStart {
     /// yet. Read with no path and then with one, it was two questions
     /// and answered twice), or an added folder's (its path).
     pub(super) fn which(asked: &olo_agent_screen::FolderTrustPrompt) -> Option<String> {
-        asked.is_add_dir.then(|| asked.folder.as_deref().unwrap_or_default().trim_end_matches('/').to_owned())
+        asked.is_add_dir.then(|| asked.folder.as_deref().and_then(norm_dir).unwrap_or_default())
     }
 
-    /// The question is about one of the child's own folders.
-    pub(super) fn owns(own: &[String], asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
-        match asked.folder.as_deref().map(|f| f.trim_end_matches('/')) {
-            Some(f) => own.iter().any(|a| a == f),
-            None => !asked.is_add_dir,
+    /// The question is about one of the child's own launch folders.
+    /// - An `--add-dir` prompt (`is_add_dir`) MUST show a drawn path matching
+    ///   one of the child's launch folders (`add_dirs` or `primary`); a
+    ///   pathless partial add-dir frame is never claimed.
+    /// - A primary prompt (`!is_add_dir`) with a drawn path MUST match the
+    ///   launch `primary` directory (never a foreign folder). A pathless
+    ///   primary prompt requires `primary.is_some()` (and the trust worker
+    ///   additionally verifies process-cwd binding before confirming).
+    pub(super) fn owns_parts(primary: Option<&str>, add_dirs: &[String], asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
+        let p_norm = primary.and_then(norm_dir);
+        if asked.is_add_dir {
+            asked.folder.as_deref().and_then(norm_dir).is_some_and(|f| add_dirs.iter().filter_map(|a| norm_dir(a)).any(|a| a == f) || p_norm.as_deref() == Some(f.as_str()))
+        } else {
+            match asked.folder.as_deref().and_then(norm_dir) {
+                Some(f) => p_norm.as_deref() == Some(f.as_str()),
+                None => p_norm.is_some(),
+            }
         }
     }
 
-    /// This question is still the service's to answer, or its keys are
-    /// on their way: not to be told.
-    fn on_its_way(&self, asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
-        Self::owns(&self.own, asked) && (self.answering || (!self.answered.contains(&Self::which(asked)) && Instant::now() < self.until))
+    pub(super) fn owns(&self, asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
+        Self::owns_parts(self.primary.as_deref(), &self.add_dirs, asked)
     }
+
+    /// Partial `--add-dir` frame whose path has not drawn yet while this child
+    /// has launch `--add-dir` directories and startup trust is still within its
+    /// deadline: hold back delivery until the path draws or the deadline expires,
+    /// without claiming or pressing Return on the pathless frame.
+    fn pending_path(&self, asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
+        asked.is_add_dir && asked.folder.is_none() && !self.add_dirs.is_empty() && Instant::now() < self.until
+    }
+
+    /// This question is still the service's to answer, or its keys are
+    /// on their way: not to be told. Always bounded by `self.until`.
+    pub(super) fn on_its_way(&self, asked: &olo_agent_screen::FolderTrustPrompt) -> bool {
+        if Instant::now() >= self.until {
+            return false;
+        }
+        (self.owns(asked) && (self.answering || !self.answered.contains(&Self::which(asked)))) || self.pending_path(asked)
+    }
+}
+
+/// Explicit state machine for feedback-survey dismissal on a child's screen.
+/// Replaces loose `survey_pressed`/`survey_stays` flags so:
+/// - Only the matching pre-submission owner token releases a `Claimed` slot.
+/// - Transitioning to `Submitted` BEFORE `rex.write().await` ensures timeout or
+///   cancellation never double-presses `0`.
+/// - Partial survey frames (question without choices) NEVER clear an active state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SurveyState {
+    Idle,
+    Claimed { token: u64 },
+    Submitted { token: u64, since: Instant, submitted_at_seq: u64 },
+    Stays,
 }
 
 /// What is kept of a child while it lives (nothing of it is written
@@ -193,6 +251,11 @@ pub struct Live {
     pub last_state: Option<SubagentLiveState>,
     last_key: Option<String>,
     check_gen: u64,
+    /// Monotonic generation advanced whenever an answer is committed (`approve`
+    /// or `send`): tags `latest_event` outside the 2,000-event log ring so
+    /// pre-submission confirmations can never masquerade as post-answer events
+    /// and ring eviction never duplicates a confirmed post-answer event.
+    event_gen: u64,
     /// Seen at work since it started (or since it was last typed to):
     /// really at work, not the word for an empty tab.
     seen_working: bool,
@@ -207,17 +270,47 @@ pub struct Live {
     held_until: Option<u64>,
     /// Asks its watcher to read the screen now.
     poke: Arc<Notify>,
-    task: Option<tokio::task::AbortHandle>,
+    /// Notified immediately by the stream reader on any PTY output, resize,
+    /// stream connect, or exit for THIS child (zero stationary polling).
+    output_notify: Arc<Notify>,
+    /// Notified on per-child authority/box/trust/list/exit state changes so
+    /// in-flight writers wake immediately without polling.
+    state_notify: Arc<Notify>,
+    /// Notified when an active survey dismissal (`Claimed`/`Submitted`) finishes
+    /// or transitions to `Stays`, waking waiting `send` callers.
+    survey_notify: Arc<Notify>,
+    /// True while the child's Rex terminal stream is connected and delivering
+    /// `output_notify` wakeups.
+    stream_connected: bool,
+    /// Monotonic counter incremented whenever `stream_connected` changes so
+    /// wait loops immediately wake on mid-wait disconnect and arm fallback reads.
+    stream_gen: u64,
+    /// True once durable registration has succeeded (suppresses public follower
+    /// `Frame::Agent` broadcasts, event recording, and premature `exit()` during
+    /// pre-commit `begin_attached` persistence so a rolled-back child never leaks).
+    committed: bool,
+    /// Deferred process exit code observed while `!committed` (replayed once
+    /// `begin_attached` commits, discarded on rollback).
+    pending_exit_code: Option<i32>,
+    /// Deferred tab closure observed while `!committed` (replayed once
+    /// `begin_attached` commits, discarded on rollback).
+    pending_tab_closed: bool,
+    /// True while a non-Working state transition awaits confirmation and has not
+    /// yet recorded a confirmed event (prevents transient RPC failure or
+    /// superseded confirmation reads from stranding a standing question).
+    unconfirmed: bool,
+    /// `check_gen` of the currently sleeping confirmation task, if one is active,
+    /// so blinking screens don't cancel a healthy in-flight confirmation while
+    /// failed or superseded confirmations clear this to `None` and re-arm.
+    confirm_in_flight: Option<u64>,
+    /// Background tasks for this child (stream consumer + transition runner).
+    tasks: Vec<tokio::task::AbortHandle>,
     /// What followers were last told of it.
     told: Option<(SubagentLiveState, Option<String>)>,
-    /// A feedback survey on its screen wouldn't go when set aside: left
-    /// alone until it has gone by itself.
-    survey_stays: bool,
-    /// When this showing of a survey had its dismissal pressed; none
-    /// once a reading shows no survey. One press a showing, whoever
-    /// reads: pressed again where a redraw lagged, its `0` was typed
-    /// into the agent's field ([`Service::screen_under_survey`]).
-    survey_pressed: Option<Instant>,
+    /// Explicit feedback-survey dismissal state machine.
+    survey: SurveyState,
+    /// Monotonic owner token generator for `SurveyState::Claimed`.
+    survey_seq: u64,
     /// Claude Code's offer to send a feedback report it drafted stands
     /// on its screen, and whoever looks after the child has been told
     /// of this showing of it (`olo_agent_screen::feedback_draft`).
@@ -228,24 +321,36 @@ pub struct Live {
     /// once it was finished here. Said by the readings, in `look`.
     box_now: Option<BoxNow>,
     boxes: u64,
+    /// Highest answered box number retired by a positive ordered `elsewhere`
+    /// reading (so an `approve` dismissal wait always observes `BoxEnd::Gone`
+    /// even if a concurrent reader saw `Working` and a blank frame followed).
+    last_elsewhere_box: u64,
     /// True while `approve` is actively navigating choices (`delta != 0`):
     /// prevents a concurrent `look` that catches a transient mid-repaint
     /// frame from wiping `box_now`.
     navigating: bool,
-    /// A box the list must not answer, and until when: one whose Return
-    /// was written and that didn't go in two seconds (it is told to a
-    /// person afresh), and one that stood already when this service
-    /// took the child over (the service before may have answered it).
-    /// Kept through frames with no box on them (a repaint read
-    /// half-way); let go when another box is seen, or its time is up.
-    list_skip: Option<(u64, Instant)>,
-    /// The readings of its screen, in the order they were begun, and the
-    /// last of them taken: which box stands is what the latest reading
-    /// says, never one that was begun before it and came back after
-    /// (a slow `status`, formatting its answer, put the box it had read
-    /// in the place of the one answered since, unanswered).
+    /// A box showing the list must not auto-answer: one whose Return
+    /// didn't clearly dismiss (`BoxEnd::Blank`/`Stays`), or one that stood
+    /// when this service took the child over. Kept for the entire showing
+    /// with NO wall-clock expiry; cleared only by a genuinely different
+    /// complete box or an ordered, positively `elsewhere` reading.
+    list_skip: Option<ListSkip>,
+    /// True for a child reconciled or adopted from a previous service until
+    /// resolved on an ordered, conclusive live frame (standing box placed in
+    /// `list_skip`, standing survey marked `Stays`, or positive `elsewhere`).
+    /// Never derived from wall-clock `started_at < began_ms`.
+    adopted_pending: bool,
+    /// The readings of its screen, in the order their RPCs were begun, and
+    /// the last of them accepted: which box stands is what the latest
+    /// accepted reading says, never an out-of-order or failed read.
     read_seq: u64,
-    accepted_seq: u64,
+    pub(super) accepted_seq: u64,
+    /// Explicit handoff flag kept true after `box_finish`, trust release, or
+    /// relinquished survey claim until a live ordered reread publishes the
+    /// standing prompt or proves it gone (with bounded retry on failed reads).
+    pending_handoff: bool,
+    handoff_failures: u8,
+    handoff_retry_armed: bool,
     /// One writer of answers into it ([`Service::answer_lock`]).
     answer_lock: Arc<tokio::sync::Mutex<()>>,
     /// Its own folders' trust is the service's to answer (`--trust`, the
@@ -255,93 +360,183 @@ pub struct Live {
     /// independently of the 2,000-event log ring so a standing question
     /// is never lost when other host events evict the ring.
     pub latest_event: Option<SubagentEvent>,
+    /// The `event_gen` at which `latest_event` was confirmed and recorded.
+    latest_event_gen: u64,
+}
+
+/// Generates a fresh non-zero per-process random 32-bit incarnation token
+/// from `/dev/urandom` (falling back to PID + timestamp hash) so box keys can
+/// never collide across two service processes even if an older helper drops
+/// `service_gen` from `registry.json`.
+fn new_service_incarnation() -> u32 {
+    use std::io::Read as _;
+    static FALLBACK: AtomicUsize = AtomicUsize::new(1);
+    let mut buf = [0u8; 4];
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom")
+        && f.read_exact(&mut buf).is_ok()
+    {
+        let v = u32::from_le_bytes(buf);
+        if v != 0 {
+            return v;
+        }
+    }
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
+    let n = FALLBACK.fetch_add(1, std::sync::atomic::Ordering::Relaxed) as u64;
+    let mixed = (std::process::id() as u64).wrapping_mul(0x9e37_79b9) ^ nanos ^ (nanos >> 32) ^ n.wrapping_mul(0x85eb_ca6b);
+    (mixed as u32).max(1)
 }
 
 /// The approval box currently standing on a child's screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct BoxNow {
     hash: u64,
+    prompt_hash: u64,
+    choice_count: usize,
     number: u64,
+    service_gen: u64,
+    incarnation: u32,
     answered: bool,
 }
 
 impl BoxNow {
     fn key(self) -> String {
-        format!("b{}-{:08x}", self.number, self.hash as u32)
+        match (self.service_gen, self.incarnation) {
+            (0, 0) => format!("b{}-{:08x}", self.number, self.hash as u32),
+            (g, 0) => format!("b{}-g{}-{:08x}", self.number, g, self.hash as u32),
+            (g, inc) => format!("b{}-g{}-{:08x}-{:08x}", self.number, g, inc, self.hash as u32),
+        }
+    }
+
+    fn as_looked(self) -> LookedBox {
+        LookedBox { key: self.key(), number: self.number, hash: self.hash, answered: self.answered }
     }
 }
 
-/// How long a box that didn't go after its Return, or went with
-/// nothing to say where its agent is, is kept from the list
-/// ([`Live::list_skip`]).
-const LIST_SKIPS: Duration = Duration::from_secs(30);
+/// Exact approval-box instance reported by [`Looked::boxed`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LookedBox {
+    pub key: String,
+    pub number: u64,
+    pub hash: u64,
+    pub answered: bool,
+}
+
+/// A showing-scoped list suppression entry with no wall-clock expiry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ListSkip {
+    hash: u64,
+    prompt_hash: u64,
+}
+
+impl ListSkip {
+    fn from_box(b: BoxNow) -> Self {
+        Self { hash: b.hash, prompt_hash: b.prompt_hash }
+    }
+
+    fn matches(self, ap: &olo_agent_screen::ApprovalPrompt) -> bool {
+        let h = state::box_hash(ap);
+        let ph = state::prompt_hash(ap);
+        // Suppress the same submitted request across choice-count changes in
+        // EITHER direction (e.g., 2->3 or 3->2 redraw) until positive dismissal
+        // or a genuinely different prompt.
+        h == self.hash || ph == self.prompt_hash
+    }
+}
 
 /// How an answered box was seen to end ([`Service::box_finish`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BoxEnd {
     /// Another box in its place, its agent at work in its turn or at
-    /// its own prompt, its tab gone.
+    /// its own prompt, its tab gone, or the refusal reason field shown.
     Gone,
     /// No box on the screen for a moment and nothing to say where its
     /// agent is: gone, or a repaint that is slow (a busy host). The
     /// screen can't say which, so the very same box seen next, with
-    /// nothing else seen first, is a person's and not the list's
-    /// (a blank that outlasted the readings had the list answer the
-    /// same box again: one whole run of the suite in two under a load
-    /// of 95, 2026-11-27).
+    /// nothing else seen first, is a person's and not the list's.
     Blank,
     /// It still stands, its two seconds up; or its Return wasn't seen
     /// to be written.
     Stays,
 }
 
-/// The box `ap` is, where it is the one held as standing: its key and
-/// whether its answer has been written. Read-only.
-fn peek_box(live: &Live, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<(String, bool)> {
+/// True when `cls` positively proves the agent is outside any approval,
+/// folder-trust, approval fragment, or interactive question dialog — genuinely
+/// running a turn or standing at its own chat prompt (never an empty/blank
+/// frame, partial dialog repaint, or bare `esc to interrupt` footer).
+pub(super) fn is_positively_elsewhere(cls: &ScreenClassification) -> bool {
+    cls.approval.is_none()
+        && cls.folder_trust.is_none()
+        && !cls.approval_fragment
+        && cls.state != SubagentLiveState::WaitingQuestion
+        && (cls.in_turn || cls.summary.as_deref() == Some(state::AT_PROMPT))
+}
+
+/// The box `ap` is, where it is the one held as standing: its key, number,
+/// hash and whether its answer has been written. Read-only.
+fn peek_box(live: &Live, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<LookedBox> {
     let what = state::box_hash(ap?);
-    live.box_now.filter(|b| b.hash == what).map(|b| (b.key(), b.answered))
+    live.box_now.filter(|b| b.hash == what).map(BoxNow::as_looked)
 }
 
 impl Live {
     /// Which box stands after a reading taken in its order (`ap`: the
-    /// box it shows, or none), and that box's key and whether its
-    /// answer has been written. The same box keeps its number; another
-    /// is a new one, and lets go of a box kept from the list. With none
-    /// on the screen the box is gone, but for one whose answer is on its
-    /// way (marked answered, or being walked to): `approve` says when
-    /// such a box has gone ([`Service::box_finish`]). `adopted`: the
-    /// first reading this service takes of a child it took over: a box
-    /// standing then is kept from the list (the service before may have
-    /// answered it). `elsewhere`: no box, and the agent plainly somewhere
-    /// else (at work in its turn, at its own prompt): what was kept from
-    /// the list is let go, the same asked after this being another box.
-    fn box_after(&mut self, ap: Option<&olo_agent_screen::ApprovalPrompt>, adopted: bool, elsewhere: bool) -> Option<(String, bool)> {
+    /// box it shows, or none), and that box's exact [`LookedBox`].
+    /// Returns `(looked_box, retired_answered_elsewhere)`.
+    ///
+    /// - The same box keeps its number; a repaint of the same answered prompt
+    ///   (`prompt_hash` match, regardless of whether choice count shrank or
+    ///   grew 2->3 / 3->2 / 3->3) keeps the answered box intact until positive
+    ///   dismissal (`elsewhere == true`) or a genuinely different prompt.
+    /// - A genuinely different box gets the next number and clears `list_skip`.
+    /// - On an ordered, positively `elsewhere` reading (`ap == None, elsewhere == true`),
+    ///   `box_now` is ALWAYS retired (even during `navigating`, since positive
+    ///   dismissal is proven!), recording `last_elsewhere_box` and clearing
+    ///   `list_skip` so a genuine identical successor box gets a fresh number.
+    /// - `adopted_pending` is resolved strictly here on ordered, conclusive
+    ///   frames (never on blank/ambiguous repaints or wall-clock comparisons).
+    fn box_after(&mut self, ap: Option<&olo_agent_screen::ApprovalPrompt>, elsewhere: bool, service_gen: u64, incarnation: u32) -> (Option<LookedBox>, bool) {
         let Some(ap) = ap else {
-            if !self.navigating && !self.box_now.is_some_and(|b| b.answered) {
+            let mut retired_answered = false;
+            if elsewhere {
+                if let Some(cur) = self.box_now.take()
+                    && cur.answered
+                {
+                    self.last_elsewhere_box = self.last_elsewhere_box.max(cur.number);
+                    retired_answered = true;
+                }
+                self.list_skip = None;
+                if self.adopted_pending && self.survey == SurveyState::Idle {
+                    self.adopted_pending = false;
+                }
+            } else if !self.navigating && !self.box_now.is_some_and(|b| b.answered) {
                 self.box_now = None;
             }
-            if elsewhere {
-                self.list_skip = None;
-            }
-            return None;
+            return (None, retired_answered);
         };
         let what = state::box_hash(ap);
-        if self.list_skip.is_some_and(|(h, until)| h != what || Instant::now() >= until) {
+        let ph = state::prompt_hash(ap);
+        let choices = ap.choices.len();
+        let adopted = self.adopted_pending;
+        if self.list_skip.is_some_and(|skip| !skip.matches(ap)) {
             self.list_skip = None;
         }
         let cur = match self.box_now {
             Some(cur) if cur.hash == what => cur,
+            Some(cur) if cur.answered && cur.prompt_hash == ph => cur,
             _ => {
                 self.boxes += 1;
-                let cur = BoxNow { hash: what, number: self.boxes, answered: false };
+                let cur = BoxNow { hash: what, prompt_hash: ph, choice_count: choices, number: self.boxes, service_gen, incarnation, answered: false };
                 self.box_now = Some(cur);
                 if adopted {
-                    self.list_skip = Some((what, Instant::now() + Duration::from_secs(600)));
+                    self.list_skip = Some(ListSkip::from_box(cur));
                 }
                 cur
             }
         };
-        Some((cur.key(), cur.answered))
+        if adopted {
+            self.adopted_pending = false;
+        }
+        (Some(cur.as_looked()), false)
     }
 
     fn new() -> Self {
@@ -362,26 +557,47 @@ impl Live {
             last_state: None,
             last_key: None,
             check_gen: 0,
+            event_gen: 0,
             seen_working: false,
             expects: None,
             answers: None,
             held_until: None,
             poke: Arc::new(Notify::new()),
-            task: None,
+            output_notify: Arc::new(Notify::new()),
+            state_notify: Arc::new(Notify::new()),
+            survey_notify: Arc::new(Notify::new()),
+            stream_connected: false,
+            stream_gen: 0,
+            committed: true,
+            pending_exit_code: None,
+            pending_tab_closed: false,
+            unconfirmed: false,
+            confirm_in_flight: None,
+            tasks: Vec::new(),
             told: None,
-            survey_stays: false,
-            survey_pressed: None,
+            survey: SurveyState::Idle,
+            survey_seq: 0,
             draft_told: false,
             box_now: None,
             boxes: 0,
+            last_elsewhere_box: 0,
             navigating: false,
             list_skip: None,
+            adopted_pending: false,
             read_seq: 0,
             accepted_seq: 0,
+            pending_handoff: false,
+            handoff_failures: 0,
+            handoff_retry_armed: false,
             answer_lock: Arc::new(tokio::sync::Mutex::new(())),
             trust: None,
             latest_event: None,
+            latest_event_gen: 0,
         }
+    }
+
+    pub(super) fn survey_active_locked(&self) -> bool {
+        self.survey != SurveyState::Idle
     }
 
     fn activity(&self) -> (Activity, Option<String>) {
@@ -390,14 +606,15 @@ impl Live {
 }
 
 /// What a minder was last told of an agent's standing question or
-/// approval: the exact box instance key (`bN-hhhhhhhh`) for approvals,
-/// or question key (`q:...` / `tx:waiting`) for non-approval questions,
-/// bound to the agent's `rules_gen` when it was delivered.
+/// approval: the exact box instance key (`b{n}-g{gen}-{inc:08x}-{hash:08x}`)
+/// for approvals, or question key (`q:...` / `tx:waiting`) for non-approval
+/// questions, bound to the agent's `rules_gen` and reading sequence `read_seq`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToldGrant {
     pub token: String,
     pub is_approval: bool,
     pub rules_gen: u64,
+    pub read_seq: u64,
 }
 
 pub struct State {
@@ -411,6 +628,19 @@ pub struct State {
     /// wait (not a `watch`, not a `follow`): what the service finishes
     /// before it ends.
     doing: usize,
+    /// In-flight `watch` / `wait` requests currently executing so handover
+    /// shutdown cancels and drains them before the final durable save.
+    active_watches: usize,
+    /// Set atomically when retirement/handover begins: checked under
+    /// `self.lock()` right alongside `doing += 1` / `active_watches += 1`
+    /// BEFORE writing `TAKEN` (`\n`) so late connections get `NotTaken`
+    /// and retry cleanly on the successor.
+    pub retiring: bool,
+    /// Set atomically after active requests drain and background tasks are
+    /// aborted, right before `stop_writer` and `final_save`, so no detached
+    /// background task can mutate state or write to disk/PTY across the final
+    /// durable handover snapshot.
+    pub frozen: bool,
     /// Since when nothing has been asked and no child lives.
     idle_since: Option<Instant>,
     /// Minders stopped by the one who may stop them (its agent's parent,
@@ -433,6 +663,16 @@ pub struct State {
     pub empty_gen: HashMap<String, u64>,
     /// Pre-allocated child IDs currently mid-start (before registration).
     pub reserved_ids: HashSet<String>,
+    /// Provisional entries staged in `reg.entries` while awaiting durable
+    /// commit (`begin_attached` or `adopt`): excluded from unrelated registry
+    /// snapshots and follower snapshots so another writer cannot publish an
+    /// entry that later rolls back.
+    provisional_ids: HashSet<String>,
+    /// Live recovery entries retained in memory after a failed close (`!tab_closed`)
+    /// whose initial save failed: addressable in memory by ID, yet still tracked
+    /// as unsaved until a subsequent `write_with_commit` persists them so a
+    /// duplicate `adopt` cannot skip persistence while `registry.json` is unwritable.
+    unsaved_recovery_ids: HashSet<String>,
     /// Reserved live names `(session_id, asker_win, lowercase_name)`
     /// while a `start` is in flight so concurrent starts and auto-named
     /// minders never collide.
@@ -565,33 +805,47 @@ pub struct Looked {
     pub last_output_at: u64,
     pub last_state_change_at: u64,
     pub pid: Option<i32>,
-    /// A feedback survey is drawn over it and wouldn't be set aside:
-    /// what is read may be covered by it.
+    /// A feedback survey is drawn over it (still dismissing or refusing to go):
+    /// what is read may be covered by it. Preserved on cached reads too.
     pub survey: bool,
+    /// True while another reader owns an active survey dismissal (`Claimed` or
+    /// `Submitted`) so input-producing callers (`send`) wait or refuse cleanly.
+    pub survey_pending: bool,
     /// The approval box this reading shows, as the service knows it:
-    /// its key (`bN-hhhhhhhh`) and whether its answer has been written.
-    /// None where it shows no box, or one the service doesn't hold as
-    /// standing (a reading that came back out of its order).
-    pub boxed: Option<(String, bool)>,
+    /// its key (`b{n}-g{gen}-{inc:08x}-{hash:08x}`), number, hash, and whether
+    /// its answer has been written. None where it shows no box or one not held
+    /// as standing.
+    pub boxed: Option<LookedBox>,
     /// What the child had been given and not yet been seen at when the
-    /// reading began. A turn seen on in this reading takes up that and
-    /// nothing given since: a reading begun while turn A was on, with a
-    /// message B sent and noted as it ended, took B for begun, and A's
-    /// rest and last words were then B's answer (a code review,
-    /// 2026-11-27; the taking-up in `look` came with the status that
-    /// reads a screen first, d796809c2).
+    /// reading began.
     pub expected: Option<u64>,
     /// Whether its program says what it is doing itself (an OSC 7501
-    /// record of its own). Where a Codex does, that is its turn's word
-    /// and its conversation's file is not asked (`state::turn_on`).
+    /// record of its own).
     pub reports: bool,
     /// What it has been given and not yet been seen at, as that stands
     /// now (`state::of_the_turn_given`).
     pub expects: Option<state::Expected>,
-    /// The screen was read for this (not answered from the last
-    /// reading because the server couldn't say): what is typed into a
-    /// child is typed by a screen read now, or not at all.
+    /// True ONLY when a fresh Rex screen RPC succeeded during this `look()` call.
     pub live: bool,
+    /// True ONLY when `live == true` AND this reading's RPC sequence was strictly
+    /// newer than `accepted_seq` (not superseded by a newer reading).
+    /// Key-writing paths (`approve`, `trust`, `send`, `--reason`) require `live && ordered`.
+    pub ordered: bool,
+    /// True when a fresh screen RPC failed transiently (never mistaken for a cache hit
+    /// or a genuine `Working("starting")` transition).
+    pub rpc_failed: bool,
+    /// Monotonic sequence number of the reading (RPC seq on live reads, cached
+    /// `Reading::seq` on cache hits, 0 on exited or uncached RPC failures).
+    pub seq: u64,
+    /// Child `out_seq` sampled immediately BEFORE the screen RPC began (so
+    /// input dispatchers can detect output arriving mid-RPC — Astra #10).
+    pub pre_read_out_seq: u64,
+}
+
+impl Looked {
+    pub fn is_fresh_ordered(&self) -> bool {
+        self.live && self.ordered
+    }
 }
 
 pub struct Service {
@@ -624,6 +878,11 @@ pub struct Service {
     idle: Notify,
     /// Set to end the service once what it has is written.
     retire: Notify,
+    /// Level-triggered shutdown watch channel set to `true` when retirement
+    /// begins so running `watch`/`wait`/`follow` handlers wake with ZERO lost
+    /// wakeup even if retirement fires before entering `select!`.
+    retiring_tx: tokio::sync::watch::Sender<bool>,
+    retiring_rx: tokio::sync::watch::Receiver<bool>,
     /// The helper whose service takes over when this one retires
     /// (`retire --to`, or the later build that asked): started by this
     /// service as it ends, with this service's lock ([`start_successor`]).
@@ -639,14 +898,36 @@ pub struct Service {
     /// `--rules`, `--with`) so concurrent moves on one worker never
     /// interleave with stale ownership.
     worker_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    /// When this service began (Unix ms): a child whose tab was asked
-    /// for before then is one it took over, and what stood on its screen
-    /// then may have been answered by the service before.
-    pub began_ms: u64,
+    /// Fresh per-process random incarnation token embedded in approval box
+    /// keys so two service processes can never collide even if `service_gen`
+    /// is reset or dropped by an older helper.
+    incarnation: u32,
+    /// Serializes `adopt` migrations through durable commit so concurrent
+    /// desktop migrations never observe unpersisted staged entries.
+    adopt_lock: tokio::sync::Mutex<()>,
+    /// Service-level background timer tasks (empty-minder / `end_minder_in`)
+    /// aborted atomically at the freeze boundary.
+    timers: Mutex<Vec<tokio::task::AbortHandle>>,
+    /// Per-child async locks serializing `spawn_blocking` leave-list file
+    /// publication and revocation so concurrent updates never reorder (Astra #25).
+    leave_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Explicit `retire` callers waiting on the handover outcome (drained +
+    /// saved vs aborted) outside `st.doing` accounting (Neon #1 / Astra #22).
+    retire_waiters: Mutex<Vec<tokio::sync::oneshot::Sender<Result<(), String>>>>,
 }
 
 fn exited(summary: String) -> ScreenClassification {
-    ScreenClassification { state: SubagentLiveState::Exited, summary: Some(summary), approval: None, folder_trust: None, api_error: None, usage: None, recognized_question: false, in_turn: false }
+    ScreenClassification {
+        state: SubagentLiveState::Exited,
+        summary: Some(summary),
+        approval: None,
+        folder_trust: None,
+        api_error: None,
+        usage: None,
+        recognized_question: false,
+        approval_fragment: false,
+        in_turn: false,
+    }
 }
 
 fn starting() -> ScreenClassification {
@@ -658,6 +939,7 @@ fn starting() -> ScreenClassification {
         api_error: None,
         usage: None,
         recognized_question: false,
+        approval_fragment: false,
         in_turn: false,
     }
 }
@@ -725,6 +1007,18 @@ impl Service {
         map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
     }
 
+    fn leave_lock(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut map = self.leave_locks.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(id.to_owned()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
+    }
+
+    fn notify_retire_waiters(&self, outcome: Result<(), String>) {
+        let waiters: Vec<_> = self.retire_waiters.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect();
+        for tx in waiters {
+            let _ = tx.send(outcome.clone());
+        }
+    }
+
     /// The lock one writer of answers into a child holds (`approve`, the
     /// trust answer at its start). The child's own, gone with its record.
     pub fn answer_lock(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
@@ -763,14 +1057,19 @@ impl Service {
     // ---- The server's sessions ----
 
     /// Reads a session's windows and blocks from the server.
+    /// Requires the `windows` array to be present before replacing cached
+    /// inventory so an incomplete/malformed reply never looks like `"gone"` (Astra #5).
     pub async fn refresh(&self, session: &str) -> Result<(), RexErr> {
         let view = self.rex.call("session.view", json!({ "session_id": session })).await?;
+        let Some(windows) = view["windows"].as_array() else {
+            return Err(RexErr::Api { code: "incomplete_reply".into(), message: "session.view reply missing `windows` array".into() });
+        };
         let mut st = self.lock();
         let sess = st.sessions.entry(session.to_owned()).or_default();
         sess.windows.clear();
         sess.blocks.clear();
         sess.active = view["active_window_id"].as_str().map(str::to_owned);
-        for w in view["windows"].as_array().into_iter().flatten() {
+        for w in windows {
             let Some(wid) = w["window_id"].as_str() else { continue };
             sess.windows.insert(wid.to_owned());
             for layer in w["layers"].as_array().into_iter().flatten() {
@@ -794,9 +1093,14 @@ impl Service {
         self.refresh(session).await
     }
 
+    /// Lists live session IDs from Rex; requires the `sessions` array to be
+    /// present so an incomplete reply never looks like zero live sessions (Astra #5).
     pub async fn session_ids(&self) -> Result<Vec<String>, RexErr> {
         let list = self.rex.call("session.list", Value::Null).await?;
-        Ok(list["sessions"].as_array().into_iter().flatten().filter_map(|s| s["session_id"].as_str().map(str::to_owned)).collect())
+        let Some(sessions) = list["sessions"].as_array() else {
+            return Err(RexErr::Api { code: "incomplete_reply".into(), message: "session.list reply missing `sessions` array".into() });
+        };
+        Ok(sessions.iter().filter_map(|s| s["session_id"].as_str().map(str::to_owned)).collect())
     }
 
     /// The session a block is in, looked for in every session.
@@ -828,8 +1132,32 @@ impl Service {
     /// was read before; otherwise the last reading where nothing was
     /// written since.
     pub async fn look(&self, entry: &NativeSubagent, fresh: bool) -> Looked {
-        let (reading, out_seq, activity, status_msg, rows, expected, my_seq, first_of_an_adopted) = {
-            let mut st = self.lock();
+        self.look_until(entry, fresh, None).await
+    }
+
+    /// [`Self::look`] optionally bounded by a monotonic wall-clock deadline
+    /// (used by startup `--trust` so reads never outrun the 15 s budget).
+    /// Fresh live `look_until` that retries briefly (up to 3×) ONLY when a
+    /// concurrent reader superseded our sequence (`!res.rpc_failed && !res.ordered`),
+    /// so a quiescent screen never spuriously fails `is_fresh_ordered()` due to
+    /// a racing background `watch_child` read.
+    pub(super) async fn look_ordered(&self, entry: &NativeSubagent, deadline: Option<tokio::time::Instant>) -> Looked {
+        let mut last = self.look_until(entry, true, deadline).await;
+        for _ in 0..3 {
+            if last.is_fresh_ordered() || last.rpc_failed || last.cls.state == SubagentLiveState::Exited {
+                break;
+            }
+            if deadline.is_some_and(|d| tokio::time::Instant::now() >= d) {
+                break;
+            }
+            last = self.look_until(entry, true, deadline).await;
+        }
+        last
+    }
+
+    pub async fn look_until(&self, entry: &NativeSubagent, fresh: bool, deadline: Option<tokio::time::Instant>) -> Looked {
+        let (reading, out_seq, activity, status_msg, rows, expected) = {
+            let st = self.lock();
             let alive = entry.exited_at.is_none() && st.reg.by_window(HOST, &entry.session_id, &entry.window_id).is_some();
             let Some(live) = st.live.get(&entry.id).filter(|_| alive) else {
                 // (Its program ended and its tab stays, or the tab is gone.)
@@ -846,11 +1174,16 @@ impl Service {
                     last_state_change_at: chg,
                     pid: entry.last_pid,
                     survey: false,
+                    survey_pending: false,
                     boxed: None,
                     expected: None,
                     reports: false,
                     expects: None,
                     live: false,
+                    ordered: false,
+                    rpc_failed: false,
+                    seq: 0,
+                    pre_read_out_seq: 0,
                 };
             };
             if let Some(code) = live.exit_code {
@@ -861,45 +1194,55 @@ impl Service {
                     last_state_change_at: live.last_state_change_at,
                     pid: live.pid.or(entry.last_pid),
                     survey: false,
+                    survey_pending: false,
                     boxed: None,
                     expected: None,
                     reports: false,
                     expects: None,
                     live: false,
+                    ordered: false,
+                    rpc_failed: false,
+                    seq: 0,
+                    pre_read_out_seq: live.out_seq,
                 };
             }
             let (activity, status_msg) = live.activity();
             if !fresh && let Some(read) = live.read.as_ref().filter(|r| r.out_seq == live.out_seq && r.activity == activity) {
+                let survey_pending = match live.survey {
+                    SurveyState::Claimed { .. } => true,
+                    SurveyState::Submitted { since, .. } => since.elapsed() < Self::SURVEY_GOES,
+                    SurveyState::Idle | SurveyState::Stays => false,
+                };
+                let survey = read.survey || live.survey != SurveyState::Idle;
                 return Looked {
                     cls: read.cls.clone(),
                     screen: read.screen.clone(),
                     last_output_at: live.last_output_at,
                     last_state_change_at: live.last_state_change_at,
                     pid: live.pid.or(entry.last_pid),
-                    survey: live.survey_stays,
+                    survey,
+                    survey_pending,
                     boxed: peek_box(live, read.cls.approval.as_ref()),
                     expected: read.expected,
                     reports: live.reported,
                     expects: live.expects,
-                    live: true,
+                    live: false,
+                    ordered: false,
+                    rpc_failed: false,
+                    seq: read.seq,
+                    pre_read_out_seq: read.out_seq,
                 };
             }
-            let got = (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq));
-            // (This reading's place among the child's; and whether it is
-            // the first this service takes of a child it didn't start.)
-            let adopted = (to_unix_ms(entry.started_at).max(0) as u64) < self.began_ms;
-            let (seq, first) = st.live.get_mut(&entry.id).map_or((0, false), |l| {
-                l.read_seq += 1;
-                (l.read_seq, adopted && l.accepted_seq == 0)
-            });
-            (got.0, got.1, got.2, got.3, got.4, got.5, seq, first)
+            (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq))
         };
         let mut survey = false;
-        let mut survey_tried = false;
         let mut live_read = false;
-        let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), first_of_an_adopted, &mut survey, &mut survey_tried).await {
-            Ok(screen) => {
+        let mut rpc_failed = false;
+        let mut my_seq = 0u64;
+        let (cls, screen) = match self.screen_under_survey(entry, usize::from(rows), deadline, &mut survey).await {
+            Ok((screen, seq)) => {
                 live_read = true;
+                my_seq = seq;
                 let mut cls = classify_screen_rich(entry.cli, activity, &screen, true);
                 if cls.summary.is_none() {
                     cls.summary = status_msg;
@@ -909,37 +1252,34 @@ impl Service {
             // (Its tab is gone: the event that says so is on its way.)
             Err(e) if e.gone() => (exited("tab closed".into()), String::new()),
             // (The server didn't say: as it last stood, or starting.)
-            Err(_) => reading.map(|r| (r.cls, r.screen)).unwrap_or_else(|| (starting(), String::new())),
+            Err(_) => {
+                rpc_failed = true;
+                reading.map(|r| (r.cls, r.screen)).unwrap_or_else(|| (starting(), String::new()))
+            }
         };
         let mut st = self.lock();
         let (mut out, mut chg, mut pid, mut reports, mut expects) = (0, 0, entry.last_pid, false, None);
         let mut boxed = None;
+        let mut ordered = false;
+        let mut survey_pending = false;
+        let mut notify_state = None;
+        let service_gen = st.reg.service_gen;
         if let Some(live) = st.live.get_mut(&entry.id) {
-            // (Taken in the order the readings were begun: one begun
-            // before the last taken says nothing of what stands now.)
-            let ordered = live_read && my_seq > live.accepted_seq;
+            // (Taken in the order the screen RPCs were begun: one begun before
+            // the last accepted reading says nothing of what stands now.)
+            ordered = live_read && my_seq > live.accepted_seq;
             if ordered {
                 live.accepted_seq = my_seq;
+                // Recompute the child's current `out_seq` at the time this ordered
+                // reading is stored only if unchanged; keep the pre-RPC `out_seq`
+                // so any output arriving during the RPC invalidates the cache.
+                if cls.state != SubagentLiveState::Exited {
+                    live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone(), expected, survey, seq: my_seq });
+                }
             }
-            // (Kept as a reading only where the screen was read: what the
-            // server couldn't say is answered by the last reading, and
-            // that keeps the count and the giving it was made at. Stored
-            // under this asking's, an old "at work" passed for a reading
-            // of the screen after its turn's end, and nothing was told
-            // of that end. A code review, 2026-11-27.)
-            if ordered && cls.state != SubagentLiveState::Exited {
-                live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone(), expected });
-            }
-            // Any live reading that sees a turn on (`cls.in_turn`) proves the
-            // child took up what it was given, even if its turn finishes before
-            // the watcher's `QUIET` debounce fires `transition()`. Clear the
-            // cached transition dedupe state and invalidate any stale pre-turn
-            // confirmation task so the turn's end is never swallowed against
-            // the pre-turn rest.
-            // Only what it had been given when this reading began: a
-            // message noted since is another turn's, which a later
-            // reading sees begin.
-            if live_read
+            // Only an ordered live reading can take up expected work and advance
+            // `box_now` / `list_skip` / `adopted_pending`.
+            if ordered
                 && state::takes_up(cls.in_turn, expected, live.expects)
                 && let Some(given) = live.expects.take()
             {
@@ -950,143 +1290,450 @@ impl Service {
                 live.last_key = None;
                 live.check_gen = live.check_gen.wrapping_add(1);
             }
-            // (Which box stands is this reading's to say where it is the
-            // latest, `Live::box_after`; an earlier one only reads.)
-            let elsewhere = cls.approval.is_none() && (cls.in_turn || cls.summary.as_deref() == Some(state::AT_PROMPT));
-            boxed = if ordered { live.box_after(cls.approval.as_ref(), first_of_an_adopted, elsewhere) } else { peek_box(live, cls.approval.as_ref()) };
-            live.survey_stays = survey && survey_tried;
+            let elsewhere = is_positively_elsewhere(&cls) && !survey;
+            boxed = if ordered {
+                let (b, retired_answered) = live.box_after(cls.approval.as_ref(), elsewhere, service_gen, self.incarnation);
+                if retired_answered {
+                    notify_state = Some(live.state_notify.clone());
+                }
+                b
+            } else {
+                peek_box(live, cls.approval.as_ref())
+            };
+            survey_pending = match live.survey {
+                SurveyState::Claimed { .. } => true,
+                SurveyState::Submitted { since, .. } => since.elapsed() < Self::SURVEY_GOES,
+                SurveyState::Idle | SurveyState::Stays => false,
+            };
+            if !live_read && live.survey != SurveyState::Idle {
+                survey = true;
+            }
             (out, chg, pid, reports, expects) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported, live.expects);
         }
-        // (And a screen that wasn't read takes up nothing.)
-        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, boxed, expected: expected.filter(|_| live_read), reports, expects, live: live_read }
+        drop(st);
+        if let Some(n) = notify_state {
+            n.notify_waiters();
+            self.changed.notify_waiters();
+        }
+        Looked {
+            cls,
+            screen,
+            last_output_at: out,
+            last_state_change_at: chg,
+            pid,
+            survey,
+            survey_pending,
+            boxed,
+            expected: expected.filter(|_| ordered),
+            reports,
+            expects,
+            live: live_read,
+            ordered,
+            rpc_failed,
+            seq: my_seq,
+            pre_read_out_seq: out_seq,
+        }
     }
 
-    /// A child's screen as the server has it, with a feedback survey
-    /// drawn over it set aside first (its own "0: Dismiss", "[0] Skip":
-    /// never a question for whoever looks after the agent, and a
-    /// permission prompt may lie under it). **Its key is pressed once
-    /// for a showing, by whichever reading takes it** (`Live::
-    /// survey_pressed`, taken under the state's lock, the screen read
-    /// again before the key is written: the reading that found the
-    /// survey may be from before another's press took it away), and the
-    /// survey is then waited for, `SURVEY_GOES` at most; one that stays
-    /// is said (`survey`) and left alone until it has gone. (It was
-    /// pressed again after 300 ms, three times in all: on a busy host an
-    /// agent is slower than that to draw, and the second `0` was typed
-    /// into its field. Found with the questions answered twice,
-    /// 2026-11-27.)
+    /// Allocates the next monotonic reading sequence number for `id` immediately
+    /// before starting a Rex `screen` RPC.
+    fn next_read_seq(&self, id: &str) -> u64 {
+        self.lock().live.get_mut(id).map_or(0, |l| {
+            l.read_seq += 1;
+            l.read_seq
+        })
+    }
+
+    /// Current PTY output sequence number for `id`.
+    pub(super) fn out_seq(&self, id: &str) -> u64 {
+        self.lock().live.get(id).map_or(0, |l| l.out_seq)
+    }
+
+    /// Per-child notification handles `(output_notify, state_notify, survey_notify)`
+    /// for event-driven waits with zero stationary polling.
+    pub(super) fn child_notifies(&self, id: &str) -> Option<(Arc<Notify>, Arc<Notify>, Arc<Notify>)> {
+        self.lock().live.get(id).map(|l| (l.output_notify.clone(), l.state_notify.clone(), l.survey_notify.clone()))
+    }
+
+    /// Wakes per-child state waiters (e.g. `approve` on revocation/list removal).
+    pub(super) fn notify_child_state(&self, id: &str) {
+        if let Some(n) = self.lock().live.get(id).map(|l| l.state_notify.clone()) {
+            n.notify_waiters();
+        }
+    }
+
+    /// How long a survey whose key was pressed is waited for before marking `Stays`.
+    pub(super) const SURVEY_GOES: Duration = Duration::from_millis(900);
+
+    /// True while the child's Rex terminal stream is connected and delivering
+    /// `output_notify` wakeups (when false, wait loops fall back to 250 ms reads).
+    pub(super) fn stream_connected(&self, id: &str) -> bool {
+        self.lock().live.get(id).is_some_and(|l| l.stream_connected)
+    }
+
+    /// Monotonic counter bumped whenever the child's stream connects or
+    /// disconnects so wait loops detect mid-wait disconnects immediately.
+    pub(super) fn stream_gen(&self, id: &str) -> u64 {
+        self.lock().live.get(id).map_or(0, |l| l.stream_gen)
+    }
+
+    /// True if an active survey dismissal (`Claimed` or unexpired `Submitted`)
+    /// is currently running for `id`.
+    pub(super) fn survey_pending(&self, id: &str) -> bool {
+        self.lock().live.get(id).is_some_and(|l| match l.survey {
+            SurveyState::Claimed { .. } => true,
+            SurveyState::Submitted { since, .. } => since.elapsed() < Self::SURVEY_GOES,
+            SurveyState::Idle | SurveyState::Stays => false,
+        })
+    }
+
+    /// True if ANY feedback survey state (`Claimed`, `Submitted`, or `Stays`)
+    /// is currently held for `id`.
+    pub(super) fn survey_active(&self, id: &str) -> bool {
+        self.lock().live.get(id).is_some_and(|l| l.survey != SurveyState::Idle)
+    }
+
+    /// Level-triggered retirement wait backed by `tokio::sync::watch` so
+    /// `watch`/`wait`/`follow` never lose a retirement wakeup even if
+    /// retirement fires before entering `select!`.
+    async fn wait_retiring(&self) {
+        let mut rx = self.retiring_rx.clone();
+        if *rx.borrow_and_update() {
+            return;
+        }
+        let _ = rx.changed().await;
+    }
+
+    async fn read_screen_once(&self, entry: &NativeSubagent, rows: usize, deadline: Option<tokio::time::Instant>) -> Result<(String, u64), RexErr> {
+        let seq = self.next_read_seq(&entry.id);
+        let screen = match deadline {
+            Some(by) => {
+                let rem = by.saturating_duration_since(tokio::time::Instant::now());
+                if rem.is_zero() {
+                    return Err(RexErr::Timeout);
+                }
+                self.rex.screen_within(&entry.session_id, &entry.block_id, rows, rem).await?
+            }
+            None => self.rex.screen(&entry.session_id, &entry.block_id, rows).await?,
+        };
+        Ok((screen, seq))
+    }
+
+    /// A child's screen as the server has it, with a feedback survey drawn over
+    /// it set aside at most once per showing via [`SurveyState`].
     ///
-    /// `tried`: its dismissal was pressed (now, or before: it is known
-    /// to stay). One only kept back, behind a drafted feedback report,
-    /// is not one that stays: marked so, it was never dismissed after
-    /// the draft had gone, and the next digit meant for the agent rated
-    /// it (the confirming review).
-    ///
-    /// `first_of_an_adopted`: the first reading this service takes of a
-    /// child it took over from the service before. A survey standing
-    /// then may have had its key pressed by that one: it is left, and
-    /// said, as one that stays.
-    async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, first_of_an_adopted: bool, survey: &mut bool, tried: &mut bool) -> Result<String, RexErr> {
-        /// How long a survey whose key was pressed is waited for.
-        const SURVEY_GOES: Duration = Duration::from_millis(900);
-        /// A showing's dismissal taken by one reading: let go again if
-        /// that reading is dropped before it has written the key (its
-        /// asker gone: left taken, the survey was never set aside).
-        struct Claim<'a> {
+    /// - Only the matching pre-submission owner token releases a `Claimed` slot
+    ///   on Drop (waking the child watcher and waiting `send` callers).
+    /// - Transitions to `Submitted` BEFORE `rex.write().await` so timeout or
+    ///   cancellation treats delivery as uncertain and never presses `0` twice.
+    /// - Partial survey frames (question without choices, or choices without
+    ///   question: `has_survey_fragment`) NEVER clear an active state; only an
+    ///   ordered, post-submission, non-blank non-fragment screen retires it.
+    /// - Dismissal wait uses the child's `output_notify` + a single expiry timer
+    ///   (zero stationary polling) and runs independently of `watch_child`'s
+    ///   stream consumer.
+    async fn screen_under_survey(&self, entry: &NativeSubagent, rows: usize, deadline: Option<tokio::time::Instant>, survey: &mut bool) -> Result<(String, u64), RexErr> {
+        /// Releases ONLY the matching pre-submission `Claimed { token }` on Drop.
+        struct SurveyClaim<'a> {
             service: &'a Service,
             id: &'a str,
-            written: bool,
+            token: u64,
+            submitted: bool,
         }
-        impl Drop for Claim<'_> {
+        impl Drop for SurveyClaim<'_> {
             fn drop(&mut self) {
-                if !self.written
-                    && let Some(live) = self.service.lock().live.get_mut(self.id)
-                {
-                    live.survey_pressed = None;
+                if self.submitted {
+                    return;
+                }
+                let wake = {
+                    let mut st = self.service.lock();
+                    if let Some(live) = st.live.get_mut(self.id)
+                        && live.survey == (SurveyState::Claimed { token: self.token })
+                    {
+                        live.survey = SurveyState::Idle;
+                        live.pending_handoff = true;
+                        live.handoff_failures = 0;
+                        Some(live.survey_notify.clone())
+                    } else {
+                        None
+                    }
+                };
+                if let Some(n) = wake {
+                    n.notify_waiters();
+                    self.service.poke(self.id);
                 }
             }
         }
-        let mut read_at = Instant::now();
-        let mut screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
-        let Some(agent) = entry.cli.screen_agent() else { return Ok(screen) };
-        let begun = Instant::now();
+
+        let (mut screen, mut rpc_seq) = self.read_screen_once(entry, rows, deadline).await?;
+        let Some(agent) = entry.cli.screen_agent() else { return Ok((screen, rpc_seq)) };
         loop {
             if olo_agent_screen::parse_survey(agent, &screen).is_none() {
-                *survey = false;
-                // (Gone, by a reading taken after the key: one begun
-                // before it says nothing of what the key did, and let
-                // go by such a one the showing was pressed for again.
-                // And by a reading with something on it: an empty one
-                // is a repaint caught half-way as often, the same
-                // survey drawn again after it, and its key a second
-                // time was the agent's field's where the first had
-                // been taken. As a box that went with only an empty
-                // screen to show for it, `BoxEnd::Blank`.)
-                if !screen.trim().is_empty()
-                    && let Some(live) = self.lock().live.get_mut(&entry.id)
-                    && live.survey_pressed.is_some_and(|at| at <= read_at)
-                {
-                    live.survey_pressed = None;
+                let weak_fragment = olo_agent_screen::has_survey_fragment(agent, &screen);
+                let strong_fragment = olo_agent_screen::has_strong_survey_fragment(agent, &screen);
+                let activity = self.lock().live.get(&entry.id).map_or(Activity::Idle, |l| l.activity().0);
+                let cls_now = classify_screen_rich(entry.cli, activity, &screen, true);
+                // Retire `Submitted`/`Stays` ONLY on positive evidence of a different
+                // foreground state (running turn, prompt, approval, folder trust,
+                // recognized question, or API error) — never on even a short partial
+                // survey row (`1:`, `[0]`, `[1]`) or ambiguous non-empty fragment!
+                let positive_other = !weak_fragment
+                    && !cls_now.approval_fragment
+                    && (is_positively_elsewhere(&cls_now) || cls_now.approval.is_some() || cls_now.folder_trust.is_some() || cls_now.recognized_question || cls_now.api_error.is_some());
+                let wake = {
+                    let mut st = self.lock();
+                    if let Some(live) = st.live.get_mut(&entry.id) {
+                        // Only retire `Submitted` or `Stays` on an ORDERED, positively
+                        // different foreground reading begun strictly after submission.
+                        // Never retire an active `Claimed` reservation from another reader!
+                        let can_retire = rpc_seq > live.accepted_seq && positive_other;
+                        match live.survey {
+                            SurveyState::Submitted { submitted_at_seq, .. } if can_retire && rpc_seq > submitted_at_seq => {
+                                live.survey = SurveyState::Idle;
+                                Some(live.survey_notify.clone())
+                            }
+                            SurveyState::Stays if can_retire => {
+                                live.survey = SurveyState::Idle;
+                                Some(live.survey_notify.clone())
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                };
+                if let Some(n) = wake {
+                    n.notify_waiters();
                 }
-                return Ok(screen);
+                // Astra #20: When already dismissing/staying (`survey != Idle`),
+                // preserve `survey = true`; when `Idle`, require independent
+                // `strong_fragment` evidence so an isolated `[1]` in ordinary
+                // output never blocks normal `send`!
+                let active_state = self.lock().live.get(&entry.id).is_some_and(|l| l.survey != SurveyState::Idle);
+                *survey = strong_fragment || active_state;
+                return Ok((screen, rpc_seq));
             }
             *survey = true;
-            let (stays, pressed) = self.lock().live.get(&entry.id).map_or((false, None), |l| (l.survey_stays, l.survey_pressed));
-            if stays || first_of_an_adopted {
-                *tried = true;
-                break;
-            }
-            // (Never while a drafted feedback report is offered: the
-            // survey's key is that box's key too, and nothing answers
-            // that box by itself. A survey's two lines still on the
-            // screen above it, and a `status` set the draft aside. A
-            // code review, 2026-11-27.)
+            // (Never while a drafted feedback report is offered: the survey's
+            // key is that box's key too, and nothing answers that box by itself.
+            // Kept back, NOT marked Stays so it is still dismissed once the draft goes.)
             if olo_agent_screen::feedback_draft(agent, &screen).is_some() {
                 break;
             }
-            let Some(at) = pressed else {
-                // (Taken, or another reading's: one of them presses.)
-                let mine = match self.lock().live.get_mut(&entry.id) {
-                    Some(live) if live.survey_pressed.is_none() => {
-                        live.survey_pressed = Some(Instant::now());
-                        true
-                    }
-                    _ => false,
-                };
-                if !mine {
-                    // (Another's, a moment ago: its to wait for.)
+            // Attempt to claim under the state lock.
+            enum Decision {
+                Claimed(u64),
+                Done(Option<Arc<Notify>>),
+            }
+            let decision = {
+                let mut st = self.lock();
+                if st.frozen {
                     break;
                 }
-                let mut claim = Claim { service: self, id: &entry.id, written: false };
-                // (As it stands now, before the key.)
-                read_at = Instant::now();
-                let now = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
-                let found = olo_agent_screen::parse_survey(agent, &now).filter(|_| olo_agent_screen::feedback_draft(agent, &now).is_none());
-                screen = now;
-                let Some(found) = found else {
-                    drop(claim);
-                    continue;
+                let Some(live) = st.live.get_mut(&entry.id) else {
+                    break;
                 };
-                self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await?;
-                claim.written = true;
-                // (Its own to wait for: once, till it goes or its time is up.)
-                *tried = true;
-                while begun.elapsed() < SURVEY_GOES {
-                    tokio::time::sleep(Duration::from_millis(150)).await;
-                    read_at = Instant::now();
-                    screen = self.rex.screen(&entry.session_id, &entry.block_id, rows).await?;
-                    if olo_agent_screen::parse_survey(agent, &screen).is_none() {
-                        break;
+                // An adopted child's standing survey may already have had `0` pressed
+                // by the predecessor service: mark `Stays` immediately, never press `0`.
+                if live.adopted_pending {
+                    live.survey = SurveyState::Stays;
+                    Decision::Done(Some(live.survey_notify.clone()))
+                } else {
+                    match live.survey {
+                        SurveyState::Stays => Decision::Done(None),
+                        SurveyState::Claimed { .. } => Decision::Done(None),
+                        SurveyState::Submitted { since, .. } => {
+                            if since.elapsed() >= Self::SURVEY_GOES {
+                                live.survey = SurveyState::Stays;
+                                Decision::Done(Some(live.survey_notify.clone()))
+                            } else {
+                                Decision::Done(None)
+                            }
+                        }
+                        SurveyState::Idle => {
+                            live.survey_seq = live.survey_seq.wrapping_add(1);
+                            let token = live.survey_seq;
+                            live.survey = SurveyState::Claimed { token };
+                            Decision::Claimed(token)
+                        }
                     }
                 }
+            };
+            let token = match decision {
+                Decision::Claimed(token) => token,
+                Decision::Done(wake) => {
+                    if let Some(n) = wake {
+                        n.notify_waiters();
+                    }
+                    break;
+                }
+            };
+            let mut claim = SurveyClaim { service: self, id: &entry.id, token, submitted: false };
+            // Verify fresh screen immediately before dispatching `0`.
+            let (now_screen, verify_seq) = self.read_screen_once(entry, rows, deadline).await?;
+            let found = olo_agent_screen::parse_survey(agent, &now_screen).filter(|_| olo_agent_screen::feedback_draft(agent, &now_screen).is_none());
+            screen = now_screen;
+            rpc_seq = verify_seq;
+            let Some(found) = found else {
+                drop(claim);
                 continue;
             };
-            // (Pressed by another reading: not waited for here, and known
-            // to stay once its time has passed.)
-            *tried = at.elapsed() >= SURVEY_GOES;
-            break;
+            // Transition to `Submitted` BEFORE `rex.write().await` so timeout or
+            // cancellation never resets the slot and never presses `0` twice.
+            // Also refuse to authorize input if this verify read was superseded or
+            // if ownership no longer holds.
+            let seq_before_write = self.out_seq(&entry.id);
+            let committed = {
+                let mut st = self.lock();
+                if !st.frozen
+                    && let Some(live) = st.live.get_mut(&entry.id)
+                    && live.survey == (SurveyState::Claimed { token })
+                    && !live.adopted_pending
+                    && verify_seq > live.accepted_seq
+                {
+                    live.accepted_seq = verify_seq;
+                    live.read_seq += 1;
+                    let submitted_at_seq = live.read_seq;
+                    live.survey = SurveyState::Submitted { token, since: Instant::now(), submitted_at_seq };
+                    true
+                } else {
+                    false
+                }
+            };
+            if !committed {
+                drop(claim);
+                break;
+            }
+            claim.submitted = true;
+            let write_res = match deadline {
+                Some(by) => {
+                    let rem = by.saturating_duration_since(tokio::time::Instant::now());
+                    if rem.is_zero() { Err(RexErr::Timeout) } else { self.rex.write_within(&entry.session_id, &entry.block_id, found.dismiss, rem).await }
+                }
+                None => self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await,
+            };
+            if let Err(e) = write_res {
+                // Delivery is uncertain once dispatched: keep `Submitted` so no
+                // second `0` is sent, and notify waiters so `send` doesn't hang.
+                if let Some((_, _, sn)) = self.child_notifies(&entry.id) {
+                    sn.notify_waiters();
+                }
+                return Err(e);
+            }
+            // Wait for dismissal via per-child `output_notify` + ONE expiry timer
+            // (zero stationary polling when `stream_connected`; 250 ms fallback
+            // only while disconnected). Track `survey_deadline` (900 ms) separately
+            // from the caller's shorter `deadline` so a short caller deadline NEVER
+            // prematurely marks a live survey `Stays`!
+            let survey_deadline = tokio::time::Instant::now() + Self::SURVEY_GOES;
+            let wait_until = deadline.map_or(survey_deadline, |by| survey_deadline.min(by));
+            let notifies = self.child_notifies(&entry.id);
+            let mut last_read_out = seq_before_write;
+            let mut last_read_sgen = self.stream_gen(&entry.id);
+            let mut final_checked = false;
+            let mut fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+            loop {
+                let cur_out = self.out_seq(&entry.id);
+                let cur_sgen = self.stream_gen(&entry.id);
+                let now_inst = tokio::time::Instant::now();
+                let survey_expired = now_inst >= survey_deadline;
+                let caller_expired = deadline.is_some_and(|by| now_inst >= by);
+                if caller_expired && !survey_expired {
+                    // Caller's short deadline elapsed before SURVEY_GOES: keep
+                    // `Submitted` (do NOT prematurely mark `Stays`), wake waiters,
+                    // and report Timeout.
+                    if let Some((_, _, sn)) = notifies.as_ref() {
+                        sn.notify_waiters();
+                    }
+                    return Err(RexErr::Timeout);
+                }
+                let fallback_ready = fallback_due.is_some_and(|d| now_inst >= d);
+                // Always perform one final screen read at `survey_deadline` if the
+                // last read still showed the survey (even if an early unrelated byte
+                // triggered a read at 50 ms).
+                if cur_out != last_read_out || cur_sgen != last_read_sgen || fallback_ready || (survey_expired && !final_checked) {
+                    last_read_out = cur_out;
+                    last_read_sgen = cur_sgen;
+                    if survey_expired {
+                        final_checked = true;
+                    }
+                    fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+                    match self.read_screen_once(entry, rows, deadline).await {
+                        Ok((s, sq)) => {
+                            screen = s;
+                            rpc_seq = sq;
+                            if olo_agent_screen::parse_survey(agent, &screen).is_none() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            if let Some((_, _, sn)) = notifies.as_ref() {
+                                sn.notify_waiters();
+                            }
+                            return Err(e);
+                        }
+                    }
+                }
+                if survey_expired {
+                    // Survey did not clear within `SURVEY_GOES`: mark `Stays`
+                    // (only if still our `Submitted { token }`!) and wake waiters.
+                    let wake = {
+                        let mut st = self.lock();
+                        if let Some(live) = st.live.get_mut(&entry.id)
+                            && matches!(live.survey, SurveyState::Submitted { token: t, .. } if t == token)
+                        {
+                            live.survey = SurveyState::Stays;
+                            Some(live.survey_notify.clone())
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(n) = wake {
+                        n.notify_waiters();
+                    }
+                    break;
+                }
+                let sleep_to = fallback_due.map_or(wait_until, |f| f.min(wait_until));
+                if let Some((ref out_n, ref st_n, _)) = notifies {
+                    let out_wait = out_n.notified();
+                    tokio::pin!(out_wait);
+                    out_wait.as_mut().enable();
+                    let st_wait = st_n.notified();
+                    tokio::pin!(st_wait);
+                    st_wait.as_mut().enable();
+                    if self.out_seq(&entry.id) != last_read_out || self.stream_gen(&entry.id) != last_read_sgen {
+                        if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                            fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                        continue;
+                    }
+                    if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                        fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        continue;
+                    }
+                    tokio::select! {
+                        _ = out_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = st_wait => {
+                            if self.lock().live.get(&entry.id).is_none_or(|l| l.exit_code.is_some()) {
+                                break;
+                            }
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = tokio::time::sleep_until(sleep_to) => {}
+                    }
+                } else {
+                    tokio::time::sleep_until(sleep_to).await;
+                }
+            }
+            continue;
         }
-        Ok(screen)
+        Ok((screen, rpc_seq))
     }
 
     /// Where a child's list is kept: in its folder of the service's
@@ -1142,23 +1789,125 @@ impl Service {
         Some(kept["args"].as_array()?.iter().filter_map(|a| a.as_str().map(str::to_owned)).collect())
     }
 
+    /// Atomically publishes a child's approval list via a private `0o600`
+    /// sibling temp file + `sync_all()` + `fs::rename` on a blocking worker
+    /// thread so a slow filesystem write never stalls the single-thread Tokio
+    /// runtime, serialized per child via `leave_locks` (Astra #25).
+    async fn write_leave_file_atomic(&self, id: &str, text: &str) -> std::io::Result<()> {
+        let file = self.leave_file(id);
+        let fallback_parent = self.paths.dir.clone();
+        let text = text.to_owned();
+        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+            use std::io::Write as _;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static LEAVE_TMP_SEQ: AtomicU64 = AtomicU64::new(1);
+
+            let parent = file.parent().unwrap_or(&fallback_parent);
+            std::fs::create_dir_all(parent)?;
+
+            struct TempGuard {
+                path: PathBuf,
+                armed: bool,
+            }
+            impl Drop for TempGuard {
+                fn drop(&mut self) {
+                    if self.armed {
+                        let _ = std::fs::remove_file(&self.path);
+                    }
+                }
+            }
+
+            let mut created = None;
+            for _ in 0..64 {
+                let n = LEAVE_TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+                let tmp = parent.join(format!(".approve-all-but.tmp.{}.{n}", std::process::id()));
+                match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp) {
+                    Ok(f) => {
+                        created = Some((tmp, f));
+                        break;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(e) => return Err(e),
+                }
+            }
+            let Some((tmp, mut f)) = created else {
+                return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "couldn't allocate unique leave temp file"));
+            };
+            let mut guard = TempGuard { path: tmp.clone(), armed: true };
+            f.write_all(text.as_bytes())?;
+            f.sync_all()?;
+            drop(f);
+            std::fs::rename(&tmp, &file)?;
+            guard.armed = false;
+            Ok(())
+        })
+        .await
+        .map_err(|e| std::io::Error::other(format!("leave writer task failed: {e}")))?
+    }
+
+    /// Removes any on-disk approval list for `id` on a blocking worker.
+    /// Returns `Ok(true)` if removed, `Ok(false)` if already absent, or `Err`
+    /// if an existing file could NOT be removed (Astra #14: never report
+    /// revocation success while an old active file remains on disk!).
+    async fn remove_leave_file_blocking(&self, id: &str) -> std::io::Result<bool> {
+        let file = self.leave_file(id);
+        tokio::task::spawn_blocking(move || match std::fs::remove_file(&file) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        })
+        .await
+        .map_err(|e| std::io::Error::other(format!("leave remove task failed: {e}")))?
+    }
+
     /// Gives the child `id` a list (`text`: a pattern a line) from now,
     /// in another's place if it had one: how many patterns. A line that
     /// is no pattern is refused, and nothing changes.
-    pub fn set_leave(&self, id: &str, text: &str) -> Result<usize, String> {
+    pub async fn set_leave(&self, id: &str, text: &str) -> Result<usize, String> {
         let list = super::leave::LeaveList::parse(text)?;
         let file = self.leave_file(id);
-        std::fs::create_dir_all(file.parent().unwrap_or(&self.paths.dir)).and_then(|()| std::fs::write(&file, text)).map_err(|e| format!("{}: {e}", file.display()))?;
+        let lock = self.leave_lock(id);
+        let _guard = lock.lock().await;
+        self.write_leave_file_atomic(id, text).await.map_err(|e| format!("{}: {e}", file.display()))?;
         let n = list.patterns().len();
-        self.lock().leave.insert(id.to_owned(), Some(Arc::new(list)));
+        {
+            let mut st = self.lock();
+            st.leave.insert(id.to_owned(), Some(Arc::new(list)));
+            if let Some(live) = st.live.get_mut(id) {
+                // Invalidate any prior transition dedupe so a standing unanswered
+                // approval box is immediately re-evaluated against the new list.
+                live.last_state = None;
+                live.last_key = None;
+                live.read = None;
+                live.pending_handoff = true;
+                live.handoff_failures = 0;
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
+                live.check_gen = live.check_gen.wrapping_add(1);
+            }
+            st.log.reset_child_dedupe(id);
+        }
+        self.notify_child_state(id);
+        self.changed.notify_waiters();
+        self.poke(id);
         Ok(n)
     }
 
-    /// Takes the child's list away: everything it asks leave for is
-    /// asked again. Whether it had one.
-    pub fn clear_leave(&self, id: &str) -> bool {
-        let had = std::fs::remove_file(self.leave_file(id)).is_ok();
-        self.lock().leave.insert(id.to_owned(), None).flatten().is_some() || had
+    /// Takes the child's list away durably: everything it asks leave for is
+    /// asked again. Returns `Err` if an existing active file on disk cannot
+    /// be neutralized (Astra #14 / #25).
+    pub async fn clear_leave(&self, id: &str) -> Result<bool, String> {
+        let file = self.leave_file(id);
+        let lock = self.leave_lock(id);
+        let _guard = lock.lock().await;
+        let had = self.remove_leave_file_blocking(id).await.map_err(|e| format!("couldn't remove {}: {e}", file.display()))?;
+        let was = self.lock().leave.insert(id.to_owned(), None).flatten().is_some() || had;
+        if was {
+            self.notify_child_state(id);
+            self.changed.notify_waiters();
+        }
+        Ok(was)
     }
 
     /// The child's list, if it has one.
@@ -1193,46 +1942,50 @@ impl Service {
         }
     }
 
-    /// The key of the approval box that stands on a child's screen
-    /// (`approval.box`, and what `approve --box KEY` answers; the
-    /// ShiftUp lead's item 40, 2026-11-27: "`approve` answers whatever
-    /// stands when it arrives, so a yes judged for one box can land on
-    /// the next"): its number among the child's boxes and what it is
-    /// (`state::box_hash`), "b7-1f3a9c02". The same box read again has
-    /// the same key; another, the next number, and so has the very
-    /// same command asked again after it was answered (the box is put
-    /// away when it is answered here, `box_gone`, and when the screen
-    /// is read with none on it). Numbers begin again with the service:
-    /// a key from before then answers nothing, which is the safe way to
-    /// be wrong.
-    ///
-    /// **Which box stands is said by the readings of the screen, in
-    /// their order, and by nothing else** (`look`): this only reads. A
-    /// reading that shows another box than the one held (it was begun
-    /// before the last one taken, or the box was finished since) has no
-    /// key: whoever has it reads again.
-    pub fn box_key(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<String> {
-        self.lock().live.get(id).and_then(|l| peek_box(l, ap)).map(|(k, _)| k)
-    }
-
     /// Atomically marks the standing approval box `standing` as answered
-    /// under an already-held state lock, returning its sequence number.
+    /// under an already-held state lock, advancing both `check_gen` and
+    /// `event_gen` and returning `(box_number, answer_event_gen)`.
     /// Fails if the box was already marked answered or was replaced.
-    pub(super) fn box_mark_answered_locked(st: &mut State, id: &str, standing: &str) -> Result<u64, ()> {
+    pub(super) fn box_mark_answered_locked(st: &mut State, id: &str, standing: &str) -> Result<(u64, u64), ()> {
         let live = st.live.get_mut(id).ok_or(())?;
         let cur = live.box_now.as_mut().ok_or(())?;
         if cur.key() != standing || cur.answered {
             return Err(());
         }
         cur.answered = true;
-        Ok(cur.number)
+        live.check_gen = live.check_gen.wrapping_add(1);
+        live.event_gen = live.event_gen.wrapping_add(1);
+        Ok((cur.number, live.event_gen))
     }
 
-    /// The box `key` is the one held as standing and its answer has
-    /// been written: still on the screen, perhaps, and nobody's to be
-    /// told of or to judge.
-    pub(super) fn box_answer_on_its_way(st: &State, id: &str, key: &str) -> bool {
-        st.live.get(id).and_then(|l| l.box_now).is_some_and(|b| b.answered && b.key() == key)
+    /// True when box `number` was already retired by an ordered, positively
+    /// `elsewhere` reading (`Live::last_elsewhere_box >= number`).
+    pub(super) fn box_was_retired_elsewhere(&self, id: &str, number: u64) -> bool {
+        self.lock().live.get(id).is_some_and(|l| l.last_elsewhere_box >= number)
+    }
+
+    /// True if a reading showing an approval or folder-trust question must
+    /// NOT be published or granted right now:
+    /// - For an approval: either its box is already answered, or it is no
+    ///   longer the exact unanswered `box_now` held for this child.
+    /// - For a folder-trust prompt: startup `--trust` still owns it (or is
+    ///   actively answering it, or waiting for its path within the deadline).
+    pub(super) fn question_suppressed_locked(st: &State, id: &str, cls: &ScreenClassification, boxed: Option<&LookedBox>) -> bool {
+        if cls.approval.is_some() {
+            let live_ok = boxed.filter(|b| !b.answered).is_some_and(|b| st.live.get(id).and_then(|l| l.box_now).is_some_and(|cur| !cur.answered && cur.number == b.number && cur.hash == b.hash));
+            if !live_ok {
+                return true;
+            }
+        }
+        if let Some(asked) = cls.folder_trust.as_ref()
+            && st.live.get(id).and_then(|l| l.trust.as_ref()).is_some_and(|trust| trust.on_its_way(asked))
+        {
+            return true;
+        }
+        // Suppress partial approval fragments while an approval or startup
+        // trust prompt is actively dismissing so a brief redraw never emits a
+        // spurious `waiting_question` ("dialog redrawing").
+        cls.approval_fragment && st.live.get(id).is_some_and(|l| l.box_now.is_some_and(|b| b.answered) || l.trust.as_ref().is_some_and(|t| t.answering))
     }
 
     /// True iff `box_now` is still the exact instance `box_key` and has not
@@ -1249,21 +2002,51 @@ impl Service {
         }
     }
 
-    /// The keys of a folder's trust are on their way: that question is
-    /// answered from here on, whatever becomes of them ([`TrustAtStart`]).
-    pub(super) fn trust_taken(&self, id: &str, which: Option<String>) {
-        if let Some(trust) = self.lock().live.get_mut(id).and_then(|l| l.trust.as_mut()) {
-            trust.answered.insert(which);
-            trust.answering = true;
+    /// The keys of a folder's trust are on their way (`mark_answered` marks
+    /// that folder's single attempt as spent). Records a dedupe boundary so
+    /// any underlying chooser question confirms and publishes cleanly once
+    /// trust finishes.
+    pub(super) fn trust_taken(&self, id: &str, which: Option<String>, mark_answered: bool) {
+        let mut st = self.lock();
+        if st.frozen {
+            return;
+        }
+        if let Some(live) = st.live.get_mut(id) {
+            if let Some(trust) = live.trust.as_mut() {
+                if mark_answered {
+                    trust.answered.insert(which);
+                }
+                trust.answering = true;
+            }
+            live.read = None;
+            live.last_state = None;
+            live.last_key = None;
+            live.check_gen = live.check_gen.wrapping_add(1);
         }
     }
 
     /// Its keys are no longer on their way: what still stands is read
     /// again, and told as any other question.
     pub(super) fn trust_keys_done(&self, id: &str) {
-        if let Some(trust) = self.lock().live.get_mut(id).and_then(|l| l.trust.as_mut()) {
-            trust.answering = false;
+        {
+            let mut st = self.lock();
+            if st.frozen {
+                return;
+            }
+            if let Some(live) = st.live.get_mut(id) {
+                if let Some(trust) = live.trust.as_mut() {
+                    trust.answering = false;
+                }
+                live.read = None;
+                live.last_state = None;
+                live.last_key = None;
+                live.pending_handoff = true;
+                live.handoff_failures = 0;
+            }
+            st.log.reset_child_dedupe(id);
         }
+        self.notify_child_state(id);
+        self.changed.notify_waiters();
         self.poke(id);
     }
 
@@ -1271,9 +2054,23 @@ impl Service {
     /// its time up, a question that isn't its own): what stands is read
     /// again and told.
     pub(super) fn trust_over(&self, id: &str) {
-        if let Some(live) = self.lock().live.get_mut(id) {
-            live.trust = None;
+        {
+            let mut st = self.lock();
+            if st.frozen {
+                return;
+            }
+            if let Some(live) = st.live.get_mut(id) {
+                live.trust = None;
+                live.read = None;
+                live.last_state = None;
+                live.last_key = None;
+                live.pending_handoff = true;
+                live.handoff_failures = 0;
+            }
+            st.log.reset_child_dedupe(id);
         }
+        self.notify_child_state(id);
+        self.changed.notify_waiters();
         self.poke(id);
     }
 
@@ -1281,38 +2078,58 @@ impl Service {
     /// the box is put away if it is still that one (`number`: never a
     /// newer one that took its place), and what was read of the screen
     /// with it, so that what stands next is read afresh and is another
-    /// box. One that didn't go (its Return may or may not have been
-    /// taken), or went with nothing to say where its agent is
-    /// ([`BoxEnd`]), is not the list's to answer again
-    /// (`Live::list_skip`): seen again, it is told to a person.
-    pub fn box_finish(&self, id: &str, number: u64, end: BoxEnd) {
-        if let Some(live) = self.lock().live.get_mut(id)
-            && let Some(cur) = live.box_now
-            && cur.number == number
+    /// box. One that didn't go (`Stays`), or went with nothing to say
+    /// where its agent is (`Blank`), is kept out of the list for the
+    /// entire showing (`ListSkip`, no wall-clock expiry) unless a positive
+    /// ordered `elsewhere` reading already retired this box (`last_elsewhere_box`).
+    /// Also resets dedupe ONLY if no post-answer event (`latest_event_gen >= answer_event_gen`)
+    /// has already been recorded — independent of the 2,000-event ring!
+    pub fn box_finish(&self, id: &str, number: u64, end: BoxEnd, answer_event_gen: Option<u64>) {
         {
-            if end != BoxEnd::Gone {
-                live.list_skip = Some((cur.hash, Instant::now() + LIST_SKIPS));
+            let mut st = self.lock();
+            let mut should_reset = false;
+            if let Some(live) = st.live.get_mut(id) {
+                if let Some(cur) = live.box_now
+                    && cur.number == number
+                {
+                    if end != BoxEnd::Gone && live.last_elsewhere_box < number {
+                        live.list_skip = Some(ListSkip::from_box(cur));
+                    }
+                    live.box_now = None;
+                }
+                live.read = None;
+                live.pending_handoff = true;
+                live.handoff_failures = 0;
+                if answer_event_gen.is_none_or(|g| live.latest_event_gen < g) {
+                    live.last_state = None;
+                    live.last_key = None;
+                    live.check_gen = live.check_gen.wrapping_add(1);
+                    should_reset = true;
+                }
             }
+            if should_reset {
+                st.log.reset_child_dedupe(id);
+            }
+        }
+        self.notify_child_state(id);
+        self.changed.notify_waiters();
+        self.poke(id);
+    }
+
+    /// Conditionally clears `box_now` ONLY if it is still `expected_number`
+    /// so a stale miss during navigation can never wipe a successor box.
+    pub fn box_gone(&self, id: &str, expected_number: u64) {
+        if let Some(live) = self.lock().live.get_mut(id)
+            && live.box_now.is_some_and(|cur| cur.number == expected_number)
+        {
             live.box_now = None;
             live.read = None;
         }
     }
 
-    /// The box that stood is gone: whatever stands next is another.
-    pub fn box_gone(&self, id: &str) {
-        if let Some(live) = self.lock().live.get_mut(id) {
-            live.box_now = None;
-            live.read = None;
-        }
-    }
-
-    /// What a child asks, as its list is asked it, where the list allows
-    /// it: the whole of the request (one cut short on the screen, or
-    /// folded, is nobody's to allow unread), with one answer that is a
-    /// yes for this once. Asked when the list judges a box, and again as
-    /// the answer is about to be written: a list taken away meanwhile
-    /// (`mind NAME --approve-none`) allows nothing.
-    pub(super) fn list_allows(&self, id: &str, ap: &olo_agent_screen::ApprovalPrompt) -> Option<String> {
+    /// Checks `list_allows` under an already-held state lock (assuming
+    /// `self.leave_of(id)` has loaded the child's leave list into `st.leave`).
+    pub(super) fn list_allows_locked(st: &State, id: &str, ap: &olo_agent_screen::ApprovalPrompt) -> Option<String> {
         let cut = ap.folded_lines.is_some()
             || ap.command.as_deref().is_some_and(|c| {
                 let t = c.trim_end();
@@ -1322,14 +2139,27 @@ impl Service {
             return None;
         }
         let asked = super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)?;
-        let list = self.leave_of(id)?;
+        let list = st.leave.get(id)?.as_ref()?;
         (list.excepts(&asked).is_none() && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1).then_some(asked)
     }
 
-    /// An approval as it is told (`approval_to_json`), with its box's key.
-    pub fn approval_json(&self, id: &str, ap: &olo_agent_screen::ApprovalPrompt, pending: &[Value]) -> Value {
+    /// What a child asks, as its list is asked it, where the list allows
+    /// it: the whole of the request (one cut short on the screen, or
+    /// folded, is nobody's to allow unread), with one answer that is a
+    /// yes for this once. Asked when the list judges a box, and again as
+    /// the answer is about to be written: a list taken away meanwhile
+    /// (`mind NAME --approve-none`) allows nothing.
+    pub(super) fn list_allows(&self, id: &str, ap: &olo_agent_screen::ApprovalPrompt) -> Option<String> {
+        let _ = self.leave_of(id)?;
+        Self::list_allows_locked(&self.lock(), id, ap)
+    }
+
+    /// An approval as it is told (`approval_to_json`), labelled with the
+    /// exact `box_key` captured on the reading that produced `ap` (never
+    /// re-reading live `box_now` after `inspect`).
+    pub fn approval_json_with_box(ap: &olo_agent_screen::ApprovalPrompt, pending: &[Value], box_key: Option<&str>) -> Value {
         let mut told = olo_rex_link::agents::approval_to_json(ap, pending);
-        told["box"] = json!(self.box_key(id, Some(ap)));
+        told["box"] = json!(box_key);
         told
     }
 
@@ -1354,12 +2184,16 @@ impl Service {
 
     /// Forgets what was last made of a child (after typing into it: the
     /// next thing it shows is an event even where it looks the same).
+    /// Also advances `check_gen` and `event_gen` so in-flight pre-typing
+    /// confirmation tasks never overwrite post-typing state.
     pub fn reset_edge(&self, entry: &NativeSubagent, clear_seen_working: bool) {
         let mut st = self.lock();
         if let Some(live) = st.live.get_mut(&entry.id) {
             live.last_state = None;
             live.last_key = None;
             live.read = None;
+            live.check_gen = live.check_gen.wrapping_add(1);
+            live.event_gen = live.event_gen.wrapping_add(1);
             if clear_seen_working {
                 live.seen_working = false;
             }
@@ -1409,7 +2243,9 @@ impl Service {
             for item in found {
                 let Ok(v) = serde_json::to_value(&item) else { continue };
                 let Some(id) = v["id"].as_str().map(str::to_owned) else { continue };
-                changed |= st.reg.update_discovered(&id, v["cli_session_id"].as_str(), v["session_confidence"].as_str(), v["transcript_path"].as_str(), v["pid"].as_i64().map(|p| p as i32));
+                if !st.frozen {
+                    changed |= st.reg.update_discovered(&id, v["cli_session_id"].as_str(), v["session_confidence"].as_str(), v["transcript_path"].as_str(), v["pid"].as_i64().map(|p| p as i32));
+                }
                 map.insert(id, v);
             }
         }
@@ -1434,6 +2270,9 @@ impl Service {
     pub fn record_beside(&self, event: SubagentEvent) -> u64 {
         let seq = {
             let mut st = self.lock();
+            if st.frozen {
+                return st.log.latest_seq();
+            }
             let seq = st.log.push_beside(event.clone());
             let mut event = event;
             event.seq = seq;
@@ -1460,6 +2299,9 @@ impl Service {
     pub fn record(&self, event: SubagentEvent) -> u64 {
         let seq = {
             let mut st = self.lock();
+            if st.frozen {
+                return st.log.latest_seq();
+            }
             let before = st.log.latest_seq();
             let seq = st.log.push(event.clone());
             if seq > before {
@@ -1468,6 +2310,11 @@ impl Service {
                 st.reg.event_seq = seq;
                 if let Some(live) = st.live.get_mut(&event.id) {
                     live.latest_event = Some(event.clone());
+                    live.latest_event_gen = live.event_gen;
+                    live.pending_handoff = false;
+                    live.handoff_failures = 0;
+                    live.unconfirmed = false;
+                    live.confirm_in_flight = None;
                 }
                 // (Under the lock: the file's lines are in the log's order.)
                 if let Ok(mut line) = serde_json::to_string(&event) {
@@ -1483,6 +2330,54 @@ impl Service {
         self.save.notify_one();
         self.changed.notify_waiters();
         seq
+    }
+
+    /// Atomically validates that a confirmation task was not superseded
+    /// (`check_gen == generation`, `event_gen == expected_event_gen`, and any
+    /// approval/trust prompt is still unsuppressed) under the SAME lock that
+    /// pushes and appends the event. Returns `Some(seq)` if recorded.
+    fn record_confirmed(&self, id: &str, generation: u64, expected_event_gen: u64, cls: &ScreenClassification, boxed: Option<&LookedBox>, event: SubagentEvent) -> Option<u64> {
+        let seq = {
+            let mut st = self.lock();
+            if st.frozen {
+                return None;
+            }
+            let live = st.live.get(id)?;
+            if live.check_gen != generation || live.event_gen != expected_event_gen {
+                return None;
+            }
+            if Self::question_suppressed_locked(&st, id, cls, boxed) {
+                return None;
+            }
+            let before = st.log.latest_seq();
+            let seq = st.log.push(event.clone());
+            if seq > before {
+                st.reg.event_seq = seq;
+            }
+            if let Some(live) = st.live.get_mut(id) {
+                live.pending_handoff = false;
+                live.handoff_failures = 0;
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
+                if seq > before {
+                    let mut event = event;
+                    event.seq = seq;
+                    live.latest_event = Some(event.clone());
+                    live.latest_event_gen = live.event_gen;
+                    if let Ok(mut line) = serde_json::to_string(&event) {
+                        use std::io::Write as _;
+                        line.push('\n');
+                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.paths.events) {
+                            let _ = f.write_all(line.as_bytes());
+                        }
+                    }
+                }
+            }
+            seq
+        };
+        self.save.notify_one();
+        self.changed.notify_waiters();
+        Some(seq)
     }
 
     pub fn event_of(&self, entry: &NativeSubagent, state: SubagentLiveState, summary: Option<String>, dedupe_key: String) -> SubagentEvent {
@@ -1528,6 +2423,11 @@ impl Service {
             return;
         }
         live.told = Some((state, summary.clone()));
+        // Suppress public follower frames while `begin_attached` is still
+        // awaiting durable registry persistence so a rollback never leaks.
+        if !live.committed {
+            return;
+        }
         let _ = self.frames.send(Frame::Agent { agent: Box::new(AgentView { entry, state, summary }) });
     }
 
@@ -1546,7 +2446,13 @@ impl Service {
     /// the state lock so move frames and state frames cannot reorder.
     pub fn tell_entry(&self, id: &str) {
         let st = self.lock();
+        if st.provisional_ids.contains(id) {
+            return;
+        }
         let Some(entry) = st.reg.entries.iter().rev().find(|e| e.id == id).cloned() else { return };
+        if entry.exited_at.is_none() && st.live.get(id).is_some_and(|l| !l.committed) {
+            return;
+        }
         let (state, summary) = match (entry.exited_at, st.live.get(id).and_then(|l| l.told.clone())) {
             (Some(_), _) => (SubagentLiveState::Exited, None),
             (None, Some((state, summary))) => (state, summary),
@@ -1559,10 +2465,30 @@ impl Service {
     pub fn exit(self: &Arc<Self>, id: &str, code: Option<i32>) {
         let moved: Vec<String>;
         let orphaned_minded: Vec<String>;
+        let notifies: Option<(Arc<Notify>, Arc<Notify>, Arc<Notify>)>;
         let entry = {
             let mut st = self.lock();
-            if let (Some(live), Some(code)) = (st.live.get_mut(id), code) {
-                live.exit_code = Some(code);
+            if st.frozen {
+                return;
+            }
+            if let Some(live) = st.live.get_mut(id)
+                && !live.committed
+            {
+                if let Some(code) = code {
+                    live.pending_exit_code = Some(code);
+                } else {
+                    live.pending_tab_closed = true;
+                }
+                return;
+            }
+            notifies = st.live.get(id).map(|l| (l.output_notify.clone(), l.state_notify.clone(), l.survey_notify.clone()));
+            if let Some(live) = st.live.get_mut(id) {
+                if let Some(code) = code {
+                    live.exit_code = Some(code);
+                }
+                live.pending_handoff = false;
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
             }
             let Some(entry) = st.reg.entries.iter().rev().find(|e| e.id == id).cloned() else { return };
             // (Its own children go under its parent: said to followers too.)
@@ -1577,12 +2503,18 @@ impl Service {
                 .collect();
             orphaned_minded = st.reg.minded_by(&entry.id).into_iter().map(|e| e.id.clone()).collect();
             if !st.reg.mark_exited_with_code(HOST, &entry.session_id, &entry.window_id, code) {
-                // (Said already; its tab closing after its program ended ends its watcher.)
+                // (Said already; its tab closing after its program ended ends its watchers.)
                 if code.is_none()
                     && let Some(live) = st.live.remove(id)
-                    && let Some(task) = live.task
                 {
-                    task.abort();
+                    for task in live.tasks {
+                        task.abort();
+                    }
+                }
+                if let Some((out_n, st_n, sv_n)) = notifies {
+                    out_n.notify_waiters();
+                    st_n.notify_waiters();
+                    sv_n.notify_waiters();
                 }
                 return;
             }
@@ -1598,12 +2530,18 @@ impl Service {
             }
             if code.is_none()
                 && let Some(live) = st.live.remove(id)
-                && let Some(task) = live.task
             {
-                task.abort();
+                for task in live.tasks {
+                    task.abort();
+                }
             }
             entry
         };
+        if let Some((out_n, st_n, sv_n)) = notifies {
+            out_n.notify_waiters();
+            st_n.notify_waiters();
+            sv_n.notify_waiters();
+        }
         let (summary, error) = match code {
             Some(code) => (format!("exited (code {code})"), (code != 0).then(|| format!("process exited with code {code}"))),
             None => ("tab closed".to_owned(), None),
@@ -1628,6 +2566,9 @@ impl Service {
     fn release_minded_on_error(self: &Arc<Self>, minder: &NativeSubagent, how: &str) {
         let released: Vec<String> = {
             let mut st = self.lock();
+            if st.frozen {
+                return;
+            }
             st.unhealthy_minders.insert(minder.id.clone());
             let ids: Vec<String> = st.reg.minded_by(&minder.id).into_iter().map(|e| e.id.clone()).collect();
             for e in &mut st.reg.entries {
@@ -1651,6 +2592,7 @@ impl Service {
         if !released.is_empty() {
             self.saved();
             for id in &released {
+                self.notify_child_state(id);
                 self.tell_entry(id);
             }
             self.escalate_minder_ended(&released, how);
@@ -1781,6 +2723,9 @@ impl Service {
     pub fn arm_empty_minder_if_idle(self: &Arc<Self>, minder_id: &str, after: Duration) {
         let armed = {
             let mut st = self.lock();
+            if st.frozen {
+                return;
+            }
             let Some(m) = st.reg.entries.iter().rev().find(|e| e.id == minder_id && e.exited_at.is_none() && e.is_shared_minder()).cloned() else {
                 return;
             };
@@ -1793,25 +2738,77 @@ impl Service {
         };
         let (minder, epoch) = armed;
         let service = self.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             tokio::time::sleep(after).await;
-            let should_stop = {
+            struct TimerDoingGuard {
+                service: Arc<Service>,
+            }
+            impl Drop for TimerDoingGuard {
+                fn drop(&mut self) {
+                    {
+                        let mut st = self.service.lock();
+                        st.doing = st.doing.saturating_sub(1);
+                    }
+                    self.service.idle.notify_one();
+                }
+            }
+            let _doing = {
                 let mut st = service.lock();
+                if st.frozen || st.retiring {
+                    return;
+                }
                 let still = st.reg.entries.iter().any(|e| e.id == minder.id && e.exited_at.is_none());
                 let same_gen = st.empty_gen.get(&minder.id) == Some(&epoch);
                 let idle = st.reg.minded_by(&minder.id).is_empty() && st.pending_minds.get(&minder.id).copied().unwrap_or(0) == 0;
                 if still && same_gen && idle && !st.closing_minders.contains(&minder.id) {
                     st.closing_minders.insert(minder.id.clone());
-                    true
+                    st.doing += 1;
+                    Some(TimerDoingGuard { service: service.clone() })
                 } else {
-                    false
+                    None
                 }
             };
-            if should_stop {
+            if _doing.is_some() {
                 let _ = service.stop_tabs_inner(&minder, true, false, false, true).await;
                 service.lock().closing_minders.remove(&minder.id);
             }
-        });
+        })
+        .abort_handle();
+        let mut timers = self.timers.lock().unwrap_or_else(|e| e.into_inner());
+        timers.retain(|h| !h.is_finished());
+        timers.push(handle);
+    }
+
+    /// Re-arms shutdown timers for all currently empty live shared minders AND
+    /// any live 1:1 legacy minders whose ward has already exited (used after
+    /// reconcile AND when an aborted handover resumes — Astra #21 / Neon #1).
+    fn rearm_empty_minders(self: &Arc<Self>) {
+        let (empty_shared, ended_one_to_one): (Vec<String>, Vec<NativeSubagent>) = {
+            let st = self.lock();
+            let shared = st
+                .reg
+                .entries
+                .iter()
+                .filter(|e| {
+                    e.exited_at.is_none() && e.is_shared_minder() && st.reg.minded_by(&e.id).is_empty() && st.pending_minds.get(&e.id).copied().unwrap_or(0) == 0 && !st.closing_minders.contains(&e.id)
+                })
+                .map(|e| e.id.clone())
+                .collect();
+            let one_to_one = st
+                .reg
+                .entries
+                .iter()
+                .filter(|e| e.exited_at.is_none() && !e.is_shared_minder() && e.minds.as_deref().is_some_and(|ward_id| !st.reg.entries.iter().any(|w| w.id == ward_id && w.exited_at.is_none())))
+                .cloned()
+                .collect();
+            (shared, one_to_one)
+        };
+        for mid in empty_shared {
+            self.arm_empty_minder_if_idle(&mid, minder_reports());
+        }
+        for m in ended_one_to_one {
+            self.end_minder_in(m, minder_reports());
+        }
     }
 
     /// Stops a minder whose agents have ended, `after` that long:
@@ -1823,13 +2820,86 @@ impl Service {
             return;
         }
         let service = self.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             tokio::time::sleep(after).await;
-            let still = service.lock().reg.entries.iter().any(|e| e.id == minder.id && e.exited_at.is_none());
-            if still {
+            struct TimerDoingGuard {
+                service: Arc<Service>,
+            }
+            impl Drop for TimerDoingGuard {
+                fn drop(&mut self) {
+                    {
+                        let mut st = self.service.lock();
+                        st.doing = st.doing.saturating_sub(1);
+                    }
+                    self.service.idle.notify_one();
+                }
+            }
+            let _doing = {
+                let mut st = service.lock();
+                if !st.frozen && !st.retiring && st.reg.entries.iter().any(|e| e.id == minder.id && e.exited_at.is_none()) {
+                    st.doing += 1;
+                    Some(TimerDoingGuard { service: service.clone() })
+                } else {
+                    None
+                }
+            };
+            if _doing.is_some() {
                 let _ = service.stop_tabs_inner(&minder, true, false, false, true).await;
             }
-        });
+        })
+        .abort_handle();
+        let mut timers = self.timers.lock().unwrap_or_else(|e| e.into_inner());
+        timers.retain(|h| !h.is_finished());
+        timers.push(handle);
+    }
+
+    /// Schedules at most one bounded backoff retry for a child with
+    /// `pending_handoff == true` or an unconfirmed standing transition whose
+    /// screen reread failed transiently. After 5 failed retries, emits an
+    /// `escalation` so the owner knows a standing prompt could not be re-read.
+    fn schedule_handoff_retry(self: &Arc<Self>, entry: &NativeSubagent) {
+        const BACKOFF_MS: [u64; 5] = [250, 500, 1000, 1500, 2000];
+        let delay = {
+            let mut st = self.lock();
+            if st.frozen {
+                return;
+            }
+            let Some(live) = st.live.get_mut(&entry.id) else { return };
+            if (!live.pending_handoff && !live.unconfirmed) || live.handoff_retry_armed {
+                return;
+            }
+            live.handoff_failures = live.handoff_failures.saturating_add(1);
+            if (live.handoff_failures as usize) > BACKOFF_MS.len() {
+                live.pending_handoff = false;
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
+                live.handoff_failures = 0;
+                None
+            } else {
+                live.handoff_retry_armed = true;
+                Some(Duration::from_millis(BACKOFF_MS[(live.handoff_failures - 1) as usize]))
+            }
+        };
+        if let Some(wait) = delay {
+            let (service, id) = (self.clone(), entry.id.clone());
+            tokio::spawn(async move {
+                tokio::time::sleep(wait).await;
+                if service.lock().frozen {
+                    return;
+                }
+                if let Some(live) = service.lock().live.get_mut(&id) {
+                    live.handoff_retry_armed = false;
+                }
+                service.poke(&id);
+            });
+        } else {
+            let state = self.lock().live.get(&entry.id).and_then(|l| l.last_state).unwrap_or(SubagentLiveState::Working);
+            let msg = "Screen reread failed repeatedly after answering or releasing a prompt: check the child's status to see if a question is still standing.".to_owned();
+            let mut event = self.event_of(entry, state, Some(msg.clone()), String::new());
+            event.event = olo_rex_link::agents::minder::ESCALATION.to_owned();
+            event.last_message = Some(msg);
+            self.record_beside(event);
+        }
     }
 
     /// Reads a child's screen and, where its state differs from what was
@@ -1837,8 +2907,53 @@ impl Service {
     /// with its last message whole and the tool it waits on, from its
     /// transcript.
     async fn transition(self: &Arc<Self>, id: &str) {
-        let Some(entry) = self.lock().reg.entries.iter().rev().find(|e| e.id == id && e.exited_at.is_none()).cloned() else { return };
-        let looked = self.look(&entry, false).await;
+        let (entry, force_fresh) = {
+            let st = self.lock();
+            if st.frozen {
+                return;
+            }
+            if st.live.get(id).is_some_and(|l| !l.committed) {
+                return;
+            }
+            let Some(entry) = st.reg.entries.iter().rev().find(|e| e.id == id && e.exited_at.is_none()).cloned() else { return };
+            let force = st.live.get(id).is_some_and(|l| l.confirm_in_flight.is_none() && (l.pending_handoff || l.unconfirmed));
+            (entry, force)
+        };
+        let looked = self.look(&entry, force_fresh).await;
+        if self.lock().frozen {
+            return;
+        }
+        if looked.rpc_failed {
+            // Never treat a transient RPC failure as `Working("starting")` and
+            // never silently drop a first quiet prompt, pending handoff, or
+            // unconfirmed standing transition.
+            if let Some(live) = self.lock().live.get_mut(id) {
+                live.unconfirmed = true;
+            }
+            self.schedule_handoff_retry(&entry);
+            return;
+        }
+        if looked.live && !looked.ordered {
+            // Astra #18: Superseded by a newer concurrent live reading (e.g. a
+            // racing `status` RPC that populated the cache without scheduling
+            // confirmation). Arm bounded retry/poke whenever no confirmation is
+            // in flight so a quiet standing prompt is NEVER stranded!
+            let needs_retry = {
+                let mut st = self.lock();
+                if let Some(live) = st.live.get_mut(id)
+                    && live.confirm_in_flight.is_none()
+                {
+                    live.unconfirmed = true;
+                    true
+                } else {
+                    false
+                }
+            };
+            if needs_retry {
+                self.schedule_handoff_retry(&entry);
+            }
+            return;
+        }
         let read_expecting = looked.expected;
         self.feedback_draft_seen(&entry, &looked.screen);
         let cls = looked.cls;
@@ -1861,7 +2976,7 @@ impl Service {
         // `live.last_key` from box 1. If this showing was already answered
         // and the child has not yet redrawn, do not re-trigger confirmation.)
         let (key, box_answered) = match (cls.approval.as_ref(), looked.boxed.as_ref()) {
-            (Some(_), Some((bk, answered))) => (format!("box:{bk}"), *answered),
+            (Some(_), Some(lb)) => (format!("box:{}", lb.key), lb.answered),
             // (A box the service doesn't hold as standing: the reading
             // came back out of its order, or the box was finished since.
             // Read afresh.)
@@ -1876,17 +2991,20 @@ impl Service {
         };
         // (An answer on its way, a box's or a folder's trust: nothing to
         // tell of what still stands on the screen, and what was being
-        // confirmed from before the answer is of before it: confirmed
-        // after, an old question was told as a new one and the next real
-        // asking of it passed for told. A code review, 2026-11-27.)
+        // confirmed from before the answer is of before it. Recording this
+        // suppression as a dedupe boundary (`last_state = None; last_key = None`)
+        // ensures returning to an ordinary quiet chooser Q after `--trust`
+        // finishes always confirms and publishes Q.)
         let trust_on_its_way = cls.folder_trust.as_ref().is_some_and(|asked| self.lock().live.get(id).and_then(|l| l.trust.as_ref()).is_some_and(|trust| trust.on_its_way(asked)));
-        if box_answered || trust_on_its_way {
+        let frag_dismissing = cls.approval_fragment && self.lock().live.get(id).is_some_and(|l| l.box_now.is_some_and(|b| b.answered) || l.trust.as_ref().is_some_and(|t| t.answering));
+        if box_answered || trust_on_its_way || frag_dismissing {
             if let Some(live) = self.lock().live.get_mut(id) {
                 live.check_gen = live.check_gen.wrapping_add(1);
+                live.last_state = None;
+                live.last_key = None;
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
             }
-            // (Whoever is answering waits on what its screen shows: the
-            // answering of a start's trust learned of its question by the
-            // telling of it, which this is in the place of.)
             if trust_on_its_way {
                 self.changed.notify_waiters();
             }
@@ -1895,43 +3013,34 @@ impl Service {
         let started_ms = to_unix_ms(entry.started_at).max(0) as u64;
         let at_prompt = cls.summary.as_deref() == Some(state::AT_PROMPT);
         let mut look_again = None;
-        let generation = {
+        let confirm_token = {
             let mut st = self.lock();
+            if st.frozen {
+                return;
+            }
+            if cls.state == SubagentLiveState::Working
+                && is_positively_elsewhere(&cls)
+                && matches!(st.log.last_recorded_of(id), Some((SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion, _)))
+            {
+                st.log.reset_child_dedupe(id);
+            }
             let Some(live) = st.live.get_mut(id) else { return };
-            // Anything but rest says it has begun: at work, asking,
-            // failed. Not the word for a tab with nothing drawn in it
-            // yet, "starting": that counted as work, and whether a
-            // child's first rest was then told hung on whether the very
-            // first reading of its tab was of an empty one (told a
-            // turn's end 0.6 s after its start, the tab's own shell on
-            // the screen; or never told at all, and whoever waited for
-            // it to be up waited out their time). What it was given, it
-            // has now taken up: the turn that follows answers that.
+            // A confirmed positive `Working` reading proves any prior prompt
+            // is gone, so a pending post-answer handoff is satisfied.
+            if cls.state == SubagentLiveState::Working && is_positively_elsewhere(&cls) {
+                live.pending_handoff = false;
+                live.handoff_failures = 0;
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
+            }
             if cls.state != SubagentLiveState::Idle && !(cls.state == SubagentLiveState::Working && cls.summary.as_deref() == Some(state::STARTING)) {
                 live.seen_working = true;
             }
-            // What it was given, it has taken up once its own screen
-            // says a turn is on (`ScreenClassification::in_turn`): the
-            // turn that follows answers that. Not at anything else that
-            // isn't rest. (It was: an agy started with a prompt is "at
-            // work" by Rex's word for its pane while it loads, then
-            // stands at its own empty prompt for a moment before it
-            // takes the prompt up; that rest was told as the prompt's
-            // turn's end, 1.3 s after the start, and `olo agent run`
-            // returned done, with no message, and closed the tab on an
-            // agent that had done nothing. The ShiftUp lead, 2026-11-27,
-            // item 46: "we nearly read 'no findings' from it". A
-            // folder's trust asked at the start did the same.)
-            // (And only what it had been given when the reading this
-            // goes by began: `Looked::expected`.)
             if state::takes_up(cls.in_turn, read_expecting, live.expects)
                 && let Some(given) = live.expects.take()
             {
                 live.answers = Some(given.cursor);
             }
-            // At rest: is that to tell (`state::rest_now`)? Not while it
-            // has been given work it hasn't been seen at, nor while what
-            // is on its screen isn't yet its own.
             let kept = match cls.state {
                 SubagentLiveState::Idle => match state::rest_now(now_unix_ms(), started_ms, live.seen_working, at_prompt, live.expects, None) {
                     state::Rest::Kept { until_ms } => Some(until_ms),
@@ -1939,86 +3048,123 @@ impl Service {
                 },
                 _ => None,
             };
-            // (A rest kept back is read again at whatever the child
-            // shows, the same or not, and when its time is up.)
             let was_kept = live.held_until.is_some();
             if kept.is_some() && live.held_until != kept {
                 look_again = kept;
             }
             live.held_until = kept;
-            // (The same as it last stood: nothing new to make of it.
-            // Unless it has been given work it was never seen at: then
-            // a rest that looks the same as the last may be the end of
-            // a turn that came and went between two readings, which its
-            // conversation's file says, below. Without this a message
-            // taken up late and answered quickly was never told: found
-            // by ten copies of a test at once, 2026-11-27.)
-            if live.last_state == Some(cls.state) && live.last_key.as_deref() == Some(key.as_str()) && !was_kept && kept.is_none() && live.expects.is_none() {
+            // (The same as it last stood: nothing new to make of it,
+            // unless it has pending work or a pending handoff / failed
+            // confirmation with NO active confirmation already in flight —
+            // folding `pending_handoff` under `confirm_in_flight.is_none()`
+            // ensures blinking screens cannot livelock an active confirmation.)
+            let needs_confirm_retry = (live.unconfirmed || live.pending_handoff) && live.confirm_in_flight.is_none();
+            if live.last_state == Some(cls.state) && live.last_key.as_deref() == Some(key.as_str()) && !was_kept && kept.is_none() && live.expects.is_none() && !needs_confirm_retry {
                 return;
             }
             live.last_state = Some(cls.state);
             live.last_key = Some(key.clone());
             live.last_state_change_at = now_unix_ms();
             live.check_gen = live.check_gen.wrapping_add(1);
-            // (Kept back with work given: its conversation's file may
-            // say the turn came and went unseen, which is read below.
-            // Kept back as not yet drawn: nothing more to read.)
-            if (kept.is_some() && live.expects.is_none()) || cls.state == SubagentLiveState::Working { None } else { Some(live.check_gen) }
+            if (kept.is_some() && live.expects.is_none()) || cls.state == SubagentLiveState::Working {
+                live.unconfirmed = false;
+                live.confirm_in_flight = None;
+                None
+            } else {
+                live.unconfirmed = true;
+                live.confirm_in_flight = Some(live.check_gen);
+                Some((live.check_gen, live.event_gen))
+            }
         };
         if let Some(until_ms) = look_again {
             let (service, id) = (self.clone(), id.to_owned());
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(until_ms.saturating_sub(now_unix_ms()) + 150)).await;
-                service.poke(&id);
+                if !service.lock().frozen {
+                    service.poke(&id);
+                }
             });
         }
-        // Followers are told what its screen says now that it differs
-        // from what it said (it works, it asks): at once, before it is
-        // settled with its transcript below. Not at every reading of a
-        // screen that says the same: that took back what had been
-        // settled (done, by its transcript, told as at rest again by
-        // the next look at the same screen), and a follower that shows
-        // the state it is told (the desktop's rows) would have said At
-        // rest of a child that was done.
-        // (But for a Codex that reads as at rest and isn't kept back: its
-        // screen says so within a turn too, and what its conversation's
-        // file says of that is read below, a quarter of a second on:
-        // `state::turn_on`. Told there, as at rest or as at work.)
-        if !(entry.cli == olo_rex_link::agents::AgentCli::Codex && cls.state == SubagentLiveState::Idle && generation.is_some()) {
+        if !(entry.cli == olo_rex_link::agents::AgentCli::Codex && cls.state == SubagentLiveState::Idle && confirm_token.is_some()) {
             self.tell(id, cls.state, cls.summary.clone());
         }
         // (A question come or gone: who waits on that looks at once.)
         if cls.folder_trust.is_some() || cls.approval.is_some() || cls.state == SubagentLiveState::Exited || cls.state == SubagentLiveState::Working {
             self.changed.notify_waiters();
         }
-        let Some(generation) = generation else { return };
-        let (service, id) = (self.clone(), id.to_owned());
-        tokio::spawn(async move {
+        let Some((generation, confirm_event_gen)) = confirm_token else { return };
+        let (service, id_owned) = (self.clone(), id.to_owned());
+        let task = tokio::spawn(async move {
+            let id = id_owned;
+            struct ConfirmGuard {
+                service: Arc<Service>,
+                id: String,
+                generation: u64,
+            }
+            impl Drop for ConfirmGuard {
+                fn drop(&mut self) {
+                    if let Some(live) = self.service.lock().live.get_mut(&self.id)
+                        && live.confirm_in_flight == Some(self.generation)
+                    {
+                        live.confirm_in_flight = None;
+                    }
+                }
+            }
+            let confirm_guard = ConfirmGuard { service: service.clone(), id: id.clone(), generation };
+
             tokio::time::sleep(CONFIRM).await;
-            let current = |service: &Service| service.lock().live.get(&id).is_some_and(|l| l.check_gen == generation);
+            let current = |service: &Service| {
+                let st = service.lock();
+                !st.frozen && st.live.get(&id).is_some_and(|l| l.check_gen == generation && l.event_gen == confirm_event_gen)
+            };
             if !current(&service) {
                 return;
             }
             let Some(entry) = service.lock().reg.entries.iter().rev().find(|e| e.id == id && e.exited_at.is_none()).cloned() else { return };
             let again = service.look(&entry, true).await;
-            if again.cls.state == SubagentLiveState::Exited {
-                // (Gone meanwhile: its end is `exit`'s to say.)
+            if !current(&service) {
+                return;
+            }
+            if again.rpc_failed {
+                drop(confirm_guard);
+                service.schedule_handoff_retry(&entry);
+                return;
+            }
+            if !again.is_fresh_ordered() {
+                drop(confirm_guard);
                 service.poke(&id);
                 return;
             }
-            let (again_box, again_key, again_answered) = match (again.cls.approval.as_ref(), again.boxed.clone()) {
-                (Some(_), Some((bk, answered))) => (Some(bk.clone()), format!("box:{bk}"), answered),
+            if again.cls.state == SubagentLiveState::Exited {
+                // (Gone meanwhile: its end is `exit`'s to say.)
+                drop(confirm_guard);
+                service.poke(&id);
+                return;
+            }
+            let (again_box, again_key, again_answered) = match (again.cls.approval.as_ref(), again.boxed.as_ref()) {
+                (Some(_), Some(lb)) => (Some(lb.key.clone()), format!("box:{}", lb.key), lb.answered),
                 (Some(_), None) => {
+                    drop(confirm_guard);
                     service.poke(&id);
                     return;
                 }
                 (None, _) => (None, subkey(&again.cls), false),
             };
             if again_answered {
+                if let Some(live) = service.lock().live.get_mut(&id) {
+                    live.unconfirmed = false;
+                }
+                return;
+            }
+            if Self::question_suppressed_locked(&service.lock(), &id, &again.cls, again.boxed.as_ref()) {
+                if let Some(live) = service.lock().live.get_mut(&id) {
+                    live.unconfirmed = false;
+                }
                 return;
             }
             if again.cls.state != cls.state || again_key != key {
                 // (It didn't hold: what it shows now is read in its turn.)
+                drop(confirm_guard);
                 service.poke(&id);
                 return;
             }
@@ -2027,32 +3173,23 @@ impl Service {
             if !current(&service) {
                 return;
             }
-            // If this box was answered, dismissed, or replaced while `inspect`
-            // ran, stop before mutating `box_now`, answering, or recording it.
-            if let Some(ref bk) = again_box
-                && !service.box_still_unanswered(&id, bk)
-            {
+            if Self::question_suppressed_locked(&service.lock(), &id, &again.cls, again.boxed.as_ref()) {
+                if let Some(live) = service.lock().live.get_mut(&id) {
+                    live.unconfirmed = false;
+                }
                 return;
             }
             let info = inspected.get(&id);
             let entry = service.lock().reg.entries.iter().rev().find(|e| e.id == id).cloned().unwrap_or(entry);
             let last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
             let pending = Self::pending_tools(info);
-            let approval = again.cls.approval.as_ref().map(|ap| service.approval_json(&id, ap, &pending));
-            // (What its file says of a turn before the one it was given is
-            // not of this turn: `state::of_the_turn_given`.)
+            // Label with the EXACT box key captured on `again`, never re-reading live `box_now`.
+            let approval = again.cls.approval.as_ref().map(|ap| Self::approval_json_with_box(ap, &pending, again_box.as_deref()));
             let given = service.lock().live.get(&id).and_then(|l| l.expects);
             let turn_ms = info.and_then(|v| v["turn_started_ms"].as_u64());
             let its_turn = state::of_the_turn_given(turn_ms, given);
             let tx = info.and_then(|v| v["transcript_state"].as_str()).filter(|_| its_turn);
             let (state, error, _) = olo_rex_link::agents::effective_state(&again.cls, tx, info.and_then(|v| v["transcript_error"].as_str()).filter(|_| its_turn), true);
-            // At rest by its screen, and in a turn by its conversation's
-            // file (`state::turn_on`): no rest to tell. Followers are
-            // told it works, and its screen and file are read again in a
-            // moment (nothing on the screen says when the file changes):
-            // until the file says the turn is over, or the agent has
-            // shown no life for so long that the file's word is no more
-            // believed.
             if state == SubagentLiveState::Idle
                 && !again.reports
                 && entry.cli == olo_rex_link::agents::AgentCli::Codex
@@ -2061,22 +3198,24 @@ impl Service {
             {
                 {
                     let mut st = service.lock();
-                    let Some(live) = st.live.get_mut(&id) else { return };
-                    if live.check_gen != generation {
+                    if st.frozen {
                         return;
                     }
-                    // (Kept back: the next reading of the same screen is
-                    // gone through again, not passed over as the same.)
+                    let Some(live) = st.live.get_mut(&id) else { return };
+                    if live.check_gen != generation || live.event_gen != confirm_event_gen {
+                        return;
+                    }
                     live.held_until = Some(now_unix_ms() + state::TURN_ON_LOOK_MS);
                     live.seen_working = true;
                 }
                 service.tell(&id, SubagentLiveState::Working, None);
                 tokio::time::sleep(Duration::from_millis(state::TURN_ON_LOOK_MS)).await;
-                service.poke(&id);
+                if !service.lock().frozen {
+                    drop(confirm_guard);
+                    service.poke(&id);
+                }
                 return;
             }
-            // At rest, with what its conversation's file says: told, or
-            // kept back still (`state::rest_now`).
             if matches!(state, SubagentLiveState::Idle | SubagentLiveState::Done) {
                 let over = matches!(info.and_then(|v| v["transcript_state"].as_str()), Some("done" | "idle" | "waiting" | "aborted"));
                 let written = info.and_then(|v| v["transcript_path"].as_str()).or(entry.transcript_path.as_deref()).and_then(|p| std::fs::metadata(p).ok()).map(|m| state::Written {
@@ -2087,26 +3226,21 @@ impl Service {
                     turn_ms: info.and_then(|v| v["turn_started_ms"].as_u64()),
                 });
                 let mut st = service.lock();
+                if st.frozen {
+                    return;
+                }
                 let Some(live) = st.live.get_mut(&id) else { return };
                 match state::rest_now(now_unix_ms(), started_ms, live.seen_working, at_prompt, live.expects, written) {
                     state::Rest::Kept { until_ms } => {
                         live.held_until = Some(until_ms);
-                        // Looked at again in a moment, and so on until it
-                        // is told: what ends the wait is its
-                        // conversation's file saying the turn is over,
-                        // and nothing on a screen says when a file
-                        // changes. With no such look, a turn that was
-                        // over by its screen before its file said so (or
-                        // whose rest was "done" by its own word, which
-                        // armed no look at all) was told when its time
-                        // ran out, two minutes on, or never (a code
-                        // review, and the live suite under load,
-                        // 2026-11-27). One timer a child.
                         if !std::mem::replace(&mut live.relook, true) {
                             let (service, id) = (service.clone(), id.clone());
                             let wait = until_ms.saturating_sub(now_unix_ms()).clamp(50, 1000);
                             tokio::spawn(async move {
                                 tokio::time::sleep(Duration::from_millis(wait)).await;
+                                if service.lock().frozen {
+                                    return;
+                                }
                                 if let Some(live) = service.lock().live.get_mut(&id) {
                                     live.relook = false;
                                 }
@@ -2123,46 +3257,59 @@ impl Service {
                     }
                 }
             }
-            // Leave it asks for, given by its list where it has one: the
-            // service says yes, once, itself and at once, to anything no
-            // pattern of the list names, and nobody is told there was a
-            // question (`leave.rs`). What a pattern names, what couldn't
-            // be read off the screen whole, and a box with no plain "yes,
-            // this once" go to whoever answers for it, as before.
-            // A command the agent has folded on its screen ("⋯ 19 lines
-            // hidden"), or cut short, is never the list's to allow: it
-            // judged the lines that showed, and `git push` on a hidden
-            // line went through (a code review, 2026-11-27). Nor is it
-            // allowed by the same command found whole in the agent's
-            // conversation file, as it was for a day: which call there
-            // is this box's can't be told for certain (two that begin
-            // alike, one written late, another session's file), and the
-            // tool is named otherwise there, so a pattern on `^Bash:`
-            // missed. What isn't read whole is asked.
-            let list_skipped = again.cls.approval.as_ref().is_some_and(|ap| {
-                let h = state::box_hash(ap);
-                service.lock().live.get(&id).is_some_and(|l| l.list_skip.is_some_and(|(skipped, until)| skipped == h && Instant::now() < until))
-            });
+            // Showing-scoped list suppression (no wall-clock expiry), and
+            // require a clear foreground (no staying/pending survey overlay!).
+            let list_skipped = again.cls.approval.as_ref().is_some_and(|ap| service.lock().live.get(&id).is_some_and(|l| l.list_skip.is_some_and(|skip| skip.matches(ap))));
             if state == SubagentLiveState::WaitingApproval
                 && !list_skipped
+                && !again.survey
+                && !again.survey_pending
                 && let Some(ap) = &again.cls.approval
                 && let Some(box_key_for_list) = again_box.as_deref().filter(|bk| service.box_still_unanswered(&id, bk))
                 && let Some(asked) = service.list_allows(&id, ap)
             {
+                // Track in-flight `--by-list` approval under `st.doing` so
+                // handover drain waits for it and retirement/freeze never lets
+                // a detached confirmation task type into a PTY or write
+                // `answers.jsonl` across the final snapshot.
+                struct DoingGuard {
+                    service: Arc<Service>,
+                }
+                impl Drop for DoingGuard {
+                    fn drop(&mut self) {
+                        {
+                            let mut st = self.service.lock();
+                            st.doing = st.doing.saturating_sub(1);
+                        }
+                        self.service.idle.notify_one();
+                    }
+                }
+                let admitted = {
+                    let mut st = service.lock();
+                    if st.retiring || st.frozen {
+                        false
+                    } else {
+                        st.doing += 1;
+                        true
+                    }
+                };
+                if !admitted {
+                    return;
+                }
+                let _doing = DoingGuard { service: service.clone() };
                 let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, window_from_block: false, block: None, child: None };
-                // (For the box it judged: another that stands by the time
-                // the answer is given is not answered by this.)
-                // (And by the list as it stands when the answer is written: `--by-list`.)
                 let args = vec![json!(id.clone()), json!("--once"), json!("--by-list"), json!("--box"), json!(box_key_for_list), json!("--json")];
                 let answered = service.approve(&json!({ "args": args }), &from).await;
                 if answered.ok {
+                    if let Some(live) = service.lock().live.get_mut(&id) {
+                        live.unconfirmed = false;
+                        live.pending_handoff = false;
+                    }
                     service.leave_given(&id, &asked);
                     return;
                 }
                 if answered.data["dismissed"] == false {
                     logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
-                    // `approve` recorded `list_skip`, cleared `box_now`, and poked
-                    // `watch_child` so the standing prompt is reported once with its fresh key.
                     return;
                 }
                 if !service.box_still_unanswered(&id, box_key_for_list) {
@@ -2171,9 +3318,14 @@ impl Service {
                 logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
             }
             let dedupe = if state == SubagentLiveState::WaitingApproval
-                && let Some(box_key) = approval.as_ref().and_then(|a| a["box"].as_str())
+                && let Some(lb) = again.boxed.as_ref()
             {
-                format!("box:{box_key}")
+                // Generation-independent dedupe (`b{n}-{hash}`) prevents a
+                // service crash/restart from re-emitting an already-reported
+                // standing box while `approval["box"]` (`b{n}-g{gen}-{hash}`)
+                // still uniquely binds every `--box` / `ToldGrant` token to
+                // this service generation!
+                format!("box:b{}-{:08x}", lb.number, lb.hash as u32)
             } else if !key.is_empty() {
                 key
             } else if let Some(message) = &last_message {
@@ -2182,9 +3334,6 @@ impl Service {
                 message.hash(&mut h);
                 format!("msg:{:x}", h.finish())
             } else {
-                // (What it shows: the same after a service is started
-                // again, so what was said of it isn't said twice; another
-                // after another turn.)
                 format!("scr:{:x}", olo_agent_screen::fingerprint(&again.screen))
             };
             let err_for_minder = error.clone();
@@ -2192,57 +3341,82 @@ impl Service {
             let mut event = service.event_of(&entry, state, again.cls.summary.clone(), dedupe);
             event.last_message = last_message;
             event.approval = approval;
-            // (Where it says it failed and nothing has the words, its screen may.)
             event.error = super::ops::error_words(state, error, &again.screen);
-            // (Said where a plain watch prints: its summary.)
             if state == SubagentLiveState::Error
                 && let Some(why) = &event.error
             {
                 event.summary = Some(why.clone());
             }
             event.tail = tail_of(&again.screen, 10);
-            service.tell(&id, state, again.cls.summary);
-            service.record(event);
-            // A shared minder that hits an API/transcript error (stuck at
-            // prompt, no longer running its watch loop) must not strand its
-            // agents: mark unhealthy, release them back under the lead, and
-            // arm its empty timer. Confirmed recovery clears `unhealthy_minders`.
-            if entry.is_shared_minder() {
-                if state == SubagentLiveState::Error {
-                    let how = err_for_minder.as_deref().or(sum_for_minder.as_deref()).unwrap_or("API error");
-                    service.release_minded_on_error(&entry, how);
-                } else {
-                    service.lock().unhealthy_minders.remove(&entry.id);
+            if service.record_confirmed(&id, generation, confirm_event_gen, &again.cls, again.boxed.as_ref(), event).is_some() {
+                service.tell(&id, state, again.cls.summary);
+                if entry.is_shared_minder() {
+                    if state == SubagentLiveState::Error {
+                        let how = err_for_minder.as_deref().or(sum_for_minder.as_deref()).unwrap_or("API error");
+                        service.release_minded_on_error(&entry, how);
+                    } else {
+                        service.lock().unhealthy_minders.remove(&entry.id);
+                    }
                 }
             }
         });
+        if let Some(live) = self.lock().live.get_mut(id) {
+            live.tasks.retain(|h| !h.is_finished());
+            live.tasks.push(task.abort_handle());
+        } else {
+            task.abort();
+        }
     }
 
-    /// Watches a live child: its stream for output and its program's
-    /// end, and its screen after each pause. Ends with the child.
+    /// Watches a live child using TWO independent cooperating tasks:
+    /// 1. Stream reader: pumps `stream.next()` without EVER calling `transition()`
+    ///    inline, incrementing `out_seq` and notifying `output_notify.notify_waiters()`
+    ///    immediately so dismissal waits (`screen_under_survey`, `approve`,
+    ///    `trust_at_start`, `send`) wake with zero polling and zero deadlock.
+    /// 2. Transition runner: debounces output (`QUIET`/`AT_MOST`) and wakes on
+    ///    `poke`, calling `transition()` independently of stream consumption.
     pub fn watch_child(self: &Arc<Self>, entry: &NativeSubagent) {
         let (service, entry) = (self.clone(), entry.clone());
-        let poke = {
+        let (poke, output_notify) = {
             let mut st = self.lock();
             let live = st.live.entry(entry.id.clone()).or_insert_with(Live::new);
-            if let Some(old) = live.task.take() {
+            for old in live.tasks.drain(..) {
                 old.abort();
             }
-            live.poke.clone()
+            (live.poke.clone(), live.output_notify.clone())
         };
         let id = entry.id.clone();
-        let task = tokio::spawn(async move {
-            // What the terminal's own process is, its size and what its
-            // program says of itself so far.
-            service.learn(&entry).await;
+
+        // Task 1: Stream reader (never blocks on `transition()`).
+        let (svc_stream, ent_stream, out_n_stream, poke_stream) = (service.clone(), entry.clone(), output_notify.clone(), poke.clone());
+        let stream_task = tokio::spawn(async move {
+            svc_stream.learn(&ent_stream).await;
             let mut retry = Duration::from_millis(250);
             loop {
-                let mut stream = match service.rex.stream(&entry.session_id, &entry.block_id).await {
+                // Astra #4: Ensure `session.attach` succeeded before opening the
+                // block stream (and re-attach on reconnect after a transient
+                // failure) so a child kept live during reconcile is never
+                // permanently stranded without streams or block events!
+                if !svc_stream.lock().sessions.get(&ent_stream.session_id).is_some_and(|s| s.attached)
+                    && let Err(e) = svc_stream.attach(&ent_stream.session_id).await
+                {
+                    if e.gone() || matches!(svc_stream.tab_presence(&ent_stream).await, TabPresence::Gone) {
+                        svc_stream.exit(&ent_stream.id, None);
+                        return;
+                    }
+                    tokio::time::sleep(retry).await;
+                    retry = (retry * 2).min(Duration::from_secs(30));
+                    continue;
+                }
+                let mut stream = match svc_stream.rex.stream(&ent_stream.session_id, &ent_stream.block_id).await {
                     Ok(stream) => stream,
                     Err(e) => {
-                        if e.gone() || matches!(service.tab_presence(&entry).await, TabPresence::Gone) {
-                            service.exit(&entry.id, None);
+                        if e.gone() || matches!(svc_stream.tab_presence(&ent_stream).await, TabPresence::Gone) {
+                            svc_stream.exit(&ent_stream.id, None);
                             return;
+                        }
+                        if let Some(s) = svc_stream.lock().sessions.get_mut(&ent_stream.session_id) {
+                            s.attached = false;
                         }
                         tokio::time::sleep(retry).await;
                         retry = (retry * 2).min(Duration::from_secs(30));
@@ -2250,54 +3424,101 @@ impl Service {
                     }
                 };
                 retry = Duration::from_millis(250);
-                // (As it stands when the watching begins.)
-                service.transition(&entry.id).await;
-                // Since when something written is unread, and when it
-                // was last written.
-                let mut unread: Option<(tokio::time::Instant, tokio::time::Instant)> = None;
+                // Mark stream connected and wake all waiters + initial transition.
+                if let Some(live) = svc_stream.lock().live.get_mut(&ent_stream.id) {
+                    live.stream_connected = true;
+                    live.stream_gen = live.stream_gen.wrapping_add(1);
+                    live.out_seq += 1;
+                }
+                out_n_stream.notify_waiters();
+                svc_stream.notify_child_state(&ent_stream.id);
+                poke_stream.notify_one();
                 loop {
-                    let due = unread.map(|(first, last)| (last + QUIET).min(first + AT_MOST));
-                    tokio::select! {
-                        said = stream.next() => match said {
-                            Said::Output(_) => {
-                                let now = tokio::time::Instant::now();
-                                unread = Some((unread.map_or(now, |(first, _)| first), now));
-                                if let Some(live) = service.lock().live.get_mut(&entry.id) {
-                                    live.out_seq += 1;
-                                    live.last_output_at = now_unix_ms();
-                                }
+                    match stream.next().await {
+                        Said::Output(_) => {
+                            if let Some(live) = svc_stream.lock().live.get_mut(&ent_stream.id) {
+                                live.out_seq += 1;
+                                live.last_output_at = now_unix_ms();
                             }
-                            Said::Exited(code) => {
-                                service.exit(&entry.id, Some(code));
-                                // (Its tab may stay: watched until it closes.)
-                            }
-                            Said::Resized { rows } => {
-                                if let Some(live) = service.lock().live.get_mut(&entry.id) {
-                                    live.rows = rows;
-                                    live.read = None;
-                                }
-                            }
-                            Said::Closed => break,
-                        },
-                        _ = async { tokio::time::sleep_until(due.unwrap_or_else(tokio::time::Instant::now)).await }, if due.is_some() => {
-                            unread = None;
-                            service.transition(&entry.id).await;
+                            out_n_stream.notify_waiters();
                         }
-                        _ = poke.notified() => {
-                            service.transition(&entry.id).await;
+                        Said::Exited(code) => {
+                            svc_stream.exit(&ent_stream.id, Some(code));
+                            // (Its tab may stay: watched until it closes.)
+                        }
+                        Said::Resized { rows } => {
+                            if let Some(live) = svc_stream.lock().live.get_mut(&ent_stream.id) {
+                                live.rows = rows;
+                                live.read = None;
+                                live.out_seq += 1;
+                            }
+                            out_n_stream.notify_waiters();
+                        }
+                        Said::Closed => {
+                            if let Some(live) = svc_stream.lock().live.get_mut(&ent_stream.id) {
+                                live.stream_connected = false;
+                                live.stream_gen = live.stream_gen.wrapping_add(1);
+                            }
+                            // Wake all wait loops immediately on disconnect so
+                            // they arm their 250 ms fallback instead of waiting
+                            // indefinitely on a dead stream!
+                            out_n_stream.notify_waiters();
+                            svc_stream.notify_child_state(&ent_stream.id);
+                            break;
                         }
                     }
                 }
-                // The stream ended: with the tab, or by itself.
-                if matches!(service.tab_presence(&entry).await, TabPresence::Gone) {
-                    service.exit(&entry.id, None);
+                if matches!(svc_stream.tab_presence(&ent_stream).await, TabPresence::Gone) {
+                    svc_stream.exit(&ent_stream.id, None);
                     return;
                 }
                 tokio::time::sleep(retry).await;
             }
         });
+
+        // Task 2: Transition runner (debounced output + immediate `poke`).
+        let (svc_tx, id_tx, out_n_tx, poke_tx) = (service.clone(), id.clone(), output_notify, poke);
+        let transition_task = tokio::spawn(async move {
+            let mut last_seen = svc_tx.out_seq(&id_tx);
+            let mut unread: Option<(tokio::time::Instant, tokio::time::Instant)> = None;
+            loop {
+                if !svc_tx.lock().live.contains_key(&id_tx) {
+                    return;
+                }
+                let out_wait = out_n_tx.notified();
+                tokio::pin!(out_wait);
+                out_wait.as_mut().enable();
+                let poke_wait = poke_tx.notified();
+                tokio::pin!(poke_wait);
+                poke_wait.as_mut().enable();
+                let cur = svc_tx.out_seq(&id_tx);
+                if cur != last_seen {
+                    last_seen = cur;
+                    let now = tokio::time::Instant::now();
+                    unread = Some((unread.map_or(now, |(first, _)| first), now));
+                    continue;
+                }
+                let due = unread.map(|(first, last)| (last + QUIET).min(first + AT_MOST));
+                tokio::select! {
+                    _ = out_wait => {}
+                    _ = async { tokio::time::sleep_until(due.unwrap_or_else(tokio::time::Instant::now)).await }, if due.is_some() => {
+                        unread = None;
+                        svc_tx.transition(&id_tx).await;
+                    }
+                    _ = poke_wait => {
+                        unread = None;
+                        svc_tx.transition(&id_tx).await;
+                    }
+                }
+            }
+        });
+
         if let Some(live) = self.lock().live.get_mut(&id) {
-            live.task = Some(task.abort_handle());
+            live.tasks.push(stream_task.abort_handle());
+            live.tasks.push(transition_task.abort_handle());
+        } else {
+            stream_task.abort();
+            transition_task.abort();
         }
     }
 
@@ -2308,10 +3529,21 @@ impl Service {
     pub(super) async fn tab_presence(&self, entry: &NativeSubagent) -> TabPresence {
         match self.refresh(&entry.session_id).await {
             Ok(()) => {
-                let there = self.lock().sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.contains_key(&entry.block_id));
+                // Astra #5: Verify the block's mapped window matches `entry.window_id`
+                // (not just independent membership in `windows` and `blocks`).
+                let there = self
+                    .lock()
+                    .sessions
+                    .get(&entry.session_id)
+                    .is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.get(&entry.block_id).map(String::as_str) == Some(entry.window_id.as_str()));
                 if there { TabPresence::Present } else { TabPresence::Gone }
             }
             Err(e) if e.gone() => TabPresence::Gone,
+            Err(RexErr::Api { code, .. }) if code == "bad_request" => match self.session_ids().await {
+                Ok(ids) if !ids.iter().any(|s| s == &entry.session_id) => TabPresence::Gone,
+                Ok(_) => TabPresence::Unknown("session.view rejected a listed session id".into()),
+                Err(e2) => TabPresence::Unknown(e2.to_string()),
+            },
             Err(e) => TabPresence::Unknown(e.to_string()),
         }
     }
@@ -2362,6 +3594,9 @@ impl Service {
     // ---- What the server says unasked ----
 
     async fn on_event(self: &Arc<Self>, event: Event) {
+        if self.lock().frozen {
+            return;
+        }
         match event {
             Event::Session { session, kind, payload } => {
                 let child_of = |st: &State, window: Option<&str>, block: Option<&str>| {
@@ -2468,20 +3703,113 @@ impl Service {
 
     /// What a new service does with what the last one wrote down: each
     /// child whose tab the server still has is watched again, and each
-    /// whose tab is gone has exited (after a restart of the server every
-    /// one has, and keeps its conversation's id to be taken up again).
-    async fn reconcile(self: &Arc<Self>) {
-        let sessions: HashSet<String> = self.session_ids().await.unwrap_or_default().into_iter().collect();
+    /// whose tab is confirmed gone has exited (after a restart of the server
+    /// every one has, and keeps its conversation's id to be taken up again).
+    ///
+    /// Uses three-way presence (`Present` / `Gone` / `Unknown`): a temporary
+    /// Rex failure (`session_ids`, `refresh`, or `attach` with `!e.gone()`)
+    /// NEVER permanently stamps running children as exited.
+    async fn reconcile(self: &Arc<Self>) -> Result<(), String> {
         let mine: Vec<NativeSubagent> = self.lock().reg.entries.iter().filter(|e| e.exited_at.is_none()).cloned().collect();
-        let wanted: HashSet<&str> = mine.iter().map(|e| e.session_id.as_str()).filter(|s| sessions.contains(*s)).collect();
-        for session in wanted {
-            let _ = self.refresh(session).await;
+        let sessions: HashSet<String> = {
+            let mut last_err = None;
+            let mut found = None;
+            for attempt in 0..3 {
+                match self.session_ids().await {
+                    Ok(ids) => {
+                        found = Some(ids.into_iter().collect());
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                        if attempt < 2 {
+                            tokio::time::sleep(Duration::from_millis(200)).await;
+                        }
+                    }
+                }
+            }
+            match found {
+                Some(s) => s,
+                None if mine.is_empty() => HashSet::new(),
+                None => {
+                    return Err(format!("couldn't verify live Rex sessions during reconcile: {}", last_err.map_or_else(|| "unknown error".into(), |e| e.to_string())));
+                }
+            }
+        };
+        let wanted: HashSet<String> = mine.iter().map(|e| e.session_id.clone()).filter(|s| sessions.contains(s)).collect();
+        let mut unknown_sessions: HashSet<String> = HashSet::new();
+        for session in &wanted {
+            let mut ok = false;
+            let mut gone = false;
+            for attempt in 0..3 {
+                match self.refresh(session).await {
+                    Ok(()) => {
+                        ok = true;
+                        break;
+                    }
+                    Err(e) if e.gone() => {
+                        gone = true;
+                        break;
+                    }
+                    Err(_) if attempt < 2 => {
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                    Err(_) => break,
+                }
+            }
+            if !ok && !gone {
+                unknown_sessions.insert(session.clone());
+            }
         }
         for entry in mine {
-            let there = self.lock().sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.contains_key(&entry.block_id));
-            if there && self.attach(&entry.session_id).await.is_ok() {
+            let session_exists = sessions.contains(&entry.session_id);
+            let session_unknown = unknown_sessions.contains(&entry.session_id);
+            let there = self
+                .lock()
+                .sessions
+                .get(&entry.session_id)
+                .is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.get(&entry.block_id).map(String::as_str) == Some(entry.window_id.as_str()));
+            let keep_live = if session_unknown {
+                true
+            } else if session_exists && there {
+                match self.attach(&entry.session_id).await {
+                    Ok(()) => true,
+                    Err(e) if e.gone() => false,
+                    Err(e) => {
+                        logged!("olo agents: reconcile attach failed transiently for {} ({}): keeping live and retrying via watcher", entry.id, e);
+                        true
+                    }
+                }
+            } else {
+                false
+            };
+            if keep_live {
                 // (One that a service before this rule left as its own: let go of now.)
                 self.never_its_size(&entry).await;
+                // Explicitly mark reconciled children as `adopted_pending = true`
+                // (never inferred from wall-clock `started_at < began_ms`) so any
+                // standing approval box or survey is suppressed from auto-answering
+                // until resolved on an ordered, conclusive live frame.
+                // Also: for ANY live minded child whose last recorded state was
+                // `WaitingApproval` (whether `seen >= last_seq` OR `seen < last_seq`!),
+                // reset its dedupe and arm `pending_handoff` so the new service
+                // records a fresh event with this service's box key instead of
+                // leaving an unread pre-handover approval stranded by `still_stands`!
+                // For `WaitingQuestion`, reset dedupe when `seen >= last_seq`.
+                {
+                    let mut st = self.lock();
+                    let mut live = Live::new();
+                    live.adopted_pending = true;
+                    if let Some(minder_id) = st.reg.minder_of(&entry.id).map(|m| m.id.clone())
+                        && let Some((last_state, last_seq)) = st.log.last_recorded_of(&entry.id)
+                        && (last_state == SubagentLiveState::WaitingApproval
+                            || (last_state == SubagentLiveState::WaitingQuestion && st.seen.get(&(minder_id, entry.id.clone())).copied().unwrap_or(0) >= last_seq))
+                    {
+                        st.log.reset_child_dedupe(&entry.id);
+                        live.pending_handoff = true;
+                    }
+                    st.live.insert(entry.id.clone(), live);
+                }
                 self.watch_child(&entry);
             } else {
                 self.lock().live.insert(entry.id.clone(), Live::new());
@@ -2490,73 +3818,180 @@ impl Service {
         }
         // Re-arm the empty-minder timer for any live shared minder left
         // empty across a handover/restart so it never sits indefinitely.
-        let empty_minders: Vec<String> = {
-            let st = self.lock();
-            st.reg.entries.iter().filter(|e| e.exited_at.is_none() && e.is_shared_minder() && st.reg.minded_by(&e.id).is_empty()).map(|e| e.id.clone()).collect()
-        };
-        for mid in empty_minders {
-            self.arm_empty_minder_if_idle(&mid, minder_reports());
-        }
+        self.rearm_empty_minders();
+        Ok(())
     }
 
-    /// A child's tab is never the service's to size. The Rex server
-    /// makes whoever creates a block its owner if they are attached to
-    /// its session then (rev 19: "If the calling client is attached to
-    /// the session, it becomes the block's owner"), and an owner's size
-    /// is the one that holds: a desktop that shows the tab asks for its
-    /// own view's size and is not given it. The service is attached to
-    /// a session from its first child there on, so its second child and
-    /// every one after (and every one, after the service started again)
-    /// was the service's, and stood at the size of the pane it was
-    /// asked from for as long as it ran: shown in a shorter view its
-    /// last rows, where an agent's prompt is, were cut off (Ben,
-    /// 2026-11-27: "there seems to be a bug rendering some antigravity
-    /// agy terminals that are launched as subagents where it doesn't
-    /// show the full tui stuff like the typing line"; a 108 × 64 tab in
-    /// a view of 56 rows; the second investigator proved the rule on a
-    /// scratch server). The service has no view: it gives the block up
-    /// and leaves the line for it (`session.disown_block`), which keeps
-    /// the size the tab was made with until a desktop shows it. Nothing
-    /// for a block it doesn't own; a server that knows no owners says
-    /// no, and that is all right.
     async fn never_its_size(&self, entry: &NativeSubagent) {
         let _ = self.rex.call("session.disown_block", json!({ "session_id": entry.session_id, "block_ids": [entry.block_id] })).await;
     }
 
     /// A child begins: written down, watched, said to followers.
-    pub async fn begin(self: &Arc<Self>, entry: NativeSubagent) -> Result<(), RexErr> {
-        self.begin_attached(entry, None, None, None).await.map(|_| ())
+    pub async fn begin(self: &Arc<Self>, entry: NativeSubagent, adopted: bool) -> Result<(), String> {
+        self.begin_attached(entry, None, None, None, adopted, None, None).await.map(|_| ())
     }
 
     /// Registers a newly started child, atomically validating any chosen
-    /// shared minder and converting its pending reservation to a live
-    /// assignment in the SAME lock hold (never double-counting load and
-    /// never committing an assignment to a minder that exited, errored,
-    /// or started closing while the tab was being created). If the minder
-    /// became unavailable, the child is registered under `fallback_parent`
-    /// unminded and the reason is returned in the second tuple element.
-    /// `trust_until`: its own folders' trust is the service's to answer
-    /// until then (`--trust`), held from before its first reading
-    /// ([`TrustAtStart`]).
-    pub async fn begin_attached(
+    /// shared minder, converting its pending reservation to a live assignment
+    /// (disarming `pending_guard` under the SAME lock so a persistence failure
+    /// never double-decrements `pending_minds`), installing any validated
+    /// startup `--approve-all-but` list BEFORE starting `watch_child`, and
+    /// spawning startup folder-trust BEFORE awaiting `write_now()`.
+    ///
+    /// Follower `Frame::Agent` broadcasts stay suppressed (`live.committed =
+    /// false`) until `write_now()` commits `registry.json` atomically; on
+    /// failure, rolls back memory + leave file, aborts tasks, verifies tab
+    /// close, and re-arms empty-minder shutdown once.
+    /// Helper to close a newly created tab on registration failure (2 attempts
+    /// + three-way `tab_presence` confirmation). Returns `(tab_closed, warning)`.
+    async fn rollback_close_tab(&self, entry: &NativeSubagent) -> (bool, Option<String>) {
+        let mut tab_closed = false;
+        let mut last_close_err = None;
+        for attempt in 0..2 {
+            match self.rex.call("session.close_window", json!({ "session_id": entry.session_id, "window_id": entry.window_id })).await {
+                Ok(_) => {
+                    tab_closed = true;
+                    last_close_err = None;
+                    break;
+                }
+                Err(ce) if ce.gone() => {
+                    tab_closed = true;
+                    last_close_err = None;
+                    break;
+                }
+                Err(ce) => {
+                    last_close_err = Some(ce);
+                    if attempt == 0 {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                }
+            }
+        }
+        if !tab_closed {
+            if matches!(self.tab_presence(entry).await, TabPresence::Gone) {
+                tab_closed = true;
+            } else if let Some(ce) = last_close_err {
+                logged!("olo agents: rollback failed to close tab {} for {}: {ce}", entry.window_id, entry.id);
+                return (false, Some(format!(" (also failed to close tab {}: {ce}; kept live record `{}` for recovery)", entry.window_id, entry.id)));
+            }
+        }
+        (tab_closed, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn begin_attached(
         self: &Arc<Self>,
         mut entry: NativeSubagent,
         fallback_parent: Option<&str>,
-        reserved_minder: Option<&str>,
+        mut pending_guard: Option<(&str, &mut super::ops::PendingMindGuard)>,
         trust_until: Option<Instant>,
-    ) -> Result<(NativeSubagent, Option<String>), RexErr> {
-        self.attach(&entry.session_id).await?;
+        adopted: bool,
+        expect_work: Option<(u64, Duration)>,
+        leave_text: Option<&str>,
+    ) -> Result<(NativeSubagent, Option<String>, Option<Result<usize, String>>), String> {
+        if let Err(e) = self.attach(&entry.session_id).await {
+            if !adopted {
+                let (tab_closed, close_warn) = self.rollback_close_tab(&entry).await;
+                if !tab_closed {
+                    // Neon #2 / Astra #13: Tab could not be closed: fall back
+                    // cleanly to parent/lead (`minded_by = None`), disarm
+                    // `pending_guard` (re-arming any reused idle minder), mark
+                    // record in `unsaved_recovery_ids`, and schedule persistence!
+                    entry.minded_by = None;
+                    if let Some(lead) = fallback_parent {
+                        entry.parent_window_id = lead.to_owned();
+                    }
+                    let rearm_empty_minder = {
+                        let mut st = self.lock();
+                        let consumed = if let Some((mid, guard)) = pending_guard.take() {
+                            if let Some(n) = st.pending_minds.get_mut(mid) {
+                                *n = n.saturating_sub(1);
+                                if *n == 0 {
+                                    st.pending_minds.remove(mid);
+                                }
+                            }
+                            guard.disarm();
+                            Some(mid.to_owned())
+                        } else {
+                            None
+                        };
+                        st.reserved_ids.remove(&entry.id);
+                        st.unsaved_recovery_ids.insert(entry.id.clone());
+                        st.reg.register(entry.clone());
+                        st.live.insert(entry.id.clone(), Live::new());
+                        consumed.filter(|mid| st.reg.minded_by(mid).is_empty() && st.pending_minds.get(mid).copied().unwrap_or(0) == 0)
+                    };
+                    self.watch_child(&entry);
+                    self.saved();
+                    self.tell_entry(&entry.id);
+                    if let Some(mid) = rearm_empty_minder {
+                        self.arm_empty_minder_if_idle(&mid, minder_reports());
+                    }
+                }
+                let warn = close_warn.unwrap_or_default();
+                return Err(format!("the new tab couldn't be watched: {e}{warn}"));
+            }
+            return Err(format!("the new tab couldn't be watched: {e}"));
+        }
         self.never_its_size(&entry).await;
+        // Atomically write any validated startup leave list on a blocking worker
+        // BEFORE registration/watch_child starts. If installation fails, neutralize
+        // any pre-existing file on disk so a restart can NEVER resurrect an old
+        // allow-all file; if an existing file cannot be removed, fail registration!
+        let mut leave_res: Option<Result<usize, String>> = None;
+        let mut parsed_leave: Option<Arc<super::leave::LeaveList>> = None;
+        let mut leave_disabled_on_error = false;
+        let mut wrote_leave_file = false;
+        if let Some(text) = leave_text {
+            let lock = self.leave_lock(&entry.id);
+            let _leave_guard = lock.lock().await;
+            match super::leave::LeaveList::parse(text) {
+                Ok(list) => {
+                    let file = self.leave_file(&entry.id);
+                    match self.write_leave_file_atomic(&entry.id, text).await {
+                        Ok(()) => {
+                            wrote_leave_file = true;
+                            leave_res = Some(Ok(list.patterns().len()));
+                            parsed_leave = Some(Arc::new(list));
+                        }
+                        Err(e) => {
+                            if let Err(rm_err) = self.remove_leave_file_blocking(&entry.id).await {
+                                let (_, close_warn) = if adopted { (true, None) } else { self.rollback_close_tab(&entry).await };
+                                let warn = close_warn.unwrap_or_default();
+                                return Err(format!("--approve-all-but failed ({e}) and couldn't neutralize existing list file ({rm_err}){warn}"));
+                            }
+                            leave_disabled_on_error = true;
+                            leave_res = Some(Err(format!("{}: {e}", file.display())));
+                        }
+                    }
+                }
+                Err(e) => {
+                    if let Err(rm_err) = self.remove_leave_file_blocking(&entry.id).await {
+                        let (_, close_warn) = if adopted { (true, None) } else { self.rollback_close_tab(&entry).await };
+                        let warn = close_warn.unwrap_or_default();
+                        return Err(format!("--approve-all-but invalid ({e}) and couldn't neutralize existing list file ({rm_err}){warn}"));
+                    }
+                    leave_disabled_on_error = true;
+                    leave_res = Some(Err(e));
+                }
+            }
+        }
         let mut minder_lost: Option<String> = None;
+        let mut consumed_minder: Option<String> = None;
         {
             let mut st = self.lock();
-            if let Some(mid) = reserved_minder
-                && let Some(n) = st.pending_minds.get_mut(mid)
-            {
-                *n = n.saturating_sub(1);
-                if *n == 0 {
-                    st.pending_minds.remove(mid);
+            if let Some((mid, guard)) = pending_guard.take() {
+                if let Some(n) = st.pending_minds.get_mut(mid) {
+                    *n = n.saturating_sub(1);
+                    if *n == 0 {
+                        st.pending_minds.remove(mid);
+                    }
                 }
+                // Disarm the guard atomically under the SAME lock that consumes
+                // its reservation so a subsequent `write_now()` rollback never
+                // decrements another concurrent start's reservation!
+                guard.disarm();
+                consumed_minder = Some(mid.to_owned());
             }
             if let Some(mid) = entry.minded_by.clone() {
                 let minder_ok = st.reg.entries.iter().rev().find(|e| e.id == mid && e.exited_at.is_none() && e.is_shared_minder()).filter(|m| {
@@ -2577,21 +4012,566 @@ impl Service {
                 }
             }
             st.reserved_ids.remove(&entry.id);
+            st.provisional_ids.insert(entry.id.clone());
             st.reg.register(entry.clone());
+            if let Some(list) = parsed_leave {
+                st.leave.insert(entry.id.clone(), Some(list));
+            } else if leave_disabled_on_error {
+                // Explicitly cache disabled (`None`) so `leave_of` never re-reads
+                // disk on a failed startup list write.
+                st.leave.insert(entry.id.clone(), None);
+            }
             let mut live = Live::new();
+            live.committed = false;
+            live.adopted_pending = adopted;
             live.trust = trust_until.map(|until| TrustAtStart::of(&entry, until));
+            if let Some((cursor, within)) = expect_work {
+                let now = now_unix_ms();
+                let turn_from_ms = to_unix_ms(entry.started_at).max(0) as u64;
+                live.given = 1;
+                live.expects = Some(state::Expected { cursor, given_ms: now, until_ms: now + within.as_millis() as u64, transcript_len: None, turn_from_ms, seq: 1 });
+            }
             st.live.insert(entry.id.clone(), live);
             st.idle_since = None;
         }
-        // (Written down before anybody is told it started: a service
-        // killed the moment after knows the tab for its child.)
-        self.write_now().await;
-        self.tell_entry(&entry.id);
+        // Start watching and startup folder-trust BEFORE awaiting durable write
+        // so a slow background save never consumes the 15 s trust window.
+        // Public follower frames remain suppressed until `live.committed = true`.
         self.watch_child(&entry);
-        Ok((entry, minder_lost))
+        if let Some(until) = trust_until {
+            self.spawn_trust_at_start(&entry, until);
+        }
+        // Written down before anybody is told it started: a service killed the
+        // moment after knows the tab for its child. Commit ONLY this entry
+        // alongside already-committed records (excluding unrelated provisional
+        // entries). Roll back cleanly on failure, keeping an owned recovery
+        // record if Rex refuses to close the live tab.
+        if let Err(e) = self.write_now_committing(&[entry.id.as_str()]).await {
+            logged!("olo agents: failed to persist registry for {}: {e}", entry.id);
+            let (tab_closed, close_warning) = if adopted { (true, None) } else { self.rollback_close_tab(&entry).await };
+            if tab_closed {
+                {
+                    let mut st = self.lock();
+                    if let Some(live) = st.live.get_mut(&entry.id) {
+                        for task in live.tasks.drain(..) {
+                            task.abort();
+                        }
+                    }
+                }
+                if wrote_leave_file {
+                    let _ = self.remove_leave_file_blocking(&entry.id).await;
+                }
+                let rearm_empty_minder = {
+                    let mut st = self.lock();
+                    st.provisional_ids.remove(&entry.id);
+                    st.unsaved_recovery_ids.remove(&entry.id);
+                    st.reg.entries.retain(|r| r.id != entry.id);
+                    st.live.remove(&entry.id);
+                    st.leave.remove(&entry.id);
+                    if let Some(sess) = st.sessions.get_mut(&entry.session_id) {
+                        sess.windows.remove(&entry.window_id);
+                        sess.blocks.remove(&entry.block_id);
+                    }
+                    consumed_minder.filter(|mid| st.reg.minded_by(mid).is_empty() && st.pending_minds.get(mid).copied().unwrap_or(0) == 0)
+                };
+                if let Some(mid) = rearm_empty_minder {
+                    self.arm_empty_minder_if_idle(&mid, minder_reports());
+                }
+            } else {
+                // Neon #2 / Astra #13: Close failed and tab is still live:
+                // detach from any minder (`minded_by = None`, reset parent to
+                // `fallback_parent`) so `ops.rs::start`'s error cleanup safely
+                // removes `rules_path` and cleans up any fresh empty minder,
+                // mark as `unsaved_recovery_ids` until durably persisted, and
+                // schedule background save!
+                let (deferred_code, deferred_tab_closed, rearm_empty_minder) = {
+                    let mut st = self.lock();
+                    st.provisional_ids.remove(&entry.id);
+                    st.unsaved_recovery_ids.insert(entry.id.clone());
+                    if let Some(reg_entry) = st.reg.entries.iter_mut().rev().find(|r| r.id == entry.id) {
+                        reg_entry.minded_by = None;
+                        if let Some(lead) = fallback_parent {
+                            reg_entry.parent_window_id = lead.to_owned();
+                        }
+                    }
+                    let rearm = consumed_minder.filter(|mid| st.reg.minded_by(mid).is_empty() && st.pending_minds.get(mid).copied().unwrap_or(0) == 0);
+                    let (dc, dtc) = if let Some(live) = st.live.get_mut(&entry.id) {
+                        live.committed = true;
+                        (live.pending_exit_code.take(), std::mem::take(&mut live.pending_tab_closed))
+                    } else {
+                        (None, false)
+                    };
+                    (dc, dtc, rearm)
+                };
+                self.saved();
+                self.tell_entry(&entry.id);
+                if let Some(mid) = rearm_empty_minder {
+                    self.arm_empty_minder_if_idle(&mid, minder_reports());
+                }
+                if let Some(code) = deferred_code {
+                    self.exit(&entry.id, Some(code));
+                }
+                if deferred_tab_closed {
+                    self.exit(&entry.id, None);
+                }
+            }
+            let warn = close_warning.unwrap_or_default();
+            return Err(format!("couldn't persist subagent registry: {e}{warn}"));
+        }
+        // Note: `write_now_committing` already cleared `entry.id` from
+        // `provisional_ids` under `state` mutex BEFORE releasing `write_lock` (Astra #1).
+        let (deferred_code, deferred_tab_closed) = {
+            let mut st = self.lock();
+            if let Some(live) = st.live.get_mut(&entry.id) {
+                live.committed = true;
+                (live.pending_exit_code.take(), std::mem::take(&mut live.pending_tab_closed))
+            } else {
+                (None, false)
+            }
+        };
+        self.tell_entry(&entry.id);
+        if let Some(code) = deferred_code {
+            self.exit(&entry.id, Some(code));
+        }
+        if deferred_tab_closed {
+            self.exit(&entry.id, None);
+        } else if deferred_code.is_none() {
+            self.poke(&entry.id);
+        }
+        Ok((entry, minder_lost, leave_res))
+    }
+
+    /// Independent verification for a pathless primary folder-trust prompt:
+    /// requires a verified current **foreground** PID (never falling back to
+    /// outer launch shell `child.pid` or cached `live.pid`) and readable
+    /// `/proc/{pid}/cwd` matching `primary`. Fails closed (`false`) on RPC
+    /// error, missing foreground PID, or unreadable procfs cwd.
+    async fn process_cwd_matches_primary(&self, entry: &NativeSubagent, primary: Option<&str>, deadline: tokio::time::Instant) -> bool {
+        let Some(primary_norm) = primary.and_then(norm_dir) else { return false };
+        let rem = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if rem.is_zero() {
+            return false;
+        }
+        let Ok(p) = self.rex.terminal_within(&entry.session_id, &entry.block_id, "process", json!({}), rem).await else {
+            return false;
+        };
+        let Some(pid) = p["foreground"]["pid"].as_i64().and_then(|v| i32::try_from(v).ok()).filter(|v| *v > 0) else {
+            return false;
+        };
+        let Ok(proc_cwd) = std::fs::read_link(format!("/proc/{pid}/cwd")) else {
+            return false;
+        };
+        if norm_dir(&proc_cwd.to_string_lossy()).as_deref() == Some(primary_norm.as_str()) {
+            return true;
+        }
+        let primary_canon = std::fs::canonicalize(&primary_norm).ok();
+        let proc_canon = std::fs::canonicalize(&proc_cwd).ok();
+        matches!((primary_canon, proc_canon), (Some(a), Some(b)) if a == b)
+    }
+
+    /// Startup `--trust` worker spawned immediately upon registration:
+    /// - Strictly bounded by `until` (captured BEFORE `session.new_window`) on
+    ///   all reads, locks, and key writes (`look_until`, `write_within`).
+    /// - Requires `looked.is_fresh_ordered()` and re-checks `TrustAtStart::owns_parts`
+    ///   AND intended folder on EVERY verifying frame (including after Down).
+    /// - Verifies process cwd binding on pathless primary prompts (fail-closed)
+    ///   and revalidates the prompt + selection if the screen changed during
+    ///   the process query.
+    /// - Waits across pathless `--add-dir` partial frames without claiming.
+    /// - Separates `arrows_sent` from `answered` (Return submitted) and waits
+    ///   through blank repaints for the full 3 s navigation budget.
+    /// - Never exits early on blank `Working("starting")` between primary and
+    ///   `--add-dir` prompts; exits early only on positive `in_turn` / `AT_PROMPT`
+    ///   or once all launch folders are answered.
+    /// - Zero stationary polling while `stream_connected` (250 ms fallback only
+    ///   while disconnected).
+    fn spawn_trust_at_start(self: &Arc<Self>, entry: &NativeSubagent, until: Instant) {
+        let (service, entry) = (self.clone(), entry.clone());
+        let id = entry.id.clone();
+        let task = tokio::spawn(async move {
+            let deadline = tokio::time::Instant::from_std(until);
+            let primary: Option<String> = entry.cwd.as_deref().and_then(norm_dir);
+            let add_dirs: Vec<String> = entry.add_dirs.iter().filter_map(|d| norm_dir(d)).collect();
+            let which = TrustAtStart::which;
+            let is_own = |trust: &olo_agent_screen::FolderTrustPrompt| TrustAtStart::owns_parts(primary.as_deref(), &add_dirs, trust);
+
+            struct AtStart<'a>(&'a Service, &'a str);
+            impl Drop for AtStart<'_> {
+                fn drop(&mut self) {
+                    self.0.trust_over(self.1);
+                }
+            }
+            let _at_start = AtStart(&service, &entry.id);
+
+            struct OnItsWay<'a>(&'a Service, &'a str);
+            impl Drop for OnItsWay<'_> {
+                fn drop(&mut self) {
+                    self.0.trust_keys_done(self.1);
+                }
+            }
+
+            let notifies = service.child_notifies(&entry.id);
+            // Returns `Some(true)` if woken by fallback/disconnect (caller MUST
+            // force a fresh live read), `Some(false)` on stream/state change, or
+            // `None` when `until_inst` expired.
+            let wait_for_change = |last_out: u64, last_sgen: u64, until_inst: tokio::time::Instant| {
+                let svc = service.clone();
+                let id_w = entry.id.clone();
+                let notifies = notifies.clone();
+                async move {
+                    let now_inst = tokio::time::Instant::now();
+                    if now_inst >= until_inst {
+                        return None;
+                    }
+                    let disconnected = !svc.stream_connected(&id_w);
+                    let fallback = disconnected.then(|| (now_inst + Duration::from_millis(250)).min(until_inst));
+                    let sleep_to = fallback.unwrap_or(until_inst);
+                    if let Some((out_n, st_n, _)) = notifies {
+                        let out_wait = out_n.notified();
+                        tokio::pin!(out_wait);
+                        out_wait.as_mut().enable();
+                        let st_wait = st_n.notified();
+                        tokio::pin!(st_wait);
+                        st_wait.as_mut().enable();
+                        if svc.out_seq(&id_w) != last_out {
+                            return Some(false);
+                        }
+                        if svc.stream_gen(&id_w) != last_sgen {
+                            return Some(true);
+                        }
+                        tokio::select! {
+                            _ = out_wait => Some(svc.stream_gen(&id_w) != last_sgen),
+                            _ = st_wait => Some(svc.stream_gen(&id_w) != last_sgen),
+                            _ = tokio::time::sleep_until(sleep_to) => (fallback.is_some() && tokio::time::Instant::now() < until_inst).then_some(true),
+                        }
+                    } else {
+                        tokio::time::sleep_until(sleep_to).await;
+                        (fallback.is_some() && tokio::time::Instant::now() < until_inst).then_some(true)
+                    }
+                }
+            };
+
+            let mut arrows_sent: HashSet<Option<String>> = HashSet::new();
+            let mut answered: HashSet<Option<String>> = HashSet::new();
+            let mut need_fresh = false;
+            loop {
+                if tokio::time::Instant::now() >= deadline || service.lock().frozen {
+                    break;
+                }
+                let out_before = service.out_seq(&entry.id);
+                let sgen_before = service.stream_gen(&entry.id);
+                let looked = service.look_until(&entry, need_fresh, Some(deadline)).await;
+                need_fresh = false;
+                if looked.cls.state == SubagentLiveState::Exited || service.lock().frozen {
+                    break;
+                }
+                if looked.rpc_failed || looked.survey || looked.survey_pending {
+                    let Some(force) = wait_for_change(out_before, sgen_before, deadline).await else { break };
+                    need_fresh = force;
+                    continue;
+                }
+                if let Some(trust) = looked.cls.folder_trust {
+                    // Partial `--add-dir` frame whose path hasn't drawn yet:
+                    // wait on output without claiming or pressing Return.
+                    if trust.is_add_dir && trust.folder.is_none() {
+                        if add_dirs.is_empty() {
+                            break;
+                        }
+                        let Some(force) = wait_for_change(out_before, sgen_before, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    if !is_own(&trust) {
+                        break;
+                    }
+                    if answered.contains(&which(&trust)) {
+                        let Some(force) = wait_for_change(out_before, sgen_before, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    if !trust.marked {
+                        let Some(force) = wait_for_change(out_before, sgen_before, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    // Acquire per-child answer lock strictly within deadline.
+                    let answers = service.answer_lock(&entry.id);
+                    let _held = tokio::select! {
+                        held = answers.lock_owned() => held,
+                        _ = tokio::time::sleep_until(deadline) => break,
+                    };
+                    if tokio::time::Instant::now() >= deadline || service.lock().frozen {
+                        break;
+                    }
+                    let out_locked = service.out_seq(&entry.id);
+                    let sgen_locked = service.stream_gen(&entry.id);
+                    let fresh = service.look_until(&entry, true, Some(deadline)).await;
+                    if fresh.cls.state == SubagentLiveState::Exited || service.lock().frozen {
+                        break;
+                    }
+                    if !fresh.is_fresh_ordered() || fresh.survey || fresh.survey_pending {
+                        drop(_held);
+                        let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    let Some(mut trust) = fresh.cls.folder_trust else {
+                        drop(_held);
+                        let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    };
+                    if trust.is_add_dir && trust.folder.is_none() {
+                        drop(_held);
+                        if add_dirs.is_empty() {
+                            break;
+                        }
+                        let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    if !is_own(&trust) {
+                        break;
+                    }
+                    if !trust.is_add_dir && trust.folder.is_none() {
+                        if !service.process_cwd_matches_primary(&entry, primary.as_deref(), deadline).await {
+                            break;
+                        }
+                        // ALWAYS perform one fresh ordered screen recheck right
+                        // after the process query (even when `!stream_connected`)
+                        // so a prompt change or survey appearing during the RPC
+                        // can never receive stale arrows or Return!
+                        let recheck = service.look_until(&entry, true, Some(deadline)).await;
+                        if recheck.cls.state == SubagentLiveState::Exited || service.lock().frozen {
+                            break;
+                        }
+                        if !recheck.is_fresh_ordered() || recheck.survey || recheck.survey_pending {
+                            drop(_held);
+                            let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                            need_fresh = force;
+                            continue;
+                        }
+                        let Some(rt) = recheck.cls.folder_trust else {
+                            drop(_held);
+                            let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                            need_fresh = force;
+                            continue;
+                        };
+                        if !is_own(&rt) || which(&rt) != which(&trust) {
+                            break;
+                        }
+                        trust = rt;
+                    }
+                    let key = which(&trust);
+                    if answered.contains(&key) {
+                        drop(_held);
+                        let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    if !trust.marked {
+                        drop(_held);
+                        let Some(force) = wait_for_change(out_locked, sgen_locked, deadline).await else { break };
+                        need_fresh = force;
+                        continue;
+                    }
+                    if tokio::time::Instant::now() >= deadline || service.lock().frozen {
+                        break;
+                    }
+
+                    // Mark keys on their way (do not mark Return answered until Return is committed).
+                    let delta = trust.trust_index as isize - trust.selected_index as isize;
+                    service.trust_taken(&entry.id, key.clone(), false);
+                    let _on_its_way = OnItsWay(&service, &entry.id);
+                    let same_target = |t: &olo_agent_screen::FolderTrustPrompt| is_own(t) && which(t) == key;
+
+                    let mut landed = delta == 0;
+                    if delta != 0 {
+                        if arrows_sent.contains(&key) {
+                            // Already sent arrows for this prompt once: do not walk again.
+                            answered.insert(key.clone());
+                            service.trust_taken(&entry.id, key.clone(), true);
+                            drop(_on_its_way);
+                            continue;
+                        }
+                        arrows_sent.insert(key.clone());
+                        let arrow = if delta > 0 { "\x1b[B" } else { "\x1b[A" };
+                        let mut out_before_arrows = service.out_seq(&entry.id);
+                        let mut sgen_before_arrows = service.stream_gen(&entry.id);
+                        let mut pressed = true;
+                        for step in 0..delta.unsigned_abs() {
+                            if service.survey_active(&entry.id) || service.lock().frozen {
+                                pressed = false;
+                                break;
+                            }
+                            // Astra #16: After an intervening sleep between arrows,
+                            // re-verify the live foreground screen before pressing
+                            // the next arrow so a survey or different dialog never
+                            // receives startup-trust arrow keys!
+                            if step > 0 {
+                                let step_now = service.look_ordered(&entry, Some(deadline)).await;
+                                if !step_now.is_fresh_ordered()
+                                    || step_now.survey
+                                    || step_now.survey_pending
+                                    || service.survey_active(&entry.id)
+                                    || !step_now.cls.folder_trust.as_ref().is_some_and(same_target)
+                                {
+                                    pressed = false;
+                                    break;
+                                }
+                            }
+                            let rem = deadline.saturating_duration_since(tokio::time::Instant::now());
+                            if rem.is_zero() || service.lock().frozen || service.rex.write_within(&entry.session_id, &entry.block_id, arrow, rem).await.is_err() {
+                                pressed = false;
+                                break;
+                            }
+                            if step + 1 < delta.unsigned_abs() {
+                                let sleep_to = (tokio::time::Instant::now() + Duration::from_millis(50)).min(deadline);
+                                tokio::time::sleep_until(sleep_to).await;
+                            }
+                        }
+                        if pressed {
+                            let by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
+                            loop {
+                                if tokio::time::Instant::now() >= by || service.lock().frozen {
+                                    break;
+                                }
+                                if service.out_seq(&entry.id) == out_before_arrows
+                                    && service.stream_gen(&entry.id) == sgen_before_arrows
+                                    && wait_for_change(out_before_arrows, sgen_before_arrows, by).await.is_none()
+                                {
+                                    break;
+                                }
+                                out_before_arrows = service.out_seq(&entry.id);
+                                sgen_before_arrows = service.stream_gen(&entry.id);
+                                let again = service.look_until(&entry, true, Some(by)).await;
+                                if again.cls.state == SubagentLiveState::Exited || service.lock().frozen {
+                                    break;
+                                }
+                                if !again.is_fresh_ordered() {
+                                    continue;
+                                }
+                                if again.survey || again.survey_pending {
+                                    // Survey overlay appeared on top of trust dialog: abort without Return!
+                                    break;
+                                }
+                                match again.cls.folder_trust {
+                                    Some(t) if !same_target(&t) => {
+                                        // Out-of-scope or different folder appeared after Down: abort without Return!
+                                        break;
+                                    }
+                                    Some(t) if !t.is_add_dir && t.folder.is_none() => {
+                                        if !service.process_cwd_matches_primary(&entry, primary.as_deref(), by).await {
+                                            break;
+                                        }
+                                        // End verification with a fresh ordered screen read right after
+                                        // the process query (including when `!stream_connected`) so a
+                                        // prompt or mark change during the RPC can never receive Return!
+                                        let recheck = service.look_until(&entry, true, Some(by)).await;
+                                        if recheck.cls.state == SubagentLiveState::Exited || service.lock().frozen || !recheck.is_fresh_ordered() || recheck.survey || recheck.survey_pending {
+                                            break;
+                                        }
+                                        let Some(rt) = recheck.cls.folder_trust else { break };
+                                        if !same_target(&rt) {
+                                            break;
+                                        }
+                                        if rt.marked && rt.selected_index == rt.trust_index {
+                                            landed = true;
+                                            break;
+                                        }
+                                    }
+                                    Some(t) if t.marked && t.selected_index == t.trust_index => {
+                                        landed = true;
+                                        break;
+                                    }
+                                    Some(_) => {}
+                                    // Blank repaint: wait through full `by` budget unless agent is positively elsewhere or in an approval.
+                                    None if is_positively_elsewhere(&again.cls) || again.cls.approval.is_some() => break,
+                                    None => {}
+                                }
+                            }
+                        }
+                    }
+
+                    // Single Return per prompt, strictly within deadline.
+                    answered.insert(key.clone());
+                    service.trust_taken(&entry.id, key.clone(), true);
+                    let rem = deadline.saturating_duration_since(tokio::time::Instant::now());
+                    if landed && !rem.is_zero() && !service.lock().frozen {
+                        let mut out_before_ret = service.out_seq(&entry.id);
+                        let mut sgen_before_ret = service.stream_gen(&entry.id);
+                        if service.rex.write_within(&entry.session_id, &entry.block_id, "\r", rem).await.is_ok() {
+                            let by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
+                            let mut none_since: Option<tokio::time::Instant> = None;
+                            loop {
+                                if tokio::time::Instant::now() >= by || service.lock().frozen {
+                                    break;
+                                }
+                                let blank_due = none_since.map(|s| (s + Duration::from_millis(150)).min(by));
+                                let wake_at = blank_due.unwrap_or(by);
+                                let cur_out = service.out_seq(&entry.id);
+                                if cur_out == out_before_ret
+                                    && service.stream_gen(&entry.id) == sgen_before_ret
+                                    && !none_since.is_some_and(|s| s.elapsed() >= Duration::from_millis(150))
+                                    && wait_for_change(out_before_ret, sgen_before_ret, wake_at).await.is_none()
+                                    && !none_since.is_some_and(|s| s.elapsed() >= Duration::from_millis(150))
+                                {
+                                    break;
+                                }
+                                out_before_ret = service.out_seq(&entry.id);
+                                sgen_before_ret = service.stream_gen(&entry.id);
+                                let again = service.look_until(&entry, true, Some(by)).await;
+                                if again.cls.state == SubagentLiveState::Exited {
+                                    break;
+                                }
+                                if !again.is_fresh_ordered() {
+                                    continue;
+                                }
+                                match again.cls.folder_trust {
+                                    Some(t) if same_target(&t) => none_since = None,
+                                    Some(_) => break,
+                                    None if is_positively_elsewhere(&again.cls) || again.cls.approval.is_some() => break,
+                                    None => match none_since {
+                                        Some(since) if since.elapsed() >= Duration::from_millis(150) => break,
+                                        Some(_) => {}
+                                        None => none_since = Some(tokio::time::Instant::now()),
+                                    },
+                                }
+                            }
+                        }
+                    }
+                    drop(_on_its_way);
+                    if add_dirs.is_empty() {
+                        break;
+                    }
+                    continue;
+                }
+                // Do NOT terminate early on a blank frame (`Working("starting")`):
+                // only exit early on positive evidence of a running turn or prompt!
+                if !answered.is_empty() && is_positively_elsewhere(&looked.cls) {
+                    break;
+                }
+                let Some(force) = wait_for_change(out_before, sgen_before, deadline).await else {
+                    break;
+                };
+                need_fresh = force;
+            }
+        });
+        if let Some(live) = self.lock().live.get_mut(&id) {
+            live.tasks.push(task.abort_handle());
+        } else {
+            task.abort();
+        }
     }
 
     // ---- What is written down ----
+
+    /// Test-only delay/barrier/handover hooks are honored ONLY when
+    /// `OLO_REX_AGENTS_DIR` is an absolute isolated path (matching `Paths::of`
+    /// and `client::service_env_from`).
+    pub(super) fn test_env_allowed() -> bool {
+        olo_rex_link::agents::wire::is_isolated_agents_dir(std::env::var_os("OLO_REX_AGENTS_DIR").as_deref())
+    }
 
     /// Writes the registry whenever there is something of it to write,
     /// until it is told to stop (a service at its end: its last write
@@ -2604,54 +4584,208 @@ impl Service {
             tokio::select! {
                 biased;
                 _ = &mut stop => return,
-                _ = self.save.notified() => self.write(true).await,
+                _ = self.save.notified() => {
+                    if let Err(e) = self.write(true).await {
+                        logged!("olo agents: background registry save failed: {e}");
+                    }
+                }
             }
         }
     }
 
-    async fn write_now(&self) {
-        self.write(false).await;
+    pub(crate) async fn write_now_committing(self: &Arc<Self>, committing_ids: &[&str]) -> std::io::Result<()> {
+        self.write_with_commit(false, committing_ids).await
     }
 
-    /// `the_writers`: the writer task's own write (which a test can make
-    /// slow: `OLO_REX_AGENTS_TEST_WRITER_DELAY_MS`, five seconds at most).
-    async fn write(&self, the_writers: bool) {
+    pub(crate) async fn write_now(self: &Arc<Self>) -> std::io::Result<()> {
+        self.write_with_commit(false, &[]).await
+    }
+
+    /// Compacts `events.jsonl` when larger than `threshold` bytes without
+    /// losing concurrent appends:
+    /// 1. Snapshot `st.log` in memory up to `snap_seq` (brief lock).
+    /// 2. Write and `sync_all()` the snapshot off-lock to a private
+    ///    `create_new(true).mode(0o600)` temp file (with collision retry and
+    ///    unlink-only-if-created guard).
+    /// 3. Catch up any concurrent appends off-lock (flushing and `sync_all()`
+    ///    off-lock in up to 5 passes), holding `self.lock()` ONLY for the
+    ///    microsecond tail-empty check and `fs::rename(&tmp, &paths.events)`
+    ///    (zero `sync_all()` under `self.lock()`).
+    fn compact_events_if_needed(&self, threshold: u64) -> std::io::Result<()> {
+        self.compact_events_with_hook(threshold, || {})
+    }
+
+    fn compact_events_with_hook(&self, threshold: u64, mut after_snapshot: impl FnMut()) -> std::io::Result<()> {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COMPACT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+        if !std::fs::metadata(&self.paths.events).is_ok_and(|m| m.len() > threshold) {
+            return Ok(());
+        }
+        let (mut snap_seq, snap_events) = self.lock().log.snapshot();
+
+        struct TempGuard {
+            path: PathBuf,
+            armed: bool,
+        }
+        impl Drop for TempGuard {
+            fn drop(&mut self) {
+                if self.armed {
+                    let _ = std::fs::remove_file(&self.path);
+                }
+            }
+        }
+
+        let mut created = None;
+        for _ in 0..64 {
+            let n = COMPACT_SEQ.fetch_add(1, Ordering::Relaxed);
+            let cand = self.paths.events.with_extension(format!("jsonl.tmp.{}.{n}", std::process::id()));
+            match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&cand) {
+                Ok(f) => {
+                    created = Some((cand, f));
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        let Some((tmp, f)) = created else {
+            return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "couldn't allocate unique compaction temp file"));
+        };
+        let mut guard = TempGuard { path: tmp.clone(), armed: true };
+        let mut writer = std::io::BufWriter::new(f);
+        for ev in &snap_events {
+            let mut line = serde_json::to_string(ev).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            line.push('\n');
+            writer.write_all(line.as_bytes())?;
+        }
+        writer.flush()?;
+        let mut f = writer.into_inner().map_err(|e| e.into_error())?;
+        // Always `sync_all()` completely OFF the global state mutex so slow
+        // storage never blocks the single-threaded Tokio reactor!
+        f.sync_all()?;
+        after_snapshot();
+
+        // Catch up any concurrent appends off-lock, then perform only the
+        // microsecond atomic `rename` under `self.lock()` once the tail is empty
+        // (ZERO `sync_all()` while holding `self.lock()`).
+        for _ in 0..5 {
+            let tail = {
+                let st = self.lock();
+                if st.log.has_gap(snap_seq) {
+                    return Ok(());
+                }
+                let tail = st.log.after_seq(snap_seq);
+                if tail.is_empty() {
+                    drop(f);
+                    std::fs::rename(&tmp, &self.paths.events)?;
+                    guard.armed = false;
+                    return Ok(());
+                }
+                tail
+            };
+            for ev in &tail {
+                let mut line = serde_json::to_string(ev).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                line.push('\n');
+                f.write_all(line.as_bytes())?;
+                snap_seq = snap_seq.max(ev.seq);
+            }
+            f.sync_all()?;
+        }
+        Ok(())
+    }
+
+    /// `the_writers`: the writer task's own write (which isolated tests may
+    /// gate with `OLO_REX_AGENTS_TEST_WRITER_DELAY_MS` or
+    /// `OLO_REX_AGENTS_TEST_WRITER_BARRIER` when `OLO_REX_AGENTS_DIR` is set).
+    async fn write(self: &Arc<Self>, the_writers: bool) -> std::io::Result<()> {
+        self.write_with_commit(the_writers, &[]).await
+    }
+
+    /// Snapshots committed registry state (plus any `committing_ids` explicitly
+    /// being committed by this request, excluding all OTHER provisional entries
+    /// so an unrelated writer can never publish a registration that later rolls
+    /// back!) and persists `minder-state.json` then `registry.json`.
+    async fn write_with_commit(self: &Arc<Self>, the_writers: bool, committing_ids: &[&str]) -> std::io::Result<()> {
         // (Its turn first, then the copy: what is written is what is
         // newest when the write before it has landed.)
         let held = self.write_lock.clone().lock_owned().await;
-        let slow = if the_writers { std::env::var("OLO_REX_AGENTS_TEST_WRITER_DELAY_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).map(|ms| ms.min(5000)) } else { None };
-        let (reg, minder_state) = {
+        let test_ok = the_writers && Self::test_env_allowed();
+        let slow = if test_ok { std::env::var("OLO_REX_AGENTS_TEST_WRITER_DELAY_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).map(|ms| ms.min(5000)) } else { None };
+        let barrier = if test_ok {
+            std::env::var("OLO_REX_AGENTS_TEST_WRITER_BARRIER").ok().and_then(|v| {
+                let (enter, release) = v.split_once(':')?;
+                (!enter.is_empty() && !release.is_empty()).then(|| (PathBuf::from(enter), PathBuf::from(release)))
+            })
+        } else {
+            None
+        };
+        let (reg, minder_state, persisted_recovery_ids) = {
             let st = self.lock();
             let ms = MinderStateDisk::from_state(&st);
-            (st.reg.clone(), ms)
+            let mut reg = st.reg.clone();
+            if !st.provisional_ids.is_empty() {
+                reg.entries.retain(|e| !st.provisional_ids.contains(&e.id) || committing_ids.contains(&e.id.as_str()));
+            }
+            let rec_ids: Vec<String> = reg.entries.iter().filter(|e| st.unsaved_recovery_ids.contains(&e.id)).map(|e| e.id.clone()).collect();
+            (reg, ms, rec_ids)
         };
+        let commit_owned: Vec<String> = committing_ids.iter().map(|s| (*s).to_owned()).collect();
+        let service = self.clone();
         let paths = self.paths.clone();
-        let _ = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
             let _held = held;
+            if let Some((enter, release)) = barrier
+                && !enter.exists()
+            {
+                let _ = std::fs::write(&enter, b"entered\n");
+                let wait_until = Instant::now() + Duration::from_secs(15);
+                while !release.exists() && Instant::now() < wait_until {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                if !release.exists() {
+                    let _ = std::fs::write(enter.with_extension("expired"), b"expired\n");
+                }
+            }
             if let Some(ms) = slow {
                 std::thread::sleep(Duration::from_millis(ms));
             }
-            reg.save_to(&paths.registry);
-            minder_state.save_to(&paths.dir.join("minder-state.json"));
-            // (The log's file kept to the last of it: read whole by the next service.)
-            if std::fs::metadata(&paths.events).is_ok_and(|m| m.len() > 16 << 20)
-                && let Ok(all) = std::fs::read_to_string(&paths.events)
-            {
-                let keep: Vec<&str> = all.lines().rev().take(2000).collect();
-                let kept: String = keep.into_iter().rev().map(|l| format!("{l}\n")).collect();
-                let tmp = paths.events.with_extension(format!("jsonl.tmp.{}", std::process::id()));
-                if std::fs::write(&tmp, kept).is_ok() {
-                    let _ = std::fs::rename(&tmp, &paths.events);
+            // Write `minder-state.json` FIRST and publish `registry.json` LAST
+            // so `registry.json`'s atomic rename is the registration commit
+            // point: a failure on either save never leaves a rolled-back child
+            // published in `registry.json` on disk!
+            minder_state.save_to(&paths.dir.join("minder-state.json"))?;
+            reg.save_to(&paths.registry)?;
+            // Astra #1: Clear successfully committed IDs from `provisional_ids`
+            // (and any persisted `unsaved_recovery_ids`) under the state mutex
+            // BEFORE releasing `write_lock` (`_held`) so no queued writer B can
+            // snapshot without A and erase A after A returns success!
+            if !commit_owned.is_empty() || !persisted_recovery_ids.is_empty() {
+                let mut st = service.lock();
+                for id in &commit_owned {
+                    st.provisional_ids.remove(id);
+                    st.unsaved_recovery_ids.remove(id);
+                }
+                for id in &persisted_recovery_ids {
+                    st.unsaved_recovery_ids.remove(id);
                 }
             }
+            if let Err(e) = service.compact_events_if_needed(16 << 20) {
+                logged!("olo agents: events compaction failed: {e}");
+            }
+            Ok(())
         })
-        .await;
+        .await
+        .map_err(|e| std::io::Error::other(format!("writer task failed: {e}")))?
     }
 
     // ---- Those that ask ----
 
     /// Builds a consistent `Frame::Snapshot` under a single lock acquisition
-    /// (avoiding the self-deadlock when a temporary guard lived across `views()`).
+    /// (avoiding the self-deadlock when a temporary guard lived across `views()`),
+    /// excluding ALL provisional uncommitted entries (both live and ended — Astra #3).
     fn snapshot(&self) -> Frame {
         let st = self.lock();
         let cursor = st.log.latest_seq();
@@ -2659,6 +4793,7 @@ impl Service {
             .reg
             .entries
             .iter()
+            .filter(|entry| !st.provisional_ids.contains(&entry.id) && !(entry.exited_at.is_none() && st.live.get(&entry.id).is_some_and(|l| !l.committed)))
             .map(|entry| {
                 let (state, summary) = match (entry.exited_at, st.live.get(&entry.id).and_then(|l| l.told.clone())) {
                     (Some(_), _) => (SubagentLiveState::Exited, None),
@@ -2671,12 +4806,64 @@ impl Service {
         Frame::Snapshot { proto: PROTO, cursor, agents }
     }
 
+    /// Validates that an adopted child ID is a single normal filesystem
+    /// component (rejecting empty, `/`, `\`, `..`, `.`, or NUL so list/rules
+    /// path joins can never escape agentd's state directory — Astra Addl #1).
+    fn is_safe_child_id(id: &str) -> bool {
+        if id.is_empty() || id.len() > 128 || id.contains('\0') || id.contains('/') || id.contains('\\') {
+            return false;
+        }
+        let mut comps = std::path::Path::new(id).components();
+        matches!((comps.next(), comps.next()), (Some(std::path::Component::Normal(_)), None))
+    }
+
     /// Children an earlier Olo's desktop kept (it was their keeper then):
     /// taken over once, those whose tabs are still there as live.
+    ///
+    /// - Rejects missing/malformed JSON payloads or unsafe path IDs (exit 2;
+    ///   never acknowledges `"Took over 0"`).
+    /// - Serializes concurrent migrations through commit via `adopt_lock`.
+    /// - Validates batch-internal duplicates/conflicts AND checks in-flight
+    ///   `provisional_ids`/`reserved_ids` and durable committed records
+    ///   (flushing any `unsaved_recovery_ids` before acknowledging duplicates).
+    /// - Uses three-way `tab_presence` (`Present` / `Gone` / `Unknown`) so a
+    ///   temporary Rex error never stamps a live child as exited.
+    /// - Fails WITHOUT `"Took over"` in stdout if ANY live registration or
+    ///   durable ended-record persistence fails.
     async fn adopt(self: &Arc<Self>, obj: Option<&Value>) -> Response {
-        let given: Vec<NativeSubagent> = obj.and_then(|v| v.get("agents")).and_then(|a| serde_json::from_value(a.clone()).ok()).unwrap_or_default();
-        let mut taken = 0;
-        for mut entry in given {
+        let Some(agents_val) = obj.and_then(|v| v.get("agents")) else {
+            return Response::err("adopt", "malformed adopt payload: missing `agents` array", 2);
+        };
+        if !agents_val.is_array() {
+            return Response::err("adopt", "malformed adopt payload: `agents` must be an array", 2);
+        }
+        let given: Vec<NativeSubagent> = match serde_json::from_value(agents_val.clone()) {
+            Ok(v) => v,
+            Err(e) => return Response::err("adopt", format!("malformed adopt payload: {e}"), 2),
+        };
+        // Pre-validate every ID is a safe single path component AND check
+        // batch-internal duplicates/conflicts BEFORE staging anything (Astra #3 / Addl #1).
+        let mut deduped: Vec<NativeSubagent> = Vec::with_capacity(given.len());
+        for entry in given {
+            if !Self::is_safe_child_id(&entry.id) {
+                return Response::err("adopt", format!("invalid adopted child id `{}`: must be a single path component", entry.id), 2);
+            }
+            if let Some(prev) = deduped.iter().find(|e| e.id == entry.id || (e.session_id == entry.session_id && e.window_id == entry.window_id)) {
+                if prev.id == entry.id && prev.session_id == entry.session_id && prev.window_id == entry.window_id && prev.block_id == entry.block_id {
+                    continue;
+                }
+                return Response::err(
+                    "adopt",
+                    format!("conflicting records inside adopt batch: `{}` (tab {}/{}) vs `{}` (tab {}/{})", prev.id, prev.session_id, prev.window_id, entry.id, entry.session_id, entry.window_id),
+                    1,
+                );
+            }
+            deduped.push(entry);
+        }
+        let _adopt_guard = self.adopt_lock.lock().await;
+        let mut taken = 0usize;
+        let mut ended_added: Vec<String> = Vec::new();
+        for mut entry in deduped {
             entry.host_key = HOST.to_owned();
             // Imported records never carry minder privileges or assignments:
             // strip them unconditionally so `adopt` cannot forge a minder.
@@ -2686,23 +4873,128 @@ impl Service {
             if entry.role.as_deref().is_some_and(|r| r.trim().eq_ignore_ascii_case("minder")) {
                 entry.role = None;
             }
-            if self.lock().reg.entries.iter().any(|e| e.id == entry.id || (e.session_id == entry.session_id && e.window_id == entry.window_id)) {
-                continue;
+            // Check against in-flight starts (`reserved_ids`, other `provisional_ids`),
+            // already-staged `ended_added`, and durable committed records (Astra #3 / #13 / Neon #6).
+            enum DupOutcome {
+                New,
+                DurableDup,
+                UnsavedRecoveryDup,
+                Conflict(String),
             }
-            let _ = self.seen(&entry.session_id).await;
-            let there = self.lock().sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&entry.window_id));
-            taken += 1;
-            if entry.exited_at.is_none() && there {
-                if self.begin(entry).await.is_err() {
-                    taken -= 1;
+            let dup_check = {
+                let st = self.lock();
+                if st.reserved_ids.contains(&entry.id) {
+                    DupOutcome::Conflict(format!("adopted entry `{}` conflicts with an in-flight start", entry.id))
+                } else if let Some(existing) = st.reg.entries.iter().find(|e| e.id == entry.id || (e.session_id == entry.session_id && e.window_id == entry.window_id)) {
+                    let exact = existing.id == entry.id && existing.session_id == entry.session_id && existing.window_id == entry.window_id && existing.block_id == entry.block_id;
+                    let other_provisional = st.provisional_ids.contains(&existing.id) && !ended_added.contains(&existing.id);
+                    if other_provisional {
+                        DupOutcome::Conflict(format!("adopted entry `{}` conflicts with an uncommitted in-flight registration", entry.id))
+                    } else if !exact {
+                        DupOutcome::Conflict(format!(
+                            "conflicting existing record `{}` (tab {}/{}) for adopted entry `{}` (tab {}/{})",
+                            existing.id, existing.session_id, existing.window_id, entry.id, entry.session_id, entry.window_id
+                        ))
+                    } else if st.unsaved_recovery_ids.contains(&existing.id) {
+                        DupOutcome::UnsavedRecoveryDup
+                    } else {
+                        DupOutcome::DurableDup
+                    }
+                } else {
+                    DupOutcome::New
+                }
+            };
+            match dup_check {
+                DupOutcome::DurableDup => continue,
+                DupOutcome::UnsavedRecoveryDup => {
+                    // Astra #13: Never acknowledge a duplicate whose recovery
+                    // record is not yet durably saved on disk!
+                    if let Err(e) = self.write_now().await {
+                        if !ended_added.is_empty() {
+                            let mut st = self.lock();
+                            st.reg.entries.retain(|r| !ended_added.contains(&r.id));
+                            for id in &ended_added {
+                                st.provisional_ids.remove(id);
+                            }
+                        }
+                        return Response::err("adopt", format!("failed to persist existing recovery record `{}`: {e}", entry.id), 1);
+                    }
+                    continue;
+                }
+                DupOutcome::New => {}
+                DupOutcome::Conflict(why) => {
+                    if !ended_added.is_empty() {
+                        let mut st = self.lock();
+                        st.reg.entries.retain(|r| !ended_added.contains(&r.id));
+                        for id in &ended_added {
+                            st.provisional_ids.remove(id);
+                        }
+                    }
+                    return Response::err("adopt", why, 1);
+                }
+            }
+            if entry.exited_at.is_none() {
+                match self.tab_presence(&entry).await {
+                    TabPresence::Present => {
+                        if let Err(e) = self.begin(entry, true).await {
+                            if !ended_added.is_empty() {
+                                let mut st = self.lock();
+                                st.reg.entries.retain(|r| !ended_added.contains(&r.id));
+                                for id in &ended_added {
+                                    st.provisional_ids.remove(id);
+                                }
+                            }
+                            return Response::err("adopt", format!("failed to persist adopted live child: {e}"), 1);
+                        }
+                        taken += 1;
+                    }
+                    TabPresence::Gone => {
+                        entry.exited_at = Some(now_unix_ms() as i64);
+                        let id = entry.id.clone();
+                        {
+                            let mut st = self.lock();
+                            st.provisional_ids.insert(id.clone());
+                            st.reg.entries.push(entry);
+                        }
+                        ended_added.push(id);
+                        taken += 1;
+                    }
+                    TabPresence::Unknown(why) => {
+                        if !ended_added.is_empty() {
+                            let mut st = self.lock();
+                            st.reg.entries.retain(|r| !ended_added.contains(&r.id));
+                            for id in &ended_added {
+                                st.provisional_ids.remove(id);
+                            }
+                        }
+                        return Response::err("adopt", format!("couldn't verify tab presence for live child `{}`: {why}", entry.id), 1);
+                    }
                 }
             } else {
-                if entry.exited_at.is_none() {
-                    entry.exited_at = Some(now_unix_ms() as i64);
+                let id = entry.id.clone();
+                {
+                    let mut st = self.lock();
+                    st.provisional_ids.insert(id.clone());
+                    st.reg.entries.push(entry);
                 }
-                self.lock().reg.entries.push(entry.clone());
-                self.save.notify_one();
-                self.tell_entry(&entry.id);
+                ended_added.push(id);
+                taken += 1;
+            }
+        }
+        if !ended_added.is_empty() {
+            let commit_refs: Vec<&str> = ended_added.iter().map(String::as_str).collect();
+            if let Err(e) = self.write_now_committing(&commit_refs).await {
+                let mut st = self.lock();
+                st.reg.entries.retain(|r| !ended_added.contains(&r.id));
+                for id in &ended_added {
+                    st.provisional_ids.remove(id);
+                }
+                return Response::err("adopt", format!("failed to persist adopted child records: {e}"), 1);
+            }
+            // Note: `write_now_committing` already removed `ended_added` from
+            // `provisional_ids` under `state` mutex BEFORE releasing `write_lock`.
+            for id in &ended_added {
+                self.tell_entry(id);
             }
         }
         Response::ok(format!("Took over {taken} child record(s).\n"), json!({ "ok": true, "adopted": taken }))
@@ -2788,6 +5080,9 @@ impl Service {
             }
         }
         if req.op == "follow" {
+            if self.lock().retiring {
+                return;
+            }
             // (Asked for before the picture is taken: nothing between the two is missed.)
             let mut frames = self.frames.subscribe();
             let first = self.snapshot();
@@ -2797,6 +5092,7 @@ impl Service {
             let mut gone = String::new();
             loop {
                 tokio::select! {
+                    _ = self.wait_retiring() => return,
                     frame = frames.recv() => {
                         let frame = match frame {
                             Ok(frame) => frame,
@@ -2813,13 +5109,48 @@ impl Service {
                 }
             }
         }
-        // Taken: said before anything is done (`wire::TAKEN`).
-        if write.write_all(b"\n").await.is_err() {
-            return;
-        }
+        // Check `retiring` atomically under `self.lock()` right alongside
+        // incrementing `doing` / `active_watches` BEFORE writing `TAKEN` (`\n`),
+        // so any connection accepted after retirement begins gets `NotTaken`
+        // and retries cleanly on the successor.
         let waits = matches!(req.op.as_str(), "watch" | "wait");
-        if !waits {
-            self.lock().doing += 1;
+        let is_retire = req.op == "retire";
+        struct ActiveOpGuard<'a> {
+            service: &'a Service,
+            waits: bool,
+            counted: bool,
+        }
+        impl Drop for ActiveOpGuard<'_> {
+            fn drop(&mut self) {
+                if !self.counted {
+                    return;
+                }
+                {
+                    let mut st = self.service.lock();
+                    if self.waits {
+                        st.active_watches = st.active_watches.saturating_sub(1);
+                    } else {
+                        st.doing = st.doing.saturating_sub(1);
+                    }
+                }
+                self.service.idle.notify_one();
+            }
+        }
+        {
+            let mut st = self.lock();
+            if st.retiring {
+                return;
+            }
+            if waits {
+                st.active_watches += 1;
+            } else if !is_retire {
+                st.doing += 1;
+            }
+        }
+        let active_guard = ActiveOpGuard { service: &self, waits, counted: !is_retire };
+        // Taken: said before anything is done (`wire::TAKEN`).
+        if tokio::time::timeout(Duration::from_secs(5), write.write_all(b"\n")).await.map_or(true, |r| r.is_err()) {
+            return;
         }
         // (An asker that goes away while a watch is waited for is let
         // go: nobody waits for it any more. What is done once is done to
@@ -2828,17 +5159,24 @@ impl Service {
         let answer = if waits {
             tokio::select! {
                 answer = self.answer(&req, &caller) => Some(answer),
+                _ = self.wait_retiring() => None,
                 _ = async { while lines.read_line(&mut gone).await.unwrap_or(0) > 0 { gone.clear(); } } => None,
             }
         } else {
-            let answer = self.answer(&req, &caller).await;
-            self.lock().doing -= 1;
-            self.idle.notify_one();
-            Some(answer)
+            Some(self.answer(&req, &caller).await)
         };
+        // End mutation accounting (`st.doing` / `st.active_watches`) as soon as
+        // the operation itself finishes, BEFORE writing the reply over the client
+        // socket, and bound reply delivery so a stalled client reader can NEVER
+        // block handover drain!
+        drop(active_guard);
         if let Some(answer) = answer {
-            let _ = write.write_all(said(&answer).as_bytes()).await;
-            let _ = write.shutdown().await;
+            let bytes = said(&answer);
+            let _ = tokio::time::timeout(Duration::from_secs(10), async {
+                let _ = write.write_all(bytes.as_bytes()).await;
+                let _ = write.shutdown().await;
+            })
+            .await;
         }
     }
 
@@ -2856,7 +5194,9 @@ impl Service {
             "retire" => {
                 // (`--to HELPER`: its successor, started by this service
                 // itself as it ends, so no other build's can start in
-                // between.)
+                // between.) Wait on the handover-outcome oneshot (outside
+                // `st.doing` accounting) so callers receive a non-zero error
+                // if handover aborts on drain timeout or failed save (Neon #1 / Astra #22)!
                 let to = req.args.iter().position(|a| a == "--to").map(|i| req.args.get(i + 1).map(PathBuf::from));
                 if let Some(to) = to {
                     let Some(to) = to else { return Response::err("retire", "--to requires the helper that takes over (its whole path)", 2) };
@@ -2865,8 +5205,15 @@ impl Service {
                     }
                     *self.successor.lock().unwrap_or_else(|e| e.into_inner()) = Some(to);
                 }
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                self.retire_waiters.lock().unwrap_or_else(|e| e.into_inner()).push(tx);
                 self.retire.notify_one();
-                Response::ok(String::new(), json!({ "ok": true }))
+                match tokio::time::timeout(Duration::from_secs(75), rx).await {
+                    Ok(Ok(Ok(()))) => Response::ok(String::new(), json!({ "ok": true, "handed_over": true })),
+                    Ok(Ok(Err(why))) => Response::err("retire", why, 1),
+                    Ok(Err(_)) => Response::ok(String::new(), json!({ "ok": true })),
+                    Err(_) => Response::err("retire", "timed out waiting for handover outcome", 1),
+                }
             }
             "adopt" => self.adopt(req.obj.as_ref()).await,
             "policy" => self.policy(req).await,
@@ -2904,6 +5251,19 @@ fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
 }
 
+/// Reaps abandoned temp files from interrupted previous saves/compactions
+/// once this service holds the exclusive service lock.
+fn reap_stale_temps(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for ent in entries.flatten() {
+        let name = ent.file_name();
+        let s = name.to_string_lossy();
+        if s.starts_with("events.jsonl.tmp.") || s.starts_with("registry.json.tmp.") || s.starts_with("minder-state.json.tmp.") {
+            let _ = std::fs::remove_file(ent.path());
+        }
+    }
+}
+
 /// Service-private minder delivery state persisted across handovers so a
 /// running minder keeps its per-subject cursors, rules generations, and
 /// pending exit reports without replaying already-delivered events.
@@ -2936,22 +5296,51 @@ impl MinderStateDisk {
         std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
 
-    fn save_to(&self, path: &std::path::Path) {
+    fn max_seen_seq(&self) -> u64 {
+        self.seen.iter().map(|(_, _, s)| *s).chain(self.minding_seen.iter().map(|(_, _, s)| *s)).max().unwrap_or(0)
+    }
+
+    fn save_to(&self, path: &std::path::Path) -> std::io::Result<()> {
         use std::io::Write as _;
         use std::os::unix::fs::OpenOptionsExt as _;
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(1);
-        let Ok(json) = serde_json::to_string(self) else { return };
-        let tmp = path.with_extension(format!("json.tmp.{}.{}", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
-        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)
-            && f.write_all(json.as_bytes()).is_ok()
-            && f.sync_all().is_ok()
-        {
-            drop(f);
-            let _ = std::fs::rename(&tmp, path);
-        } else {
-            let _ = std::fs::remove_file(&tmp);
+
+        struct TempGuard {
+            path: PathBuf,
+            armed: bool,
         }
+        impl Drop for TempGuard {
+            fn drop(&mut self) {
+                if self.armed {
+                    let _ = std::fs::remove_file(&self.path);
+                }
+            }
+        }
+
+        let json = serde_json::to_string(self).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let mut created = None;
+        for _ in 0..64 {
+            let tmp = path.with_extension(format!("json.tmp.{}.{}", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
+            match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp) {
+                Ok(f) => {
+                    created = Some((tmp, f));
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        let Some((tmp, mut f)) = created else {
+            return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "couldn't allocate unique minder-state temp file"));
+        };
+        let mut guard = TempGuard { path: tmp.clone(), armed: true };
+        f.write_all(json.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)?;
+        guard.armed = false;
+        Ok(())
     }
 }
 
@@ -2966,6 +5355,77 @@ fn load_events(paths: &Paths, start_seq: u64) -> SubagentEventLog {
 /// The lock's descriptor, where the service before this one handed it
 /// down ([`start_successor`]): named in the environment.
 const LOCK_FD: &str = "OLO_REX_AGENTS_LOCK_FD";
+
+/// Exit code and lock/handover-pipe handles returned from [`serve`] so the
+/// caller (`client.rs`) explicitly drops the Tokio runtime BEFORE releasing
+/// the exclusive lock and closing the successor's handover pipe.
+pub struct ServeExit {
+    pub code: i32,
+    _lock: Option<std::fs::File>,
+    _successor_pipe: Option<std::process::ChildStdin>,
+}
+
+impl ServeExit {
+    fn exit(code: i32) -> Self {
+        Self { code, _lock: None, _successor_pipe: None }
+    }
+}
+
+/// Waits asynchronously for actual EOF on the inherited handover pipe (stdin)
+/// using `AsyncFd` within `wait_dur`. Returns `Err` on timeout or read error
+/// without leaving a lingering blocking thread behind.
+async fn wait_pipe_eof(wait_dur: Duration) -> Result<(), String> {
+    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+    // SAFETY: dup stdin with CLOEXEC so we own an independent descriptor and
+    // set O_NONBLOCK on the inherited handover pipe.
+    let owned: OwnedFd = unsafe {
+        let fd = libc::fcntl(libc::STDIN_FILENO, libc::F_DUPFD_CLOEXEC, 3);
+        if fd < 0 {
+            return Err(format!("dup handover stdin failed: {}", std::io::Error::last_os_error()));
+        }
+        let owned = OwnedFd::from_raw_fd(fd);
+        let flags = libc::fcntl(owned.as_raw_fd(), libc::F_GETFL);
+        if flags < 0 || libc::fcntl(owned.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) != 0 {
+            return Err(format!("set O_NONBLOCK on handover stdin failed: {}", std::io::Error::last_os_error()));
+        }
+        owned
+    };
+    wait_fd_eof(owned, wait_dur).await
+}
+
+async fn wait_fd_eof(owned: std::os::fd::OwnedFd, wait_dur: Duration) -> Result<(), String> {
+    use std::os::fd::AsRawFd as _;
+    // SAFETY: `owned` is an owned descriptor moved into `AsyncFd` and closed only on Drop.
+    let async_fd = unsafe { tokio::io::unix::AsyncFd::register_with_interest(owned, tokio::io::Interest::READABLE) }.map_err(|e| format!("register handover pipe with reactor failed: {e}"))?;
+    let deadline = tokio::time::Instant::now() + wait_dur;
+    let mut buf = [0u8; 64];
+    loop {
+        let mut ready = match tokio::time::timeout_at(deadline, async_fd.readable()).await {
+            Ok(Ok(guard)) => guard,
+            Ok(Err(e)) => return Err(format!("handover pipe poll error: {e}")),
+            Err(_) => return Err(format!("predecessor did not close handover pipe within {}ms", wait_dur.as_millis())),
+        };
+        loop {
+            // SAFETY: valid owned fd and stack buffer.
+            let n = unsafe { libc::read(async_fd.get_ref().as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
+            if n == 0 {
+                return Ok(());
+            }
+            if n > 0 {
+                continue;
+            }
+            let err = std::io::Error::last_os_error();
+            match err.raw_os_error() {
+                Some(libc::EINTR) => continue,
+                Some(e) if e == libc::EAGAIN || e == libc::EWOULDBLOCK => {
+                    ready.clear_ready();
+                    break;
+                }
+                _ => return Err(format!("handover pipe read error: {err}")),
+            }
+        }
+    }
+}
 
 /// Whether a file may be the helper whose service takes over: a
 /// program of this account's own, named as a helper is.
@@ -2984,13 +5444,8 @@ fn successor_ok(exe: &std::path::Path) -> Result<(), String> {
 /// **this service's lock in its hand** (the lock's own descriptor, left
 /// open across the exec in the child alone and named in [`LOCK_FD`]:
 /// the lock is on the open file, so it is never free for another to
-/// take) and its input a
-/// pipe this service holds open until it has ended: the successor
-/// begins when that closes. Without this a service that retired just
-/// went, and the next one was whichever build asked first: on a host
-/// with thirty watchers begun under earlier builds, a handover took two
-/// minutes and six services, of three builds in turn (2026-11-27).
-/// What is returned is that pipe's end: kept until this process ends.
+/// take) and its input a pipe this service holds open until after its
+/// runtime has dropped: the successor begins ONLY when that pipe reaches EOF.
 fn start_successor(exe: &std::path::Path, server: &std::path::Path, paths: &Paths, lock: &std::fs::File) -> std::io::Result<std::process::ChildStdin> {
     use std::os::fd::AsRawFd as _;
     use std::os::unix::fs::OpenOptionsExt as _;
@@ -3043,11 +5498,7 @@ fn handed_lock(paths: &Paths) -> Option<std::fs::File> {
 /// `SIGTERM` and `SIGINT` held back from here on (asked before the
 /// runtime starts, so every thread of it holds them back too), and a
 /// descriptor they are read from instead, with who sent them
-/// (`signalfd`). The service's log said "told to end" of a signal and
-/// nothing of its sender; one night it was ended so by nobody that could
-/// be found afterwards (2026-11-27, 05:01:08 UTC: every sender in Olo's
-/// own code and in Rex's was ruled out, and the signal's own record of
-/// its sender had been thrown away).
+/// (`signalfd`).
 pub fn end_signals() -> Option<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd as _;
     // SAFETY: a signal set of this function's own, and two calls on it.
@@ -3061,7 +5512,6 @@ pub fn end_signals() -> Option<std::os::fd::OwnedFd> {
         }
         let fd = libc::signalfd(-1, &set, libc::SFD_CLOEXEC | libc::SFD_NONBLOCK);
         if fd < 0 {
-            // (Not held back after all: they end it as they did.)
             libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
             return None;
         }
@@ -3088,78 +5538,100 @@ fn signal_said(info: &libc::signalfd_siginfo) -> String {
     format!("{which} from pid {pid} (uid {}): {command}{cgroup}", info.ssi_uid)
 }
 
-pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::OwnedFd>) -> i32 {
+pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::OwnedFd>) -> ServeExit {
     if let Err(e) = private_dir(&paths.dir).and_then(|()| paths.socket.parent().map_or(Ok(()), private_dir)) {
         logged!("olo agents: {e}");
-        return 1;
+        return ServeExit::exit(1);
     }
-    // One service at a time. Another's lock is waited for a moment: it
-    // may be on its way out (handing over, or with nothing left to do),
-    // and whoever started this one is waiting for a service to answer.
-    // Handed its lock by the service before it (`start_successor`): it
-    // is the one that serves next, and begins when that one has ended
-    // (its input, a pipe that one holds open, closes), not before: two
-    // would write the same record.
+    // One service at a time. Handed its lock by the service before it
+    // (`start_successor`): requires actual EOF on the inherited handover pipe
+    // before touching registry or socket; exits non-zero on timeout/error.
     let waited = Instant::now();
     let lock = if let Some(lock) = handed_lock(&paths) {
-        let before = tokio::task::spawn_blocking(|| {
-            use std::io::Read as _;
-            let mut said = [0u8; 64];
-            while std::io::stdin().read(&mut said).is_ok_and(|n| n > 0) {}
-        });
-        let _ = tokio::time::timeout(Duration::from_secs(60), before).await;
+        let wait_dur = if Service::test_env_allowed() {
+            std::env::var("OLO_REX_AGENTS_HANDOVER_WAIT_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).map(Duration::from_millis).unwrap_or(Duration::from_secs(60))
+        } else {
+            Duration::from_secs(60)
+        };
+        if let Err(why) = wait_pipe_eof(wait_dur).await {
+            logged!("olo agents: handover aborted without starting: {why}");
+            return ServeExit::exit(75);
+        }
         lock
     } else {
         loop {
             if let Some(lock) = take_lock(&paths) {
                 break lock;
             }
-            // (It serves: this one has nothing to do.)
-            if std::os::unix::net::UnixStream::connect(&paths.socket).is_ok() || waited.elapsed() > Duration::from_secs(20) {
-                return 0;
+            // (It serves: this one has nothing to do. Wait budget exceeds the
+            // retiring predecessor's drain + final-save window.)
+            if std::os::unix::net::UnixStream::connect(&paths.socket).is_ok() || waited.elapsed() > Duration::from_secs(55) {
+                return ServeExit::exit(0);
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     };
+    // Exclusive service lock is held: reap any abandoned temp files left by
+    // a previously killed compaction or save.
+    reap_stale_temps(&paths.dir);
     let (rex, mut events) = match Rex::connect(&server).await {
         Ok(connected) => connected,
         Err(e) => {
             logged!("olo agents: the Rex server at {} couldn't be reached: {e}", server.display());
-            return 69;
+            return ServeExit::exit(69);
         }
     };
-    // (Every session's windows coming and going; a child's own block's
-    // events come with following its session.)
     if let Err(e) = rex.call("session.attach_all", json!({ "event_scope": "session" })).await {
         logged!("olo agents: the Rex server wouldn't say what happens in its sessions: {e}");
-        return 69;
+        return ServeExit::exit(69);
     }
-    let reg = match SubagentRegistry::read_from(&paths.registry) {
+    let mut reg = match SubagentRegistry::read_from(&paths.registry) {
         Ok(reg) => reg,
         Err(why) => {
-            // (Said, and no service: whoever asks is told it can't be
-            // asked, with this word, and is never told "no children".)
             logged!("olo agents: {why}");
-            return 69;
+            return ServeExit::exit(69);
         }
     };
-    let log = load_events(&paths, reg.event_seq);
+    // Advance monotonic service generation so approval box keys
+    // (`b{n}-g{gen}-{inc:08x}-{hash:08x}`) can never collide across service
+    // handovers or restarts even if the same child asks an identical prompt first.
+    reg.service_gen = reg.service_gen.saturating_add(1);
     let minder_disk = MinderStateDisk::load_from(&paths.dir.join("minder-state.json"));
+    let log = load_events(&paths, reg.event_seq.max(minder_disk.max_seen_seq()));
     let _ = std::fs::remove_file(&paths.socket);
-    let listener = match UnixListener::bind(&paths.socket) {
+    let mut listener = match UnixListener::bind(&paths.socket) {
         Ok(listener) => listener,
         Err(e) => {
             logged!("olo agents: couldn't listen at {}: {e}", paths.socket.display());
-            return 1;
+            return ServeExit::exit(1);
         }
     };
     {
         use std::os::unix::fs::PermissionsExt as _;
         let _ = std::fs::set_permissions(&paths.socket, std::fs::Permissions::from_mode(0o600));
     }
-    // (When it began, and which build it is: what a handover is told by.)
-    logged!("olo agents: serving (pid {}, {})", std::process::id(), std::env::current_exe().ok().and_then(|exe| exe.file_name().map(|name| name.to_string_lossy().into_owned())).unwrap_or_default());
+    // Persist the incremented `service_gen` AFTER binding the listening socket
+    // (minimizing the socket-down handover window) and BEFORE accepting any
+    // client request. Fail startup cleanly if persisting `service_gen` fails
+    // so a generation is never served without durable reservation (in addition,
+    // `incarnation` embeds a fresh random per-process token in every box key).
+    if paths.registry.exists()
+        && let Err(e) = reg.save_to(&paths.registry)
+    {
+        logged!("olo agents: couldn't persist service generation {}: {e}", reg.service_gen);
+        drop(listener);
+        let _ = std::fs::remove_file(&paths.socket);
+        return ServeExit::exit(1);
+    }
+    let incarnation = new_service_incarnation();
+    logged!(
+        "olo agents: serving (pid {}, {}, gen {})",
+        std::process::id(),
+        std::env::current_exe().ok().and_then(|exe| exe.file_name().map(|name| name.to_string_lossy().into_owned())).unwrap_or_default(),
+        reg.service_gen,
+    );
     let (frames, _) = broadcast::channel(1024);
+    let (retiring_tx, retiring_rx) = tokio::sync::watch::channel(false);
     let service = Arc::new(Service {
         rex,
         paths: paths.clone(),
@@ -3170,12 +5642,17 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
             sessions: HashMap::new(),
             clients: 0,
             doing: 0,
+            active_watches: 0,
+            retiring: false,
+            frozen: false,
             idle_since: None,
             let_go: HashMap::new(),
             closing_minders: HashSet::new(),
             unhealthy_minders: HashSet::new(),
             empty_gen: HashMap::new(),
             reserved_ids: HashSet::new(),
+            provisional_ids: HashSet::new(),
+            unsaved_recovery_ids: HashSet::new(),
             pending_names: HashSet::new(),
             told: HashMap::new(),
             rules_gen: minder_disk.rules_gen,
@@ -3192,21 +5669,32 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
         save: Notify::new(),
         idle: Notify::new(),
         retire: Notify::new(),
+        retiring_tx,
+        retiring_rx,
         successor: std::sync::Mutex::new(None),
         said_held: std::sync::atomic::AtomicBool::new(false),
         minder_gate: tokio::sync::Mutex::new(()),
         worker_locks: Mutex::new(HashMap::new()),
-        began_ms: now_unix_ms(),
         write_lock: Arc::new(tokio::sync::Mutex::new(())),
+        incarnation,
+        adopt_lock: tokio::sync::Mutex::new(()),
+        timers: Mutex::new(Vec::new()),
+        leave_locks: Mutex::new(HashMap::new()),
+        retire_waiters: Mutex::new(Vec::new()),
     });
     let (stop_writer, writer_stops) = tokio::sync::oneshot::channel();
     let writer = tokio::spawn(service.clone().writer(writer_stops));
-    service.reconcile().await;
+    if let Err(why) = service.reconcile().await {
+        logged!("olo agents: reconcile failed without altering live records: {why}");
+        drop(listener);
+        let _ = std::fs::remove_file(&paths.socket);
+        let _ = stop_writer.send(());
+        let _ = writer.await;
+        return ServeExit::exit(69);
+    }
 
-    // What ends it: the server going, being asked to hand over, a
-    // signal to end, or nothing left to do for a while.
     let (ended_tx, mut ended) = mpsc::unbounded_channel::<&'static str>();
-    {
+    let events_task = {
         let (service, ended) = (service.clone(), ended_tx.clone());
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
@@ -3218,28 +5706,24 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
                 service.on_event(event).await;
             }
             let _ = ended.send("the Rex server went away");
-        });
-    }
-    {
+        })
+    };
+    let retire_task = {
         let (service, ended) = (service.clone(), ended_tx.clone());
         tokio::spawn(async move {
-            service.retire.notified().await;
-            let _ = ended.send("handed over");
-        });
-    }
-    {
+            loop {
+                service.retire.notified().await;
+                let _ = ended.send("handed over");
+            }
+        })
+    };
+    let signal_task = {
         let ended = ended_tx.clone();
         tokio::spawn(async move {
-            // Read with its sender, where the signals are held back for
-            // that (`end_signals`); as any program hears them otherwise.
-            // SAFETY: the descriptor is this task's own from here to its
-            // end (moved into it), and is closed only when what watches
-            // it is dropped.
             if let Some(fd) = signals.and_then(|fd| unsafe { tokio::io::unix::AsyncFd::register(fd) }.ok()) {
                 use std::os::fd::AsRawFd as _;
                 loop {
                     let Ok(mut ready) = fd.readable().await else { return };
-                    // SAFETY: one record of the kernel's own size, read into a zeroed one.
                     let mut info: libc::signalfd_siginfo = unsafe { std::mem::zeroed() };
                     let size = std::mem::size_of::<libc::signalfd_siginfo>();
                     let read = unsafe { libc::read(fd.get_ref().as_raw_fd(), (&raw mut info).cast(), size) };
@@ -3255,15 +5739,14 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
             let (Ok(mut term), Ok(mut int)) = (signal(SignalKind::terminate()), signal(SignalKind::interrupt())) else { return };
             tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
             let _ = ended.send("told to end");
-        });
-    }
-    {
+        })
+    };
+    let idle_task = {
         let (service, ended) = (service.clone(), ended_tx.clone());
         tokio::spawn(async move {
             loop {
                 let since = {
                     let mut st = service.lock();
-                    // (A child that ended and left its tab open isn't work.)
                     let busy = st.clients > 0 || st.reg.entries.iter().any(|e| e.exited_at.is_none());
                     if busy {
                         st.idle_since = None;
@@ -3273,7 +5756,6 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
                     st.idle_since
                 };
                 match since {
-                    // (Busy: nothing to wait for but the word that it no longer is.)
                     None => service.idle.notified().await,
                     Some(since) if since.elapsed() >= IDLE_EXIT => {
                         let _ = ended.send("nothing left to do");
@@ -3287,35 +5769,207 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
                     }
                 }
             }
-        });
-    }
-    let why = loop {
-        tokio::select! {
-            accepted = listener.accept() => {
-                let Ok((stream, _)) = accepted else { continue };
-                let service = service.clone();
-                tokio::spawn(async move {
+        })
+    };
+    let handover_drain_limit = if Service::test_env_allowed() {
+        std::env::var("OLO_REX_AGENTS_TEST_DRAIN_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).map(Duration::from_millis).unwrap_or(Duration::from_secs(45))
+    } else {
+        Duration::from_secs(45)
+    };
+    // Neon #1 / Astra #12: On SIGTERM (`"told to end"`), allow 65 s so an
+    // admitted `start` spanning two 30 s Rex RPCs (`new_window` + `attach`)
+    // drains to a safe point rather than being abandoned!
+    let term_drain_limit = Duration::from_secs(65);
+    let why = 'serve: loop {
+        let why = loop {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let Ok((stream, _)) = accepted else { continue };
+                    let service = service.clone();
+                    tokio::spawn(async move {
+                        {
+                            let mut st = service.lock();
+                            st.clients += 1;
+                            st.idle_since = None;
+                        }
+                        service.clone().serve_one(stream).await;
+                        service.lock().clients -= 1;
+                        service.idle.notify_one();
+                    });
+                }
+                why = ended.recv() => break why.unwrap_or("ended"),
+            }
+        };
+        let drain_limit = if why == "told to end" { term_drain_limit } else { handover_drain_limit };
+        // Close admission atomically, drop listener + socket, cancel active
+        // watches/followers via level-triggered `retiring_tx` (zero lost wakeup),
+        // and drain ALL accepted requests + active watches before freezing.
+        {
+            let mut st = service.lock();
+            st.retiring = true;
+        }
+        drop(listener);
+        let _ = std::fs::remove_file(&paths.socket);
+        let _ = service.retiring_tx.send(true);
+
+        let finishing = Instant::now();
+        loop {
+            let idle_wait = service.idle.notified();
+            tokio::pin!(idle_wait);
+            idle_wait.as_mut().enable();
+            let remaining = {
+                let st = service.lock();
+                st.doing + st.active_watches
+            };
+            if remaining == 0 || finishing.elapsed() >= drain_limit {
+                break;
+            }
+            tokio::select! {
+                _ = idle_wait => {}
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+            }
+        }
+        // Never abandon accepted mutations across a handover timeout: if
+        // non-watch operations (`doing > 0`) are still running after the drain
+        // deadline on `"handed over"`, check whether a fatal end reason
+        // (`"told to end"` / `"the Rex server went away"`) arrived meanwhile;
+        // if not, abort handover, re-bind the socket (while still holding the
+        // exclusive `lock`), rearm eligible shared + 1:1 minder timers, report
+        // error to explicit `retire` callers, and resume!
+        let remaining_doing = service.lock().doing;
+        if remaining_doing > 0 && why == "handed over" {
+            let mut fatal_why: Option<&'static str> = None;
+            while let Ok(queued) = ended.try_recv() {
+                if matches!(queued, "told to end" | "the Rex server went away") {
+                    fatal_why = Some(queued);
+                }
+            }
+            if let Some(fatal) = fatal_why {
+                logged!("olo agents: handover drain timed out with {remaining_doing} operation(s), and fatal `{fatal}` arrived; shutting down");
+                *service.successor.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                service.notify_retire_waiters(Err(format!("handover aborted: {fatal}")));
+                break 'serve fatal;
+            }
+            let _ = std::fs::remove_file(&paths.socket);
+            match UnixListener::bind(&paths.socket) {
+                Ok(rebound) => {
+                    {
+                        use std::os::unix::fs::PermissionsExt as _;
+                        let _ = std::fs::set_permissions(&paths.socket, std::fs::Permissions::from_mode(0o600));
+                    }
+                    *service.successor.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     {
                         let mut st = service.lock();
-                        st.clients += 1;
-                        st.idle_since = None;
+                        st.retiring = false;
                     }
-                    service.clone().serve_one(stream).await;
-                    service.lock().clients -= 1;
-                    service.idle.notify_one();
-                });
+                    let _ = service.retiring_tx.send(false);
+                    service.rearm_empty_minders();
+                    let abort_msg = format!("handover aborted ({remaining_doing} accepted operation(s) still running after {}s drain); resuming service", drain_limit.as_secs());
+                    logged!("olo agents: {abort_msg}");
+                    service.notify_retire_waiters(Err(abort_msg));
+                    listener = rebound;
+                    continue 'serve;
+                }
+                Err(e) => {
+                    logged!("olo agents: handover drain timed out with {remaining_doing} operation(s) running and socket rebind failed ({e}); shutting down without spawning successor");
+                    *service.successor.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    service.notify_retire_waiters(Err(format!("handover aborted and socket rebind failed: {e}")));
+                    break 'serve "drain timeout";
+                }
             }
-            why = ended.recv() => break why.unwrap_or("ended"),
         }
+        // Neon #1 / Astra #11: For `"handed over"`, run recoverable preflight
+        // `write_now()` (with one 100 ms retry) BEFORE setting `st.frozen = true`!
+        // Because `st.retiring == true && st.doing == 0`, no client mutations
+        // can run, while live background exits/events/watchers continue intact
+        // so a failed preflight save + resume drops ZERO events, watchers, or
+        // 1:1 minder timers!
+        if why == "handed over" {
+            let mut preflight = service.write_now().await;
+            if preflight.is_err() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                preflight = service.write_now().await;
+            }
+            let mut fatal_why: Option<&'static str> = None;
+            while let Ok(queued) = ended.try_recv() {
+                if matches!(queued, "told to end" | "the Rex server went away") {
+                    fatal_why = Some(queued);
+                }
+            }
+            if let Some(fatal) = fatal_why {
+                logged!("olo agents: handover interrupted by fatal `{fatal}`; shutting down without spawning successor");
+                *service.successor.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                service.notify_retire_waiters(Err(format!("handover aborted: {fatal}")));
+                break 'serve fatal;
+            }
+            if let Err(e) = preflight {
+                let _ = std::fs::remove_file(&paths.socket);
+                if let Ok(rebound) = UnixListener::bind(&paths.socket) {
+                    {
+                        use std::os::unix::fs::PermissionsExt as _;
+                        let _ = std::fs::set_permissions(&paths.socket, std::fs::Permissions::from_mode(0o600));
+                    }
+                    *service.successor.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    {
+                        let mut st = service.lock();
+                        st.retiring = false;
+                    }
+                    let _ = service.retiring_tx.send(false);
+                    service.rearm_empty_minders();
+                    let abort_msg = format!("handover preflight save failed ({e}); keeping incumbent service running with in-memory state intact");
+                    logged!("olo agents: {abort_msg}");
+                    service.notify_retire_waiters(Err(abort_msg));
+                    listener = rebound;
+                    continue 'serve;
+                }
+                logged!("olo agents: handover preflight save failed ({e}) and socket rebind failed; shutting down without spawning successor");
+                *service.successor.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                service.notify_retire_waiters(Err(format!("handover preflight save failed: {e}")));
+                break 'serve "final save failed";
+            }
+        }
+        break 'serve why;
     };
-    // No more is taken (its socket goes, so the next asker starts
-    // another at once); what is being done is done to its end (a tab
-    // being started is written down, a key being typed is typed), a
-    // while at most; and what it knows is written before it goes.
-    // Its successor, where it hands over to one: started now, this
-    // service's lock in its hand, and waiting for this one's end.
-    let heir = service.successor.lock().unwrap_or_else(|e| e.into_inner()).take().filter(|_| why == "handed over");
-    let _until_ended = heir.and_then(|exe| match start_successor(&exe, &server, &paths, &lock) {
+    // Authoritative freeze boundary: ONLY reached once handover is committed
+    // (preflight succeeded) or on shutdown. Mark `st.frozen = true`, abort Rex
+    // event consumer, timers, and every child task, stop & join `writer`, and
+    // run ONE authoritative post-freeze `write_now()` before spawning heir!
+    {
+        let mut st = service.lock();
+        st.frozen = true;
+        for live in st.live.values_mut() {
+            for task in live.tasks.drain(..) {
+                task.abort();
+            }
+        }
+    }
+    for t in service.timers.lock().unwrap_or_else(|e| e.into_inner()).drain(..) {
+        t.abort();
+    }
+    events_task.abort();
+    retire_task.abort();
+    signal_task.abort();
+    idle_task.abort();
+    tokio::task::yield_now().await;
+
+    let _ = stop_writer.send(());
+    let _ = writer.await;
+    let final_save = service.write_now().await;
+    if let Err(ref e) = final_save {
+        logged!("olo agents: final save failed before ending ({why}): {e}");
+    }
+    // Astra #12: Check whether SIGTERM (`"told to end"`) arrived during the
+    // final save before deciding whether to spawn the successor!
+    let mut fatal_before_spawn: Option<&'static str> = None;
+    while let Ok(queued) = ended.try_recv() {
+        if matches!(queued, "told to end" | "the Rex server went away") {
+            fatal_before_spawn = Some(queued);
+        }
+    }
+    let effective_why = fatal_before_spawn.unwrap_or(why);
+    let can_spawn = effective_why == "handed over" && final_save.is_ok();
+    let heir = service.successor.lock().unwrap_or_else(|e| e.into_inner()).take().filter(|_| can_spawn);
+    let successor_pipe = heir.and_then(|exe| match start_successor(&exe, &server, &paths, &lock) {
         Ok(held) => {
             logged!("olo agents: its successor is started ({}): it has this service's lock, and serves once this one has ended", exe.display());
             Some(held)
@@ -3325,23 +5979,15 @@ pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::O
             None
         }
     });
-    drop(listener);
-    let _ = std::fs::remove_file(&paths.socket);
-    let finishing = Instant::now();
-    while service.lock().doing > 0 && finishing.elapsed() < Duration::from_secs(20) {
-        tokio::select! {
-            _ = service.idle.notified() => {}
-            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
-        }
+    if can_spawn {
+        service.notify_retire_waiters(Ok(()));
+    } else {
+        service.notify_retire_waiters(Err(format!("handover ended without successor ({effective_why})")));
     }
-    // (The writer over first, the write it may be in the middle of
-    // landed: then the last write, with nothing of this service's left
-    // to land after it, before its successor is let go.)
-    let _ = stop_writer.send(());
-    let _ = writer.await;
-    service.write_now().await;
-    logged!("olo agents: ending ({why})");
-    0
+    // Let any waiting `retire` connection flush its outcome reply before exit.
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    logged!("olo agents: ending ({effective_why})");
+    ServeExit { code: i32::from(final_save.is_err()), _lock: Some(lock), _successor_pipe: successor_pipe }
 }
 
 #[cfg(test)]
@@ -3373,48 +6019,1501 @@ mod box_tests {
         parse_approval(Agent::Claude, &screen).expect("a box")
     }
 
-    /// Which box stands is said by the readings in their order, and an
-    /// answered box is kept through a frame with none on it (a code
-    /// review, 2026-11-27: a slow `status` put the box it had read in
-    /// the place of the one answered since; a repaint read half-way
-    /// let the list answer the same box again).
     #[test]
     fn a_box_is_what_the_latest_reading_says() {
         let (a, b) = (asking("ls"), asking("cargo test"));
         let mut live = Live::new();
         // A reading in its order: its box, numbered; read again, the same.
-        let (first, answered) = live.box_after(Some(&a), false, false).unwrap();
-        assert!(first.starts_with("b1-") && !answered);
-        assert_eq!(live.box_after(Some(&a), false, false), Some((first.clone(), false)));
+        let first = live.box_after(Some(&a), false, 1, 0x1111_2222).0.unwrap();
+        assert!(first.key.starts_with("b1-g1-11112222-") && !first.answered);
+        assert_eq!(live.box_after(Some(&a), false, 1, 0x1111_2222).0, Some(first.clone()));
         // One that only reads (begun before the last taken): its own box where that stands, none for another's, and nothing changed.
-        assert_eq!(peek_box(&live, Some(&a)), Some((first.clone(), false)));
+        assert_eq!(peek_box(&live, Some(&a)), Some(first.clone()));
         assert_eq!(peek_box(&live, Some(&b)), None);
         assert_eq!(live.box_now.map(|x| x.number), Some(1));
         // Its answer written: kept through a frame with no box on it, and still answered when seen again.
         live.box_now.as_mut().unwrap().answered = true;
-        assert_eq!(live.box_after(None, false, false), None);
-        assert_eq!(live.box_after(Some(&a), false, false), Some((first.clone(), true)), "a repaint's empty frame put an answered box away");
+        assert_eq!(live.box_after(None, false, 1, 0x1111_2222), (None, false));
+        let seen_again = live.box_after(Some(&a), false, 1, 0x1111_2222).0.unwrap();
+        assert_eq!((seen_again.key, seen_again.answered), (first.key.clone(), true), "a repaint's empty frame put an answered box away");
+        // A12: Same answered request whose choice list grows (2 -> 3 rows) MUST stay attached to the answered box (never minting a fresh box!)
+        let mut a_two = a.clone();
+        a_two.choices.remove(1);
+        let mut grow = Live::new();
+        let g1 = grow.box_after(Some(&a_two), false, 1, 0x1111_2222).0.unwrap();
+        grow.box_now.as_mut().unwrap().answered = true;
+        let g1_three = grow.box_after(Some(&a), false, 1, 0x1111_2222).0.unwrap();
+        assert_eq!((g1_three.key, g1_three.answered), (g1.key, true), "A12: 2->3 choice redraw of same submitted request must stay answered");
+        assert!(ListSkip::from_box(grow.box_now.unwrap()).matches(&a), "A12: ListSkip must match 2->3 choice redraw of same request");
+        // An ordered positive `elsewhere` reading retires the answered box (even if `navigating`!) so a genuine identical successor gets a fresh number.
+        live.navigating = true;
+        assert_eq!(live.box_after(None, true, 1, 0x1111_2222), (None, true));
+        live.navigating = false;
+        assert_eq!(live.last_elsewhere_box, 1);
+        let successor = live.box_after(Some(&a), false, 1, 0x1111_2222).0.unwrap();
+        assert!(successor.key.starts_with("b2-g1-11112222-") && !successor.answered, "identical box after positive elsewhere must get fresh number");
+        // A8: Different incarnation token produces a distinct box key EVEN IF service_gen stayed identical (e.g. older helper dropped service_gen)!
+        let mut after_handover = Live::new();
+        let handover_box = after_handover.box_after(Some(&a), false, 1, 0x3333_4444).0.unwrap();
+        assert!(handover_box.key.starts_with("b1-g1-33334444-"));
+        assert_ne!(handover_box.key, first.key, "distinct per-process incarnation must never collide even with equal service_gen");
         // Another box in its place is another, unanswered.
-        let (second, answered) = live.box_after(Some(&b), false, false).unwrap();
-        assert!(second.starts_with("b2-") && !answered);
+        let second = live.box_after(Some(&b), false, 1, 0x1111_2222).0.unwrap();
+        assert!(second.key.starts_with("b3-g1-11112222-") && !second.answered);
         // One not answered goes with the first frame that has none (the very same asked again after is another).
-        assert_eq!(live.box_after(None, false, false), None);
+        assert_eq!(live.box_after(None, false, 1, 0x1111_2222), (None, false));
         assert!(live.box_now.is_none());
-        assert!(live.box_after(Some(&b), false, false).unwrap().0.starts_with("b3-"));
-        // A box kept from the list stays so through frames with none, and is let go by another box.
-        live.list_skip = Some((state::box_hash(&b), Instant::now() + LIST_SKIPS));
-        live.box_after(None, false, false);
-        live.box_after(Some(&b), false, false);
+        assert!(live.box_after(Some(&b), false, 1, 0x1111_2222).0.unwrap().key.starts_with("b4-g1-11112222-"));
+        // A box kept from the list stays so through frames with none (no wall-clock expiry!), and is let go by another box.
+        live.list_skip = Some(ListSkip::from_box(live.box_now.unwrap()));
+        live.box_after(None, false, 1, 0x1111_2222);
+        live.box_after(Some(&b), false, 1, 0x1111_2222);
         assert!(live.list_skip.is_some(), "kept from the list through an empty frame");
-        live.box_after(Some(&a), false, false);
+        live.box_after(Some(&a), false, 1, 0x1111_2222);
         assert!(live.list_skip.is_none());
         // …and by the agent seen plainly somewhere else: the same asked after that is another box, and the list's.
-        live.list_skip = Some((state::box_hash(&a), Instant::now() + LIST_SKIPS));
-        live.box_after(None, false, true);
+        live.list_skip = Some(ListSkip::from_box(live.box_now.unwrap()));
+        live.box_after(None, true, 1, 0x1111_2222);
         assert!(live.list_skip.is_none(), "kept from the list though the agent was seen at work since");
-        // The first reading of a child taken over: what stands then is kept from the list.
+        // The first conclusive reading of a child taken over (`adopted_pending`): what stands then is kept from the list.
         let mut taken_over = Live::new();
-        taken_over.box_after(Some(&a), true, false);
-        assert_eq!(taken_over.list_skip.map(|(h, _)| h), Some(state::box_hash(&a)));
+        taken_over.adopted_pending = true;
+        // Blank frame does NOT clear `adopted_pending`.
+        taken_over.box_after(None, false, 1, 0x1111_2222);
+        assert!(taken_over.adopted_pending, "blank frame must not resolve adoption");
+        taken_over.box_after(Some(&a), false, 1, 0x1111_2222);
+        assert!(!taken_over.adopted_pending);
+        assert!(taken_over.list_skip.is_some_and(|s| s.matches(&a)));
+    }
+
+    // ---- Deterministic mock `rex.control.v1` harness for real RPC/concurrency tests ----
+
+    use futures_util::{SinkExt as _, StreamExt as _};
+    use tokio_tungstenite::tungstenite::Message;
+
+    type MockHandler = Arc<dyn Fn(usize, &str, &Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, (&'static str, String)>> + Send>> + Send + Sync>;
+
+    struct MockRex {
+        dir: PathBuf,
+        service: Arc<Service>,
+        _task: tokio::task::JoinHandle<()>,
+    }
+
+    impl Drop for MockRex {
+        fn drop(&mut self) {
+            self._task.abort();
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn asking_screen(command: &str) -> String {
+        let rule = "─".repeat(60);
+        let dashed = "╌".repeat(60);
+        format!(
+            "● Bash({command})\n{rule}\n Bash command\n Make it so\n{dashed}\n │ {command}\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: {command}\n   3. No\n Esc to cancel · Tab to amend\n"
+        )
+    }
+
+    fn claude_survey_screen() -> String {
+        let rule = "─".repeat(60);
+        format!("● Done.\n{rule}\n● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n{rule}\n❯ \n{rule}\n")
+    }
+
+    fn test_entry(id: &str, name: &str) -> NativeSubagent {
+        NativeSubagent {
+            id: id.to_owned(),
+            name: Some(name.to_owned()),
+            host_key: HOST.to_owned(),
+            session_id: "sess-1".to_owned(),
+            window_id: format!("win-{id}"),
+            block_id: format!("blk-{id}"),
+            parent_window_id: "win-lead".to_owned(),
+            parent_block_id: Some("blk-lead".to_owned()),
+            cli: olo_rex_link::agents::AgentCli::Claude,
+            model: "sonnet".to_owned(),
+            effort: "high".to_owned(),
+            title: name.to_owned(),
+            role: None,
+            cwd: Some("/var/tmp".to_owned()),
+            resume_id: None,
+            session_confidence: None,
+            cli_session_id: None,
+            transcript_path: None,
+            desktop_policy: olo_rex_link::agents::DesktopPolicy::None,
+            stream_mode: false,
+            started_at: now_unix_ms() as i64,
+            exited_at: None,
+            exit_code: None,
+            last_pid: None,
+            created_rev: 1,
+            seen_live: true,
+            exited_by_sync: false,
+            add_dirs: Vec::new(),
+            command: Vec::new(),
+            minds: None,
+            minded_by: None,
+            shared_minder: false,
+        }
+    }
+
+    async fn spawn_mock_service(tag: &str, handler: MockHandler) -> MockRex {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = PathBuf::from(format!("/var/tmp/olo-mock-svc-{}-{}-{tag}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("agents")).unwrap();
+        let sock = dir.join("rex.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let task = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let handler = handler.clone();
+                let calls = calls.clone();
+                tokio::spawn(async move {
+                    #[allow(clippy::result_large_err)]
+                    let Ok(ws) = tokio_tungstenite::accept_hdr_async(
+                        stream,
+                        |req: &tokio_tungstenite::tungstenite::handshake::server::Request, mut resp: tokio_tungstenite::tungstenite::handshake::server::Response| {
+                            if let Some(proto) = req.headers().get("Sec-WebSocket-Protocol").cloned() {
+                                resp.headers_mut().insert("Sec-WebSocket-Protocol", proto);
+                            }
+                            Ok(resp)
+                        },
+                    )
+                    .await
+                    else {
+                        return;
+                    };
+                    let (mut tx, mut rx) = ws.split();
+                    // Handshake: expect `hello`, reply `welcome`.
+                    let Some(Ok(Message::Text(_))) = rx.next().await else { return };
+                    let welcome = json!({ "type": "welcome", "protocol": "rex.control.v1", "limits": { "max_message_bytes": 1 << 20 } });
+                    if tx.send(Message::Text(welcome.to_string().into())).await.is_err() {
+                        return;
+                    }
+                    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
+                    let writer = tokio::spawn(async move {
+                        while let Some(msg) = out_rx.recv().await {
+                            if tx.send(Message::Text(msg.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                    });
+                    while let Some(Ok(msg)) = rx.next().await {
+                        let Message::Text(text) = msg else { continue };
+                        let Ok(req) = serde_json::from_str::<Value>(&text) else { continue };
+                        if req["type"] != "request" {
+                            continue;
+                        }
+                        let id = req["id"].as_str().unwrap_or_default().to_owned();
+                        let method = req["method"].as_str().unwrap_or_default().to_owned();
+                        let payload = req["payload"].clone();
+                        let idx = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        let handler = handler.clone();
+                        let out_tx = out_tx.clone();
+                        tokio::spawn(async move {
+                            let resp = match handler(idx, &method, &payload).await {
+                                Ok(val) => json!({ "type": "response", "id": id, "ok": true, "payload": val }),
+                                Err((code, message)) => json!({ "type": "response", "id": id, "ok": false, "error": { "code": code, "message": message } }),
+                            };
+                            let _ = out_tx.send(resp.to_string());
+                        });
+                    }
+                    writer.abort();
+                });
+            }
+        });
+
+        let (rex, _events) = Rex::connect(&sock).await.expect("mock Rex connect");
+        let adir = dir.join("agents");
+        let paths = Paths { socket: adir.join("sock"), lock: adir.join("lock"), registry: adir.join("registry.json"), events: adir.join("events.jsonl"), log: adir.join("service.log"), dir: adir };
+        let (frames, _) = broadcast::channel(64);
+        let (retiring_tx, retiring_rx) = tokio::sync::watch::channel(false);
+        let service = Arc::new(Service {
+            rex,
+            paths,
+            st: Mutex::new(State {
+                reg: SubagentRegistry::default(),
+                log: SubagentEventLog::default(),
+                live: HashMap::new(),
+                sessions: HashMap::new(),
+                clients: 0,
+                doing: 0,
+                active_watches: 0,
+                retiring: false,
+                frozen: false,
+                idle_since: None,
+                let_go: HashMap::new(),
+                closing_minders: HashSet::new(),
+                unhealthy_minders: HashSet::new(),
+                empty_gen: HashMap::new(),
+                reserved_ids: HashSet::new(),
+                provisional_ids: HashSet::new(),
+                unsaved_recovery_ids: HashSet::new(),
+                pending_names: HashSet::new(),
+                told: HashMap::new(),
+                rules_gen: HashMap::new(),
+                pending_rules_rev: HashMap::new(),
+                seen: HashMap::new(),
+                minding_seen: HashMap::new(),
+                pending_exit_reports: HashMap::new(),
+                pending_minds: HashMap::new(),
+                leave: HashMap::new(),
+            }),
+            changed: Notify::new(),
+            frames,
+            text_watchers: AtomicUsize::new(0),
+            save: Notify::new(),
+            idle: Notify::new(),
+            retire: Notify::new(),
+            retiring_tx,
+            retiring_rx,
+            successor: std::sync::Mutex::new(None),
+            said_held: std::sync::atomic::AtomicBool::new(false),
+            minder_gate: tokio::sync::Mutex::new(()),
+            worker_locks: Mutex::new(HashMap::new()),
+            write_lock: Arc::new(tokio::sync::Mutex::new(())),
+            incarnation: new_service_incarnation(),
+            adopt_lock: tokio::sync::Mutex::new(()),
+            timers: Mutex::new(Vec::new()),
+            leave_locks: Mutex::new(HashMap::new()),
+            retire_waiters: Mutex::new(Vec::new()),
+        });
+        MockRex { dir, service, _task: task }
+    }
+
+    /// Test Finding 1 (hardened in Round 3): Hold a REAL minder `status` RPC
+    /// behind a bounded-timeout barrier while a second minder `status` request
+    /// mints box B's grant, then release the slow `status` #1 and prove:
+    /// - slow `status` #1 returns OLD_BOX_A with `approval.box == null` (does NOT
+    ///   relabel OLD_BOX_A with NEW_BOX_B's key), AND
+    /// - `st.told` RETAINS box B's newer grant untouched!
+    #[tokio::test]
+    async fn ordered_look_holds_slow_rpc_across_newer_read() {
+        let format_n = Arc::new(AtomicUsize::new(0));
+        let slow_entered = Arc::new(Notify::new());
+        let release_slow = Arc::new(Notify::new());
+        let (fn_c, se_c, rs_c) = (format_n.clone(), slow_entered.clone(), release_slow.clone());
+        let mock = spawn_mock_service(
+            "ordered-look",
+            Arc::new(move |_idx, method, _payload| {
+                let fn_c = fn_c.clone();
+                let se_c = se_c.clone();
+                let rs_c = rs_c.clone();
+                let method = method.to_owned();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        let n = fn_c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if n == 0 {
+                            se_c.notify_one();
+                            let _ = tokio::time::timeout(Duration::from_secs(5), rs_c.notified()).await;
+                            return Ok(json!({ "content": asking_screen("echo OLD_BOX_A") }));
+                        }
+                        return Ok(json!({ "content": asking_screen("echo NEW_BOX_B") }));
+                    }
+                    Ok(json!({}))
+                })
+            }),
+        )
+        .await;
+
+        let mut minder = test_entry("sa-m-ord", "minder-ord");
+        minder.shared_minder = true;
+        let mut entry = test_entry("sa-ord", "worker");
+        entry.minded_by = Some(minder.id.clone());
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(minder.clone());
+            st.reg.register(entry.clone());
+            st.live.insert(minder.id.clone(), Live::new());
+            st.live.insert(entry.id.clone(), Live::new());
+        }
+        let make_minder_caller = || crate::agentd::ops::Caller {
+            session: Some("sess-1".into()),
+            window: Some(minder.window_id.clone()),
+            window_from_block: true,
+            block: Some(minder.block_id.clone()),
+            child: Some(minder.clone()),
+        };
+
+        let svc1 = mock.service.clone();
+        let mc1 = make_minder_caller();
+        let slow_wait = slow_entered.notified();
+        tokio::pin!(slow_wait);
+        slow_wait.as_mut().enable();
+        // Start REAL minder `status` #1 (which enters RPC #0 and blocks on the barrier).
+        let slow_task = tokio::spawn(async move { svc1.agent_op(&Request { op: "status".into(), args: vec!["worker".into(), "--json".into()], ..Default::default() }, &mc1).await });
+        tokio::time::timeout(Duration::from_secs(5), slow_wait).await.expect("slow status #1 must enter format RPC");
+
+        // Bump `out_seq` so minder `status` #2 executes a live RPC #1 and mints box B's grant!
+        mock.service.lock().live.get_mut(&entry.id).unwrap().out_seq += 1;
+        let fast_resp = mock.service.agent_op(&Request { op: "status".into(), args: vec!["worker".into(), "--json".into()], ..Default::default() }, &make_minder_caller()).await;
+        assert!(fast_resp.ok, "{fast_resp:?}");
+        let fast_box_key = fast_resp.data["approval"]["box"].as_str().expect("newer box B key").to_owned();
+        assert!(fast_box_key.starts_with("b1-"), "fast box key: {fast_box_key}");
+        assert!(fast_resp.data["approval"]["command"].as_str().unwrap().contains("NEW_BOX_B"));
+        let pair = (minder.id.clone(), entry.id.clone());
+        assert_eq!(mock.service.lock().told.get(&pair).map(|g| g.token.as_str()), Some(fast_box_key.as_str()), "minder status #2 must mint box B's grant");
+
+        // Release older `status` #1 -> returns OLD_BOX_A with `box: null` (NOT box B's key!)
+        // and MUST NOT overwrite or clear box B's newer grant in `st.told`!
+        release_slow.notify_one();
+        let slow_resp = tokio::time::timeout(Duration::from_secs(5), slow_task).await.expect("slow status #1 must finish").unwrap();
+        assert!(slow_resp.ok, "{slow_resp:?}");
+        assert!(slow_resp.data["approval"]["command"].as_str().unwrap().contains("OLD_BOX_A"));
+        assert!(slow_resp.data["approval"]["box"].is_null(), "stale OLD_BOX_A status must NOT inherit NEW_BOX_B's key: {slow_resp:?}");
+        assert_eq!(mock.service.lock().live[&entry.id].box_now.map(|b| b.key()), Some(fast_box_key.clone()));
+        assert_eq!(mock.service.lock().told.get(&pair).map(|g| g.token.clone()), Some(fast_box_key), "stale status #1 must NEVER overwrite or revoke box B's newer grant");
+    }
+
+    /// Findings 5 & 9 + concurrent `send` through survey:
+    /// (a) Cancelled pre-submission `Claimed` reader releases slot without sending `0`.
+    /// (b) Lost write ack / timeout after `Submitted` NEVER double-presses `0`.
+    /// (c) Partial survey fragment NEVER clears `Submitted`/`Stays`.
+    /// (d) Concurrent `send --key 2` refuses while survey is staying/pending (zero `"2"` written!).
+    #[tokio::test]
+    async fn survey_state_machine_cancel_lost_ack_partial_and_concurrent_send() {
+        let screen = Arc::new(Mutex::new(claude_survey_screen()));
+        let writes = Arc::new(Mutex::new(Vec::<String>::new()));
+        let fail_write = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let hold_verify = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let verify_entered = Arc::new(Notify::new());
+        let format_count = Arc::new(AtomicUsize::new(0));
+
+        let (sc_c, wr_c, fw_c, hv_c, ve_c, fc_c) = (screen.clone(), writes.clone(), fail_write.clone(), hold_verify.clone(), verify_entered.clone(), format_count.clone());
+        let mock = spawn_mock_service(
+            "survey-sm",
+            Arc::new(move |_idx, method, payload| {
+                let (sc_c, wr_c, fw_c, hv_c, ve_c, fc_c) = (sc_c.clone(), wr_c.clone(), fw_c.clone(), hv_c.clone(), ve_c.clone(), fc_c.clone());
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        let n = fc_c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if n == 1 && hv_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            ve_c.notify_one();
+                            // Hold verify read so caller cancels the task mid-Claimed!
+                            tokio::time::sleep(Duration::from_secs(10)).await;
+                        }
+                        return Ok(json!({ "content": sc_c.lock().unwrap().clone() }));
+                    }
+                    if method == "com.superlogical.terminal.write" {
+                        let data = payload["args"]["data"].as_str().unwrap_or_default().to_owned();
+                        wr_c.lock().unwrap().push(data);
+                        if fw_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err(("timeout", "simulated lost write ack".to_owned()));
+                        }
+                        return Ok(json!({}));
+                    }
+                    Ok(json!({}))
+                })
+            }),
+        )
+        .await;
+
+        let entry = test_entry("sa-surv", "builder");
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(entry.clone());
+            st.live.insert(entry.id.clone(), Live::new());
+        }
+
+        // (a) Abort reader while `Claimed` before `rex.write()` -> slot returns to `Idle`, zero writes!
+        let ve_wait = verify_entered.notified();
+        tokio::pin!(ve_wait);
+        ve_wait.as_mut().enable();
+        let svc1 = mock.service.clone();
+        let ent1 = entry.clone();
+        let aborted_reader = tokio::spawn(async move { svc1.look(&ent1, true).await });
+        tokio::time::timeout(Duration::from_secs(5), ve_wait).await.expect("aborted reader must enter verify RPC");
+        assert!(matches!(mock.service.lock().live[&entry.id].survey, SurveyState::Claimed { .. }));
+        aborted_reader.abort();
+        let _ = aborted_reader.await;
+        assert_eq!(mock.service.lock().live[&entry.id].survey, SurveyState::Idle, "cancelled Claimed reader must release slot");
+        assert!(writes.lock().unwrap().is_empty(), "aborted pre-write Claimed reader must send ZERO bytes");
+
+        // (b) Lost write ack after transitioning to `Submitted` -> stays `Submitted`, second reader sends ZERO extra `0`!
+        hold_verify.store(false, std::sync::atomic::Ordering::SeqCst);
+        fail_write.store(true, std::sync::atomic::Ordering::SeqCst);
+        let first_err = mock.service.look(&entry, true).await;
+        assert!(first_err.rpc_failed);
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"], "first reader dispatched exactly one 0");
+        assert!(matches!(mock.service.lock().live[&entry.id].survey, SurveyState::Submitted { .. }));
+
+        // Second reader sees survey still up while `Submitted` -> MUST NOT send a second `0`!
+        fail_write.store(false, std::sync::atomic::Ordering::SeqCst);
+        let second = mock.service.look(&entry, true).await;
+        assert!(second.survey);
+        assert!(second.survey_pending);
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"], "second reader must NEVER press 0 again after lost write ack");
+
+        // (c) Partial survey fragment (question without choices) NEVER clears `Submitted`!
+        *screen.lock().unwrap() = "● How is Claude doing this session? (optional)\n".to_owned();
+        let partial = mock.service.look(&entry, true).await;
+        assert!(partial.survey, "partial survey fragment must preserve survey == true");
+        assert!(matches!(mock.service.lock().live[&entry.id].survey, SurveyState::Submitted { .. }), "partial fragment must not retire Submitted");
+
+        // (d) Concurrent `send --key 2` while survey stays refuses without sending `"2"`!
+        *screen.lock().unwrap() = claude_survey_screen();
+        mock.service.lock().live.get_mut(&entry.id).unwrap().survey = SurveyState::Stays;
+        let caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-lead".into()), window_from_block: true, block: Some("blk-lead".into()), child: None };
+        let resp = mock.service.agent_op(&Request { op: "send".into(), args: vec!["builder".into(), "--key".into(), "2".into()], ..Default::default() }, &caller).await;
+        assert!(!resp.ok, "send --key 2 must be refused while survey is on screen: {resp:?}");
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"], "send --key 2 must NEVER write '2' into survey");
+    }
+
+    /// Finding 10/11: transient RPC failure with `pending_handoff == true` must NOT
+    /// treat `Working("starting")` as cleared; it keeps `pending_handoff` and emits an
+    /// escalation if retries exhaust.
+    #[tokio::test]
+    async fn failed_reread_keeps_pending_handoff_and_escalates_on_exhaustion() {
+        let mock = spawn_mock_service(
+            "failed-handoff",
+            Arc::new(move |_idx, method, _payload| {
+                let method = method.to_owned();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        return Err(("timeout", "transient screen RPC failure".to_owned()));
+                    }
+                    Ok(json!({}))
+                })
+            }),
+        )
+        .await;
+
+        let entry = test_entry("sa-fail", "flaky");
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(entry.clone());
+            let mut live = Live::new();
+            live.pending_handoff = true;
+            // Drive right to retry exhaustion (5 prior failures) to verify escalation immediately.
+            live.handoff_failures = 5;
+            st.live.insert(entry.id.clone(), live);
+        }
+
+        mock.service.transition(&entry.id).await;
+        let st = mock.service.lock();
+        assert!(!st.live[&entry.id].pending_handoff, "pending_handoff clears once escalation is emitted");
+        assert!(st.live[&entry.id].last_state.is_none(), "failed RPC must never set last_state = Working");
+        let esc = st.log.find_since(0, |e| e.event == olo_rex_link::agents::minder::ESCALATION);
+        assert!(esc.is_some(), "exhausted handoff retries must emit an escalation event");
+    }
+
+    /// Finding 14: Stationary screen causes ZERO polling RPCs during `approve`
+    /// unmoved navigation verify wait (1.5 s) and survey dismissal wait (900 ms).
+    #[tokio::test]
+    async fn stationary_screen_sends_zero_polling_rpcs() {
+        let format_calls = Arc::new(AtomicUsize::new(0));
+        let writes = Arc::new(Mutex::new(Vec::<String>::new()));
+        let screen = Arc::new(Mutex::new(asking_screen("cargo test")));
+        let (fc_c, wr_c, sc_c) = (format_calls.clone(), writes.clone(), screen.clone());
+        let mock = spawn_mock_service(
+            "zero-poll",
+            Arc::new(move |_idx, method, payload| {
+                let (fc_c, wr_c, sc_c) = (fc_c.clone(), wr_c.clone(), sc_c.clone());
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        fc_c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        return Ok(json!({ "content": sc_c.lock().unwrap().clone() }));
+                    }
+                    if method == "com.superlogical.terminal.write" {
+                        wr_c.lock().unwrap().push(payload["args"]["data"].as_str().unwrap_or_default().to_owned());
+                        return Ok(json!({}));
+                    }
+                    Ok(json!({}))
+                })
+            }),
+        )
+        .await;
+
+        let entry = test_entry("sa-still", "still");
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(entry.clone());
+            let mut live = Live::new();
+            live.stream_connected = true;
+            st.live.insert(entry.id.clone(), live);
+        }
+
+        // Run `approve --no` on a stationary screen (cursor stays on choice 0, zero PTY output arrives).
+        // Must take 1 initial `look` + 1 between-arrows foreground recheck (Astra #16), write
+        // `\x1b[B` x 2, do ZERO polling RPCs during the 1.5 s wait, and abort cleanly WITHOUT Escape!
+        let caller = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-lead".into()), window_from_block: true, block: Some("blk-lead".into()), child: None };
+        let resp = mock.service.approve(&json!({ "args": ["still", "--no", "--json"] }), &caller).await;
+        assert!(!resp.ok);
+        assert!(resp.stderr.contains("without pressing Enter or Escape"), "err: {}", resp.stderr);
+        assert_eq!(format_calls.load(std::sync::atomic::Ordering::SeqCst), 2, "stationary 1.5s verify wait must send ZERO polling screen RPCs (1 initial + 1 between arrows)");
+        assert_eq!(writes.lock().unwrap().as_slice(), ["\x1b[B", "\x1b[B"], "must send ZERO Escape and ZERO Enter on unmoved timeout");
+
+        // Now test stationary survey dismissal wait (900 ms): 1 initial read + 1 verify read + 1 final check at expiry (3 total, NOT 6+ polls).
+        format_calls.store(0, std::sync::atomic::Ordering::SeqCst);
+        writes.lock().unwrap().clear();
+        *screen.lock().unwrap() = claude_survey_screen();
+        let looked = mock.service.look(&entry, true).await;
+        assert!(looked.survey);
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"]);
+        assert!(format_calls.load(std::sync::atomic::Ordering::SeqCst) <= 3, "stationary survey wait made too many RPCs: {}", format_calls.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    /// Addendum Items 2 & 3:
+    /// (a) `compact_events_if_needed` preserves all events including those present in memory,
+    ///     leaves zero temp files behind, and `reap_stale_temps` removes abandoned temp files.
+    /// (b) `begin_attached` propagates `save_to` failure (read-only dir), rolls back `reg` &
+    ///     `live`, aborts tasks, and closes the created Rex tab.
+    #[tokio::test]
+    async fn compaction_reap_and_begin_attached_save_failure_rollback() {
+        let closed_windows = Arc::new(Mutex::new(Vec::<String>::new()));
+        let cw_c = closed_windows.clone();
+        let mock = spawn_mock_service(
+            "persist",
+            Arc::new(move |_idx, method, payload| {
+                let cw_c = cw_c.clone();
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "session.close_window"
+                        && let Some(w) = payload["window_id"].as_str()
+                    {
+                        cw_c.lock().unwrap().push(w.to_owned());
+                    }
+                    Ok(json!({ "session_id": "sess-1", "windows": [], "blocks": [] }))
+                })
+            }),
+        )
+        .await;
+
+        // (a) Seed stale temp files + oversized events file and verify compaction + reaping.
+        let stale_ev = mock.service.paths.dir.join("events.jsonl.tmp.99999.1");
+        let stale_reg = mock.service.paths.dir.join("registry.json.tmp.99999.1");
+        let stale_ms = mock.service.paths.dir.join("minder-state.json.tmp.99999.1");
+        std::fs::write(&stale_ev, b"abandoned").unwrap();
+        std::fs::write(&stale_reg, b"abandoned").unwrap();
+        std::fs::write(&stale_ms, b"abandoned").unwrap();
+        reap_stale_temps(&mock.service.paths.dir);
+        assert!(!stale_ev.exists() && !stale_reg.exists() && !stale_ms.exists(), "reap_stale_temps must remove abandoned tmp files");
+
+        let entry = test_entry("sa-ev", "ev");
+        let mut ev1 = mock.service.event_of(&entry, SubagentLiveState::Idle, Some("first".into()), "k1".into());
+        ev1.event = "idle".into();
+        let s1 = mock.service.record(ev1);
+        // Append `ev2` MID-COMPACTION (after initial snapshot + `sync_all()`, before catch-up + rename!)
+        // so removing the catch-up loop would deterministically lose `s2`!
+        let mut s2 = 0u64;
+        mock.service
+            .compact_events_with_hook(1, || {
+                let mut ev2 = mock.service.event_of(&entry, SubagentLiveState::Done, Some("second".into()), "k2".into());
+                ev2.event = "done".into();
+                s2 = mock.service.record(ev2);
+            })
+            .expect("compaction succeeds");
+        assert!(s2 > s1);
+        let after = std::fs::read_to_string(&mock.service.paths.events).unwrap();
+        let seqs: Vec<u64> = after.lines().filter_map(|l| serde_json::from_str::<SubagentEvent>(l).ok()).map(|e| e.seq).collect();
+        assert_eq!(seqs, vec![s1, s2], "compacted events.jsonl must preserve mid-compaction appended event s2");
+        let leftover_tmps: Vec<_> = std::fs::read_dir(&mock.service.paths.dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains(".tmp.")).collect();
+        assert!(leftover_tmps.is_empty(), "no temp files left after compaction: {leftover_tmps:?}");
+
+        // (b) Deterministic filesystem error (privilege-independent — works even as root!):
+        //     place a directory at `registry.json` (the commit rename target, AFTER `minder-state.json`
+        //     succeeds) AND subscribe a follower to verify ZERO leaked frames, ZERO disk entries,
+        //     full memory rollback, and tab close!
+        let mut follower_rx = mock.service.frames.subscribe();
+        std::fs::create_dir(&mock.service.paths.registry).unwrap();
+        let res = mock.service.begin_attached(entry.clone(), None, None, None, false, None, None).await;
+        std::fs::remove_dir(&mock.service.paths.registry).unwrap();
+        assert!(res.is_err(), "begin_attached must fail when registry rename fails");
+        assert!(mock.service.lock().reg.entries.is_empty(), "failed begin_attached must roll back registry entry");
+        assert!(mock.service.lock().live.is_empty(), "failed begin_attached must roll back live state");
+        assert_eq!(closed_windows.lock().unwrap().as_slice(), [entry.window_id.as_str()], "failed begin_attached must close created tab");
+        assert!(follower_rx.try_recv().is_err(), "rolled-back child must NEVER broadcast Frame::Agent to followers");
+
+        // (c) Failure at the first save (`minder-state.json` is a directory) ALSO leaves `registry.json` untouched!
+        closed_windows.lock().unwrap().clear();
+        let ms_path = mock.service.paths.dir.join("minder-state.json");
+        let _ = std::fs::remove_file(&ms_path);
+        std::fs::create_dir(&ms_path).unwrap();
+        let res2 = mock.service.begin_attached(entry.clone(), None, None, None, false, None, None).await;
+        std::fs::remove_dir(&ms_path).unwrap();
+        assert!(res2.is_err(), "begin_attached must fail when minder-state save fails");
+        assert!(!mock.service.paths.registry.exists(), "failed minder-state save must NEVER publish child into registry.json");
+        assert!(mock.service.lock().reg.entries.is_empty());
+        assert_eq!(closed_windows.lock().unwrap().as_slice(), [entry.window_id.as_str()]);
+        assert!(follower_rx.try_recv().is_err(), "rolled-back child must NEVER broadcast Frame::Agent to followers");
+    }
+
+    /// Addendum Item 1: `wait_fd_eof` on an inherited handover pipe whose write end stays open
+    /// must time out with `Err` rather than proceeding while the predecessor is still running.
+    #[tokio::test]
+    async fn wait_pipe_eof_requires_actual_eof_and_errors_on_timeout() {
+        use std::os::fd::FromRawFd as _;
+        let mut fds = [0i32; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) }, 0);
+        let read_end = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[0]) };
+        let write_end = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[1]) };
+        // With write_end still open, must time out with Err!
+        let err = wait_fd_eof(read_end, Duration::from_millis(120)).await;
+        assert!(err.is_err(), "open handover pipe must fail on timeout, not proceed: {err:?}");
+        drop(write_end);
+        // With write_end closed, must succeed immediately with Ok(())!
+        let mut fds2 = [0i32; 2];
+        assert_eq!(unsafe { libc::pipe2(fds2.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) }, 0);
+        let read_end2 = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds2[0]) };
+        let write_end2 = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds2[1]) };
+        drop(write_end2);
+        wait_fd_eof(read_end2, Duration::from_secs(2)).await.expect("closed handover pipe must return Ok(()) on EOF");
+    }
+
+    /// Round 2 regression suite covering Astra 1, 4, 6, 13, 15, 16, 17, 18, 19, 21, 26 + T1
+    /// and Agy 1, 2, 3, 4, 5, 7, 9, 10, 11, 12 + Lead Addendum L1:
+    /// - A1: `adopt` returns error (no `"Took over"`) on live/ended persistence failure and persists ended records durably.
+    /// - A4 / N5 / A26: `process_cwd_matches_primary` fails closed on RPC/missing-PID/procfs errors; `norm_dir("/")` preserves root.
+    /// - A6 / N7: `box_after` retains answered box across equal-count label truncation / `folded_lines` repaint.
+    /// - A13 / N2 / N1 / N3: level-triggered `wait_retiring`, retiring minder `watch` returns `handover: true` without appending, `frozen` blocks mutations.
+    /// - A15 / N4: failed `begin_attached` disarms guard atomically and never double-decrements `pending_minds`.
+    /// - A16: `begin_attached` installs startup leave list BEFORE `watch_child` and cleans it on rollback; `set_leave` resets dedupe.
+    /// - A17: failed confirmation on an ordinary first approval retries and records once recovered.
+    /// - A18 / N10 / A21 / N9 / L1: concurrent survey blocks `send`, `--key 0` dismisses staying survey over approval, `send --verify` rejects `rpc_failed` and unsubmitted `Working` drafts.
+    /// - A19 / N12: partial survey row never clears `Submitted`; short caller deadline never prematurely marks `Stays`.
+    /// - N11: disconnected stream (`stream_connected == false`) recovers via 250 ms fallback.
+    /// - T1: queued minder `approve` blocked on `answer_lock` cannot spend a future grant minted for box 2 while blocked.
+    #[tokio::test]
+    async fn round2_adopt_trust_box_pending_minds_freeze_and_handover_regressions() {
+        // 1. A26: `norm_dir` and `TrustAtStart::owns_parts` preserve root directory `/`.
+        assert_eq!(norm_dir("/"), Some("/".to_owned()));
+        assert_eq!(norm_dir("///"), Some("/".to_owned()));
+        assert_eq!(norm_dir("/var/tmp/"), Some("/var/tmp".to_owned()));
+        let root_trust =
+            olo_agent_screen::FolderTrustPrompt { folder: Some("/".into()), is_add_dir: false, selected_index: 1, trust_index: 1, selected_trust: true, marked: true, question: "Trust /?".into() };
+        assert!(TrustAtStart::owns_parts(Some("/"), &[], &root_trust));
+        let root_add = olo_agent_screen::FolderTrustPrompt { is_add_dir: true, ..root_trust.clone() };
+        assert!(TrustAtStart::owns_parts(Some("/var/tmp"), &["/".into()], &root_add));
+
+        // 2. A6 / N7: 3-choice answered box with truncated session-choice label keeps the same answered box (no b2).
+        let full_ap = asking("cargo test --all");
+        let mut trunc_ap = full_ap.clone();
+        trunc_ap.choices[1].label = "Yes, and don't ask".into();
+        let mut live_box = Live::new();
+        let b1 = live_box.box_after(Some(&full_ap), false, 1, 0xaaaa_bbbb).0.unwrap();
+        live_box.box_now.as_mut().unwrap().answered = true;
+        let repainted = live_box.box_after(Some(&trunc_ap), false, 1, 0xaaaa_bbbb).0.unwrap();
+        assert_eq!(repainted.key, b1.key, "same-count truncated repaint of answered box must keep box #1");
+        assert!(repainted.answered, "repainted answered box must remain answered");
+
+        // 3. A1 + A4/N5 + A15/N4 + A16 + N1 + N3 + A13/N2 on mock service.
+        let proc_mode = Arc::new(AtomicUsize::new(0)); // 0=err, 1=no pid, 2=dead pid, 3=self pid
+        let pm_c = proc_mode.clone();
+        let mock = spawn_mock_service(
+            "r2-core",
+            Arc::new(move |_idx, method, payload| {
+                let pm_c = pm_c.clone();
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.process" {
+                        return match pm_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            0 => Err(("timeout", "process RPC failed".into())),
+                            1 => Ok(json!({})),
+                            2 => Ok(json!({ "foreground": { "pid": 999_999_999 } })),
+                            _ => Ok(json!({ "foreground": { "pid": std::process::id() } })),
+                        };
+                    }
+                    if method == "session.view" {
+                        return Ok(json!({
+                            "session_id": "sess-1",
+                            "windows": [
+                                { "window_id": "win-sa-live-adopt", "layers": [{ "blocks": [{ "block_id": "blk-sa-live-adopt" }] }] },
+                                { "window_id": "win-sa-w1", "layers": [{ "blocks": [{ "block_id": "blk-sa-w1" }] }] }
+                            ]
+                        }));
+                    }
+                    let _ = payload;
+                    Ok(json!({}))
+                })
+            }),
+        )
+        .await;
+
+        // A4 / N5: `process_cwd_matches_primary` fails closed on RPC error, missing PID, and dead PID
+        //          (even when cached `live.pid` is set to our own PID!).
+        let cwd_entry = test_entry("sa-cwd", "cwd");
+        let self_cwd = std::env::current_dir().unwrap().to_string_lossy().into_owned();
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(cwd_entry.clone());
+            let mut l = Live::new();
+            l.pid = Some(std::process::id() as i32);
+            st.live.insert(cwd_entry.id.clone(), l);
+        }
+        let dl = tokio::time::Instant::now() + Duration::from_secs(2);
+        proc_mode.store(0, std::sync::atomic::Ordering::SeqCst);
+        assert!(!mock.service.process_cwd_matches_primary(&cwd_entry, Some(&self_cwd), dl).await, "RPC error must fail closed");
+        proc_mode.store(1, std::sync::atomic::Ordering::SeqCst);
+        assert!(!mock.service.process_cwd_matches_primary(&cwd_entry, Some(&self_cwd), dl).await, "missing PID must fail closed");
+        proc_mode.store(2, std::sync::atomic::Ordering::SeqCst);
+        assert!(!mock.service.process_cwd_matches_primary(&cwd_entry, Some(&self_cwd), dl).await, "unreadable /proc/pid/cwd must fail closed");
+        proc_mode.store(3, std::sync::atomic::Ordering::SeqCst);
+        assert!(mock.service.process_cwd_matches_primary(&cwd_entry, Some(&self_cwd), dl).await, "matching live /proc/pid/cwd must pass");
+
+        // A1: `adopt` returns error (NO "Took over"!) when persistence fails, and writes durably on success.
+        let live_adopt = test_entry("sa-live-adopt", "live-adopt");
+        let mut ended_adopt = test_entry("sa-ended-adopt", "ended-adopt");
+        ended_adopt.exited_at = Some(now_unix_ms() as i64);
+        std::fs::create_dir(&mock.service.paths.registry).unwrap();
+        let bad_live = mock.service.adopt(Some(&json!({ "agents": [live_adopt] }))).await;
+        assert!(!bad_live.ok && !bad_live.stdout.contains("Took over"), "failed live adopt must not acknowledge: {bad_live:?}");
+        let bad_ended = mock.service.adopt(Some(&json!({ "agents": [ended_adopt.clone()] }))).await;
+        assert!(!bad_ended.ok && !bad_ended.stdout.contains("Took over"), "failed ended adopt must not acknowledge: {bad_ended:?}");
+        assert!(!mock.service.lock().reg.entries.iter().any(|e| e.id == "sa-ended-adopt"), "failed ended adopt must roll back");
+        std::fs::remove_dir(&mock.service.paths.registry).unwrap();
+        let ok_ended = mock.service.adopt(Some(&json!({ "agents": [ended_adopt] }))).await;
+        assert!(ok_ended.ok && ok_ended.stdout.contains("Took over 1"), "{ok_ended:?}");
+        let reg_disk = SubagentRegistry::read_from(&mock.service.paths.registry).unwrap();
+        assert!(reg_disk.entries.iter().any(|e| e.id == "sa-ended-adopt"), "ended adopt must be durably written before returning Ok");
+
+        // A15 / N4 + A16: failed `begin_attached` never double-decrements `pending_minds` AND cleans up startup leave list.
+        let mut minder = test_entry("sa-m1", "minder-1");
+        minder.shared_minder = true;
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(minder.clone());
+            st.live.insert(minder.id.clone(), Live::new());
+            st.sessions.entry("sess-1".into()).or_default().windows.insert(minder.window_id.clone());
+        }
+        let mut g1 = crate::agentd::ops::PendingMindGuard::reserve_for_test(mock.service.clone(), &minder.id);
+        let _g2 = crate::agentd::ops::PendingMindGuard::reserve_for_test(mock.service.clone(), &minder.id);
+        assert_eq!(mock.service.lock().pending_minds.get(&minder.id).copied(), Some(2));
+        let mut worker1 = test_entry("sa-w1", "w1");
+        worker1.minded_by = Some(minder.id.clone());
+        let _ = std::fs::remove_file(&mock.service.paths.registry);
+        std::fs::create_dir(&mock.service.paths.registry).unwrap();
+        let err = mock.service.begin_attached(worker1.clone(), Some("win-lead"), Some((&minder.id, &mut g1)), None, false, None, Some("\\bgit\\s+push\\b\n")).await;
+        std::fs::remove_dir(&mock.service.paths.registry).unwrap();
+        assert!(err.is_err());
+        drop(g1);
+        assert_eq!(mock.service.lock().pending_minds.get(&minder.id).copied(), Some(1), "failed begin_attached + guard drop must NOT double-decrement start #2's reservation");
+        assert!(!mock.service.leave_file(&worker1.id).exists(), "failed begin_attached must remove startup leave file");
+
+        // A16: successful `begin_attached` with `leave_text` installs leave list immediately.
+        let ok_w = mock.service.begin_attached(worker1.clone(), Some("win-lead"), None, None, false, None, Some("\\bgit\\s+push\\b\n")).await.unwrap();
+        assert_eq!(ok_w.2, Some(Ok(1)));
+        assert!(mock.service.lock().leave.get(&worker1.id).and_then(|o| o.as_ref()).is_some());
+
+        // N1: level-triggered `wait_retiring` returns immediately even when fired BEFORE awaiting!
+        let _ = mock.service.retiring_tx.send(true);
+        tokio::time::timeout(Duration::from_millis(100), mock.service.wait_retiring()).await.expect("level-triggered retiring watch must never lose wakeup");
+
+        // N3: retiring minder `watch` with evicted `pending_rules_rev` returns `handover: true` and appends ZERO events!
+        let seq_before = mock.service.lock().log.latest_seq();
+        {
+            let mut st = mock.service.lock();
+            st.retiring = true;
+            st.pending_rules_rev.insert((minder.id.clone(), worker1.id.clone()), (1, "/var/tmp/rules.md".into()));
+        }
+        let m_caller = crate::agentd::ops::Caller {
+            session: Some("sess-1".into()),
+            window: Some(minder.window_id.clone()),
+            window_from_block: true,
+            block: Some(minder.block_id.clone()),
+            child: Some(minder.clone()),
+        };
+        let w_resp = mock.service.agent_op(&Request { op: "watch".into(), args: vec!["--all".into(), "--json".into()], ..Default::default() }, &m_caller).await;
+        assert!(!w_resp.ok && w_resp.code == 75 && w_resp.data["handover"] == true, "retiring minder watch must return handover:true: {w_resp:?}");
+        assert_eq!(mock.service.lock().log.latest_seq(), seq_before, "retiring minder watch must not append to event log");
+
+        // A13 / N2: `frozen = true` prevents background `record`, `record_beside`, and `exit` mutations!
+        assert!(mock.service.lock().reg.entries.iter().any(|e| e.id == worker1.id && e.exited_at.is_none()), "worker1 must be live before freeze");
+        mock.service.lock().frozen = true;
+        let mut ev = mock.service.event_of(&worker1, SubagentLiveState::Done, Some("post-freeze".into()), "post".into());
+        ev.event = "done".into();
+        assert_eq!(mock.service.record(ev.clone()), seq_before);
+        assert_eq!(mock.service.record_beside(ev), seq_before);
+        mock.service.exit(&worker1.id, Some(0));
+        assert!(mock.service.lock().reg.entries.iter().any(|e| e.id == worker1.id && e.exited_at.is_none()), "frozen service must not mutate reg on background exit");
+    }
+
+    /// Round 2 regression suite for A17, A18, A19, A21/N9, N10, N11, N12, T1, and Lead Addendum L1.
+    #[tokio::test]
+    async fn round2_confirm_retry_survey_send_verify_disconnected_and_queued_grant_regressions() {
+        let rule = "─".repeat(60);
+        let idle_screen = format!("● Done.\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        let working_with_draft = format!("✻ Thinking… (2s)\n{rule}\n❯ Run the full test suite now\n  line 2\n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        let working_cleared = format!("❯ Run the full test suite now\n✻ Thinking… (3s)\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        let screen = Arc::new(Mutex::new(asking_screen("cargo test -p confirm")));
+        let fail_format = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let writes = Arc::new(Mutex::new(Vec::<String>::new()));
+        let on_write_screen = Arc::new(Mutex::new(Option::<String>::None));
+
+        let (sc_c, ff_c, wr_c, ow_c) = (screen.clone(), fail_format.clone(), writes.clone(), on_write_screen.clone());
+        let mock = spawn_mock_service(
+            "r2-io",
+            Arc::new(move |_idx, method, payload| {
+                let (sc_c, ff_c, wr_c, ow_c) = (sc_c.clone(), ff_c.clone(), wr_c.clone(), ow_c.clone());
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        if ff_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err(("timeout", "simulated transient format failure".into()));
+                        }
+                        return Ok(json!({ "content": sc_c.lock().unwrap().clone() }));
+                    }
+                    if method == "com.superlogical.terminal.write" {
+                        let data = payload["args"]["data"].as_str().unwrap_or_default().to_owned();
+                        wr_c.lock().unwrap().push(data);
+                        if let Some(next) = ow_c.lock().unwrap().take() {
+                            *sc_c.lock().unwrap() = next;
+                        }
+                        return Ok(json!({}));
+                    }
+                    Ok(json!({ "modes": [] }))
+                })
+            }),
+        )
+        .await;
+
+        let entry = test_entry("sa-r2", "worker");
+        let mut minder = test_entry("sa-m2", "minder-2");
+        minder.shared_minder = true;
+        let mut minded_entry = entry.clone();
+        minded_entry.minded_by = Some(minder.id.clone());
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(minder.clone());
+            st.reg.register(minded_entry.clone());
+            st.live.insert(minder.id.clone(), Live::new());
+            let mut l = Live::new();
+            l.stream_connected = true;
+            st.live.insert(entry.id.clone(), l);
+        }
+        let lead = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-lead".into()), window_from_block: true, block: Some("blk-lead".into()), child: None };
+        let m_caller = crate::agentd::ops::Caller {
+            session: Some("sess-1".into()),
+            window: Some(minder.window_id.clone()),
+            window_from_block: true,
+            block: Some(minder.block_id.clone()),
+            child: Some(minder.clone()),
+        };
+
+        // 1. A17: Failed confirmation RPC on an ordinary FIRST approval (`pending_handoff == false`)
+        //    must keep `unconfirmed == true`, clear `confirm_in_flight`, arm retry, and confirm once recovered!
+        mock.service.transition(&entry.id).await;
+        fail_format.store(true, std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(CONFIRM + Duration::from_millis(80)).await;
+        {
+            let st = mock.service.lock();
+            assert!(st.live[&entry.id].unconfirmed, "failed confirmation must keep unconfirmed == true");
+            assert!(st.live[&entry.id].confirm_in_flight.is_none(), "failed confirmation must clear confirm_in_flight");
+            assert!(st.log.find_since(0, |e| e.state == SubagentLiveState::WaitingApproval).is_none());
+        }
+        fail_format.store(false, std::sync::atomic::Ordering::SeqCst);
+        mock.service.transition(&entry.id).await;
+        let rec_ok = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if mock.service.lock().log.find_since(0, |e| e.state == SubagentLiveState::WaitingApproval).is_some() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await;
+        assert!(rec_ok.is_ok(), "recovered confirmation must record WaitingApproval");
+
+        // 2. T1 (poll-driven, zero sleep!): Poll the queued minder `approve` future
+        //    directly into `answer_lock` contention (proving it captured box 1's grant
+        //    and is blocked on `answer_lock`) BEFORE minting box 2's grant via `minder status`!
+        let b1 = mock.service.look(&minded_entry, true).await.boxed.unwrap();
+        let pair = (minder.id.clone(), entry.id.clone());
+        mock.service.lock().told.insert(pair.clone(), ToldGrant { token: b1.key.clone(), is_approval: true, rules_gen: 0, read_seq: 1 });
+        let held_lock = mock.service.answer_lock(&entry.id).lock_owned().await;
+        let svc_q = mock.service.clone();
+        let mc_q = crate::agentd::ops::Caller {
+            session: Some("sess-1".into()),
+            window: Some(minder.window_id.clone()),
+            window_from_block: true,
+            block: Some(minder.block_id.clone()),
+            child: Some(minder.clone()),
+        };
+        let mut queued_fut = Box::pin(async move { svc_q.approve(&json!({ "args": ["worker", "--once", "--json"] }), &mc_q).await });
+        // Drive `queued_fut` synchronously until it blocks on `held_lock` (zero sleep!).
+        {
+            let waker = std::task::Waker::noop();
+            let mut cx = std::task::Context::from_waker(waker);
+            assert!(matches!(queued_fut.as_mut().poll(&mut cx), std::task::Poll::Pending), "queued minder approve must capture b1's grant and park on held answer_lock");
+        }
+        // Switch screen to box 2 and actually MINT box 2's grant via minder `status` BEFORE releasing `answer_lock`!
+        *screen.lock().unwrap() = asking_screen("rm -rf /danger");
+        mock.service.lock().live.get_mut(&entry.id).unwrap().out_seq += 1;
+        let st_resp = mock.service.agent_op(&Request { op: "status".into(), args: vec!["worker".into(), "--json".into()], ..Default::default() }, &m_caller).await;
+        assert!(st_resp.ok);
+        let b2_key = st_resp.data["approval"]["box"].as_str().unwrap().to_owned();
+        assert_ne!(b2_key, b1.key);
+        assert_eq!(mock.service.lock().told.get(&pair).map(|g| g.token.as_str()), Some(b2_key.as_str()), "box 2's grant must be live in st.told before releasing lock");
+        writes.lock().unwrap().clear();
+        drop(held_lock);
+        let q_res = tokio::time::timeout(Duration::from_secs(5), queued_fut).await.expect("queued minder approve must finish once lock drops");
+        assert!(!q_res.ok, "queued minder approve bound to box 1 must fail on box 2 even though box 2 has a valid grant: {q_res:?}");
+        assert!(writes.lock().unwrap().is_empty(), "queued minder approve must write ZERO keys into box 2: {:?}", writes.lock().unwrap());
+
+        // 3. N10: Non-minder `send worker --key 0` dismisses a staying survey EVEN when an approval sits behind it!
+        let survey_over_approval = format!("{}\n● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n", asking_screen("cargo test"));
+        *screen.lock().unwrap() = survey_over_approval;
+        mock.service.lock().live.get_mut(&entry.id).unwrap().survey = SurveyState::Stays;
+        writes.lock().unwrap().clear();
+        let dismiss_resp = mock.service.agent_op(&Request { op: "send".into(), args: vec!["worker".into(), "--key".into(), "0".into(), "--json".into()], ..Default::default() }, &lead).await;
+        assert!(dismiss_resp.ok, "send --key 0 must dismiss staying survey even over approval: {dismiss_resp:?}");
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"]);
+
+        // 4. A19 & N12: Half-drawn survey row (`"  1: Bad\n"` / `"  1:"`) NEVER clears `Submitted`;
+        //    short caller deadline (80 ms < 900 ms) NEVER prematurely marks `Stays`!
+        *screen.lock().unwrap() = claude_survey_screen();
+        mock.service.lock().live.get_mut(&entry.id).unwrap().survey = SurveyState::Idle;
+        writes.lock().unwrap().clear();
+        let short_dl = tokio::time::Instant::now() + Duration::from_millis(80);
+        let short_look = mock.service.look_until(&minded_entry, true, Some(short_dl)).await;
+        assert!(short_look.rpc_failed, "short caller deadline must time out");
+        assert!(matches!(mock.service.lock().live[&entry.id].survey, SurveyState::Submitted { .. }), "N12: short caller deadline must NOT prematurely mark Stays");
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"]);
+        // Partial non-positive survey line `"  1:"` must NOT retire `Submitted`!
+        *screen.lock().unwrap() = "  1:\n".to_owned();
+        let _ = mock.service.look(&minded_entry, true).await;
+        assert!(matches!(mock.service.lock().live[&entry.id].survey, SurveyState::Submitted { .. }), "A19: half-drawn line must NOT retire Submitted");
+        // Full survey redraw after partial line must NOT send a second `0`!
+        *screen.lock().unwrap() = claude_survey_screen();
+        let _ = mock.service.look(&minded_entry, true).await;
+        assert_eq!(writes.lock().unwrap().as_slice(), ["0"], "A19: must never double-dismiss survey");
+        // Positive `idle` prompt DOES retire `Submitted`!
+        *screen.lock().unwrap() = idle_screen.clone();
+        let _ = mock.service.look(&minded_entry, true).await;
+        assert_eq!(mock.service.lock().live[&entry.id].survey, SurveyState::Idle);
+
+        // 5. A21 / N9 + L1: `send --enter --verify` MUST NOT report `delivered: true` on `Working`
+        //    while the draft is still sitting unsubmitted (`still_typed`), AND retries Enter to deliver!
+        *screen.lock().unwrap() = idle_screen.clone();
+        writes.lock().unwrap().clear();
+        // First write (paste + Enter) lands on `working_with_draft` (still unsubmitted!),
+        // then retry Enter clears to `working_cleared`!
+        let step_ref = Arc::new(AtomicUsize::new(0));
+        let sc2 = screen.clone();
+        let wc2 = working_cleared.clone();
+        let wd2 = working_with_draft.clone();
+        let wr2 = writes.clone();
+        let mock_send = spawn_mock_service(
+            "r2-send-verify",
+            Arc::new(move |_idx, method, payload| {
+                let (sc2, wc2, wd2, wr2, step_ref) = (sc2.clone(), wc2.clone(), wd2.clone(), wr2.clone(), step_ref.clone());
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "com.superlogical.terminal.format" {
+                        return Ok(json!({ "content": sc2.lock().unwrap().clone() }));
+                    }
+                    if method == "com.superlogical.terminal.write" {
+                        let data = payload["args"]["data"].as_str().unwrap_or_default().to_owned();
+                        wr2.lock().unwrap().push(data.clone());
+                        if data == "\r" {
+                            let n = step_ref.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            *sc2.lock().unwrap() = if n == 0 { wd2 } else { wc2 };
+                        }
+                        return Ok(json!({}));
+                    }
+                    Ok(json!({ "modes": [] }))
+                })
+            }),
+        )
+        .await;
+        {
+            let mut st = mock_send.service.lock();
+            st.reg.register(entry.clone());
+            let mut l = Live::new();
+            l.stream_connected = false; // Also exercises N11 disconnected-stream fallback!
+            st.live.insert(entry.id.clone(), l);
+        }
+        *screen.lock().unwrap() = idle_screen.clone();
+        let send_resp = mock_send
+            .service
+            .agent_op(
+                &Request { op: "send".into(), args: vec!["worker".into(), "Run the full test suite now\nline 2".into(), "--enter".into(), "--verify".into(), "--json".into()], ..Default::default() },
+                &lead,
+            )
+            .await;
+        assert!(send_resp.ok && send_resp.data["delivered"] == true, "retry Enter should deliver once draft clears: {send_resp:?}");
+        let enter_count = writes.lock().unwrap().iter().filter(|w| w.as_str() == "\r").count();
+        assert_eq!(enter_count, 2, "L1: Working + still_typed draft must NOT mark delivered on first Enter; must retry Enter once! writes={:?}", writes.lock().unwrap());
+
+        // 6. N11: Disconnected stream (`stream_connected == false`, zero `out_seq` bumps) still completes
+        //    `approve --no` navigation + dismissal via the 250 ms fallback!
+        let ask_no_moved = asking_screen("cargo clippy").replace(" ❯ 1. Yes\n   2. Yes", "   1. Yes\n   2. Yes").replace("   3. No", " ❯ 3. No");
+        let sc_n11 = Arc::new(Mutex::new(asking_screen("cargo clippy")));
+        let mock_n11 = spawn_mock_service(
+            "r2-n11",
+            Arc::new({
+                let sc_n11 = sc_n11.clone();
+                let ask_no_moved = ask_no_moved.clone();
+                let idle_screen = idle_screen.clone();
+                move |_idx, method, payload| {
+                    let (sc_n11, ask_no_moved, idle_screen) = (sc_n11.clone(), ask_no_moved.clone(), idle_screen.clone());
+                    let method = method.to_owned();
+                    let payload = payload.clone();
+                    Box::pin(async move {
+                        if method == "com.superlogical.terminal.format" {
+                            return Ok(json!({ "content": sc_n11.lock().unwrap().clone() }));
+                        }
+                        if method == "com.superlogical.terminal.write" {
+                            match payload["args"]["data"].as_str() {
+                                Some("\x1b[B") => *sc_n11.lock().unwrap() = ask_no_moved,
+                                Some("\r") => *sc_n11.lock().unwrap() = idle_screen,
+                                _ => {}
+                            }
+                            return Ok(json!({}));
+                        }
+                        Ok(json!({}))
+                    })
+                }
+            }),
+        )
+        .await;
+        {
+            let mut st = mock_n11.service.lock();
+            st.reg.register(entry.clone());
+            let mut l = Live::new();
+            l.stream_connected = false;
+            st.live.insert(entry.id.clone(), l);
+        }
+        let n11_resp = mock_n11.service.approve(&json!({ "args": ["worker", "--no", "--json"] }), &lead).await;
+        assert!(n11_resp.ok && n11_resp.data["dismissal"] == "gone", "N11: disconnected stream must recover via fallback: {n11_resp:?}");
+
+        // 7. A21 / N9: `send --enter --verify` when verification RPC fails (`rpc_failed = true`)
+        //    MUST NEVER mark `delivered = true` via fallback `starting()`!
+        let fmt_n = Arc::new(AtomicUsize::new(0));
+        let mock_rpcfail = spawn_mock_service(
+            "r2-send-rpcfail",
+            Arc::new({
+                let fmt_n = fmt_n.clone();
+                let idle_screen = idle_screen.clone();
+                move |_idx, method, _payload| {
+                    let fmt_n = fmt_n.clone();
+                    let idle_screen = idle_screen.clone();
+                    let method = method.to_owned();
+                    Box::pin(async move {
+                        if method == "com.superlogical.terminal.format" {
+                            let n = fmt_n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if n <= 1 {
+                                return Ok(json!({ "content": idle_screen }));
+                            }
+                            return Err(("timeout", "simulated verify RPC failure".into()));
+                        }
+                        Ok(json!({ "modes": [] }))
+                    })
+                }
+            }),
+        )
+        .await;
+        {
+            let mut st = mock_rpcfail.service.lock();
+            st.reg.register(entry.clone());
+            let mut l = Live::new();
+            l.stream_connected = true;
+            st.live.insert(entry.id.clone(), l);
+        }
+        let fail_verify = mock_rpcfail
+            .service
+            .agent_op(&Request { op: "send".into(), args: vec!["worker".into(), "Ping verify".into(), "--enter".into(), "--verify".into(), "--json".into()], ..Default::default() }, &lead)
+            .await;
+        assert!(fail_verify.ok, "{fail_verify:?}");
+        assert_eq!(fail_verify.data["delivered"], false, "A21/N9: failed verify RPC must NEVER report delivered=true: {fail_verify:?}");
+
+        // 8. A18: Real concurrent interleaving — hold `bracketed_paste` (`modes`) behind a barrier while
+        //    a survey appears and another reader claims it (`Claimed` -> `Stays`); `send` MUST NOT write into the survey!
+        let modes_entered = Arc::new(Notify::new());
+        let modes_release = Arc::new(Notify::new());
+        let sc_a18 = Arc::new(Mutex::new(idle_screen.clone()));
+        let wr_a18 = Arc::new(Mutex::new(Vec::<String>::new()));
+        let mock_a18 = spawn_mock_service(
+            "r2-a18",
+            Arc::new({
+                let (me, mr, sc, wr) = (modes_entered.clone(), modes_release.clone(), sc_a18.clone(), wr_a18.clone());
+                move |_idx, method, payload| {
+                    let (me, mr, sc, wr) = (me.clone(), mr.clone(), sc.clone(), wr.clone());
+                    let method = method.to_owned();
+                    let payload = payload.clone();
+                    Box::pin(async move {
+                        if method == "com.superlogical.terminal.modes" {
+                            me.notify_one();
+                            mr.notified().await;
+                            return Ok(json!({ "modes": [] }));
+                        }
+                        if method == "com.superlogical.terminal.format" {
+                            return Ok(json!({ "content": sc.lock().unwrap().clone() }));
+                        }
+                        if method == "com.superlogical.terminal.write" {
+                            wr.lock().unwrap().push(payload["args"]["data"].as_str().unwrap_or_default().to_owned());
+                            return Ok(json!({}));
+                        }
+                        Ok(json!({}))
+                    })
+                }
+            }),
+        )
+        .await;
+        {
+            let mut st = mock_a18.service.lock();
+            st.reg.register(entry.clone());
+            let mut l = Live::new();
+            l.stream_connected = true;
+            st.live.insert(entry.id.clone(), l);
+        }
+        let me_wait = modes_entered.notified();
+        tokio::pin!(me_wait);
+        me_wait.as_mut().enable();
+        let svc_a18 = mock_a18.service.clone();
+        let lead_a18 = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-lead".into()), window_from_block: true, block: Some("blk-lead".into()), child: None };
+        let send_task = tokio::spawn(async move {
+            svc_a18.agent_op(&Request { op: "send".into(), args: vec!["worker".into(), "2 please continue".into(), "--enter".into(), "--json".into()], ..Default::default() }, &lead_a18).await
+        });
+        tokio::time::timeout(Duration::from_secs(5), me_wait).await.expect("A18 send must reach modes RPC");
+        // Survey appears while `send`'s `modes` RPC is in flight and stays!
+        *sc_a18.lock().unwrap() = claude_survey_screen();
+        mock_a18.service.lock().live.get_mut(&entry.id).unwrap().survey = SurveyState::Stays;
+        modes_release.notify_one();
+        let a18_resp = tokio::time::timeout(Duration::from_secs(5), send_task).await.expect("A18 send task must complete").unwrap();
+        assert!(!a18_resp.ok, "A18: send must refuse when survey appears during modes RPC: {a18_resp:?}");
+        assert!(wr_a18.lock().unwrap().is_empty(), "A18: send must write ZERO bytes into the survey: {:?}", wr_a18.lock().unwrap());
+    }
+
+    /// Round 3 regression suite covering A1/A5/A6, A2, A4/N1, A9/A16, A10/N8,
+    /// A15, A22/A24/N4, A26, A29, A30/N5.
+    #[tokio::test]
+    async fn round3_review_regression_suite() {
+        let rule = "─".repeat(60);
+        let idle_screen = format!("● Done.\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        let working_with_draft = format!("✻ Thinking… (2s)\n{rule}\n❯ Check build\n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        let working_cleared = format!("❯ Check build\n✻ Thinking… (3s)\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        let screen = Arc::new(Mutex::new(idle_screen.clone()));
+        let writes = Arc::new(Mutex::new(Vec::<String>::new()));
+        let session_view_err = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let close_err = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let proc_child_only = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let enter_step = Arc::new(AtomicUsize::new(0));
+        let switch_to_approval_on_format = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let fail_first_format = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        let (sc_c, wr_c, sv_c, cl_c, pc_c, es_c, sw_c, ff_c) =
+            (screen.clone(), writes.clone(), session_view_err.clone(), close_err.clone(), proc_child_only.clone(), enter_step.clone(), switch_to_approval_on_format.clone(), fail_first_format.clone());
+        let wd_c = working_with_draft.clone();
+        let wc_c = working_cleared.clone();
+        let mock = spawn_mock_service(
+            "r3-all",
+            Arc::new(move |_idx, method, payload| {
+                let (sc_c, wr_c, sv_c, cl_c, pc_c, es_c, sw_c, ff_c, wd_c, wc_c) =
+                    (sc_c.clone(), wr_c.clone(), sv_c.clone(), cl_c.clone(), pc_c.clone(), es_c.clone(), sw_c.clone(), ff_c.clone(), wd_c.clone(), wc_c.clone());
+                let method = method.to_owned();
+                let payload = payload.clone();
+                Box::pin(async move {
+                    if method == "session.list" {
+                        if sv_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err(("timeout", "transient session.list error".into()));
+                        }
+                        return Ok(json!({ "sessions": [{ "session_id": "sess-1" }] }));
+                    }
+                    if method == "session.view" {
+                        if sv_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err(("timeout", "transient session.view error".into()));
+                        }
+                        return Ok(json!({
+                            "session_id": "sess-1",
+                            "windows": [
+                                { "window_id": "win-sa-rec", "layers": [{ "blocks": [{ "block_id": "blk-sa-rec" }] }] },
+                                { "window_id": "win-sa-live", "layers": [{ "blocks": [{ "block_id": "blk-sa-live" }] }] },
+                                { "window_id": "win-sa-q3", "layers": [{ "blocks": [{ "block_id": "blk-sa-q3" }] }] }
+                            ]
+                        }));
+                    }
+                    if method == "session.close_window" {
+                        if cl_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err(("timeout", "close_window refused".into()));
+                        }
+                        return Ok(json!({}));
+                    }
+                    if method == "com.superlogical.terminal.process" {
+                        if pc_c.load(std::sync::atomic::Ordering::SeqCst) {
+                            // Only outer shell `child.pid`, NO `foreground.pid`!
+                            return Ok(json!({ "child": { "pid": std::process::id() } }));
+                        }
+                        return Ok(json!({ "foreground": { "pid": std::process::id() } }));
+                    }
+                    if method == "com.superlogical.terminal.format" {
+                        if ff_c.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                            return Err(("timeout", "first quiet transition RPC failed".into()));
+                        }
+                        let cur = sc_c.lock().unwrap().clone();
+                        if sw_c.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                            *sc_c.lock().unwrap() = asking_screen("rm -rf /appeared-during-inspect");
+                        }
+                        return Ok(json!({ "content": cur }));
+                    }
+                    if method == "com.superlogical.terminal.write" {
+                        let data = payload["args"]["data"].as_str().unwrap_or_default().to_owned();
+                        wr_c.lock().unwrap().push(data.clone());
+                        if data == "\r" && es_c.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+                            let n = es_c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            *sc_c.lock().unwrap() = if n == 1 { wd_c } else { wc_c };
+                        }
+                        return Ok(json!({}));
+                    }
+                    Ok(json!({ "modes": [] }))
+                })
+            }),
+        )
+        .await;
+
+        // 1. A1 / A5 / A6: Malformed adopt rejected (exit 2, no "Took over"); unknown tab presence
+        //    on temporary Rex error fails adopt without stamping live child exited; reconcile on
+        //    session.list failure returns Err leaving live records intact!
+        let bad_null = mock.service.adopt(Some(&Value::Null)).await;
+        assert!(!bad_null.ok && bad_null.code == 2 && !bad_null.stdout.contains("Took over"), "A1: null adopt must fail: {bad_null:?}");
+        let bad_enum = mock.service.adopt(Some(&json!({ "agents": [{ "id": "sa-x", "cli": "unknown-future-cli" }] }))).await;
+        assert!(!bad_enum.ok && bad_enum.code == 2 && !bad_enum.stdout.contains("Took over"), "A1: unknown CLI enum must fail: {bad_enum:?}");
+
+        let live_child = test_entry("sa-live", "live-c");
+        session_view_err.store(true, std::sync::atomic::Ordering::SeqCst);
+        let unk_adopt = mock.service.adopt(Some(&json!({ "agents": [live_child.clone()] }))).await;
+        assert!(!unk_adopt.ok && !unk_adopt.stdout.contains("Took over"), "A6: temporary Rex error must fail adopt without stamping exited: {unk_adopt:?}");
+        assert!(mock.service.lock().reg.entries.is_empty());
+
+        // Reconcile on transient session.list error MUST return Err and leave live record untouched!
+        mock.service.lock().reg.register(live_child.clone());
+        let rec_err = mock.service.reconcile().await;
+        assert!(rec_err.is_err(), "A6: reconcile must fail cleanly on session.list error instead of marking live children exited");
+        assert!(mock.service.lock().reg.entries.iter().any(|e| e.id == live_child.id && e.exited_at.is_none()));
+        session_view_err.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // A5: Conflicting duplicate ID (different window_id) MUST fail instead of silently skipping!
+        let mut conflict = live_child.clone();
+        conflict.window_id = "win-different".into();
+        let conf_resp = mock.service.adopt(Some(&json!({ "agents": [conflict] }))).await;
+        assert!(!conf_resp.ok && !conf_resp.stdout.contains("Took over"), "A5: conflicting duplicate ID must error: {conf_resp:?}");
+
+        // 2. A10: `process_cwd_matches_primary` fails closed when ONLY `child.pid` is returned (no `foreground.pid`).
+        let self_cwd = std::env::current_dir().unwrap().to_string_lossy().into_owned();
+        let dl = tokio::time::Instant::now() + Duration::from_secs(2);
+        proc_child_only.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(!mock.service.process_cwd_matches_primary(&live_child, Some(&self_cwd), dl).await, "A10: child.pid without foreground.pid must fail closed");
+        proc_child_only.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(mock.service.process_cwd_matches_primary(&live_child, Some(&self_cwd), dl).await, "A10: verified foreground.pid must pass");
+
+        // 3. A9 / Astra #1 / Astra #3 / Neon #2 / A16:
+        //    - Unrelated `write_now()` excludes provisional uncommitted entries.
+        //    - Competing `write_now()` queued behind `write_now_committing` MUST NOT
+        //      erase the committed entry when reopening the final registry (Astra #1)!
+        //    - Follower `snapshot()` excludes provisional entries (Astra #3).
+        //    - `adopt` rejects unsafe path IDs (`../escape`, `/abs`) with exit 2 and
+        //      rejects batch-internal conflicting ended records (Astra #3 / Addl #1).
+        //    - Rollback when `session.close_window` fails & tab stays `Present` retains
+        //      an unminded recovery record (`minded_by == None`, `parent_window_id == fallback`),
+        //      tracked in `unsaved_recovery_ids` so duplicate `adopt` fails while unwritable!
+        let rec_entry = test_entry("sa-rec", "rec");
+        {
+            let mut st = mock.service.lock();
+            st.provisional_ids.insert("sa-prov".into());
+            st.reg.register(test_entry("sa-prov", "prov"));
+        }
+        if let Frame::Snapshot { agents, .. } = mock.service.snapshot() {
+            assert!(!agents.iter().any(|a| a.entry.id == "sa-prov"), "Astra #3: follower snapshot must exclude provisional entries");
+        }
+        mock.service.write_now().await.unwrap();
+        let disk_reg = SubagentRegistry::read_from(&mock.service.paths.registry).unwrap();
+        assert!(!disk_reg.entries.iter().any(|e| e.id == "sa-prov"), "A9: unrelated write_now must exclude provisional uncommitted entries");
+        // Astra #1: Queue a competing `write_now()` behind `write_now_committing(&["sa-prov"])`
+        // and verify `sa-prov` survives in the reopened final registry on disk!
+        let (r_commit, r_compete) = tokio::join!(mock.service.write_now_committing(&["sa-prov"]), mock.service.write_now());
+        r_commit.unwrap();
+        r_compete.unwrap();
+        let disk_after_compete = SubagentRegistry::read_from(&mock.service.paths.registry).unwrap();
+        assert!(disk_after_compete.entries.iter().any(|e| e.id == "sa-prov"), "Astra #1: competing write_now must NEVER erase committed sa-prov");
+        mock.service.lock().reg.entries.retain(|e| e.id != "sa-prov");
+
+        // Astra Addl #1 & #3: unsafe child IDs and batch-internal conflicts rejected.
+        let mut bad_id = test_entry("../escape", "esc");
+        bad_id.exited_at = Some(1);
+        let bad_resp = mock.service.adopt(Some(&json!({ "agents": [bad_id] }))).await;
+        assert_eq!(bad_resp.code, 2, "Astra Addl #1: path-traversal adopt ID must exit 2: {bad_resp:?}");
+        let mut b1 = test_entry("sa-bdup", "b1");
+        b1.exited_at = Some(1);
+        b1.window_id = "win-b1".into();
+        let mut b2 = b1.clone();
+        b2.window_id = "win-b2".into();
+        let bconf = mock.service.adopt(Some(&json!({ "agents": [b1, b2] }))).await;
+        assert!(!bconf.ok && !bconf.stdout.contains("Took over"), "Astra #3/Neon #6: batch-internal conflicting ended IDs must fail: {bconf:?}");
+
+        let mut rec_minded = rec_entry.clone();
+        rec_minded.minded_by = Some("sa-m-rec".into());
+        close_err.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = std::fs::remove_file(&mock.service.paths.registry);
+        std::fs::create_dir(&mock.service.paths.registry).unwrap();
+        let rec_res = mock.service.begin_attached(rec_minded.clone(), Some("win-fallback"), None, None, false, None, None).await;
+        assert!(rec_res.is_err());
+        // While registry is STILL unwritable, a duplicate `adopt` for `sa-rec` MUST fail (Astra #13)!
+        let dup_while_unwritable = mock.service.adopt(Some(&json!({ "agents": [rec_entry.clone()] }))).await;
+        assert!(!dup_while_unwritable.ok && !dup_while_unwritable.stdout.contains("Took over"), "Astra #13: duplicate adopt must not ack unsaved recovery record: {dup_while_unwritable:?}");
+        std::fs::remove_dir(&mock.service.paths.registry).unwrap();
+        close_err.store(false, std::sync::atomic::Ordering::SeqCst);
+        {
+            let st = mock.service.lock();
+            let saved_rec = st.reg.entries.iter().find(|e| e.id == rec_entry.id && e.exited_at.is_none()).expect("A16: failed rollback close must retain owned recovery record");
+            assert_eq!(saved_rec.minded_by, None, "Neon #2: recovery record must clear minded_by");
+            assert_eq!(saved_rec.parent_window_id, "win-fallback", "Neon #2: recovery record must reset parent_window_id to fallback_parent");
+            assert!(st.live.get(&rec_entry.id).is_some_and(|l| l.committed), "A16: recovery record must be committed in memory");
+        }
+
+        // 4. A2 / Astra #14: Startup leave list failure neutralizes any pre-existing
+        //    empty file on disk so even after a restart (`st.leave.clear()`) `leave_of` is None!
+        let leave_fail_entry = test_entry("sa-lfail", "lfail");
+        let lf = mock.service.leave_file(&leave_fail_entry.id);
+        std::fs::create_dir_all(lf.parent().unwrap()).unwrap();
+        std::fs::write(&lf, b"").unwrap(); // Pre-existing empty file!
+        // Passing an invalid regex causes startup list installation to fail, neutralize disk file, and cache disabled `None`.
+        let (_, _, lres) = mock.service.begin_attached(leave_fail_entry.clone(), None, None, None, false, None, Some("[invalid-regex")).await.unwrap();
+        assert!(matches!(lres, Some(Err(_))));
+        assert!(!lf.exists(), "Astra #14: failed startup list must durably neutralize old empty file on disk");
+        assert!(mock.service.leave_of(&leave_fail_entry.id).is_none(), "A2: failed startup list must cache explicit disabled None");
+        mock.service.lock().leave.clear();
+        assert!(mock.service.leave_of(&leave_fail_entry.id).is_none(), "Astra #14: disabled list must survive restart (cleared cache)");
+
+        // 5. A4 / N1: Minder `send` steering an `Idle` worker when an approval appears during `inspect()`
+        //    MUST reject with ZERO keys written!
+        let mut minder = test_entry("sa-m3", "minder-3");
+        minder.shared_minder = true;
+        let mut worker = test_entry("sa-w3", "w3");
+        worker.minded_by = Some(minder.id.clone());
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(minder.clone());
+            st.reg.register(worker.clone());
+            st.live.insert(minder.id.clone(), Live::new());
+            let mut l = Live::new();
+            l.stream_connected = true;
+            st.live.insert(worker.id.clone(), l);
+        }
+        let m_caller = crate::agentd::ops::Caller {
+            session: Some("sess-1".into()),
+            window: Some(minder.window_id.clone()),
+            window_from_block: true,
+            block: Some(minder.block_id.clone()),
+            child: Some(minder.clone()),
+        };
+        let lead = crate::agentd::ops::Caller { session: Some("sess-1".into()), window: Some("win-lead".into()), window_from_block: true, block: Some("blk-lead".into()), child: None };
+        *screen.lock().unwrap() = idle_screen.clone();
+        writes.lock().unwrap().clear();
+        switch_to_approval_on_format.store(true, std::sync::atomic::Ordering::SeqCst);
+        let m_send = mock.service.agent_op(&Request { op: "send".into(), args: vec!["w3".into(), "Keep going".into(), "--enter".into(), "--json".into()], ..Default::default() }, &m_caller).await;
+        assert!(!m_send.ok, "A4/N1: minder send must reject when approval appears during inspect: {m_send:?}");
+        assert!(writes.lock().unwrap().is_empty(), "A4/N1: minder send must write ZERO bytes into newly appeared approval: {:?}", writes.lock().unwrap());
+
+        // 6. A15: `approve` MUST reject when a staying survey covers the foreground (ZERO keys written!).
+        let survey_over_approval = format!("{}\n● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n", asking_screen("cargo test"));
+        *screen.lock().unwrap() = survey_over_approval;
+        mock.service.lock().live.get_mut(&worker.id).unwrap().survey = SurveyState::Stays;
+        writes.lock().unwrap().clear();
+        let ap_surv = mock.service.approve(&json!({ "args": ["w3", "--once", "--json"] }), &lead).await;
+        assert!(!ap_surv.ok, "A15: approve must refuse while staying survey covers foreground: {ap_surv:?}");
+        assert!(writes.lock().unwrap().is_empty(), "A15: approve must write ZERO keys into survey overlay: {:?}", writes.lock().unwrap());
+        mock.service.lock().live.get_mut(&worker.id).unwrap().survey = SurveyState::Idle;
+
+        // 7. A26: Partial survey row `1:` sitting over an IDLE Claude chat field MUST preserve `Submitted`!
+        *screen.lock().unwrap() = claude_survey_screen();
+        writes.lock().unwrap().clear();
+        let _ = mock.service.look_until(&worker, true, Some(tokio::time::Instant::now() + Duration::from_millis(80))).await;
+        assert!(matches!(mock.service.lock().live[&worker.id].survey, SurveyState::Submitted { .. }));
+        *screen.lock().unwrap() = format!("  1:\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        let _ = mock.service.look(&worker, true).await;
+        assert!(matches!(mock.service.lock().live[&worker.id].survey, SurveyState::Submitted { .. }), "A26: partial `1:` over idle chat box must preserve Submitted");
+        *screen.lock().unwrap() = idle_screen.clone();
+        let _ = mock.service.look(&worker, true).await;
+        assert_eq!(mock.service.lock().live[&worker.id].survey, SurveyState::Idle);
+
+        // 8. N4 / A24:
+        //    - Continuous spinner output ticks every 100 ms MUST NOT starve the 800 ms retry Enter in `send --enter --verify`!
+        //    - `send --verify` WITHOUT `--enter` MUST send ZERO `\r`!
+        *screen.lock().unwrap() = idle_screen.clone();
+        writes.lock().unwrap().clear();
+        let no_enter = mock.service.agent_op(&Request { op: "send".into(), args: vec!["w3".into(), "just stage this".into(), "--verify".into(), "--json".into()], ..Default::default() }, &lead).await;
+        assert!(no_enter.ok, "{no_enter:?}");
+        assert!(!writes.lock().unwrap().iter().any(|w| w == "\r"), "A24: send --verify without --enter must NEVER write Return: {:?}", writes.lock().unwrap());
+
+        *screen.lock().unwrap() = idle_screen.clone();
+        writes.lock().unwrap().clear();
+        enter_step.store(1, std::sync::atomic::Ordering::SeqCst);
+        let svc_tick = mock.service.clone();
+        let wid_tick = worker.id.clone();
+        let tick_task = tokio::spawn(async move {
+            for _ in 0..25 {
+                tokio::time::sleep(Duration::from_millis(80)).await;
+                let notify = {
+                    let mut st = svc_tick.lock();
+                    if let Some(l) = st.live.get_mut(&wid_tick) {
+                        l.out_seq += 1;
+                        Some(l.output_notify.clone())
+                    } else {
+                        None
+                    }
+                };
+                if let Some(n) = notify {
+                    n.notify_waiters();
+                }
+            }
+        });
+        let n4_resp = mock
+            .service
+            .agent_op(&Request { op: "send".into(), args: vec!["w3".into(), "Check build".into(), "--enter".into(), "--verify".into(), "--json".into()], ..Default::default() }, &lead)
+            .await;
+        tick_task.abort();
+        enter_step.store(0, std::sync::atomic::Ordering::SeqCst);
+        assert!(n4_resp.ok && n4_resp.data["delivered"] == true, "N4: continuous spinner output must NOT starve 800ms retry Enter: {n4_resp:?}");
+        assert_eq!(writes.lock().unwrap().iter().filter(|w| w.as_str() == "\r").count(), 2, "N4: must fire retry Enter once under continuous output");
+
+        // 9. A30 / N5 / Neon #9 / Astra #18:
+        //    - Start REAL `watch_child` on a quiet standing prompt whose FIRST format RPC fails:
+        //      verify the scheduled 250 ms retry wakes `watch_child` and records `WaitingApproval`
+        //      in `st.log` without any manual second `transition()` call!
+        //    - Blinking redraw while `pending_handoff == true` and `confirm_in_flight.is_some()`
+        //      does NOT cancel confirmation!
+        let quiet = test_entry("sa-q3", "q3");
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(quiet.clone());
+            st.live.insert(quiet.id.clone(), Live::new());
+        }
+        *screen.lock().unwrap() = asking_screen("cargo check");
+        fail_first_format.store(true, std::sync::atomic::Ordering::SeqCst);
+        mock.service.watch_child(&quiet);
+        mock.service.poke(&quiet.id);
+        let wait_ok = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if mock.service.lock().log.last_recorded_of(&quiet.id).is_some_and(|(s, _)| s == SubagentLiveState::WaitingApproval) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await;
+        assert!(wait_ok.is_ok(), "A30 / Astra #18: real watch_child scheduled retry must recover quiet prompt after first RPC failure");
+
+        let quiet_blink = test_entry("sa-q3b", "q3b");
+        {
+            let mut st = mock.service.lock();
+            st.reg.register(quiet_blink.clone());
+            let mut l = Live::new();
+            l.pending_handoff = true;
+            st.live.insert(quiet_blink.id.clone(), l);
+        }
+        mock.service.transition(&quiet_blink.id).await;
+        let gen_after_first = mock.service.lock().live[&quiet_blink.id].check_gen;
+        let cif = mock.service.lock().live[&quiet_blink.id].confirm_in_flight;
+        assert_eq!(cif, Some(gen_after_first));
+        // Simulate a 150 ms blink calling `transition()` while confirmation is already in flight:
+        mock.service.transition(&quiet_blink.id).await;
+        assert_eq!(mock.service.lock().live[&quiet_blink.id].check_gen, gen_after_first, "N5: blink during pending_handoff must NOT cancel active confirm_in_flight");
     }
 }

@@ -154,6 +154,23 @@ impl SubagentEventLog {
         self.events.iter().rev().find(|e| e.id == id && e.event != super::minder::ESCALATION && e.event != super::minder::MINDING)
     }
 
+    /// The last state and sequence recorded for `id` (tracked outside the
+    /// 2,000-event ring buffer in `last_by_id`).
+    pub fn last_recorded_of(&self, id: &str) -> Option<(SubagentLiveState, u64)> {
+        self.last_by_id.get(id).map(|(state, _, seq)| (*state, *seq))
+    }
+
+    /// Snapshot of all currently retained events (up to `MAX_EVENT_LOG`)
+    /// together with the current latest sequence number (`latest_seq`).
+    pub fn snapshot(&self) -> (u64, Vec<SubagentEvent>) {
+        (self.next_seq, self.events.iter().cloned().collect())
+    }
+
+    /// All retained events strictly after `seq`, in order.
+    pub fn after_seq(&self, seq: u64) -> Vec<SubagentEvent> {
+        self.events.iter().filter(|e| e.seq > seq).cloned().collect()
+    }
+
     /// Finds the earliest event strictly after `since` matching `predicate`.
     pub fn find_since<F>(&self, since: u64, mut predicate: F) -> Option<SubagentEvent>
     where

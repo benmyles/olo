@@ -71,7 +71,14 @@ pub fn run(mut args: Vec<String>) -> i32 {
                     return 1;
                 }
             };
-            runtime.block_on(super::service::serve(server, paths, signals))
+            let exit = runtime.block_on(super::service::serve(server, paths, signals));
+            // Drop the Tokio runtime BEFORE releasing the service lock and
+            // handover pipe so no background task can touch disk after the
+            // successor wakes on EOF.
+            drop(runtime);
+            let code = exit.code;
+            drop(exit);
+            code
         }
         "follow" => follow(&server, &paths),
         "request" => {
@@ -90,7 +97,10 @@ pub fn run(mut args: Vec<String>) -> i32 {
         "adopt" => {
             let mut text = String::new();
             let _ = std::io::stdin().read_to_string(&mut text);
-            let obj: Value = serde_json::from_str(text.trim()).unwrap_or(Value::Null);
+            let Ok(obj) = serde_json::from_str::<Value>(text.trim()) else {
+                eprintln!("olo agent adopt: malformed JSON input");
+                return 2;
+            };
             let env = |name: &str| std::env::var(name).unwrap_or_default();
             let req = Request { proto: PROTO, op: "adopt".into(), obj: Some(obj), block: env("REX_BLOCK"), session: env("REX_SESSION"), ..Default::default() };
             print_answer(ask(&server, &paths, &req, true))
@@ -382,6 +392,14 @@ fn send_and_wait(args: Vec<String>, send_wait: &dyn Fn(Vec<String>) -> Response,
     if !sent.ok {
         return print_answer(sent);
     }
+    if sent.data["delivered"] == false {
+        if as_json {
+            println!("{}", sent.stdout.trim());
+        } else {
+            eprintln!("olo agent send: message was typed into the field and not seen to be taken: look at it before retrying");
+        }
+        return 1;
+    }
     let id = sent.data["id"].as_str().unwrap_or_default().to_owned();
     let name = sent.data["name"].as_str().unwrap_or(&id).to_owned();
     let given = sent.data["cursor"].as_u64().unwrap_or(0);
@@ -617,24 +635,105 @@ fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response
     }
 }
 
-/// What a child with the desktop's leave (`--desktop inherit`) takes of
-/// this shell's environment: what the desktop gave the pane it is asked
-/// from.
-fn inherited() -> Vec<(String, String)> {
+/// Lexically normalizes `.` and `..` components without touching the filesystem.
+pub(super) fn normalize_lexical_path(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::RootDir => out.push("/"),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::Normal(seg) => out.push(seg),
+            std::path::Component::Prefix(p) => out.push(p.as_os_str()),
+        }
+    }
+    if out.as_os_str().is_empty() && path.is_absolute() { PathBuf::from("/") } else { out }
+}
+
+fn matches_bridge_dir(p: &Path) -> bool {
+    let s = p.to_string_lossy();
+    let trimmed = s.trim_end_matches('/');
+    trimmed.ends_with("/rex-commands") || trimmed.ends_with("/olo/rex/bin") || trimmed.ends_with("/.olo/rex/bin")
+}
+
+/// True when `dir` is an Olo desktop-bridge command directory (after resolving
+/// symlinks through the original path OR after lexical normalization) that must
+/// stay fenced out of `--desktop none` / `--desktop screens=…` child tabs.
+pub(super) fn is_bridge_path_dir(dir: &str) -> bool {
+    let p = Path::new(dir);
+    if std::fs::canonicalize(p).is_ok_and(|canon| matches_bridge_dir(&canon)) {
+        return true;
+    }
+    let norm = normalize_lexical_path(p);
+    matches_bridge_dir(&norm) || std::fs::canonicalize(&norm).is_ok_and(|canon| matches_bridge_dir(&canon))
+}
+
+/// What a child takes of this shell's environment: desktop bridge variables and
+/// bridge `PATH` dirs (`PATH_PREPEND`, honored only under `--desktop inherit`),
+/// plus non-bridge `PATH` dirs (`PATH_EXTRA`, honored for all desktop policies
+/// when the caller did not set `--env PATH=…`, so systemd-started Rex servers
+/// with minimal `PATH` still find installed CLIs like `agy`, `claude`, `codex`).
+///
+/// Relative `PATH` entries are resolved against actual `cwd` (and dropped if
+/// empty, bare `.`, or if `cwd` is unavailable so they can never resolve
+/// against a child's `--cwd`). Existing paths are canonicalized through their
+/// original path BEFORE lexical `..` collapsing so symlinked `../` targets are
+/// never shifted to a different directory; bridge directories are fenced on
+/// both original and canonical paths, and entries are emitted in caller order.
+fn inherited_from_in<F: Fn(&str) -> Option<String>>(cwd: Option<&Path>, get: F) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for name in ["SSH_AUTH_SOCK", "BROWSER"] {
-        if let Ok(value) = std::env::var(name)
-            && !value.is_empty()
-        {
+        if let Some(value) = get(name).filter(|v| !v.is_empty()) {
             out.push((name.to_owned(), value));
         }
     }
-    for dir in std::env::var("PATH").unwrap_or_default().split(':') {
-        if dir.ends_with("/rex-commands") || dir.ends_with("/olo/rex/bin") {
-            out.push(("PATH_PREPEND".to_owned(), dir.to_owned()));
+    let mut seen = std::collections::HashSet::new();
+    if let Some(path) = get("PATH") {
+        for raw in path.split(':').filter(|d| !d.is_empty()) {
+            let candidate = Path::new(raw);
+            let raw_abs = if candidate.is_absolute() {
+                candidate.to_path_buf()
+            } else if raw == "." {
+                // Never forward bare `.` into a child's PATH.
+                continue;
+            } else if let Some(base) = cwd.filter(|c| c.is_absolute()) {
+                base.join(candidate)
+            } else {
+                continue;
+            };
+            // Resolve existing entries via the real filesystem path FIRST so
+            // `/symlink/../bin` resolves to the symlink target's parent rather
+            // than shifting lexically to a different directory. When an entry
+            // containing `..` does NOT exist on disk, NEVER lexically collapse
+            // `..` across a potential symlink (which could select a completely
+            // different existing directory): keep verbatim while still applying
+            // lexical bridge-dir classification!
+            let (resolved, lexical) = match std::fs::canonicalize(&raw_abs) {
+                Ok(c) => (c.clone(), c),
+                Err(_) => {
+                    let lex = normalize_lexical_path(&raw_abs);
+                    if raw_abs.components().any(|c| matches!(c, std::path::Component::ParentDir)) { (raw_abs.clone(), lex) } else { (lex.clone(), lex) }
+                }
+            };
+            let resolved_str = resolved.to_string_lossy().into_owned();
+            if resolved_str.is_empty() || !seen.insert(resolved_str.clone()) {
+                continue;
+            }
+            let bridge = matches_bridge_dir(&resolved) || matches_bridge_dir(&lexical) || is_bridge_path_dir(&raw_abs.to_string_lossy());
+            let key = if bridge { "PATH_PREPEND" } else { "PATH_EXTRA" };
+            out.push((key.to_owned(), resolved_str));
         }
     }
     out
+}
+
+/// What a child with the desktop's leave (`--desktop inherit`) or clean non-bridge
+/// `PATH` takes of this shell's environment.
+fn inherited() -> Vec<(String, String)> {
+    let cwd = std::env::current_dir().ok().or_else(|| std::env::var_os("PWD").map(PathBuf::from).filter(|p| p.is_absolute()));
+    inherited_from_in(cwd.as_deref(), |name| std::env::var(name).ok())
 }
 
 struct Refused(String, i32);
@@ -835,10 +934,39 @@ fn exchange_within(mut stream: UnixStream, req: &Request, within: Duration) -> A
     }
 }
 
+/// Peer PID of a connected Unix domain stream via `SO_PEERCRED`.
+fn peer_pid(stream: &UnixStream) -> Option<i32> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::io::AsRawFd as _;
+        let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) };
+        if rc == 0 && cred.pid > 0 { Some(cred.pid) } else { None }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = stream;
+        None
+    }
+}
+
+type ConnectedSocket = (UnixStream, Option<(u64, u64)>, Option<i32>);
+
+/// Captures `socket_identity(path)` immediately before `UnixStream::connect`
+/// and `SO_PEERCRED` peer PID on the resulting stream so handover detection
+/// never samples a post-rebind successor's inode or stalls on inode reuse.
+fn connect_with_identity(path: &Path) -> std::io::Result<ConnectedSocket> {
+    let sock_id = socket_identity(path);
+    let stream = UnixStream::connect(path)?;
+    let pid = peer_pid(&stream);
+    Ok((stream, sock_id, pid))
+}
+
 /// The service's socket, the service started where none answers.
-fn connected(server: &Path, paths: &Paths) -> Result<UnixStream, Box<Response>> {
-    if let Ok(stream) = UnixStream::connect(&paths.socket) {
-        return Ok(stream);
+fn connected(server: &Path, paths: &Paths) -> Result<ConnectedSocket, Box<Response>> {
+    if let Ok(conn) = connect_with_identity(&paths.socket) {
+        return Ok(conn);
     }
     let unavailable = |why: String| Box::new(Response { ok: false, stdout: String::new(), stderr: format!("olo agent: {why}\n"), code: UNAVAILABLE, data: Value::Null });
     // (Its log's last line, less when it was written and whose it is.)
@@ -846,11 +974,14 @@ fn connected(server: &Path, paths: &Paths) -> Result<UnixStream, Box<Response>> 
         || std::fs::read_to_string(&paths.log).ok().and_then(|log| log.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.split_once("olo agents: ").map_or(l, |(_, word)| word).to_owned()));
     let mut service = start_service(server, paths).map_err(|e| unavailable(format!("the agents service couldn't be started: {e}")))?;
     // (It listens once it has reached the Rex server and read what the
-    // last one wrote: waited for here. One that ends without listening
-    // says why in its log, unless another got there first and listens.)
-    let until = Instant::now() + Duration::from_secs(25);
+    // last one wrote: waited for here. Wait budget covers a slow handover
+    // drain on the retiring predecessor. If the spawned helper exits 0 while
+    // no socket answers — e.g. predecessor was finishing its drain — respawn
+    // rather than spinning idly until timeout.)
+    let until = Instant::now() + Duration::from_secs(60);
+    let mut respawns = 0u8;
     loop {
-        if let Ok(stream) = UnixStream::connect(&paths.socket) {
+        if let Ok(conn) = connect_with_identity(&paths.socket) {
             // (The one it started is its child for as long as this
             // command lives, a watch that goes on for hours: waited for
             // on a thread, so that when it ends, or ended at once because
@@ -860,18 +991,77 @@ fn connected(server: &Path, paths: &Paths) -> Result<UnixStream, Box<Response>> 
             std::thread::spawn(move || {
                 let _ = service.wait();
             });
-            return Ok(stream);
+            return Ok(conn);
         }
-        if let Ok(Some(status)) = service.try_wait()
-            && !status.success()
-        {
-            return Err(unavailable(last_word().unwrap_or_else(|| "the agents service couldn't start".to_owned())));
+        if let Ok(Some(status)) = service.try_wait() {
+            if !status.success() {
+                return Err(unavailable(last_word().unwrap_or_else(|| "the agents service couldn't start".to_owned())));
+            }
+            if let Ok(conn) = connect_with_identity(&paths.socket) {
+                return Ok(conn);
+            }
+            if respawns < 3 && Instant::now() < until {
+                respawns += 1;
+                std::thread::sleep(Duration::from_millis(50));
+                service = start_service(server, paths).map_err(|e| unavailable(format!("the agents service couldn't be started: {e}")))?;
+                continue;
+            }
         }
         if Instant::now() >= until {
             return Err(unavailable(format!("the agents service isn't answering: {}", last_word().unwrap_or_else(|| "it didn't begin to listen".to_owned()))));
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// Environment variables forwarded from the launching shell when starting the
+/// agents service. Test-only delay/barrier hooks (`OLO_REX_AGENTS_TEST_*`,
+/// `OLO_REX_AGENTS_HANDOVER_WAIT_MS`) are forwarded ONLY when
+/// `OLO_REX_AGENTS_DIR` is an absolute path (matching `Paths::of` so a
+/// relative value can never leak test hooks into a live account service).
+fn service_env_from<F: Fn(&str) -> Option<std::ffi::OsString>>(get: F) -> Vec<(&'static str, std::ffi::OsString)> {
+    const BASE: &[&str] = &[
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "TMPDIR",
+        "XDG_RUNTIME_DIR",
+        "XDG_STATE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "REX_SERVER_SOCKET",
+        "OLO_REX_AGENTS_DIR",
+        "OLO_REX_AGENTS_MINDER_REPORTS_MS",
+        "OLO_REX_AGENTS_MINDS_MOST",
+        "OLO_REX_AGENTS_TAKEN_UP_MS",
+        "OLO_REX_AGENTS_TURN_ON_MS",
+    ];
+    const ISOLATED_ONLY: &[&str] = &[
+        "OLO_REX_AGENTS_TEST_START_HOLD_MS",
+        "OLO_REX_AGENTS_TEST_MIND_HOLD_MS",
+        "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS",
+        "OLO_REX_AGENTS_TEST_WRITER_BARRIER",
+        "OLO_REX_AGENTS_TEST_DRAIN_MS",
+        "OLO_REX_AGENTS_HANDOVER_WAIT_MS",
+    ];
+    let isolated = olo_rex_link::agents::wire::is_isolated_agents_dir(get("OLO_REX_AGENTS_DIR").as_deref());
+    let mut out = Vec::new();
+    for &name in BASE {
+        if let Some(value) = get(name) {
+            out.push((name, value));
+        }
+    }
+    if isolated {
+        for &name in ISOLATED_ONLY {
+            if let Some(value) = get(name) {
+                out.push((name, value));
+            }
+        }
+    }
+    out
 }
 
 /// Starts this build's service, apart from this command (a session and
@@ -892,30 +1082,8 @@ fn start_service(server: &Path, paths: &Paths) -> std::io::Result<std::process::
     // for itself or its children reaches it (where an agent's files are
     // is read from that agent's own process, `agent::places_for_pid`).
     command.env_clear();
-    for name in [
-        "HOME",
-        "USER",
-        "LOGNAME",
-        "PATH",
-        "LANG",
-        "LC_ALL",
-        "TMPDIR",
-        "XDG_RUNTIME_DIR",
-        "XDG_STATE_HOME",
-        "XDG_CONFIG_HOME",
-        "XDG_CACHE_HOME",
-        "REX_SERVER_SOCKET",
-        "OLO_REX_AGENTS_DIR",
-        "OLO_REX_AGENTS_MINDER_REPORTS_MS",
-        "OLO_REX_AGENTS_MINDS_MOST",
-        "OLO_REX_AGENTS_TAKEN_UP_MS",
-        "OLO_REX_AGENTS_TEST_START_HOLD_MS",
-        "OLO_REX_AGENTS_TEST_MIND_HOLD_MS",
-        "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS",
-    ] {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
+    for (name, value) in service_env_from(|k| std::env::var_os(k)) {
+        command.env(name, value);
     }
     // SAFETY: between fork and exec, one call that is safe there.
     unsafe {
@@ -927,6 +1095,49 @@ fn start_service(server: &Path, paths: &Paths) -> std::io::Result<std::process::
     // (Its own from here: this command looks at it only until it
     // listens, and its end is the system's to take up after.)
     command.spawn()
+}
+
+fn socket_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.dev(), m.ino()))
+}
+
+/// Waits for a retiring predecessor's socket to disappear, change `(dev, ino)`,
+/// or answer with a different `SO_PEERCRED` PID so a client descheduled across
+/// unlink+rebind (or encountering inode reuse / `prev_id == None`) never stalls
+/// for the full 60 s wait budget.
+fn wait_for_handover_socket(path: &Path, prev_id: Option<(u64, u64)>, prev_pid: Option<i32>) {
+    let until = Instant::now() + Duration::from_secs(60);
+    let mut next_probe = Instant::now() + Duration::from_millis(50);
+    while Instant::now() < until {
+        match socket_identity(path) {
+            None => break,
+            Some(cur) if prev_id.is_some_and(|old| cur != old) => break,
+            Some(_) => {
+                if Instant::now() >= next_probe {
+                    next_probe = Instant::now() + Duration::from_millis(60);
+                    match UnixStream::connect(path) {
+                        Ok(probe) => {
+                            let new_pid = peer_pid(&probe);
+                            drop(probe);
+                            match prev_pid {
+                                Some(old_pid) if new_pid.is_some_and(|p| p != old_pid) => break,
+                                None if prev_id.is_none() => break,
+                                _ => {}
+                            }
+                        }
+                        Err(_) => {
+                            if socket_identity(path).is_none() {
+                                break;
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
 }
 
 /// Asks the service, starting one where none is. A service of an
@@ -943,18 +1154,15 @@ fn ask(server: &Path, paths: &Paths, req: &Request, again: bool) -> Response {
         code: AGAIN,
         data: Value::Null,
     };
-    for _ in 0..6 {
-        let stream = match connected(server, paths) {
-            Ok(stream) => stream,
+    for _ in 0..8 {
+        let (stream, sock_id, peer) = match connected(server, paths) {
+            Ok(conn) => conn,
             Err(unavailable) => return *unavailable,
         };
         match exchange(stream, req) {
-            // (Its handing over: gone when its socket is.)
+            // (Its handing over: wait until its socket disappears, changes inode, or answers from a new PID.)
             Asked::Answer(answer) if !answer.ok && answer.data["handover"] == true => {
-                let until = Instant::now() + Duration::from_secs(25);
-                while paths.socket.exists() && Instant::now() < until {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
+                wait_for_handover_socket(&paths.socket, sock_id, peer);
             }
             Asked::Answer(answer) => return answer,
             Asked::NotTaken => std::thread::sleep(Duration::from_millis(30)),
@@ -977,6 +1185,33 @@ fn ask(server: &Path, paths: &Paths, req: &Request, again: bool) -> Response {
     lost()
 }
 
+/// Decodes the line following a blank preamble line on a `follow` stream:
+/// returns `FollowPreamble::Handover` ONLY on an explicit `data["handover"] == true`
+/// response, and `FollowPreamble::Refused(resp)` for a held-incumbent or other
+/// structured non-handover refusal so `follow` never stalls 60 s waiting for a
+/// handover that the incumbent refused.
+enum FollowPreamble {
+    Handover,
+    Refused(Response),
+    Retry,
+}
+
+fn classify_follow_after_blank(second: Option<std::io::Result<String>>) -> FollowPreamble {
+    let Some(Ok(line)) = second else {
+        return FollowPreamble::Retry;
+    };
+    let Ok(resp) = serde_json::from_str::<Response>(line.trim()) else {
+        return FollowPreamble::Retry;
+    };
+    if !resp.ok && resp.data["handover"] == true {
+        FollowPreamble::Handover
+    } else if !resp.ok {
+        FollowPreamble::Refused(resp)
+    } else {
+        FollowPreamble::Retry
+    }
+}
+
 /// `agent follow`: everything the service knows, then each change, a
 /// line each, for as long as this command's input stays open (the
 /// desktop closes it to end the following). Its status says why it
@@ -986,9 +1221,9 @@ fn follow(server: &Path, paths: &Paths) -> i32 {
     let req = Request { proto: PROTO, op: "follow".into(), block: env("REX_BLOCK"), session: env("REX_SESSION"), ..Default::default() };
     let Ok(mut line) = serde_json::to_string(&req) else { return 1 };
     line.push('\n');
-    for _ in 0..4 {
-        let stream = match connected(server, paths) {
-            Ok(stream) => stream,
+    for _ in 0..6 {
+        let (stream, sock_id, peer) = match connected(server, paths) {
+            Ok(conn) => conn,
             Err(e) => {
                 let _ = std::io::stderr().write_all(e.stderr.as_bytes());
                 return e.code;
@@ -1000,15 +1235,21 @@ fn follow(server: &Path, paths: &Paths) -> i32 {
         }
         let mut frames = BufReader::new(stream).lines();
         // (A service of an earlier build answers by handing over: an
-        // empty line and its word, then its end. This build's follows.)
+        // empty line and its structured response. Decode the second line and
+        // wait ONLY on an explicit `handover: true` marker; a held-incumbent
+        // refusal is reported immediately without waiting 60 s!)
         let first = match frames.next() {
-            Some(Ok(first)) if first.trim().is_empty() => {
-                let until = Instant::now() + Duration::from_secs(25);
-                while paths.socket.exists() && Instant::now() < until {
-                    std::thread::sleep(Duration::from_millis(10));
+            Some(Ok(first)) if first.trim().is_empty() => match classify_follow_after_blank(frames.next()) {
+                FollowPreamble::Handover => {
+                    wait_for_handover_socket(&paths.socket, sock_id, peer);
+                    continue;
                 }
-                continue;
-            }
+                FollowPreamble::Refused(resp) => return print_answer(resp),
+                FollowPreamble::Retry => {
+                    std::thread::sleep(Duration::from_millis(30));
+                    continue;
+                }
+            },
             Some(Ok(first)) => {
                 // (A direct refusal before the stream begins — e.g. a minder calling `follow`.)
                 if let Ok(resp) = serde_json::from_str::<Response>(&first)
@@ -1086,5 +1327,125 @@ mod tests {
         assert!(matches!(got, Asked::Late(_)) && began.elapsed() < Duration::from_millis(1200), "after {:?}", began.elapsed());
         assert!(service.join().unwrap().contains("\"watch\""));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn inherited_separates_bridge_and_non_bridge_path_dirs() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-client-path-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let real_bridge = dir.join("fake-home/.olo/rex/bin");
+        let symlink_bridge = dir.join("alias-bin");
+        let sdk_real_bin = dir.join("opt/sdk/bin");
+        let sdk_cur = dir.join("opt/sdk/current");
+        let work_tools = dir.join("work/tools");
+        let work_wrong_bin = dir.join("work/missing-bin");
+        std::fs::create_dir_all(&real_bridge).unwrap();
+        std::fs::create_dir_all(&sdk_real_bin).unwrap();
+        std::fs::create_dir_all(&sdk_cur).unwrap();
+        std::fs::create_dir_all(&work_wrong_bin).unwrap();
+        std::os::unix::fs::symlink(&real_bridge, &symlink_bridge).unwrap();
+        std::os::unix::fs::symlink(&sdk_cur, &work_tools).unwrap();
+        let symlink_dotdot_bin = work_tools.join("../bin");
+        let symlink_missing_dotdot = work_tools.join("../missing-bin");
+
+        let path_val = format!(
+            "/home/u/.local/bin:/home/u/.local/state/olo/rex-commands/./sub/..:{}:{}:{}:rel/tools:.:.olo/rex/bin:/home/u/.cargo/bin:/usr/bin:/home/u/.local/bin",
+            symlink_bridge.display(),
+            symlink_dotdot_bin.display(),
+            symlink_missing_dotdot.display()
+        );
+        let got = inherited_from_in(Some(Path::new("/home/u")), |name| match name {
+            "SSH_AUTH_SOCK" => Some("/run/ssh.sock".into()),
+            "BROWSER" => Some("/usr/bin/browser".into()),
+            "PATH" => Some(path_val.clone()),
+            _ => None,
+        });
+        assert!(is_bridge_path_dir("/home/u/.local/state/olo/rex-commands"));
+        assert!(is_bridge_path_dir("/home/u/.local/state/olo/rex-commands/./sub/.."));
+        assert!(is_bridge_path_dir("/home/u/.olo/rex/bin/"));
+        assert!(is_bridge_path_dir(&symlink_bridge.to_string_lossy()), "symlink to bridge dir must be detected");
+        assert!(!is_bridge_path_dir("/home/u/.local/bin"));
+
+        let canon_bridge = std::fs::canonicalize(&real_bridge).unwrap().to_string_lossy().into_owned();
+        let canon_sdk_bin = std::fs::canonicalize(&sdk_real_bin).unwrap().to_string_lossy().into_owned();
+        let raw_missing_dotdot = symlink_missing_dotdot.to_string_lossy().into_owned();
+        // Exact caller PATH order is preserved across PATH_EXTRA and PATH_PREPEND,
+        // bare `.` is dropped, relative dirs are resolved against caller cwd,
+        // existing `/work/tools/../bin` resolves through the real symlink target to `/opt/sdk/bin` (A32),
+        // non-existent `/work/tools/../missing-bin` is kept verbatim (NEVER collapsed to existing `/work/missing-bin`!),
+        // and both lexical `..` and symlink bridge aliases classify as PATH_PREPEND!
+        let path_entries: Vec<(&str, &str)> = got.iter().filter(|(k, _)| k == "PATH_PREPEND" || k == "PATH_EXTRA").map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(
+            path_entries,
+            vec![
+                ("PATH_EXTRA", "/home/u/.local/bin"),
+                ("PATH_PREPEND", "/home/u/.local/state/olo/rex-commands/./sub/.."),
+                ("PATH_PREPEND", canon_bridge.as_str()),
+                ("PATH_EXTRA", canon_sdk_bin.as_str()),
+                ("PATH_EXTRA", raw_missing_dotdot.as_str()),
+                ("PATH_EXTRA", "/home/u/rel/tools"),
+                ("PATH_PREPEND", "/home/u/.olo/rex/bin"),
+                ("PATH_EXTRA", "/home/u/.cargo/bin"),
+                ("PATH_EXTRA", "/usr/bin"),
+            ]
+        );
+        assert!(!path_entries.iter().any(|(_, v)| *v == work_wrong_bin.to_string_lossy()), "Neon #7/Astra #24: unresolved symlink/.. must never collapse to existing sibling dir");
+
+        // Neon #5 / Astra #26: `wait_for_handover_socket` breaks immediately on different
+        // peer PID even when inode is unchanged (or prev_id is None), and `classify_follow_after_blank`
+        // reports held-incumbent refusal without waiting!
+        let sock_path = dir.join("probe.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock_path).unwrap();
+        let same_inode = socket_identity(&sock_path);
+        let t0 = Instant::now();
+        wait_for_handover_socket(&sock_path, same_inode, Some(i32::MAX - 1));
+        assert!(t0.elapsed() < Duration::from_secs(2), "wait_for_handover_socket stalled despite different peer PID");
+        let t1 = Instant::now();
+        wait_for_handover_socket(&sock_path, None, Some(i32::MAX - 1));
+        assert!(t1.elapsed() < Duration::from_secs(2), "wait_for_handover_socket stalled with prev_id=None");
+        drop(listener);
+        let held_line = serde_json::to_string(&Response { ok: false, stdout: String::new(), stderr: "held\n".into(), code: 75, data: json!({ "held": true }) }).unwrap();
+        assert!(matches!(classify_follow_after_blank(Some(Ok(held_line))), FollowPreamble::Refused(r) if r.code == 75));
+        let ho_line = serde_json::to_string(&Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) }).unwrap();
+        assert!(matches!(classify_follow_after_blank(Some(Ok(ho_line))), FollowPreamble::Handover));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_only_service_env_vars_are_gated_on_isolated_agents_dir() {
+        let prod = service_env_from(|k| match k {
+            "HOME" => Some("/home/u".into()),
+            "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS" => Some("5000".into()),
+            "OLO_REX_AGENTS_TEST_START_HOLD_MS" => Some("3000".into()),
+            "OLO_REX_AGENTS_TEST_MIND_HOLD_MS" => Some("2000".into()),
+            "OLO_REX_AGENTS_TEST_WRITER_BARRIER" => Some("/var/tmp/b".into()),
+            "OLO_REX_AGENTS_TEST_DRAIN_MS" => Some("500".into()),
+            _ => None,
+        });
+        assert!(prod.iter().any(|(k, _)| *k == "HOME"));
+        assert!(!prod.iter().any(|(k, _)| k.starts_with("OLO_REX_AGENTS_TEST_")), "live service must not inherit test env vars: {prod:?}");
+
+        // Relative OLO_REX_AGENTS_DIR is ignored by Paths::of -> must NOT unlock test env vars!
+        let rel = service_env_from(|k| match k {
+            "HOME" => Some("/home/u".into()),
+            "OLO_REX_AGENTS_DIR" => Some("relative/agents".into()),
+            "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS" => Some("5000".into()),
+            "OLO_REX_AGENTS_TEST_DRAIN_MS" => Some("500".into()),
+            _ => None,
+        });
+        assert!(!rel.iter().any(|(k, _)| k.starts_with("OLO_REX_AGENTS_TEST_")), "relative OLO_REX_AGENTS_DIR must not unlock test env vars: {rel:?}");
+
+        let isolated = service_env_from(|k| match k {
+            "HOME" => Some("/var/tmp/h".into()),
+            "OLO_REX_AGENTS_DIR" => Some("/var/tmp/agents".into()),
+            "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS" => Some("900".into()),
+            "OLO_REX_AGENTS_TEST_WRITER_BARRIER" => Some("/var/tmp/b".into()),
+            "OLO_REX_AGENTS_TEST_DRAIN_MS" => Some("400".into()),
+            _ => None,
+        });
+        assert!(isolated.iter().any(|(k, v)| *k == "OLO_REX_AGENTS_TEST_WRITER_DELAY_MS" && v == "900"));
+        assert!(isolated.iter().any(|(k, v)| *k == "OLO_REX_AGENTS_TEST_WRITER_BARRIER" && v == "/var/tmp/b"));
+        assert!(isolated.iter().any(|(k, v)| *k == "OLO_REX_AGENTS_TEST_DRAIN_MS" && v == "400"));
     }
 }

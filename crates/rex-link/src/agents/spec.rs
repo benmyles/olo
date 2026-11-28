@@ -1121,7 +1121,11 @@ impl ApproveSpec {
             session = v.get("session").and_then(Value::as_bool).unwrap_or(false);
             no = v.get("no").and_then(Value::as_bool).unwrap_or(false);
             reason = v.get("reason").and_then(Value::as_str).map(str::to_owned);
-            box_key = v.get("box").and_then(Value::as_str).map(str::to_owned);
+            box_key = match v.get("box") {
+                None => None,
+                Some(Value::String(s)) => Some(s.clone()),
+                Some(_) => return Err("--box requires a non-empty string box key (`approval.box` in `status --json`)".into()),
+            };
             json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
         }
         let target = target.ok_or_else(|| APPROVE_USAGE.to_owned())?;
@@ -1131,7 +1135,11 @@ impl ApproveSpec {
             (false, false, true) => Answer::No,
             _ => return Err("specify exactly one of `--once`, `--session` or `--no` (never a choice that is kept in settings or switches mode)".into()),
         };
-        Ok(Self { target, answer, box_key: box_key.filter(|k| !k.is_empty()), by_list, reason, json })
+        let box_key = match box_key {
+            Some(k) if k.trim().is_empty() => return Err("--box requires a non-empty box key (`approval.box` in `status --json`)".into()),
+            other => other,
+        };
+        Ok(Self { target, answer, box_key, by_list, reason, json })
     }
 }
 

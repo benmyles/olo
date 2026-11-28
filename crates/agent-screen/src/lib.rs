@@ -249,12 +249,355 @@ fn agy_chooser_foot(l: &str) -> bool {
 /// One of the lines under Antigravity's chat field that says it is at
 /// work: its hint for stopping ("esc to cancel", "… · ctrl+x to cancel"),
 /// or its queue's ("Press up to edit queued messages", whatever the
-/// key). By each line's own shape: a task's row under the field that
-/// only has the words ("Document how to edit queued messages") is not
-/// one.
+/// key). Real `agy` footers right-align the mode/model column on the same
+/// line ("esc to cancel     auto · Gemini 4 Neon · xhigh") or join it with
+/// " · " on narrow terminals ("esc to cancel · accept-edits · ...").
+/// By each line's own shape: a task's row under the field that only has
+/// the words ("  ● Document how to edit queued messages") or an idle
+/// "? for shortcuts     auto · ..." footer is not one.
 fn agy_work_hint(l: &str) -> bool {
-    let l = l.trim().to_ascii_lowercase();
-    l.ends_with(" to cancel") || (l.starts_with("press ") && l.ends_with(" to edit queued messages"))
+    let trimmed = l.trim();
+    if trimmed.is_empty() || trimmed.starts_with(['●', '○', '◯', '✓', '✔', '⎿', '⋮', '☐', '☑', '?']) {
+        return false;
+    }
+    // Strip the right-aligned mode/model column (separated by 2+ spaces).
+    let left = trimmed.split_once("  ").map_or(trimmed, |(l, _)| l).trim_end().to_ascii_lowercase();
+    let is_cancel_seg = |seg: &str| {
+        let seg = seg.trim();
+        seg == "esc to cancel"
+            || (seg.ends_with(" to cancel") && seg.split_whitespace().count() <= 3 && !seg.contains(':') && !seg.starts_with("how ") && !seg.starts_with("when ") && !seg.starts_with("why "))
+    };
+    let is_work_seg = |seg: &str| {
+        let seg = seg.trim();
+        is_cancel_seg(seg) || (seg.starts_with("press ") && seg.ends_with(" to edit queued messages"))
+    };
+    // Match across every ` · `-separated segment so wide footers, narrow
+    // 2-segment footers, and narrow 3+ segment footers ("hint · esc to cancel ·
+    // auto · Gemini 4 Neon") all match without matching prose or idle footers.
+    left.split(" · ").any(is_work_seg)
+}
+
+/// Scans upward from Antigravity's input-box upper rule (`top`) for its
+/// braille status spinner (`agy_status`), stepping over empty lines,
+/// `└ Tip:` lines, indented multi-step checklist items (`  ⎿  ✓ ...`,
+/// `     ● ...`, `     ○ ...`, `     ⋮ N more`), and indented wrapped
+/// continuation lines of checklist items or tips in narrow panes, up to 20
+/// non-empty lines, stopping at rules, prompts, or unindented tool output.
+fn agy_spinner_above(lines: &[&str], top: usize) -> bool {
+    let mut seen = 0usize;
+    for &raw in lines[..top].iter().rev() {
+        let t = raw.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if agy_status(t).is_some() {
+            return true;
+        }
+        seen += 1;
+        if seen >= 20 {
+            break;
+        }
+        if agy_rule(t) || t.starts_with(['>', '❯', '›']) {
+            break;
+        }
+        let is_tip = t.starts_with("└ ") || t.starts_with("└\t");
+        let indented = raw.starts_with([' ', '\t']);
+        let is_checklist = indented && t.starts_with(['⎿', '✓', '✔', '●', '○', '◯', '☐', '☑', '⋮', '└']);
+        // Wrapped continuation lines of checklist items or `└ Tip:` in narrow
+        // panes are indented by 2+ spaces or a tab; unindented completed output
+        // (`● Finished...`, plain column-0 lines) still stops the scan at once.
+        let is_wrapped_cont = raw.starts_with("  ") || raw.starts_with('\t');
+        if is_tip || is_checklist || is_wrapped_cont {
+            continue;
+        }
+        break;
+    }
+    false
+}
+
+/// Returns `(top_rule_idx, bottom_rule_idx)` spans for ruled chat input boxes
+/// (`────\n❯ ...\n────` or `────\n> ...\n────`), including multi-line drafts.
+fn ruled_input_box_spans(lines: &[&str]) -> Vec<(usize, usize)> {
+    let is_rule = |l: &str| {
+        let t = l.trim();
+        t.contains("────") && (t.starts_with('─') || t.ends_with('─'))
+    };
+    let rule_idxs: Vec<usize> = lines.iter().enumerate().filter_map(|(i, l)| is_rule(l).then_some(i)).collect();
+    let mut spans = Vec::new();
+    for pair in rule_idxs.windows(2) {
+        let (top, bottom) = (pair[0], pair[1]);
+        if bottom <= top + 1 {
+            continue;
+        }
+        let first_non_empty = lines[top + 1..bottom].iter().map(|l| l.trim()).find(|t| !t.is_empty());
+        if let Some(first) = first_non_empty
+            && (first.starts_with('❯') || first.starts_with('>') || first.starts_with("│ >") || first.starts_with("│ ❯"))
+        {
+            spans.push((top, bottom));
+        }
+    }
+    spans
+}
+
+fn line_in_spans(idx: usize, spans: &[(usize, usize)]) -> bool {
+    spans.iter().any(|&(top, bottom)| idx > top && idx < bottom)
+}
+
+/// Canonical folder-trust choice phrases (matching [`parse_folder_trust`])
+/// rather than open prose prefixes like `"Yes, add a note..."`.
+fn is_canonical_trust_choice(label: &str, allow_codex_continue: bool) -> bool {
+    let nl = normalize_choice_text(label);
+    nl == "yes, i trust this folder"
+        || nl == "yes, i trust this project"
+        || nl == "yes, trust this folder"
+        || nl == "yes, trust this project"
+        || nl == "yes, proceed"
+        || nl == "yes, add this directory"
+        || nl == "yes, add directory"
+        || nl == "yes, add it"
+        || nl == "yes, add"
+        || nl.starts_with("yes, add /")
+        || nl.starts_with("yes, add ~")
+        || (allow_codex_continue && (nl == "yes, continue" || nl.starts_with("yes, continue")))
+        || nl == "no"
+        || nl == "no, exit"
+        || nl == "no, quit"
+        || nl == "no, i don't trust this folder"
+        || nl == "no, i don't trust this project"
+}
+
+/// True when the bottom of `screen` shows an incomplete approval or
+/// folder-trust dialog repaint (e.g. `Do you want to proceed?` + `❯ 1. Yes`
+/// before `No` finishes drawing) that failed full [`parse_approval`] /
+/// [`parse_folder_trust`]. Never fires on ordinary prose above an active
+/// spinner or idle chat prompt, nor on a genuine non-approval chooser
+/// (`Which database?` or a plan chooser with an actual `Keep planning` choice).
+pub fn has_approval_fragment(agent: Agent, screen: &str) -> bool {
+    if parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
+        return false;
+    }
+    let lines: Vec<&str> = screen.lines().collect();
+    let non_empty: Vec<&str> = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let tail_joined = |n: usize| -> String {
+        let start = non_empty.len().saturating_sub(n);
+        non_empty[start..].join("\n").to_ascii_lowercase()
+    };
+    let bottom10 = tail_joined(10);
+    let bottom6 = tail_joined(6);
+    let navigated = bottom10.contains("↑/↓ navigate") || agent == Agent::Antigravity;
+    let marks: &[char] = if navigated { &['❯', '›', '>'] } else { &['❯', '›'] };
+    let prompt_idxs = prompt_line_indices(agent, &lines);
+    let input_spans = ruled_input_box_spans(&lines);
+    let agy_box = (agent == Agent::Antigravity).then(|| agy_input_box(&lines)).flatten();
+    let bottom_input_box_top = agy_box.map(|(t, _, _)| t).or_else(|| input_spans.last().map(|&(t, _)| t));
+    // For unruled screens (e.g. Codex), the bottom active prompt line also
+    // bounds historical scrollback so echoed `› 1. Yes` above an idle `› `
+    // prompt is never misread as a live approval fragment (Astra #19).
+    let history_cutoff = bottom_input_box_top.or_else(|| prompt_idxs.last().copied());
+    let dialog_top = lines.len().saturating_sub(14);
+
+    // Note: on Antigravity, `esc to cancel` is the normal working footer, not chooser chrome.
+    let has_footer_chrome = bottom6.contains("enter to select")
+        || bottom6.contains("enter to confirm")
+        || bottom6.contains("press enter to continue")
+        || bottom6.contains("tab to amend")
+        || bottom6.contains("↑/↓ navigate")
+        || (agent != Agent::Antigravity && bottom6.contains("esc to cancel"));
+
+    // Reject 3+-space indented tool-output continuations and lines belonging to
+    // a contiguous `  ⎿  ...` tool-output block (Neon #8: streaming Claude Bash
+    // output containing `"     Do you want to proceed?"` above a ruled chat box
+    // + `esc to interrupt` with no spinner must stay `Working`, not `Blocked`).
+    let in_tool_output_block = |idx: usize, raw: &str| -> bool {
+        let indent = raw.bytes().take_while(|&b| b == b' ').count();
+        if indent >= 3 {
+            return true;
+        }
+        if indent >= 2 {
+            for prev in lines[..idx].iter().rev() {
+                let pt = prev.trim();
+                if pt.is_empty() {
+                    break;
+                }
+                if pt.starts_with('⎿') {
+                    return true;
+                }
+                if prev.bytes().take_while(|&b| b == b' ').count() < 2 {
+                    break;
+                }
+            }
+        }
+        false
+    };
+    let is_approval_q = |idx: usize, l: &str| {
+        if in_tool_output_block(idx, l) {
+            return false;
+        }
+        let t = l.trim();
+        if t.starts_with(['●', '•', '⎿', '│']) {
+            return false;
+        }
+        let tl = t.to_ascii_lowercase();
+        tl.ends_with('?')
+            && (tl.starts_with("do you want to ") || tl.starts_with("would you like to ") || tl.starts_with("run this command") || tl.starts_with("allow this ") || tl.starts_with("allow "))
+    };
+    let is_trust_choice = |label: &str| is_canonical_trust_choice(label, false) && normalize_choice_text(label) != "no";
+    let is_specific_approval_choice = |label: &str| {
+        let kind = classify_choice_kind(label);
+        let nl = normalize_choice_text(label);
+        matches!(kind, ChoiceKind::AllowSession | ChoiceKind::DontAskAgain | ChoiceKind::SwitchMode | ChoiceKind::NoAlways)
+            || nl.starts_with("yes, run")
+            || nl.starts_with("yes, allow")
+            || nl.starts_with("no, and tell ")
+            || nl.starts_with("no, cancel")
+    };
+    let is_approval_label = |label: &str| classify_choice_kind(label) != ChoiceKind::Other || is_trust_choice(label);
+    let is_dialog_header = |l: &str| {
+        let t = l.trim();
+        let tl = t.to_ascii_lowercase();
+        tl == "bash command"
+            || tl == "command"
+            || tl.starts_with("edit file")
+            || tl.starts_with("write file")
+            || tl.starts_with("create file")
+            || tl.starts_with("read file")
+            || tl.starts_with("requesting permission for:")
+            || tl.starts_with("read outside the working directories")
+            || (t.len() >= 12 && t.chars().all(|c| c == '╌'))
+    };
+    let is_working_spinner = |l: &str| {
+        let t = l.trim();
+        if agy_status(t).is_some() || codex_status(t) {
+            return true;
+        }
+        let mut chars = t.chars();
+        let led = chars.next().is_some_and(|c| matches!(c, '✻' | '✽' | '✶' | '✳' | '✢' | '·')) && chars.next() == Some(' ');
+        led && (t.contains('…') || t.contains("...") || t.to_ascii_lowercase().contains("esc to interrupt)"))
+    };
+    let bottom_spinner_idx = lines.iter().enumerate().rev().find_map(|(i, l)| is_working_spinner(l).then_some(i));
+
+    let in_input_box = |i: usize| prompt_idxs.contains(&i) || line_in_spans(i, &input_spans) || agy_box.is_some_and(|(top, bottom, _)| i > top && i < bottom);
+
+    let mut has_marked_approval_choice = false;
+    let mut has_marked_trust_choice = false;
+    let mut has_marked_specific_choice = false;
+    let mut has_non_prompt_mark = false;
+    let mut has_numbered_approval_row = false;
+    let mut has_yes_row = false;
+    let mut has_no_row = false;
+    let mut plan_row_idxs: Vec<usize> = Vec::new();
+    let mut approval_row_idxs: Vec<usize> = Vec::new();
+    for (i, raw) in lines.iter().enumerate().skip(dialog_top) {
+        if in_input_box(i) {
+            continue;
+        }
+        // Ignore candidate rows positioned above a live working spinner, or
+        // above the bottom chat input box / active unruled prompt when no
+        // chooser footer sits below it.
+        if bottom_spinner_idx.is_some_and(|si| si > i) {
+            continue;
+        }
+        if history_cutoff.is_some_and(|bt| i < bt) && !has_footer_chrome {
+            continue;
+        }
+        let t = raw.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let (marked, rest) = match marks.iter().find_map(|m| t.strip_prefix(*m)) {
+            Some(r) => (true, r.trim_start()),
+            None => (false, t),
+        };
+        if marked {
+            has_non_prompt_mark = true;
+        }
+        if let Some((num_s, label)) = rest.split_once(". ")
+            && !num_s.is_empty()
+            && num_s.len() <= 2
+            && num_s.bytes().all(|b| b.is_ascii_digit())
+        {
+            if normalize_choice_text(label).contains("keep planning") {
+                plan_row_idxs.push(i);
+            }
+            if is_approval_label(label) {
+                has_numbered_approval_row = true;
+                approval_row_idxs.push(i);
+                let kind = classify_choice_kind(label);
+                if matches!(kind, ChoiceKind::Once | ChoiceKind::AllowSession | ChoiceKind::DontAskAgain | ChoiceKind::SwitchMode) || is_trust_choice(label) {
+                    has_yes_row = true;
+                }
+                if matches!(kind, ChoiceKind::No | ChoiceKind::NoAlways) {
+                    has_no_row = true;
+                }
+                if marked {
+                    has_marked_approval_choice = true;
+                    if is_trust_choice(label) {
+                        has_marked_trust_choice = true;
+                    }
+                    if is_specific_approval_choice(label) {
+                        has_marked_specific_choice = true;
+                    }
+                }
+            }
+        } else if marked && is_trust_choice(rest) {
+            has_marked_approval_choice = true;
+            has_marked_trust_choice = true;
+            approval_row_idxs.push(i);
+        }
+    }
+    let claude_interrupt_foot = agent == Agent::Claude && bottom6.contains("esc to interrupt");
+    let approval_q_idx = lines.iter().enumerate().skip(lines.len().saturating_sub(18)).rev().find_map(|(i, l)| {
+        if in_input_box(i) || bottom_spinner_idx.is_some_and(|si| si > i) {
+            return None;
+        }
+        // Above a ruled chat input box / active unruled prompt: only consider
+        // an approval question when there is active chooser chrome OR Claude's
+        // interrupt footer without a live spinner (partial approval redraw
+        // exposing the underlying chat box).
+        if history_cutoff.is_some_and(|bt| i < bt) && !has_footer_chrome && !claude_interrupt_foot {
+            return None;
+        }
+        is_approval_q(i, l).then_some(i)
+    });
+    // Plan choosers are genuine non-approval questions for the person — ONLY
+    // when an actual numbered `keep planning` row belongs to the CURRENT bottom
+    // chooser (sits below any approval question, within 4 lines of the bottom
+    // choice row, and with no dialog header between them — Astra #19).
+    let last_choice_idx = approval_row_idxs.last().copied();
+    let has_plan_choice_row = plan_row_idxs.iter().any(|&pi| {
+        if approval_q_idx.is_some_and(|qi| pi < qi) {
+            return false;
+        }
+        if let Some(ci) = last_choice_idx {
+            let (lo, hi) = if pi <= ci { (pi, ci) } else { (ci, pi) };
+            if hi - lo > 4 || lines[lo + 1..hi].iter().any(|l| is_dialog_header(l) || is_approval_q(lo + 1, l)) {
+                return false;
+            }
+        }
+        true
+    });
+    if has_plan_choice_row {
+        return false;
+    }
+    let has_approval_q = approval_q_idx.is_some();
+    let has_dialog_header = approval_q_idx.is_some_and(|qi| {
+        let header_start = qi.saturating_sub(14);
+        let header_above = lines[header_start..qi].iter().any(|l| is_dialog_header(l));
+        let spinner_below = lines[qi + 1..].iter().any(|l| is_working_spinner(l));
+        header_above && !spinner_below
+    });
+    // A13: A bare approval question above Claude's ruled chat box + interrupt
+    // footer with NO live working spinner below is an inconclusive partial
+    // redraw (must NOT read as `Working` and retire an active box).
+    let bare_q_over_interrupt = has_approval_q && claude_interrupt_foot && bottom_input_box_top.is_some();
+    // Marked approval/trust choice: always a fragment when it's a trust choice,
+    // a CLI-specific approval choice (session/always/cancel), paired with an
+    // approval question/header, or an incomplete yes-without-no repaint (never
+    // a genuine non-approval `1. Yes / 2. No` user question like "Should I update README?").
+    if has_marked_trust_choice || has_marked_specific_choice || (has_marked_approval_choice && (has_approval_q || has_dialog_header || (has_yes_row && !has_no_row))) {
+        return true;
+    }
+    has_approval_q && (has_non_prompt_mark || has_footer_chrome || has_numbered_approval_row || has_dialog_header || bare_q_over_interrupt)
 }
 
 /// What the agent is doing, from the bottom of its screen (where its
@@ -279,23 +622,24 @@ pub fn classify(agent: Agent, screen: &str) -> State {
         // them, or its box. Its words alone in a draft, "> Yes, I trust
         // this folder", are no question: read as one here, Auto Approve
         // sent the draft. A code review, 2026-11-27.)
-        if non_empty.iter().rev().take(8).any(|l| agy_chooser_foot(l)) || parse_approval(agent, screen).is_some() {
+        if non_empty.iter().rev().take(8).any(|l| agy_chooser_foot(l)) || parse_approval(agent, screen).is_some() || has_approval_fragment(agent, screen) {
             return State::Blocked;
         }
         // Its work is read round its input field alone (`agy_input_box`):
         // under its chat field, a line that is its hint for stopping or
         // its queue's (`agy_work_hint`); over any field of its, its status
-        // line (`agy_status`) in the four lines above (a `└ Tip:` may
-        // stand between). In its shell and search modes the foot's "esc
-        // to cancel" is the mode's own way out, and says nothing of work.
-        // Pre-chat screens such as `"⣷  Signing in..."` have no field and
-        // must never read as `State::Working`.
+        // line (`agy_status`) above it (stepping over `└ Tip:`, multi-step
+        // checklist rows, and wrapped continuations). In its shell and
+        // search modes the foot's "esc to cancel" is the mode's own way
+        // out, and says nothing of work. Pre-chat screens such as `"⣷
+        // Signing in..."` have no field and must never read as
+        // `State::Working`.
         let lines: Vec<&str> = screen.lines().collect();
         let Some((top, bottom, chat)) = agy_input_box(&lines) else {
             return State::Idle;
         };
         let hinted = chat && lines[bottom + 1..].iter().any(|l| agy_work_hint(l));
-        let spinning = lines[..top].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(4).any(|l| agy_status(l).is_some());
+        let spinning = agy_spinner_above(&lines, top);
         return if hinted || spinning { State::Working } else { State::Idle };
     }
     if parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
@@ -303,17 +647,9 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     }
     let bottom6 = tail_joined(6);
     let bottom10 = tail_joined(10);
-    // Genuine working indicator in Claude Code / Codex status footer.
-    // (Codex's by its status line's own shape, at the foot or over its
-    // field: `codex_status`, `codex_at_work`.)
-    let at_work = match agent {
-        Agent::Codex => non_empty.iter().rev().take(6).any(|l| codex_status(l)) || codex_at_work(screen),
-        _ => bottom6.contains("esc to interrupt"),
-    };
-    if at_work {
-        return State::Working;
-    }
-    // Check chooser/dialog chrome strictly within the bottom region so prose never triggers Blocked.
+    // Check chooser/dialog chrome strictly within the bottom region so prose never triggers Blocked
+    // and so a partial approval repaint exposing Claude's underlying `esc to interrupt` footer never
+    // reads as `State::Working` (and instead classifies as `State::Blocked`, never `State::Idle`).
     let has_dialog_mark = bottom10.contains("❯ 1. ") || bottom10.contains("› 1. ") || bottom6.contains("❯ 1.") || bottom6.contains("› 1.");
     let has_footer_chrome = bottom6.contains("enter to select") || bottom6.contains("enter to confirm") || bottom6.contains("press enter to continue") || bottom6.contains("esc to cancel");
     let has_non_prompt_chooser_mark = {
@@ -327,8 +663,30 @@ pub fn classify(agent: Agent, screen: &str) -> State {
             }
         })
     };
-    if has_dialog_mark
-        || (has_footer_chrome && has_non_prompt_chooser_mark)
+    let approval_frag = has_approval_fragment(agent, screen);
+    let dialog_frag = approval_frag || has_dialog_mark || (has_footer_chrome && has_non_prompt_chooser_mark);
+    // Genuine working indicator in Claude Code / Codex status footer.
+    // (Codex's by its status line's own shape, at the foot or over its
+    // field: `codex_status`, `codex_at_work`. Claude's requires either a
+    // working spinner line carrying `(…esc to interrupt)` or its own input
+    // field above the `esc to interrupt` footer — never a bare footer or a
+    // partial dialog repaint.)
+    let at_work = match agent {
+        Agent::Codex => non_empty.iter().rev().take(6).any(|l| codex_status(l)) || codex_at_work(screen),
+        _ => {
+            !dialog_frag
+                && bottom6.contains("esc to interrupt")
+                && (at_prompt(agent, screen)
+                    || non_empty.iter().rev().take(6).any(|l| {
+                        let t = l.trim_start();
+                        !t.starts_with('❯') && !t.starts_with('>') && t.to_ascii_lowercase().contains("esc to interrupt)")
+                    }))
+        }
+    };
+    if at_work {
+        return State::Working;
+    }
+    if dialog_frag
         || bottom6.contains("allow command?")
         || non_empty.last().is_some_and(|l| {
             let low = l.to_ascii_lowercase();
@@ -530,7 +888,9 @@ pub fn approvable(screen: &str) -> Option<Ask> {
 /// that yes already: anywhere else, someone moved it and it is theirs.
 /// [`Ask::down`] says how far below the mark the yes is.
 pub fn approvable_for(agent: Agent, screen: &str) -> Option<Ask> {
-    if feedback_draft_in_front(agent, screen) {
+    // Suppress Auto Approve while a drafted feedback report OR a feedback
+    // survey owns foreground input (Astra #16).
+    if feedback_draft_in_front(agent, screen) || parse_survey(agent, screen).is_some() || has_strong_survey_fragment(agent, screen) {
         return None;
     }
     if let Some(trust) = parse_folder_trust(screen) {
@@ -621,13 +981,84 @@ pub fn parse_survey(agent: Agent, screen: &str) -> Option<Survey> {
         Agent::Antigravity => ("How's the CLI experience so far?", "[1] Good", "[0] Skip"),
         Agent::Codex => return None,
     };
-    let foot: Vec<&str> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(12).collect();
+    let lines: Vec<&str> = screen.lines().collect();
+    let input_spans = ruled_input_box_spans(&lines);
+    let foot: Vec<&str> = lines.iter().enumerate().rev().filter(|(i, l)| !l.trim().is_empty() && !line_in_spans(*i, &input_spans)).take(12).map(|(_, l)| *l).collect();
     foot.windows(2).find_map(|pair| {
         // (`pair`: a line and the one above it, the foot being read upwards.)
         let choices = pair[0].split_whitespace().collect::<Vec<_>>().join(" ");
         let question = pair[1].trim().trim_start_matches(['●', '•', '*']).trim();
         (choices.starts_with(first) && choices.ends_with(last) && question.starts_with(asks)).then(|| Survey { question: question.to_owned(), dismiss: "0" })
     })
+}
+
+/// True when the screen's foot contains independent survey evidence outside
+/// ruled input boxes (the survey question line, a full `1: Bad` / `[1] Good`
+/// choice, `1: Bad ... 2:`, or `0: Dismiss` / `[0] Skip` — never an isolated
+/// `1:` or `[1]` in ordinary output). Safe for claiming foreground ownership
+/// from idle (Astra #20).
+pub fn has_strong_survey_fragment(agent: Agent, screen: &str) -> bool {
+    let (asks, first, second, last) = match agent {
+        Agent::Claude => ("How is Claude doing this session?", "1: Bad", "2:", "0: Dismiss"),
+        Agent::Antigravity => ("How's the CLI experience so far?", "[1] Good", "[2]", "[0] Skip"),
+        Agent::Codex => return false,
+    };
+    let lines: Vec<&str> = screen.lines().collect();
+    let input_spans = ruled_input_box_spans(&lines);
+    let mut seen = 0usize;
+    for (i, line) in lines.iter().enumerate().rev() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        seen += 1;
+        if seen > 12 {
+            break;
+        }
+        if line_in_spans(i, &input_spans) {
+            continue;
+        }
+        let q = line.trim().trim_start_matches(['●', '•', '*']).trim();
+        let c = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        if q.starts_with(asks) || c == first || (c.starts_with(first) && c.contains(second)) || c.ends_with(last) {
+            return true;
+        }
+    }
+    false
+}
+
+/// True when the screen's foot contains either line of a feedback survey or a
+/// short half-drawn choices prefix (`1:`, `0:`, `[1]`, `[0]`) outside ruled
+/// input boxes: preserves an active dismissal claim / `Submitted` state so a
+/// partial repaint never rearms a survey whose `0` was already pressed.
+pub fn has_survey_fragment(agent: Agent, screen: &str) -> bool {
+    if has_strong_survey_fragment(agent, screen) {
+        return true;
+    }
+    let (first, last, min_prefix) = match agent {
+        Agent::Claude => ("1: Bad", "0: Dismiss", 2usize),
+        Agent::Antigravity => ("[1] Good", "[0] Skip", 3usize),
+        Agent::Codex => return false,
+    };
+    let lines: Vec<&str> = screen.lines().collect();
+    let input_spans = ruled_input_box_spans(&lines);
+    let mut seen = 0usize;
+    for (i, line) in lines.iter().enumerate().rev() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        seen += 1;
+        if seen > 12 {
+            break;
+        }
+        if line_in_spans(i, &input_spans) {
+            continue;
+        }
+        let c = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        if c.len() >= min_prefix && (first.starts_with(&c) || last.starts_with(&c)) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Claude Code's offer to send a feedback report it has drafted: one
@@ -981,23 +1412,99 @@ pub fn classify_choice_kind(label: &str) -> ChoiceKind {
 /// Detects Claude Code's startup folder-trust / `--add-dir` trust dialog or Codex's
 /// directory-trust safety dialog and reports exact cursor & trust indices.
 pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
-    let lower = normalize_choice_text(screen);
-    let is_add_dir = lower.contains("adding a new directory") && (lower.contains("yes, add") || lower.contains("is this a directory you created or one you trust"));
+    let lines: Vec<&str> = screen.lines().collect();
+    let input_spans = ruled_input_box_spans(&lines);
+    let in_draft_box = |i: usize, trimmed: &str| trimmed.starts_with("│ >") || trimmed.starts_with("│ ❯") || line_in_spans(i, &input_spans);
+
+    // Evaluate trust headers and questions strictly OUTSIDE any ruled chat
+    // input box so a multiline pasted draft inside a Claude/Agy input box can
+    // never satisfy `asked` or supply choices.
+    let outside: Vec<(usize, &str)> = lines.iter().enumerate().filter(|(i, l)| !in_draft_box(*i, l.trim())).map(|(i, l)| (i, *l)).collect();
+    let outside_text: String = outside.iter().map(|(_, l)| *l).collect::<Vec<_>>().join("\n");
+    let lower = normalize_choice_text(&outside_text);
+    let has_add_dir_header = lower.contains("adding a new directory") && (lower.contains("yes, add") || lower.contains("is this a directory you created or one you trust"));
     let is_codex_trust = lower.contains("do you trust the contents of this directory") && lower.contains("yes, continue");
-    let is_folder_trust = is_add_dir
+    let is_folder_trust = has_add_dir_header
         || is_codex_trust
         || lower.contains("trust this folder")
         || lower.contains("is this a project you created or one you trust")
-        || lower.contains("is this a directory you created or one you trust");
+        || lower.contains("is this a directory you created or one you trust")
+        || lower.contains("do you trust the contents of this project")
+        || lower.contains("do you trust the files in this folder");
     if !is_folder_trust {
         return None;
     }
-    let lines: Vec<&str> = screen.lines().collect();
+
+    let marks = ['❯', '›', '>'];
+    let mut all_choices: Vec<(usize, bool, String)> = Vec::new();
+    for &(i, l) in &outside {
+        let trimmed = l.trim();
+        let (marked, rest) = match marks.iter().find_map(|m| trimmed.strip_prefix(*m)) {
+            Some(r) => (true, r.trim_start()),
+            None => (false, trimmed),
+        };
+        let rest_clean = rest.split_once(". ").filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).map(|(_, r)| r.trim_start()).unwrap_or(rest);
+        if is_canonical_trust_choice(rest_clean, is_codex_trust) {
+            all_choices.push((i, marked, rest_clean.to_owned()));
+        }
+    }
+    // Parse strictly a SINGLE contiguous bottom dialog's choices (walk back
+    // from the bottom-most canonical choice while adjacent choices are <= 4
+    // lines apart and total chooser height <= 8 lines) so echoed historical
+    // choices in scrollback are NEVER mixed with the live dialog (Astra #8).
+    let last_choice_idx = all_choices.last()?.0;
+    if input_spans.iter().any(|&(top, _)| top > last_choice_idx) {
+        return None;
+    }
+    let mut choices: Vec<(usize, bool, String)> = Vec::new();
+    let mut prev_idx = last_choice_idx;
+    for item in all_choices.into_iter().rev() {
+        if prev_idx - item.0 > 4 || last_choice_idx - item.0 > 8 {
+            break;
+        }
+        prev_idx = item.0;
+        choices.push(item);
+    }
+    choices.reverse();
+
+    let trust_index = choices.iter().position(|(_, _, c)| c.to_ascii_lowercase().starts_with("yes"))?;
+    let has_no = choices.iter().any(|(_, _, c)| c.to_ascii_lowercase().starts_with("no"));
+    let first_choice_idx = choices.first()?.0;
+    // Require the trust question/header to belong to this SINGLE bottom dialog
+    // (within 18 lines above its first choice, never distant scrollback).
+    let dialog_window_start = first_choice_idx.saturating_sub(18);
+    let dialog_lines: Vec<(usize, &str)> = outside.iter().copied().filter(|(i, _)| *i >= dialog_window_start && *i <= last_choice_idx).collect();
+    let dialog_text: String = dialog_lines.iter().map(|(_, l)| *l).collect::<Vec<_>>().join("\n");
+    let dialog_lower = normalize_choice_text(&dialog_text);
+    let dialog_add_dir_header = dialog_lower.contains("adding a new directory") && (dialog_lower.contains("yes, add") || dialog_lower.contains("is this a directory you created or one you trust"));
+    let dialog_codex_trust = dialog_lower.contains("do you trust the contents of this directory") && dialog_lower.contains("yes, continue");
+    let asked = dialog_add_dir_header
+        || dialog_codex_trust
+        || dialog_lower.contains("is this a project you created or one you trust")
+        || dialog_lower.contains("is this a directory you created or one you trust")
+        || dialog_lower.contains("do you trust the contents of this project")
+        || dialog_lower.contains("do you trust the files in this folder");
+    if !has_no || !asked {
+        return None;
+    }
+    // Require strictly ONE marked choice inside this bottom dialog (zero marks
+    // or ambiguous multiple marks cannot safely identify cursor position).
+    let marked_count = choices.iter().filter(|(_, m, _)| *m).count();
+    if marked_count != 1 {
+        return None;
+    }
+    // Bind `folder` strictly to this bottom dialog's own header (never reusing
+    // an older "Accessing workspace" path from scrollback if the current header
+    // has not finished drawing its path!).
     let mut folder: Option<String> = None;
-    for (i, l) in lines.iter().enumerate() {
+    for &(i, l) in dialog_lines.iter().filter(|(i, _)| *i < first_choice_idx) {
         let lt = l.to_ascii_lowercase();
         if lt.contains("accessing workspace") || lt.contains("adding a new directory") {
-            for next in &lines[i + 1..] {
+            folder = None;
+            for (ni, next) in lines.iter().enumerate().skip(i + 1) {
+                if ni >= first_choice_idx || in_draft_box(ni, next.trim()) {
+                    break;
+                }
                 let t = next.trim();
                 if t.is_empty() {
                     continue;
@@ -1007,55 +1514,22 @@ pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
                 }
                 break;
             }
-        } else if is_codex_trust
-            && folder.is_none()
-            && let Some(pos) = lt.find("you are in ")
-        {
+        } else if dialog_codex_trust && let Some(pos) = lt.find("you are in ") {
             let rest = l[pos + "you are in ".len()..].trim().trim_end_matches('.');
             if rest.starts_with('/') || rest.starts_with('~') {
                 folder = Some(rest.to_owned());
             }
         }
     }
-    let marks = ['❯', '›', '>'];
-    let mut choices: Vec<(bool, String)> = Vec::new();
-    for l in &lines {
-        let trimmed = l.trim();
-        let (marked, rest) = match marks.iter().find_map(|m| trimmed.strip_prefix(*m)) {
-            Some(r) => (true, r.trim_start()),
-            None => (false, trimmed),
-        };
-        let rest_clean = rest.split_once(". ").filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).map(|(_, r)| r.trim_start()).unwrap_or(rest);
-        let rl = normalize_choice_text(rest_clean);
-        if rl.starts_with("yes, i trust")
-            || rl.starts_with("yes, trust")
-            || rl.starts_with("yes, add")
-            || (is_codex_trust && rl.starts_with("yes, continue"))
-            || rl.starts_with("no, exit")
-            || rl.starts_with("no, quit")
-            || rl.starts_with("no, i don't trust")
-        {
-            choices.push((marked, rest_clean.to_owned()));
-        }
-    }
-    let trust_index = choices.iter().position(|(_, c)| c.to_ascii_lowercase().starts_with("yes"))?;
-    // (A question of trust is asked in its own words, or has a no beside
-    // its yes. The yes alone is a line of somebody's own: "Yes, I trust this folder" typed into an
-    // agent's field was read as the question, and Auto Approve, or a
-    // child started to trust its folder, pressed Return on the draft.
-    // A code review, 2026-11-27.)
-    let asked = is_add_dir || is_codex_trust || lower.contains("is this a project you created or one you trust") || lower.contains("is this a directory you created or one you trust");
-    if !asked && !choices.iter().any(|(_, c)| c.to_ascii_lowercase().starts_with("no")) {
-        return None;
-    }
-    let marked = choices.iter().any(|(m, _)| *m);
-    let selected_index = choices.iter().position(|(m, _)| *m).unwrap_or(0);
+    let has_yes_add = choices.iter().any(|(_, _, c)| normalize_choice_text(c).starts_with("yes, add"));
+    let is_add_dir = dialog_add_dir_header || has_yes_add;
+    let selected_index = choices.iter().position(|(_, m, _)| *m)?;
     let question = match &folder {
         Some(folder) if is_add_dir => format!("Add and trust {folder}?"),
         Some(folder) => format!("Trust {folder}?"),
         None => "Trust this folder?".to_owned(),
     };
-    Some(FolderTrustPrompt { folder, is_add_dir, selected_index, trust_index, selected_trust: selected_index == trust_index, marked, question })
+    Some(FolderTrustPrompt { folder, is_add_dir, selected_index, trust_index, selected_trust: selected_index == trust_index, marked: true, question })
 }
 
 /// Parses a structured tool-approval prompt across Claude Code, Codex, and Antigravity (`agy`).
@@ -1235,8 +1709,13 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     if choices.len() < 2 {
         return None;
     }
-    // Must actually look like a yes/no approval dialog (at least one Once or No choice).
-    if !choices.iter().any(|c| matches!(c.kind, ChoiceKind::Once | ChoiceKind::No)) {
+    // Must actually look like a complete yes/no approval dialog (at least one
+    // allow/yes choice AND at least one refusal choice): a partial repaint of a
+    // 3-choice prompt showing only `1. Yes` and `2. Yes, don't ask again` before
+    // `3. No` draws must never parse as a replacement approval box.
+    let has_yes = choices.iter().any(|c| matches!(c.kind, ChoiceKind::Once | ChoiceKind::AllowSession | ChoiceKind::DontAskAgain | ChoiceKind::SwitchMode));
+    let has_no = choices.iter().any(|c| matches!(c.kind, ChoiceKind::No | ChoiceKind::NoAlways));
+    if !has_yes || !has_no {
         return None;
     }
     // The answer the mark stands on (one, by the above).
@@ -1322,9 +1801,7 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
             }
             continue;
         }
-        if in_req && cmd_lines.is_empty() && !t.is_empty() && !is_dash(l) {
-            cmd_lines.push(t.to_owned());
-        } else if in_req && !t.is_empty() && !is_dash(l) && parse_folded(t).is_none() {
+        if in_req && !t.is_empty() && !is_dash(l) && (cmd_lines.is_empty() || parse_folded(t).is_none()) {
             cmd_lines.push(t.to_owned());
         }
     }
@@ -1346,6 +1823,9 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     }
 
     // Claude Code older format (no dashed box, indented command directly under `Bash command`).
+    // Collect ALL continuation command lines within the dialog header (never
+    // stopping at line 1 so multi-line commands with a dangerous second line
+    // cannot slip past approval-list matching — Astra #7).
     if cmd_lines.is_empty() {
         let mut saw_tool_hdr = false;
         for l in header_slice {
@@ -1353,12 +1833,20 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
             let tl = t.to_ascii_lowercase();
             if tl == "bash command" || tl == "edit file" || tl == "write file" {
                 saw_tool_hdr = true;
+                cmd_lines.clear();
                 continue;
             }
-            if saw_tool_hdr && !t.is_empty() && !tl.starts_with("tip:") && !t.starts_with('⚠') && !is_dash(l) {
-                cmd_lines.push(t.to_owned());
-                break;
+            if !saw_tool_hdr {
+                continue;
             }
+            if let Some(n) = parse_folded(t) {
+                folded_lines = Some(n);
+                continue;
+            }
+            if t.is_empty() || tl.starts_with("tip:") || t.starts_with('⚠') || is_dash(l) {
+                continue;
+            }
+            cmd_lines.push(t.to_owned());
         }
     }
 
@@ -1393,7 +1881,7 @@ pub fn parse_question(agent: Agent, screen: &str) -> Option<String> {
             None => "Trust this folder?".into(),
         });
     }
-    if parse_approval(agent, screen).is_some() {
+    if parse_approval(agent, screen).is_some() || has_approval_fragment(agent, screen) {
         return None;
     }
     let lines: Vec<&str> = screen.lines().collect();
@@ -2247,8 +2735,8 @@ mod tests {
         let api_err = format!("● Working on patch\n  ⎿  API Error: Connection lost mid-response\n{rule}\n❯ \n{rule}\n");
         assert_eq!(parse_api_error(Agent::Claude, &api_err).as_deref(), Some("API Error: Connection lost mid-response"));
         // Not while actively generating
-        let api_err_working = format!("API Error: old\n✻ Pondering… (esc to interrupt)\n");
-        assert!(parse_api_error(Agent::Claude, &api_err_working).is_none());
+        let api_err_working = "API Error: old\n✻ Pondering… (esc to interrupt)\n";
+        assert!(parse_api_error(Agent::Claude, api_err_working).is_none());
 
         // 5. Usage percentage & limit reached
         let usage_scr = format!("{rule}\n❯ \n{rule}\n  You've used 87% of your weekly limit · resets Fri\n");
@@ -2659,5 +3147,382 @@ mod tests {
         // 7. `parse_usage` ignores ordinary output lines more than 6 lines above the bottom.
         let fake_usage = "Test output: used 30% of the session quota\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n";
         assert!(parse_usage(fake_usage).is_none());
+
+        // 8. Partial `--add-dir` frame (missing "Adding a new directory" header) MUST still set `is_add_dir = true`
+        //    with `folder = None` so startup trust never misclassifies it as a primary workspace prompt.
+        let partial_add_dir = "Is this a directory you created or one you trust?\n ❯ Yes, add it\n   No, exit\n Enter to confirm · Esc to cancel\n";
+        let pad = parse_folder_trust(partial_add_dir).expect("partial add-dir frame");
+        assert!(pad.is_add_dir, "Yes, add it must set is_add_dir even without header: {pad:?}");
+        assert_eq!(pad.folder, None);
+
+        // 9. Partial 2-choice repaint of a 3-choice approval (Yes + Yes, don't ask again; no No choice yet)
+        //    must NOT parse as a complete approval dialog.
+        let partial_2_choice = "● Bash(cargo build)\n────────────────────\n Bash command\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: cargo build\n";
+        assert!(parse_approval(Agent::Claude, partial_2_choice).is_none(), "incomplete 2-choice repaint must not parse as complete approval");
+
+        // 10. Bare Claude `esc to interrupt` footer or partial approval dialog with `esc to interrupt`
+        //     must NEVER classify as `State::Working`.
+        let bare_footer = "  ⏸ manual mode on · esc to interrupt · ← for agents\n";
+        assert_ne!(classify(Agent::Claude, bare_footer), State::Working, "bare footer must not be Working");
+        let partial_dialog_with_footer = "● Bash(cargo build)\n Do you want to proceed?\n ❯ 1. Yes\n  ⏸ manual mode on · esc to interrupt · ← for agents\n";
+        assert_ne!(classify(Agent::Claude, partial_dialog_with_footer), State::Working, "partial dialog with footer must not be Working");
+
+        // 11. `has_survey_fragment` detects single-line partial survey repaints (question-only or choices-only).
+        assert!(has_survey_fragment(Agent::Claude, "● How is Claude doing this session? (optional)\n"));
+        assert!(has_survey_fragment(Agent::Claude, "  1: Bad    2: Fine   3: Good   0: Dismiss\n"));
+        assert!(has_survey_fragment(Agent::Antigravity, "How's the CLI experience so far?\n"));
+        assert!(has_survey_fragment(Agent::Antigravity, "  [1] Good  [2] Fine  [3] Bad  [0] Skip\n"));
+        assert!(!has_survey_fragment(Agent::Claude, "● Done.\n❯ \n"));
+    }
+
+    /// Regression test for Ben's `screenshot401.png` report: real `agy` screens
+    /// right-align the mode/model column on the footer line (`esc to cancel     auto · Gemini 4 Neon · xhigh`)
+    /// AND display a multi-step checklist + `└ Tip:` between the braille spinner and
+    /// the input box. Both must classify as `State::Working` (`at_prompt == false`),
+    /// while idle `? for shortcuts    accept-edits · ...` must remain `State::Idle` (`at_prompt == true`).
+    #[test]
+    fn agy_working_with_right_aligned_footer_and_multi_step_checklist() {
+        let rule = "─".repeat(80);
+        // 1. Exact screenshot401.png layout: 8-line checklist + Tip under spinner + right-aligned cancel footer.
+        let working_checklist = format!(
+            "\
+● Ran (cargo test -p olo-rex-link)
+⣷  Thinking...
+  ⎿  ✓ Inspect Rex Activity sidebar state mapping
+     ✓ Check agent-screen classifier rules
+     ✓ Verify OSC 7501 precedence
+     ● Update agy_work_hint for right-aligned mode column
+     ○ Scan checklist lines above input rule
+     ○ Add screenshot401 regression tests
+     ○ Run full verification suite
+     ⋮ 2 more
+└ Tip: Press Tab to toggle auto-accept edits
+{rule}
+> 
+{rule}
+esc to cancel                    auto · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &working_checklist), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &working_checklist));
+
+        // 2. Spinner found purely through multi-step checklist even without "esc to cancel" footer
+        //    (e.g. queued-message footer or shell-mode input).
+        let working_queued_checklist = format!(
+            "\
+● Read(crates/agent-screen/src/lib.rs)
+⠙  ✓ 3/10 steps · Generating...
+  ⎿  ✓ Step 1
+     ✔ Step 2
+     ✓ Step 3
+     ● Step 4
+     ○ Step 5
+     ◯ Step 6
+     ☐ Step 7
+     ☑ Step 8
+     ⋮ 2 more
+└ Tip: Use up arrow to edit queued messages
+{rule}
+> 
+{rule}
+Press up to edit queued messages    accept-edits · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &working_queued_checklist), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &working_queued_checklist));
+
+        // 3. Spinner ONLY (no work hint in footer at all, e.g. `!` bash mode or blank footer)
+        //    still detected across an 8-line checklist, and stopped by unindented tool output.
+        let spinner_only = format!(
+            "\
+● Read(foo.rs)
+⠋  Generating...
+  ⎿  ✓ Step 1
+     ✓ Step 2
+     ● Step 3
+     ○ Step 4
+     ○ Step 5
+     ○ Step 6
+     ○ Step 7
+     ⋮ 1 more
+{rule}
+!
+{rule}
+? for shortcuts                  auto · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &spinner_only), State::Working);
+
+        // 4. Right-aligned cancel footer alone (no spinner visible) classifies as Working.
+        let right_aligned_footer_only = format!(
+            "\
+● Ran (cargo check)
+{rule}
+> 
+{rule}
+esc to cancel      accept-edits · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &right_aligned_footer_only), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &right_aligned_footer_only));
+
+        // 5. Narrow-terminal `·`-joined cancel footer also classifies as Working.
+        let narrow_footer = format!(
+            "\
+● Ran (cargo check)
+{rule}
+> 
+{rule}
+esc to cancel · accept-edits · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &narrow_footer), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &narrow_footer));
+
+        // 6. Idle negative tests: `? for shortcuts` with right-aligned model, completed unindented
+        //    tool output separating an old spinner from the box, and prose mentioning "to cancel".
+        let idle_right_aligned = format!(
+            "\
+⠋  Old spinner far above completed work
+● Finished all requested changes.
+  ⎿  ✓ Step 1
+     ✓ Step 2
+└ Tip: Type /help for commands
+{rule}
+> 
+{rule}
+? for shortcuts                  accept-edits · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &idle_right_aligned), State::Idle);
+        assert!(at_prompt(Agent::Antigravity, &idle_right_aligned));
+
+        let idle_prose_footer = format!(
+            "\
+● Done.
+{rule}
+> 
+{rule}
+  ● Document how to cancel a build     auto · Gemini 4 Neon · xhigh
+? for shortcuts                  auto · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &idle_prose_footer), State::Idle);
+        assert!(at_prompt(Agent::Antigravity, &idle_prose_footer));
+
+        // 7. Narrow 3-segment footer ("hint · esc to cancel · auto · Gemini 4 Neon") classifies as Working.
+        let narrow_3seg = format!(
+            "\
+● Ran (cargo check)
+{rule}
+> 
+{rule}
+hint · esc to cancel · auto · Gemini 4 Neon
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &narrow_3seg), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &narrow_3seg));
+
+        // 8. Wrapped multi-line checklist items and wrapped `└ Tip:` continuation lines in a narrow pane
+        //    must not block scanning upward to the braille spinner.
+        let wrapped_checklist = format!(
+            "\
+● Read(crates/agent-screen/src/lib.rs)
+⣷  Thinking...
+  ⎿  ✓ Inspect Rex Activity sidebar state mapping in
+       workspace
+     ● Update agy_spinner_above for wrapped narrow
+       continuation lines
+└ Tip: Press Tab to toggle auto-accept edits across
+  all active panes
+{rule}
+> 
+{rule}
+? for shortcuts                  auto · Gemini 4 Neon · xhigh
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &wrapped_checklist), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &wrapped_checklist));
+
+        // 9. Background task running (`1 task(s) · /tasks` + `● [HH:MM:SS] ... running` row) when
+        //    agy's turn is OVER (at its prompt, no spinner, no `esc to cancel`): MUST classify as
+        //    `State::Idle` (`at_prompt == true`) per Olo's turn-end contract so turn-end events fire
+        //    while `state::agy_tasks` reports `own_tasks: 1` / `waiting_on: "own_run"`.
+        //    When a model turn IS active alongside a background task (`esc to cancel` or spinner), it is `Working`.
+        let idle_bg_task = format!(
+            "\
+● Started the test suite in the background.
+{rule}
+> Accept-edits mode
+{rule}
+  ● [21:42:10] cargo test -p olo-rex-link · running
+? for shortcuts            accept-edits · Gemini 4 Neon · xhigh · 1 task(s) · /tasks
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &idle_bg_task), State::Idle);
+        assert!(at_prompt(Agent::Antigravity, &idle_bg_task));
+
+        let idle_bg_task_below = format!(
+            "\
+● Waiting on background build.
+{rule}
+> Accept-edits mode
+{rule}
+? for shortcuts            accept-edits · Gemini 4 Neon · xhigh · 1 task(s) · /tasks
+  ● [21:42:10] cargo build --release · running
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &idle_bg_task_below), State::Idle);
+        assert!(at_prompt(Agent::Antigravity, &idle_bg_task_below));
+
+        let working_bg_task = format!(
+            "\
+● Started the test suite in the background.
+{rule}
+> Accept-edits mode
+{rule}
+  ● [21:42:10] cargo test -p olo-rex-link · running
+esc to cancel              accept-edits · Gemini 4 Neon · xhigh · 1 task(s) · /tasks
+"
+        );
+        assert_eq!(classify(Agent::Antigravity, &working_bg_task), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &working_bg_task));
+    }
+
+    #[test]
+    fn round2_review_regression_cases() {
+        let rule = "─".repeat(60);
+
+        // A2: Partial approval missing its refusal row must NOT fall through to `parse_question`,
+        //     must report `has_approval_fragment == true`, and must classify as `Blocked`.
+        let partial_approval_with_footer =
+            format!("● Bash(cargo build)\n{rule}\n Bash command\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don\u{2019}t ask again for: cargo build\n Enter to confirm · Esc to cancel\n");
+        assert!(parse_approval(Agent::Claude, &partial_approval_with_footer).is_none());
+        assert!(has_approval_fragment(Agent::Claude, &partial_approval_with_footer));
+        assert_eq!(parse_question(Agent::Claude, &partial_approval_with_footer), None);
+        assert_eq!(classify(Agent::Claude, &partial_approval_with_footer), State::Blocked);
+
+        // A7: Partial approval dialog with ALL choices missing over Claude's chat field and
+        //     interrupt footer MUST report `has_approval_fragment == true` and `Blocked`
+        //     (never falling through to `Idle` / `at_prompt` and retiring an answered box!).
+        let partial_no_choices_over_chat = format!("● Bash(cargo build)\n{rule}\n Bash command\n Do you want to proceed?\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt · ← for agents\n");
+        assert!(parse_approval(Agent::Claude, &partial_no_choices_over_chat).is_none());
+        assert!(has_approval_fragment(Agent::Claude, &partial_no_choices_over_chat));
+        assert_eq!(classify(Agent::Claude, &partial_no_choices_over_chat), State::Blocked);
+
+        // Genuine non-approval choosers (including a plain Yes/No user question) MUST still parse!
+        let genuine_chooser = " Which database?\n ❯ 1. Postgres\n   2. SQLite\n Enter to select\n";
+        assert!(!has_approval_fragment(Agent::Claude, genuine_chooser));
+        assert_eq!(parse_question(Agent::Claude, genuine_chooser).as_deref(), Some("Which database?"));
+        assert_eq!(classify(Agent::Claude, genuine_chooser), State::Blocked);
+
+        let genuine_yes_no_q = " Should I also update the README?\n ❯ 1. Yes\n   2. No\n Enter to select\n";
+        assert!(!has_approval_fragment(Agent::Claude, genuine_yes_no_q));
+        assert_eq!(parse_question(Agent::Claude, genuine_yes_no_q).as_deref(), Some("Should I also update the README?"));
+
+        // A3: Draft mentioning `"Yes, add ... trust this folder"` (even with a stray `"No"` line)
+        //     must NEVER trigger `parse_folder_trust` or `approvable_for`.
+        let draft_yes_add = format!("● Done.\n{rule}\n❯ Yes, add a note explaining when to trust this folder\n{rule}\n  ? for shortcuts\n");
+        assert!(parse_folder_trust(&draft_yes_add).is_none());
+        assert!(approvable_for(Agent::Claude, &draft_yes_add).is_none());
+        let draft_yes_add_unruled = "● Done.\nNo\n> Yes, add a note explaining when to trust this folder\n";
+        assert!(parse_folder_trust(draft_yes_add_unruled).is_none());
+        assert!(approvable_for(Agent::Antigravity, draft_yes_add_unruled).is_none());
+
+        // A23 / N8: Prose question (`Do you want to ...?`) above an active Claude working prompt
+        //           must stay `State::Working` (never `Idle`), while a genuine partial approval with
+        //           an `esc to interrupt` footer must be `State::Blocked` (never `Working` or `Idle`).
+        let claude_working_prose_q = format!(
+            "● Bash(git diff crates/agent-screen/src/lib.rs)\n  ⎿  checking dialog text:\n     Do you want to proceed?\n✻ Thinking… (4s)\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt · ← for agents\n"
+        );
+        assert!(!has_approval_fragment(Agent::Claude, &claude_working_prose_q));
+        assert_eq!(classify(Agent::Claude, &claude_working_prose_q), State::Working);
+
+        let partial_approval_over_interrupt = "● Bash(cargo build)\n Do you want to proceed?\n ❯ 1. Yes\n  ⏸ manual mode on · esc to interrupt · ← for agents\n";
+        assert!(has_approval_fragment(Agent::Claude, partial_approval_over_interrupt));
+        assert_eq!(classify(Agent::Claude, partial_approval_over_interrupt), State::Blocked);
+
+        // A19 & A26: Half-drawn survey choices row (`1: Bad`, `1: Bad  2: Fine`, or bare prefix `1:`
+        //            even when sitting over an idle Claude input box) is a survey fragment!
+        assert!(has_survey_fragment(Agent::Claude, "  1: Bad\n"));
+        assert!(has_survey_fragment(Agent::Claude, "  1: Bad    2: Fine\n"));
+        assert!(has_survey_fragment(Agent::Claude, &format!("  1:\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n")));
+        assert!(has_survey_fragment(Agent::Antigravity, "  [1] Good\n"));
+        assert!(has_survey_fragment(Agent::Antigravity, "  [1] Good  [2] Fine\n"));
+        assert!(has_survey_fragment(Agent::Antigravity, &format!("  [1]\n{rule}\n> \n{rule}\n? for shortcuts\n")));
+        assert!(!has_survey_fragment(Agent::Claude, "  1: Bad only\n"));
+
+        // A11: Multiline pasted draft inside a ruled Claude input box MUST NOT trigger `parse_folder_trust`
+        //      or `approvable_for`!
+        let multiline_draft_trust = format!("● Done.\n{rule}\n❯ Yes, I trust this folder\nNo, exit\nDo you trust the files in this folder?\n{rule}\n  ? for shortcuts\n");
+        assert!(parse_folder_trust(&multiline_draft_trust).is_none(), "A11: multiline draft inside ruled box must not parse as folder trust");
+        assert!(approvable_for(Agent::Claude, &multiline_draft_trust).is_none());
+
+        // N2: Ordinary user prompts / markdown quotes / finished-turn tool output above an idle prompt or
+        //     live spinner MUST NOT trigger `has_approval_fragment` or lock the agent in `Blocked`!
+        assert!(!has_approval_fragment(Agent::Antigravity, draft_yes_add_unruled), "N2: markdown quote `> Yes, add a note...` must not trigger approval fragment");
+        assert_eq!(classify(Agent::Antigravity, draft_yes_add_unruled), State::Idle);
+        let echoed_yes_add_working = format!("❯ Yes, add a note explaining when to trust this folder\n✻ Thinking… (4s)\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        assert!(!has_approval_fragment(Agent::Claude, &echoed_yes_add_working));
+        assert_eq!(classify(Agent::Claude, &echoed_yes_add_working), State::Working);
+        let finished_turn_bash_output = format!("Bash command\nDo you want to proceed?\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        assert!(!has_approval_fragment(Agent::Claude, &finished_turn_bash_output), "N2: finished-turn output above idle chat prompt must NOT lock in Blocked");
+        assert_eq!(classify(Agent::Claude, &finished_turn_bash_output), State::Idle);
+
+        // A13: Unrelated `"keep planning"` prose above a half-drawn approval MUST NOT defeat `has_approval_fragment`
+        //      (while a real numbered `2. Keep planning` choice DOES remain a genuine plan chooser);
+        //      and a bare approval question over Claude's ruled chat box + `esc to interrupt` with NO spinner
+        //      MUST stay `Blocked` / `approval_fragment == true` (never retiring an active box as `Working`)!
+        let keep_planning_prose_above_partial = "● Remember to keep planning before running\nBash command\nDo you want to proceed?\n❯ 1. Yes\nEsc to cancel\n";
+        assert!(has_approval_fragment(Agent::Claude, keep_planning_prose_above_partial), "A13: prose `keep planning` must not bypass approval fragment detection");
+        assert_eq!(parse_question(Agent::Claude, keep_planning_prose_above_partial), None);
+        let real_plan_chooser = "Ready to code?\n❯ 1. Yes, clear context\n  2. Keep planning\nEnter to select\n";
+        assert!(!has_approval_fragment(Agent::Claude, real_plan_chooser), "real plan chooser with numbered Keep planning choice must pass");
+        assert_eq!(parse_question(Agent::Claude, real_plan_chooser).as_deref(), Some("Ready to code?"));
+        let bare_q_over_interrupt = format!("Do you want to proceed?\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        assert!(has_approval_fragment(Agent::Claude, &bare_q_over_interrupt), "A13: bare approval question over chat box + interrupt footer (no spinner) must stay Blocked");
+        assert_eq!(classify(Agent::Claude, &bare_q_over_interrupt), State::Blocked);
+
+        // Final polish regressions (Neon #8, Astra #7, #8, #16, #19, #20):
+        // 1. Neon #8: Indented tool output under `  ⎿` containing `Do you want to proceed?`
+        //    with `esc to interrupt` and NO spinner stays Working (NOT Blocked).
+        let claude_streaming_tool_q =
+            format!("● Bash(cargo test -p olo-agent-screen)\n  ⎿  checking dialog text:\n     Do you want to proceed?\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt · ← for agents\n");
+        assert!(!has_approval_fragment(Agent::Claude, &claude_streaming_tool_q), "Neon #8: indented tool output must not trigger bare_q_over_interrupt");
+        assert_eq!(classify(Agent::Claude, &claude_streaming_tool_q), State::Working);
+
+        // 2. Astra #7: Older Claude multiline `Bash command` collects ALL continuation lines!
+        let old_claude_multi = "Bash command\n  cargo build\n  git push origin main\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n";
+        let ap_multi = parse_approval(Agent::Claude, old_claude_multi).expect("old claude multiline bash");
+        assert_eq!(ap_multi.command.as_deref(), Some("cargo build\ngit push origin main"), "Astra #7: must collect all command lines");
+
+        // 3. Astra #8: Folder trust parses ONLY the single bottom dialog, binds path to its own
+        //    header (never leaking prior scrollback path), and requires strictly one marked choice!
+        let trust_with_scrollback = "❯ Yes, I trust this folder\nAccessing workspace:\n/var/tmp/old-trusted\n\n\n\n\n\n\n\nAccessing workspace:\nQuick safety check: Is this a project you created or one you trust?\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm\n";
+        let tp_bottom = parse_folder_trust(trust_with_scrollback).expect("bottom trust dialog");
+        assert_eq!(tp_bottom.selected_index, 0, "Astra #8: must select bottom mark (No, exit), never scrollback Yes");
+        assert!(!tp_bottom.selected_trust);
+        assert_eq!(tp_bottom.folder, None, "Astra #8: must not leak old scrollback workspace path when current header lacks path");
+        assert!(approvable_for(Agent::Claude, trust_with_scrollback).is_some_and(|a| a.down == 1));
+        let trust_two_marks = "Accessing workspace:\n/var/tmp/w\nIs this a project you created or one you trust?\n❯ No, exit\n❯ Yes, I trust this folder\n";
+        assert!(parse_folder_trust(trust_two_marks).is_none(), "Astra #8: ambiguous multiple marks must not parse");
+
+        // 4. Astra #16: `approvable_for` suppressed while survey owns foreground!
+        let survey_over_ap = "● Bash(cargo test)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n● How is Claude doing this session?\n  1: Bad  2: Fine  3: Good  0: Dismiss\n";
+        assert!(approvable_for(Agent::Claude, survey_over_ap).is_none(), "Astra #16: survey over approval must suppress approvable_for");
+
+        // 5. Astra #19: Unruled Codex idle echo above empty `› ` is NOT a fragment; numbered
+        //    `1. Keep planning` prose above a half-drawn approval does NOT defeat fragment detection!
+        let codex_echo_above_idle = "› 1. Yes\nDone.\n› \n";
+        assert!(!has_approval_fragment(Agent::Codex, codex_echo_above_idle), "Astra #19: idle unruled Codex echo above prompt must not be approval fragment");
+        let numbered_plan_above_partial = "  1. Keep planning the refactor\n\nBash command\nDo you want to proceed?\n❯ 1. Yes\nEnter to confirm\n";
+        assert!(has_approval_fragment(Agent::Claude, numbered_plan_above_partial), "Astra #19: numbered keep-planning prose above approval must not suppress fragment");
+
+        // 6. Astra #20: `[0] ` preserves `has_survey_fragment`, isolated `[1]` does NOT trigger
+        //    `has_strong_survey_fragment`, and survey lines inside a ruled multiline draft do NOT trigger `parse_survey`!
+        assert!(has_survey_fragment(Agent::Antigravity, &format!("  [0] \n{rule}\n> \n{rule}\n? for shortcuts\n")));
+        assert!(!has_strong_survey_fragment(Agent::Antigravity, &format!("  [1]\n{rule}\n> \n{rule}\n? for shortcuts\n")));
+        let draft_quoting_survey = format!("{rule}\n❯ How is Claude doing this session?\n  1: Bad  2: Fine  3: Good  0: Dismiss\n{rule}\n  ? for shortcuts\n");
+        assert!(parse_survey(Agent::Claude, &draft_quoting_survey).is_none(), "Astra #20: survey lines inside ruled draft must not trigger parse_survey");
     }
 }

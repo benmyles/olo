@@ -571,8 +571,30 @@ mod tests {
         assert_eq!(agy_tasks(&footer(" · 1 task(s) · /tasks")), 1);
         assert_eq!(agy_tasks(&footer(" · 12 task(s) · /tasks")), 12);
         assert_eq!(agy_tasks(&footer("")), 0);
+        // Running task line rendered below the `1 task(s)` footer row (still below the bottom rule),
+        // even when its command text mentions `"8 task(s)"` (A35):
+        assert_eq!(agy_tasks(&format!("{}  ● [21:42:10] cargo test -- 8 task(s) · running\n", footer(" · 1 task(s) · /tasks"))), 1);
         // (Said of tasks somewhere above its footer: not its footer's word.)
         assert_eq!(agy_tasks(&format!("  I started 3 task(s) for you.\n{}", footer(""))), 0);
+
+        // A14: Structured `ApproveSpec::parse` rejects present null / non-string / blank `"box"`,
+        //      while preserving unkeyed behavior when `"box"` is omitted.
+        assert!(ApproveSpec::parse(Some(&json!({ "target": "w", "once": true, "box": null }))).is_err(), "A14: null box must fail");
+        assert!(ApproveSpec::parse(Some(&json!({ "target": "w", "once": true, "box": 42 }))).is_err(), "A14: numeric box must fail");
+        assert!(ApproveSpec::parse(Some(&json!({ "target": "w", "once": true, "box": "  " }))).is_err(), "A14: blank box must fail");
+        let omitted = ApproveSpec::parse(Some(&json!({ "target": "w", "once": true }))).unwrap();
+        assert_eq!(omitted.box_key, None);
+        let keyed = ApproveSpec::parse(Some(&json!({ "target": "w", "once": true, "box": "b1-g1-12345678" }))).unwrap();
+        assert_eq!(keyed.box_key.as_deref(), Some("b1-g1-12345678"));
+
+        // A7: Partial approval dialog with missing choices over Claude's chat box & interrupt footer
+        //     MUST classify with `approval_fragment = true`, `recognized_question = false`, and MUST NOT
+        //     fall through to `Idle("at prompt")`!
+        let partial_over_chat = format!("● Bash(cargo build)\n{rule}\n Bash command\n Do you want to proceed?\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt · ← for agents\n");
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Idle, &partial_over_chat, true);
+        assert!(cls.approval_fragment, "partial approval over chat must set approval_fragment: {cls:?}");
+        assert!(!cls.recognized_question, "partial approval must NEVER be a recognized_question: {cls:?}");
+        assert_ne!(cls.summary.as_deref(), Some(state::AT_PROMPT));
     }
 
     /// What makes a box the box it is (`state::box_hash`): its command to the letter, its tool, its
@@ -699,7 +721,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("olo-registry-guesses-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("registry.json");
-        kept.save_to(&file);
+        kept.save_to(&file).unwrap();
         let mut reg = SubagentRegistry::read_from(&file).unwrap_or_else(|e| panic!("{e}"));
         let of = |reg: &SubagentRegistry, id: &str| reg.entries.iter().find(|e| e.id == id).map(|e| (e.cli_session_id.clone(), e.session_confidence.clone(), e.transcript_path.is_some())).unwrap();
         for forgotten in ["agy-open", "agy-guess", "claude-written", "resumed", "kept-as-known"] {

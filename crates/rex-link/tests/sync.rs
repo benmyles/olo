@@ -358,8 +358,42 @@ fn a_file_cut_short_on_its_way_is_not_put_in_place() {
     assert!(code != Some(0) && said.contains("6 of 15 bytes came"), "{code:?} {said}");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "the whole of it");
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "a part was left beside it");
+    // Excess data is rejected immediately with invalid data, leaving destination intact and zero temp files.
+    let (code, said) = write(b"the whole of it plus excess", "15");
+    assert!(code != Some(0) && said.contains("more than 15 bytes came"), "{code:?} {said}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "the whole of it");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "a part was left beside it");
     let (code, said) = write(b"another whole 1", "15");
     assert_eq!(code, Some(0), "{said}");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "another whole 1");
+    // Concurrent `fs write --unique` invocations must publish distinct files without overwriting.
+    let unique_base = dir.join("shot.png");
+    let outs: Vec<serde_json::Value> = std::thread::scope(|s| {
+        let hs: Vec<_> = (0..6)
+            .map(|i| {
+                let target = unique_base.clone();
+                s.spawn(move || {
+                    let body = format!("img-{i}");
+                    let mut h = Command::new(env!("CARGO_BIN_EXE_olo-rex-link"))
+                        .args(["fs", "write", target.to_str().unwrap(), "--unique", "--len", &body.len().to_string()])
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                        .unwrap();
+                    h.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+                    let out = h.wait_with_output().unwrap();
+                    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+                    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+                    let p = v["path"].as_str().unwrap().to_owned();
+                    assert_eq!(std::fs::read_to_string(&p).unwrap(), body);
+                    v
+                })
+            })
+            .collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let distinct: std::collections::HashSet<String> = outs.iter().map(|v| v["path"].as_str().unwrap().to_owned()).collect();
+    assert_eq!(distinct.len(), 6, "concurrent --unique writes collided: {outs:?}");
     std::fs::remove_dir_all(dir).unwrap();
 }

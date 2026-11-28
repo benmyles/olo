@@ -370,6 +370,11 @@ pub struct SubagentRegistry {
     /// Monotonic event cursor persisted across in-place Olo Rex reloads (`H8`).
     #[serde(default)]
     pub event_seq: u64,
+    /// Monotonic service incarnation counter incremented on every `serve()`
+    /// startup so approval box keys (`b{n}-g{gen}-{inc:08x}-{hash:08x}`) never
+    /// collide across handover restarts.
+    #[serde(default)]
+    pub service_gen: u64,
 }
 
 const MAX_EXITED_HISTORY: usize = 200;
@@ -461,25 +466,39 @@ impl SubagentRegistry {
         }
     }
 
-    pub fn save_to(&self, path: &Path) {
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
         use std::{
             io::Write as _,
+            os::unix::fs::OpenOptionsExt as _,
             sync::atomic::{AtomicU64, Ordering},
         };
         static SAVE_SEQ: AtomicU64 = AtomicU64::new(1);
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let n = SAVE_SEQ.fetch_add(1, Ordering::Relaxed);
-        let tmp = path.with_extension(format!("json.tmp.{}.{n}", std::process::id()));
-        if let Ok(json) = serde_json::to_string_pretty(self)
-            && let Ok(mut f) = std::fs::File::create(&tmp)
-            && f.write_all(json.as_bytes()).is_ok()
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
         {
-            let _ = f.sync_all();
-            drop(f);
-            let _ = std::fs::rename(&tmp, path);
+            std::fs::create_dir_all(parent)?;
         }
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
+        let (tmp, mut f) = loop {
+            let n = SAVE_SEQ.fetch_add(1, Ordering::Relaxed);
+            let cand = path.with_extension(format!("json.tmp.{}.{n}", std::process::id()));
+            match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&cand) {
+                Ok(f) => break (cand, f),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        };
+        let res = (|| -> std::io::Result<()> {
+            f.write_all(json.as_bytes())?;
+            f.sync_all()?;
+            drop(f);
+            std::fs::rename(&tmp, path)?;
+            Ok(())
+        })();
+        if res.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        res
     }
 
     pub fn register(&mut self, entry: NativeSubagent) {

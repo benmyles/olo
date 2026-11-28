@@ -24,7 +24,13 @@ fn still_stands(last: &SubagentEvent, now: &ScreenClassification, live_box_key: 
     match last.state {
         SubagentLiveState::WaitingApproval => {
             now.state == SubagentLiveState::WaitingApproval
-                && if let Some(ev_box) = last.dedupe_key.strip_prefix("box:") { live_box_key == Some(ev_box) } else { super::service::subkey(now) == last.dedupe_key }
+                && if let Some(ev_box) = last.approval.as_ref().and_then(|a| a["box"].as_str()) {
+                    live_box_key == Some(ev_box)
+                } else if let Some(ev_box) = last.dedupe_key.strip_prefix("box:") {
+                    live_box_key == Some(ev_box)
+                } else {
+                    super::service::subkey(now) == last.dedupe_key
+                }
         }
         SubagentLiveState::WaitingQuestion => now.state == SubagentLiveState::WaitingQuestion && super::service::subkey(now) == last.dedupe_key,
         SubagentLiveState::Idle | SubagentLiveState::Done => matches!(now.state, SubagentLiveState::Idle | SubagentLiveState::Done),
@@ -130,15 +136,214 @@ fn dialog_up(cls: &ScreenClassification) -> bool {
     cls.approval.is_some() || cls.folder_trust.is_some() || matches!(cls.state, SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion)
 }
 
-/// Whether the first line of what was sent is still in the agent's
-/// input box.
-fn still_typed(screen: &str, first_line: Option<&str>) -> bool {
-    first_line.is_some_and(|fl| {
-        screen.lines().rev().take(6).any(|l| {
-            let t = l.trim();
-            (t.starts_with('❯') || t.starts_with('>') || t.starts_with('›')) && t.contains(fl)
-        })
-    })
+/// Post-paste settle delay before sending the separate `\r` submit: scales
+/// gently with pasted byte length (80 ms base + 20 ms/KiB, capped at 350 ms)
+/// so longer bracketed pastes finish rendering in TUI input boxes before Enter.
+fn paste_settle_delay(body_len: usize) -> Duration {
+    let extra_ms = ((body_len / 1024) as u64).saturating_mul(20);
+    Duration::from_millis(80u64.saturating_add(extra_ms).min(350))
+}
+
+/// Extracts the active chat input field text (searching up to 120 lines above a
+/// bottom ruled box `────\n❯|>\n...\n────`, or from the bottom active unruled
+/// prompt line downward) as `(joined_collapsed_text, has_pasted_marker)`.
+/// Returns `None` if no chat input field is visible/drawn on the screen.
+fn extract_input_field(screen: &str) -> Option<(String, bool)> {
+    let lines: Vec<&str> = screen.lines().collect();
+    let is_rule = |l: &str| {
+        let t = l.trim();
+        t.len() >= 12 && t.starts_with("────") && t.ends_with("────")
+    };
+    fn strip_prompt_prefix(t: &str) -> &str {
+        t.strip_prefix("│ ❯").or_else(|| t.strip_prefix("│ >")).or_else(|| t.strip_prefix('❯')).or_else(|| t.strip_prefix('›')).or_else(|| t.strip_prefix('>')).map(str::trim_start).unwrap_or(t)
+    }
+    let tail_start = lines.len().saturating_sub(34);
+    // 1. Ruled input box near the bottom (Claude Code / Antigravity): search up
+    //    to 120 lines above `bottom` so >29-line pasted drafts stay visible!
+    if let Some(bottom_rel) = lines[tail_start..].iter().rposition(|l| is_rule(l)) {
+        let bottom = tail_start + bottom_rel;
+        let search_top = bottom.saturating_sub(120);
+        if let Some(top_rel) = lines[search_top..bottom].iter().rposition(|l| is_rule(l)) {
+            let top = search_top + top_rel;
+            let inside = &lines[top + 1..bottom];
+            let first_non_empty = inside.iter().map(|l| l.trim()).find(|l| !l.is_empty());
+            if first_non_empty.is_some_and(|l| l.starts_with('❯') || l.starts_with('>') || l.starts_with('›') || l.starts_with("│ >") || l.starts_with("│ ❯")) {
+                let mut parts = Vec::new();
+                let mut pasted = false;
+                let mut stripped_first = false;
+                for raw in inside.iter().take(120) {
+                    let t = raw.trim();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    let piece = if !stripped_first {
+                        stripped_first = true;
+                        strip_prompt_prefix(t)
+                    } else {
+                        t
+                    };
+                    if piece.contains("[Pasted text #") {
+                        pasted = true;
+                    }
+                    if !piece.is_empty() {
+                        parts.push(piece);
+                    }
+                }
+                let joined = parts.join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+                return Some((joined, pasted));
+            }
+        }
+    }
+    // 2. Unruled screen (Codex / stand-in): locate the lowest active prompt line
+    //    within the bottom 80 lines and read it plus any wrapped continuations below it.
+    let start = lines.len().saturating_sub(80);
+    let mut prompt_at: Option<usize> = None;
+    for (idx, raw) in lines.iter().enumerate().skip(start).rev() {
+        let t = raw.trim();
+        if t.starts_with('❯') || t.starts_with('›') || t.starts_with("│ >") || t.starts_with("│ ❯") || t == ">" || t.starts_with("> Accept-edits") {
+            prompt_at = Some(idx);
+            break;
+        }
+    }
+    if let Some(idx) = prompt_at {
+        let mut parts = Vec::new();
+        let mut pasted = false;
+        for (off, raw) in lines[idx..].iter().take(80).enumerate() {
+            let t = raw.trim();
+            if t.is_empty() {
+                continue;
+            }
+            if off > 0
+                && (is_rule(t)
+                    || t.starts_with('?')
+                    || t.starts_with("← ")
+                    || t.contains("for shortcuts")
+                    || t.contains("esc to interrupt")
+                    || t.contains("esc to cancel")
+                    || (t.contains(" · ") && (t.contains(" /") || t.contains(" ~") || t.contains(" left") || t.contains("context"))))
+            {
+                break;
+            }
+            let piece = if off == 0 { strip_prompt_prefix(t) } else { t };
+            if piece.contains("[Pasted text #") {
+                pasted = true;
+            }
+            if !piece.is_empty() {
+                parts.push(piece);
+            }
+        }
+        let joined = parts.join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+        return Some((joined, pasted));
+    }
+    // 3. Bare `> text` prompt line (without rules) as fallback for minimal stand-ins:
+    if let Some(raw) = lines.iter().rev().take(28).find(|l| l.trim().starts_with('>')) {
+        let piece = strip_prompt_prefix(raw.trim());
+        let pasted = piece.contains("[Pasted text #");
+        let joined = piece.split_whitespace().collect::<Vec<_>>().join(" ");
+        return Some((joined, pasted));
+    }
+    None
+}
+
+/// Three-state (plus unrelated-draft) classification of the agent's active
+/// input box relative to a submitted `body` (Neon #4 / Astra #15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FieldState {
+    /// Input field is visibly drawn and positively contains `body`.
+    VisibleHasDraft,
+    /// Input field is visibly drawn and empty / CLI placeholder only.
+    VisibleCleared,
+    /// Input field is visibly drawn and holds different text (not `body`).
+    VisibleDifferentDraft,
+    /// Input field is absent/undrawn (inconclusive — never `VisibleCleared`!).
+    Undrawn,
+}
+
+fn is_exact_cli_placeholder(field: &str, pasted: bool) -> bool {
+    if pasted {
+        return false;
+    }
+    if field.is_empty() {
+        return true;
+    }
+    let low = field.to_ascii_lowercase();
+    let is_agy_mode_hint = (low.starts_with("accept-edits mode:") || low.starts_with("plan mode:") || low.starts_with("auto mode:") || low.starts_with("default mode:")) && low.contains("shift+tab");
+    low == "accept-edits mode"
+        || is_agy_mode_hint
+        || matches!(
+            low.as_str(),
+            "ask codex to do anything"
+                | "ask anything"
+                | "ask anything..."
+                | "ask claude..."
+                | "ask a follow-up..."
+                | "type a message..."
+                | "type your message..."
+                | "tell claude what to do differently"
+                | "tell codex what to do differently"
+                | "tell antigravity what to do differently"
+                | "what should claude do instead?"
+                | "what should codex do instead?"
+                | "what should antigravity cli do instead?"
+                | "what to do differently"
+                | "what to do differently?"
+                | "reason:"
+                | "feedback:"
+        )
+        || (low.starts_with("try \"") && low.ends_with('"'))
+}
+
+fn classify_input_field(screen: &str, body: &str) -> FieldState {
+    let Some((field, pasted)) = extract_input_field(screen) else {
+        return FieldState::Undrawn;
+    };
+    if is_exact_cli_placeholder(&field, pasted) {
+        return FieldState::VisibleCleared;
+    }
+    let body_norm = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let first_line_norm = body.lines().map(str::trim).find(|s| !s.is_empty()).map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_default();
+    if body_norm.is_empty() {
+        return FieldState::VisibleDifferentDraft;
+    }
+    // Claude collapses multi-line / long pastes into `[Pasted text #N +M lines]`:
+    // match ONLY when `body` itself is multi-line or long (never treating an
+    // unrelated collapsed paste as matching a short single-line message!).
+    if pasted {
+        let is_collapsible = body.lines().count() > 1 || body.len() >= 120;
+        return if is_collapsible { FieldState::VisibleHasDraft } else { FieldState::VisibleDifferentDraft };
+    }
+    // Exact whole-field match (always valid, including short `<4`-char `"yes"`).
+    if field == body_norm {
+        return FieldState::VisibleHasDraft;
+    }
+    // Wrapped/multi-line draft whose first line starts the visible field
+    // (require >= 12 chars so a short word like `"yes"` inside someone else's
+    // `"yes please review the PR"` NEVER authorizes an automatic retry Enter!).
+    if !first_line_norm.is_empty() && body_norm.chars().count() >= 12 {
+        if field == first_line_norm || field.starts_with(&first_line_norm) {
+            return FieldState::VisibleHasDraft;
+        }
+        if first_line_norm.chars().count() > 24 {
+            let prefix: String = first_line_norm.chars().take(24).collect();
+            if field.starts_with(&prefix) {
+                return FieldState::VisibleHasDraft;
+            }
+        }
+    }
+    FieldState::VisibleDifferentDraft
+}
+
+/// Whether `body` is positively sitting unsubmitted in the agent's visible input box.
+#[cfg(test)]
+fn still_typed(screen: &str, body: &str) -> bool {
+    classify_input_field(screen, body) == FieldState::VisibleHasDraft
+}
+
+/// True ONLY when the active input field is demonstrably empty or holds an
+/// exact known CLI placeholder hint (never matching user drafts like
+/// `"Ask the release owner first"` — Astra #6).
+fn input_field_is_empty_or_placeholder(screen: &str) -> bool {
+    extract_input_field(screen).is_some_and(|(field, pasted)| is_exact_cli_placeholder(&field, pasted))
 }
 
 /// Reserves one live-agent slot under a shared minder while a new agent
@@ -147,7 +352,7 @@ fn still_typed(screen: &str, first_line: Option<&str>) -> bool {
 /// the assignment is committed atomically under the same state lock; on
 /// abnormal exit or cancellation, decrements `pending_minds` and re-arms
 /// the empty-minder shutdown timer if the minder is now idle.
-struct PendingMindGuard {
+pub(super) struct PendingMindGuard {
     service: Arc<Service>,
     minder_id: String,
     active: bool,
@@ -160,8 +365,14 @@ impl PendingMindGuard {
         Self { service, minder_id, active: true }
     }
 
-    fn disarm(&mut self) {
+    pub(super) fn disarm(&mut self) {
         self.active = false;
+    }
+
+    #[cfg(test)]
+    pub(super) fn reserve_for_test(service: Arc<Service>, minder_id: &str) -> Self {
+        let mut st = service.lock();
+        Self::reserve_locked(service.clone(), &mut st, minder_id.to_owned())
     }
 }
 
@@ -833,7 +1044,7 @@ impl Service {
             }
         }
 
-        let (mut answer, minder_lost) = self.start_spec_attached(req, agent_spec, caller, Some(&asker_win), chosen_minder.as_mut().map(|(m, _, _, g)| (m.id.as_str(), g))).await;
+        let (mut answer, minder_lost, leave_res) = self.start_spec_attached(req, agent_spec, caller, Some(&asker_win), chosen_minder.as_mut().map(|(m, _, _, g)| (m.id.as_str(), g))).await;
         if !answer.ok {
             if let Some((m, fresh, rules_path, mut guard)) = chosen_minder {
                 let _ = std::fs::remove_file(&rules_path);
@@ -859,8 +1070,8 @@ impl Service {
         if let Some(id) = answer.data["id"].as_str() {
             self.keep_start(id, raw);
         }
-        if let (Some(text), Some(id)) = (&spec.approve_all_but, answer.data["id"].as_str()) {
-            match self.set_leave(id, text) {
+        if let Some(res) = leave_res {
+            match res {
                 Ok(n) => answer.data["approve_all_but"] = json!(n),
                 Err(e) => answer.stderr.push_str(&format!("olo agent start: its list couldn't be kept ({e}): everything it asks is asked\n")),
             }
@@ -1175,7 +1386,7 @@ impl Service {
         // what is asked of its minder in the same command.
         let mut listed = None::<String>;
         if let Some(text) = &spec.leave {
-            match self.set_leave(&it.id, text) {
+            match self.set_leave(&it.id, text).await {
                 Ok(n) => {
                     listed =
                         Some(format!("{its_name}: the service allows what it asks leave for, once, except what {n} pattern{} name{}\n", if n == 1 { "" } else { "s" }, if n == 1 { "s" } else { "" }))
@@ -1183,7 +1394,12 @@ impl Service {
                 Err(e) => return err(format!("--approve-all-but: {e}"), 2),
             }
         } else if spec.leave_off {
-            listed = Some(if self.clear_leave(&it.id) { format!("{its_name}: everything it asks leave for is asked again\n") } else { format!("{its_name} had no list\n") });
+            match self.clear_leave(&it.id).await {
+                Ok(had) => {
+                    listed = Some(if had { format!("{its_name}: everything it asks leave for is asked again\n") } else { format!("{its_name} had no list\n") });
+                }
+                Err(e) => return err(format!("--approve-none: {e}"), 1),
+            }
         }
         let patterns = || self.leave_of(&it.id).map(|l| l.patterns().iter().map(|p| (*p).to_owned()).collect::<Vec<_>>());
         if let Some(said) = listed
@@ -1280,6 +1496,7 @@ impl Service {
                 st.reg.minded_by(&m.id).len()
             };
             self.saved();
+            self.notify_child_state(&it.id);
             self.tell_entry(&it.id);
             let rules_path = self.rules_path(&it.id);
             self.emit_minding_event(&m, &it, "removed", &rules_path);
@@ -1335,6 +1552,7 @@ impl Service {
                     st.pending_rules_rev.insert((m.id.clone(), it.id.clone()), (new_gen, rules_path.display().to_string()));
                 }
                 self.saved();
+                self.notify_child_state(&it.id);
                 self.emit_minding_event(m, &it, "rules", &rules_path);
                 let mut m_json = told(m);
                 m_json["rules"] = json!(rules_path.display().to_string());
@@ -1367,7 +1585,9 @@ impl Service {
             Ok(v) => v,
             Err(e) => return err(format!("`{its_name}`'s minder couldn't be started: {e}"), 1),
         };
-        if let Some(ms) = std::env::var("OLO_REX_AGENTS_TEST_MIND_HOLD_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0) {
+        if Service::test_env_allowed()
+            && let Some(ms) = std::env::var("OLO_REX_AGENTS_TEST_MIND_HOLD_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0)
+        {
             tokio::time::sleep(Duration::from_millis(ms.min(5000))).await;
         }
         // Validate live state, cycles, and duplicate names BEFORE writing rules.
@@ -1500,6 +1720,7 @@ impl Service {
         };
         if actual_old.as_ref().is_some_and(|m| m.id == target_minder.id) {
             self.saved();
+            self.notify_child_state(&it.id);
             self.emit_minding_event(&target_minder, &it, "rules", &rules_path);
             let mut m_json = told(&target_minder);
             m_json["rules"] = json!(rules_path.display().to_string());
@@ -1520,6 +1741,7 @@ impl Service {
             }
         }
         self.saved();
+        self.notify_child_state(&it.id);
         self.tell_entry(&it.id);
         let updated = self.entry(&it.id).unwrap_or(it);
         self.emit_minding_event(&target_minder, &updated, "added", &rules_path);
@@ -1564,7 +1786,10 @@ impl Service {
             return;
         }
         let looked = self.look(entry, true).await;
-        if looked.cls.state == SubagentLiveState::Exited {
+        if !looked.is_fresh_ordered() || looked.cls.state == SubagentLiveState::Exited {
+            return;
+        }
+        if Self::question_suppressed_locked(&self.lock(), &entry.id, &looked.cls, looked.boxed.as_ref()) {
             return;
         }
         let inspected = self.inspect(std::slice::from_ref(entry)).await;
@@ -1574,11 +1799,17 @@ impl Service {
             return;
         }
         let entry = self.entry(&entry.id).unwrap_or_else(|| entry.clone());
-        if entry.exited_at.is_some() || self.lock().reg.minder_of(&entry.id).is_some() {
-            return;
+        {
+            let st = self.lock();
+            if entry.exited_at.is_some() || st.reg.minder_of(&entry.id).is_some() {
+                return;
+            }
+            if Self::question_suppressed_locked(&st, &entry.id, &looked.cls, looked.boxed.as_ref()) {
+                return;
+            }
         }
         let pending = Self::pending_tools(info);
-        let approval = looked.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
+        let approval = looked.cls.approval.as_ref().map(|ap| Self::approval_json_with_box(ap, &pending, looked.boxed.as_ref().map(|b| b.key.as_str())));
         let key = super::service::subkey(&looked.cls);
         let dedupe = if eff_state == SubagentLiveState::WaitingApproval
             && let Some(box_key) = approval.as_ref().and_then(|a| a["box"].as_str())
@@ -1710,8 +1941,8 @@ impl Service {
         caller: &Caller,
         fallback_parent: Option<&str>,
         pending: Option<(&str, &mut PendingMindGuard)>,
-    ) -> (Response, Option<String>) {
-        let err = |msg: String, code: i32| (Response::err("start", msg, code), None);
+    ) -> (Response, Option<String>, Option<Result<usize, String>>) {
+        let err = |msg: String, code: i32| (Response::err("start", msg, code), None, None);
         // A child's own child has no more of the desktop than it has.
         if let Some(cc) = &caller.child {
             match cc.desktop_policy.restrict_to(&spec.desktop) {
@@ -1790,17 +2021,16 @@ impl Service {
         // What the child's program is run with: its environment set and
         // unset in front of it (the server's own tab takes none).
         let mut launch = spec.clone();
-        let mut path_prepend: Vec<String> = Vec::new();
+        let explicit_path = launch.env.iter().any(|(k, _)| k == "PATH") || launch.unset_env.iter().any(|k| k == "PATH");
         if matches!(spec.desktop, DesktopPolicy::Inherit) {
             // (What the desktop gave the asking pane, a child that has the desktop's leave has too.)
             for (name, value) in &req.inherit {
-                match name.as_str() {
-                    "SSH_AUTH_SOCK" | "BROWSER" if !value.is_empty() && !launch.env.iter().any(|(k, _)| k == name) => launch.env.push((name.clone(), value.clone())),
-                    "PATH_PREPEND" if !value.is_empty() => path_prepend.push(value.clone()),
-                    _ => {}
+                if matches!(name.as_str(), "SSH_AUTH_SOCK" | "BROWSER") && !value.is_empty() && !launch.env.iter().any(|(k, _)| k == name) {
+                    launch.env.push((name.clone(), value.clone()));
                 }
             }
         }
+        let path_prepend = inherited_path_prepend(&spec.desktop, &req.inherit, explicit_path);
         let argv = launch.wrap_with_env_isolation(raw_argv.clone());
         let mut opts = json!({ "command": argv, "interactive": true, "exit": { "on_completion": spec.close_on_exit } });
         if let Some(dir) = &cwd {
@@ -1824,8 +2054,10 @@ impl Service {
         }
         // (When its tab was asked for: its program is up, and can have
         // begun its turn, before the server has answered; and nothing
-        // of its is from before this. `started_at`.)
+        // of its is from before this. Capture the monotonic instant for
+        // startup `--trust` here too, before `session.new_window`.)
         let asked_ms = now_unix_ms();
+        let asked_instant = Instant::now();
         let created = match self
             .rex
             .call(
@@ -1838,6 +2070,11 @@ impl Service {
             Err(e) => return err(format!("failed to create Rex tab: {e}"), 1),
         };
         let (Some(window_id), Some(block_id)) = (created["window_id"].as_str(), created["block_ids"][0].as_str()) else {
+            // Astra #13: If Rex returned a `window_id` without a `block_id`,
+            // roll back and close that orphaned tab before returning an error!
+            if let Some(win) = created["window_id"].as_str() {
+                let _ = self.rex.call("session.close_window", json!({ "session_id": sid, "window_id": win })).await;
+            }
             return err("Rex created the tab but didn't say which it is".into(), 1);
         };
         if let Some(sess) = self.lock().sessions.get_mut(&sid) {
@@ -1881,231 +2118,23 @@ impl Service {
             shared_minder: spec.shared_minder,
         };
         if entry.minded_by.is_some()
+            && Service::test_env_allowed()
             && let Some(ms) = std::env::var("OLO_REX_AGENTS_TEST_START_HOLD_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0)
         {
             tokio::time::sleep(Duration::from_millis(ms.min(5000))).await;
         }
-        let reserved_mid = pending.as_ref().map(|(mid, _)| *mid);
-        // (Its own folders' trust is the service's to answer from before
-        // its screen is first read: `--trust`, below.)
-        let trust_until = (spec.trust && cli.is_agent()).then(|| Instant::now() + Duration::from_secs(15));
-        let (entry, lost) = match self.begin_attached(entry, fallback_parent, reserved_mid, trust_until).await {
-            Ok(v) => {
-                if let Some((_, guard)) = pending {
-                    guard.disarm();
-                }
-                v
-            }
-            Err(e) => return err(format!("the new tab couldn't be watched: {e}"), 1),
+        // (Its own folders' trust is the service's to answer from the moment
+        // its tab was requested, spawned immediately at registration BEFORE
+        // awaiting `write_now()` so queued registry saves never eat the 15 s
+        // trust window. Any startup `--approve-all-but` list is also installed
+        // at registration BEFORE `watch_child` starts.)
+        let trust_until = (spec.trust && cli.is_agent()).then(|| asked_instant + Duration::from_secs(15));
+        let expect_work = (cli.is_agent() && spec.prompt.as_deref().is_some_and(|p| !p.trim().is_empty())).then_some((start_cursor, Duration::from_secs(120)));
+        let (entry, lost, leave_res) = match self.begin_attached(entry, fallback_parent, pending, trust_until, false, expect_work, spec.approve_all_but.as_deref()).await {
+            Ok(v) => v,
+            Err(e) => return err(e, 1),
         };
         let minder_lost = pre_minder_lost.or(lost);
-        // Started with a prompt, an agent works as soon as it is up: no
-        // rest of its is its turn's end before then (two minutes for it
-        // to come to it, after which it is told as it stands).
-        if cli.is_agent() && spec.prompt.as_deref().is_some_and(|p| !p.trim().is_empty()) {
-            self.expect_work(&entry, start_cursor, Duration::from_secs(120), false);
-        }
-
-        // Where the folder is asked about all the same, it is answered
-        // by where the mark stands (never by timing), for the child's
-        // own folders alone.
-        // (Antigravity's too, 2026-11-27: it asks "Do you trust the contents
-        // of this project?" of a new folder, its mark on the yes already,
-        // and `--trust` left it standing: `olo agent run agy … --trust
-        // --cwd NEW_FOLDER` came back "question", its brief never taken
-        // up. The ShiftUp lead's item 42.)
-        if let Some(until) = trust_until {
-            let (service, entry) = (self.clone(), entry.clone());
-            tokio::spawn(async move {
-                // One answer a question, however slow the child is to draw:
-                // read once under the lock that one writer of answers
-                // holds, the arrows pressed once, the mark waited for on
-                // the yes, Return once, the question waited for to go.
-                // (It went round again after 100 ms where the mark hadn't
-                // moved yet, a second Down, and pressed Return again where
-                // the question still stood after 250 ms, up to four times:
-                // the other answer chosen, or Returns into the agent's
-                // field. 2026-11-27.) Each key within the fifteen seconds
-                // of a start, and none after.
-                let deadline = tokio::time::Instant::from_std(until);
-                let own: Vec<String> = entry.cwd.iter().chain(entry.add_dirs.iter()).map(|d| d.trim_end_matches('/').to_owned()).collect();
-                let which = super::service::TrustAtStart::which;
-                let is_own = |trust: &olo_agent_screen::FolderTrustPrompt| super::service::TrustAtStart::owns(&own, trust);
-                /// The questions of its start are the service's until this
-                /// task is over, however it ends: then what stands is read
-                /// again and told (`Live::trust`, there since the child's
-                /// record was made).
-                struct AtStart<'a>(&'a Service, &'a str);
-                impl Drop for AtStart<'_> {
-                    fn drop(&mut self) {
-                        self.0.trust_over(self.1);
-                    }
-                }
-                let _at_start = AtStart(&service, &entry.id);
-                /// While its keys are on their way the question on the
-                /// screen is nobody's to be told of (`run --trust` came
-                /// back "question" for one answered a moment before).
-                struct OnItsWay<'a>(&'a Service, &'a str);
-                impl Drop for OnItsWay<'_> {
-                    fn drop(&mut self) {
-                        self.0.trust_keys_done(self.1);
-                    }
-                }
-                let mut answered: HashSet<Option<String>> = HashSet::new();
-                loop {
-                    let changed = service.changed.notified();
-                    let cls = service.look(&entry, false).await.cls;
-                    if cls.state == SubagentLiveState::Exited {
-                        break;
-                    }
-                    if let Some(trust) = cls.folder_trust {
-                        if !is_own(&trust) {
-                            break;
-                        }
-                        if answered.contains(&which(&trust)) {
-                            tokio::select! {
-                                _ = changed => {}
-                                _ = tokio::time::sleep_until(deadline) => break,
-                            }
-                            continue;
-                        }
-                        // (Its turn among the child's answers, within the start's time.)
-                        let answers = service.answer_lock(&entry.id);
-                        let _held = tokio::select! {
-                            held = answers.lock_owned() => held,
-                            _ = tokio::time::sleep_until(deadline) => break,
-                        };
-                        // (As it stands now, under the lock.)
-                        let looked = service.look(&entry, true).await;
-                        if looked.cls.state == SubagentLiveState::Exited {
-                            break;
-                        }
-                        let Some(trust) = looked.cls.folder_trust.filter(|_| looked.live) else {
-                            drop(_held);
-                            tokio::select! {
-                                _ = changed => {}
-                                _ = tokio::time::sleep(Duration::from_millis(250)) => {}
-                                _ = tokio::time::sleep_until(deadline) => break,
-                            }
-                            continue;
-                        };
-                        if !is_own(&trust) {
-                            break;
-                        }
-                        let key = which(&trust);
-                        if answered.contains(&key) {
-                            continue;
-                        }
-                        // (Its mark not drawn yet: when its screen changes, or in half a second.)
-                        if !trust.marked {
-                            drop(_held);
-                            tokio::select! {
-                                _ = changed => {}
-                                _ = tokio::time::sleep(Duration::from_millis(500)) => {}
-                                _ = tokio::time::sleep_until(deadline) => break,
-                            }
-                            continue;
-                        }
-                        if tokio::time::Instant::now() >= deadline {
-                            break;
-                        }
-                        // Answered from here on, whatever becomes of the keys:
-                        // never a second walk to the same question.
-                        answered.insert(key.clone());
-                        service.trust_taken(&entry.id, key.clone());
-                        let _on_its_way = OnItsWay(&service, &entry.id);
-                        let same = |t: &olo_agent_screen::FolderTrustPrompt| which(t) == key;
-                        let delta = trust.trust_index as isize - trust.selected_index as isize;
-                        let arrow = if delta > 0 { "\x1b[B" } else { "\x1b[A" };
-                        let mut pressed = true;
-                        for _ in 0..delta.unsigned_abs() {
-                            if service.rex.write(&entry.session_id, &entry.block_id, arrow).await.is_err() {
-                                pressed = false;
-                                break;
-                            }
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                        }
-                        // (Return only where the mark is seen to stand on the
-                        // yes: waited for, three seconds and no later than the
-                        // start's time; a frame or two without the question, a
-                        // repaint, is waited through.)
-                        let mut landed = pressed && delta == 0;
-                        if pressed && delta != 0 {
-                            let by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
-                            let mut none_since: Option<tokio::time::Instant> = None;
-                            while tokio::time::Instant::now() < by {
-                                let moved = service.changed.notified();
-                                let again = service.look(&entry, true).await;
-                                if again.cls.state == SubagentLiveState::Exited {
-                                    break;
-                                }
-                                match again.cls.folder_trust.filter(|_| again.live) {
-                                    Some(t) if !same(&t) => break,
-                                    Some(t) if t.marked && t.selected_index == t.trust_index => {
-                                        landed = true;
-                                        break;
-                                    }
-                                    Some(_) => none_since = None,
-                                    None if again.live => match none_since {
-                                        Some(since) if since.elapsed() >= Duration::from_millis(600) => break,
-                                        Some(_) => {}
-                                        None => none_since = Some(tokio::time::Instant::now()),
-                                    },
-                                    None => {}
-                                }
-                                tokio::select! {
-                                    _ = moved => {}
-                                    _ = tokio::time::sleep(Duration::from_millis(100)) => {}
-                                    _ = tokio::time::sleep_until(by) => break,
-                                }
-                            }
-                        }
-                        if landed && tokio::time::Instant::now() < deadline && service.rex.write(&entry.session_id, &entry.block_id, "\r").await.is_ok() {
-                            // (Gone: another question, or none for two readings.)
-                            let by = (tokio::time::Instant::now() + Duration::from_secs(3)).min(deadline);
-                            let mut none_since: Option<tokio::time::Instant> = None;
-                            while tokio::time::Instant::now() < by {
-                                let moved = service.changed.notified();
-                                let again = service.look(&entry, true).await;
-                                if again.cls.state == SubagentLiveState::Exited {
-                                    break;
-                                }
-                                match again.cls.folder_trust.filter(|_| again.live) {
-                                    Some(t) if same(&t) => none_since = None,
-                                    Some(_) => break,
-                                    None if again.live => match none_since {
-                                        Some(since) if since.elapsed() >= Duration::from_millis(150) => break,
-                                        Some(_) => {}
-                                        None => none_since = Some(tokio::time::Instant::now()),
-                                    },
-                                    None => {}
-                                }
-                                tokio::select! {
-                                    _ = moved => {}
-                                    _ = tokio::time::sleep(Duration::from_millis(100)) => {}
-                                    _ = tokio::time::sleep_until(by) => break,
-                                }
-                            }
-                        }
-                        // (Its own drop says the keys are no longer on their
-                        // way, and has what stands read again: a question
-                        // that is still there is then told, as any other.)
-                        drop(_on_its_way);
-                        if entry.add_dirs.is_empty() {
-                            break;
-                        }
-                        continue;
-                    }
-                    if !answered.is_empty() && cls.state == SubagentLiveState::Working {
-                        break;
-                    }
-                    tokio::select! {
-                        _ = changed => {}
-                        _ = tokio::time::sleep_until(deadline) => break,
-                    }
-                }
-            });
-        }
 
         let payload = json!({
             "ok": true,
@@ -2134,7 +2163,7 @@ impl Service {
         } else {
             format!("{}  {} ({}, effort={})  tab={}  {}\n", entry.id, cli.binary(), model, effort, entry.window_id, title)
         };
-        (Response::ok(stdout, payload), minder_lost)
+        (Response::ok(stdout, payload), minder_lost, leave_res)
     }
 
     // ---- list ----
@@ -2409,12 +2438,14 @@ impl Service {
         payload["exit_code"] = json!(entry.exit_code);
         payload["aborted"] = json!(aborted);
         payload["last_message"] = json!(last_message);
-        let approval_val = cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
+        // Label the approval payload strictly with the box captured on THIS
+        // `looked` reading — never re-reading live `box_now` after `inspect`!
+        let approval_val = cls.approval.as_ref().map(|ap| Self::approval_json_with_box(ap, &pending, looked.boxed.as_ref().map(|b| b.key.as_str())));
         payload["approval"] = json!(approval_val);
         // (A minder that looks is told what stands asked — bound to the exact
-        // box instance and current rules generation — ONLY once any pending
-        // `minding` ("rules") revision has been delivered to it, and NEVER for
-        // `folder_trust` or an unrecognised `Blocked` dialog.)
+        // box instance, current rules generation, and reading sequence — ONLY
+        // once any pending `minding` ("rules") revision has been delivered,
+        // and NEVER overwriting or clearing a grant minted by a newer reading.)
         if let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) {
             let mut st = self.lock();
             if Self::minder_owns(&st, me, &entry.id) {
@@ -2422,22 +2453,34 @@ impl Service {
                 if st.pending_rules_rev.contains_key(&pair) {
                     st.told.remove(&pair);
                     payload["rules_changed"] = json!(true);
-                } else {
-                    let rules_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
-                    if let Some(box_key) = approval_val.as_ref().and_then(|a| a["box"].as_str()) {
-                        // (Not for a box whose answer is on its way: it is
-                        // still on the screen, and nobody's to judge.)
-                        if Self::box_answer_on_its_way(&st, &entry.id, box_key) {
+                } else if !looked.rpc_failed {
+                    let cur_accepted = st.live.get(&entry.id).map_or(0, |l| l.accepted_seq);
+                    let newer_grant = st.told.get(&pair).is_some_and(|g| g.read_seq > looked.seq);
+                    let stale_read = looked.seq > 0 && looked.seq < cur_accepted;
+                    if !newer_grant && !stale_read {
+                        let rules_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
+                        if let Some(lb) = looked.boxed.as_ref() {
+                            if Self::question_suppressed_locked(&st, &entry.id, &cls, Some(lb)) {
+                                if st.told.get(&pair).is_some_and(|g| g.token == lb.key) {
+                                    st.told.remove(&pair);
+                                }
+                            } else {
+                                st.told.insert(pair, super::service::ToldGrant { token: lb.key.clone(), is_approval: true, rules_gen, read_seq: looked.seq });
+                            }
+                        } else if cls.approval.is_some() {
+                            // Box on this reading was superseded or vanished while `inspect` ran:
+                            // do NOT clear a newer box's grant.
+                        } else if state == SubagentLiveState::WaitingQuestion
+                            && cls.folder_trust.is_none()
+                            && !cls.approval_fragment
+                            && (cls.recognized_question || cls.state != SubagentLiveState::WaitingQuestion)
+                        {
+                            let key = super::service::subkey(&cls);
+                            let token = if key.is_empty() { "tx:waiting".to_owned() } else { key };
+                            st.told.insert(pair, super::service::ToldGrant { token, is_approval: false, rules_gen, read_seq: looked.seq });
+                        } else if (looked.live && looked.ordered) || looked.seq >= cur_accepted {
                             st.told.remove(&pair);
-                        } else {
-                            st.told.insert(pair, super::service::ToldGrant { token: box_key.to_owned(), is_approval: true, rules_gen });
                         }
-                    } else if state == SubagentLiveState::WaitingQuestion && cls.folder_trust.is_none() && (cls.recognized_question || cls.state != SubagentLiveState::WaitingQuestion) {
-                        let key = super::service::subkey(&cls);
-                        let token = if key.is_empty() { "tx:waiting".to_owned() } else { key };
-                        st.told.insert(pair, super::service::ToldGrant { token, is_approval: false, rules_gen });
-                    } else {
-                        st.told.remove(&pair);
                     }
                 }
             }
@@ -2788,10 +2831,14 @@ impl Service {
             // 2026-11-26). For a shared minder, roster/rules updates
             // (`minding` events) are delivered first, in order, once
             // each, so it reads each agent's rules before judging it.
+            let retiring_handover = || Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) };
             if let Some(me) = &minding {
                 if me.is_shared_minder() && spec.wants_minding() {
                     let roster_ev = {
                         let mut st = self.lock();
+                        if st.retiring || st.frozen {
+                            return retiring_handover();
+                        }
                         // Track `minding` delivery per `(minder_id, subject_id)` so a
                         // targeted watch on B never swallows an unread rules event for A.
                         let found = st.log.find_since(0, |ev| {
@@ -2824,28 +2871,79 @@ impl Service {
                     }
                     // If the 2,000-event log ring evicted an unread `rules` revision
                     // (or handover restored `pending_rules_rev` without the ring entry),
-                    // synthesize and deliver it now so the minder never stalls!
-                    let evicted_rev: Option<(NativeSubagent, u64, PathBuf)> = {
-                        let st = self.lock();
-                        st.pending_rules_rev.iter().find(|((mid, aid), _)| mid == &me.id && (spec.all || explicit_ids.contains(aid)) && Self::minder_owns(&st, me, aid)).and_then(
+                    // synthesize and deliver it atomically under ONE lock hold (never
+                    // appending to `events.jsonl` while retiring!).
+                    let synthesized_ev: Option<SubagentEvent> = {
+                        let mut st = self.lock();
+                        if st.retiring || st.frozen {
+                            return retiring_handover();
+                        }
+                        let found = st.pending_rules_rev.iter().find(|((mid, aid), _)| mid == &me.id && (spec.all || explicit_ids.contains(aid)) && Self::minder_owns(&st, me, aid)).and_then(
                             |((_, aid), (rev_gen, rpath))| st.reg.entries.iter().rev().find(|e| e.id == *aid && e.exited_at.is_none()).cloned().map(|agent| (agent, *rev_gen, PathBuf::from(rpath))),
-                        )
-                    };
-                    if let Some((agent, req_gen, rpath)) = evicted_rev {
-                        let seq = self.emit_minding_event(me, &agent, "rules", &rpath);
-                        let delivered = {
-                            let mut st = self.lock();
+                        );
+                        if let Some((agent, req_gen, rpath)) = found {
+                            let state = st.live.get(&agent.id).and_then(|l| l.last_state).unwrap_or(SubagentLiveState::Working);
+                            let rules_gen = st.rules_gen.get(&agent.id).copied().unwrap_or(0);
+                            let ancestors = st.reg.ancestor_windows(HOST, &agent.session_id, &agent.window_id);
+                            let answers = st.live.get(&agent.id).and_then(|l| l.answers);
+                            let its_name = agent.name.as_deref().unwrap_or(&agent.id);
+                            let what = Self::agent_what(&agent);
+                            let summary = format!("Rules changed for \"{its_name}\". Re-read its rules at {}", rpath.display());
+                            let mut event = SubagentEvent {
+                                seq: 0,
+                                timestamp_ms: now_unix_ms(),
+                                host_key: HOST.to_owned(),
+                                session_id: agent.session_id.clone(),
+                                parent_window_id: me.window_id.clone(),
+                                ancestor_windows: ancestors,
+                                id: agent.id.clone(),
+                                name: agent.name.clone(),
+                                window_id: agent.window_id.clone(),
+                                block_id: agent.block_id.clone(),
+                                resume_id: agent.resume_id.clone(),
+                                cli_session_id: agent.effective_session_id().map(str::to_owned),
+                                event: minder::MINDING.to_owned(),
+                                state,
+                                summary: Some(summary),
+                                last_message: None,
+                                approval: None,
+                                error: None,
+                                tail: Vec::new(),
+                                dedupe_key: String::new(),
+                                answers,
+                                minding: Some(json!({
+                                    "action": "rules",
+                                    "minder_id": me.id,
+                                    "rules": rpath.display().to_string(),
+                                    "rules_gen": rules_gen,
+                                    "what": what,
+                                    "cwd": agent.cwd,
+                                })),
+                            };
+                            let seq = st.log.push_beside(event.clone());
+                            event.seq = seq;
+                            st.reg.event_seq = seq;
+                            if let Ok(mut line) = serde_json::to_string(&event) {
+                                use std::io::Write as _;
+                                line.push('\n');
+                                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.paths.events) {
+                                    let _ = f.write_all(line.as_bytes());
+                                }
+                            }
                             let pair = (me.id.clone(), agent.id.clone());
                             st.minding_seen.insert(pair.clone(), seq);
                             if st.pending_rules_rev.get(&pair).is_some_and(|(g, _)| *g <= req_gen) {
                                 st.pending_rules_rev.remove(&pair);
                             }
-                            st.log.find_since(seq.saturating_sub(1), |ev| ev.seq == seq)
-                        };
-                        self.saved();
-                        if let Some(ev) = delivered {
-                            return answer(&ev, None, false);
+                            Some(event)
+                        } else {
+                            None
                         }
+                    };
+                    if let Some(ev) = synthesized_ev {
+                        self.saved();
+                        self.changed.notify_waiters();
+                        return answer(&ev, None, false);
                     }
                 }
                 let candidates: Vec<(NativeSubagent, SubagentEvent)> = {
@@ -2891,30 +2989,34 @@ impl Service {
                     ready
                 };
                 for (agent, last) in candidates {
-                    let (holds, live_box_key, live_cls) = if agent.exited_at.is_some() {
-                        (true, None, None)
+                    let (holds, live_looked) = if agent.exited_at.is_some() {
+                        (true, None)
                     } else {
-                        let cls = self.look(&agent, false).await.cls;
-                        let bk = cls.approval.as_ref().and_then(|ap| self.box_key(&agent.id, Some(ap)));
-                        let ok = if still_stands(&last, &cls, bk.as_deref()) {
-                            true
-                        } else if last.state == SubagentLiveState::WaitingQuestion && matches!(cls.state, SubagentLiveState::Idle | SubagentLiveState::Working) {
-                            // Use the exact same effective-state logic as `transition` so a
-                            // transcript-waiting question while screen looks idle is delivered
-                            // to the minder instead of being hidden from everyone.
-                            let inspected = self.inspect(std::slice::from_ref(&agent)).await;
-                            let info = inspected.get(&agent.id);
-                            let (eff, _, _) = effective_state(&cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
-                            eff == SubagentLiveState::WaitingQuestion
+                        let looked = self.look(&agent, false).await;
+                        if looked.rpc_failed {
+                            (false, None)
                         } else {
-                            false
-                        };
-                        (ok, bk, Some(cls))
+                            let bk = looked.boxed.as_ref().filter(|b| !b.answered).map(|b| b.key.as_str());
+                            let ok = if still_stands(&last, &looked.cls, bk) {
+                                true
+                            } else if last.state == SubagentLiveState::WaitingQuestion && matches!(looked.cls.state, SubagentLiveState::Idle | SubagentLiveState::Working) {
+                                let inspected = self.inspect(std::slice::from_ref(&agent)).await;
+                                let info = inspected.get(&agent.id);
+                                let (eff, _, _) = effective_state(&looked.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
+                                eff == SubagentLiveState::WaitingQuestion
+                            } else {
+                                false
+                            };
+                            (ok, Some(looked))
+                        }
                     };
                     if !holds {
                         continue;
                     }
                     let mut st = self.lock();
+                    if st.retiring || st.frozen {
+                        return retiring_handover();
+                    }
                     if !Self::minder_owns(&st, me, &agent.id) {
                         drop(st);
                         if let Some(ended) = lost_named_target(me) {
@@ -2931,32 +3033,45 @@ impl Service {
                     if last.seq <= told_to {
                         continue;
                     }
+                    if let Some(ref ll) = live_looked
+                        && Self::question_suppressed_locked(&st, &agent.id, &ll.cls, ll.boxed.as_ref())
+                    {
+                        continue;
+                    }
                     let rules_gen = st.rules_gen.get(&agent.id).copied().unwrap_or(0);
-                    // (What it asks, bound to its exact box instance and current
-                    // rules generation: never relabel box 1's stale payload with
-                    // box 2's key, and never grant for unrecognised Blocked dialogs.)
+                    let read_seq = live_looked.as_ref().map_or(0, |ll| ll.seq);
+                    // (What it asks, bound to its exact unanswered box instance and
+                    // current rules generation: never grant an answered box, never
+                    // relabel box 1's stale payload with box 2's key, and never grant
+                    // for folder_trust or unrecognised Blocked dialogs.)
                     match last.state {
                         SubagentLiveState::WaitingApproval => {
                             let ev_box = last.approval.as_ref().and_then(|a| a["box"].as_str());
-                            if let (Some(lb), Some(eb)) = (live_box_key.as_deref(), ev_box)
-                                && lb != eb
+                            let live_box = live_looked.as_ref().and_then(|ll| ll.boxed.as_ref()).filter(|b| !b.answered);
+                            let Some(lb) = live_box else {
+                                drop(st);
+                                self.poke(&agent.id);
+                                continue;
+                            };
+                            if let Some(eb) = ev_box
+                                && lb.key != eb
                             {
                                 drop(st);
                                 self.poke(&agent.id);
                                 continue;
                             }
-                            let box_tok = ev_box.map(str::to_owned).or(live_box_key);
-                            if let Some(tok) = box_tok {
-                                st.told.insert(pair.clone(), super::service::ToldGrant { token: tok, is_approval: true, rules_gen });
-                            } else {
-                                st.told.remove(&pair);
+                            if Self::question_suppressed_locked(&st, &agent.id, &live_looked.as_ref().unwrap().cls, Some(lb)) {
+                                continue;
                             }
+                            st.told.insert(pair.clone(), super::service::ToldGrant { token: lb.key.clone(), is_approval: true, rules_gen, read_seq });
                         }
                         SubagentLiveState::WaitingQuestion => {
-                            let allow_q = live_cls.as_ref().is_none_or(|c| c.folder_trust.is_none() && (c.recognized_question || c.state != SubagentLiveState::WaitingQuestion));
+                            let allow_q = live_looked
+                                .as_ref()
+                                .is_none_or(|ll| ll.cls.folder_trust.is_none() && !ll.cls.approval_fragment && (ll.cls.recognized_question || ll.cls.state != SubagentLiveState::WaitingQuestion));
                             if allow_q {
                                 let tok = if last.dedupe_key.is_empty() { "tx:waiting".to_owned() } else { last.dedupe_key.clone() };
-                                st.told.insert(pair.clone(), super::service::ToldGrant { token: tok, is_approval: false, rules_gen });
+                                st.told.insert(pair.clone(), super::service::ToldGrant { token: tok, is_approval: false, rules_gen, read_seq });
                             } else {
                                 st.told.remove(&pair);
                             }
@@ -2990,17 +3105,14 @@ impl Service {
             // (A minder's is answered above, by what stands.)
             let check_live = spec.since.is_none() && minding.is_none();
             if check_live || check_text {
-                // (One child after another until one is told or none is
-                // left: a child turned down, at rest by its screen and in
-                // a turn by its file, or no longer this minder's, doesn't
-                // end the looking. It did, and another child's question,
-                // standing since before the watch, waited out the watch's
-                // time behind it. A code review, 2026-11-27.)
                 let mut turned_down: std::collections::HashSet<String> = std::collections::HashSet::new();
                 'scan: loop {
                     let mut candidate: Option<(NativeSubagent, ScreenClassification, String, Option<String>)> = None;
                     for entry in current.iter().filter(|e| !turned_down.contains(&e.id)) {
                         let looked = self.look(entry, false).await;
+                        if looked.rpc_failed {
+                            continue;
+                        }
                         let (cls, screen) = (looked.cls, looked.screen);
                         if check_text {
                             let base = baseline_lines.entry(entry.id.clone()).or_default();
@@ -3018,12 +3130,13 @@ impl Service {
                             if cls.state != SubagentLiveState::Idle {
                                 baseline_idle.remove(&entry.id);
                             }
-                            // (A box whose answer is on its way, still on
-                            // the screen while the agent draws, is no
-                            // question that stands: told as one, it was
-                            // answered a second time by whoever watched.)
-                            let on_its_way = cls.approval.as_ref().and_then(|ap| self.box_key(&entry.id, Some(ap))).is_some_and(|key| Self::box_answer_on_its_way(&self.lock(), &entry.id, &key));
-                            if spec.matches_state(cls.state) && !on_its_way && !Self::minders_own(&self.lock().reg, caller, &entry.id, cls.state) {
+                            // Suppress both answered approval boxes AND startup folder_trust
+                            // while the service is answering them.
+                            let suppressed = {
+                                let st = self.lock();
+                                Self::question_suppressed_locked(&st, &entry.id, &cls, looked.boxed.as_ref()) || Self::minders_own(&st.reg, caller, &entry.id, cls.state)
+                            };
+                            if spec.matches_state(cls.state) && !suppressed {
                                 let name = cls.state.as_str().to_owned();
                                 candidate = Some((entry.clone(), cls, name, None));
                                 break;
@@ -3044,14 +3157,16 @@ impl Service {
                     let turned = entry.id.clone();
                     {
                         let is_text = name == "match" || name == "regex";
-                        // (A state must hold; text that came is there.)
-                        let holds = if first.state == SubagentLiveState::Exited || is_text {
-                            true
+                        // (A state must hold on a fresh ordered read and remain unsuppressed; text that came is there.)
+                        let confirmed_now = if first.state == SubagentLiveState::Exited || is_text {
+                            Some(self.look(&entry, false).await)
                         } else {
                             tokio::time::sleep(super::service::CONFIRM).await;
-                            self.look(&entry, true).await.cls.state == first.state
+                            let again = self.look(&entry, true).await;
+                            let ok = again.is_fresh_ordered() && again.cls.state == first.state && !Self::question_suppressed_locked(&self.lock(), &entry.id, &again.cls, again.boxed.as_ref());
+                            ok.then_some(again)
                         };
-                        if holds {
+                        if let Some(now) = confirmed_now {
                             let inspected = self.inspect(std::slice::from_ref(&entry)).await;
                             if let Some(me) = &minding {
                                 if let Some(ended) = lost_named_target(me) {
@@ -3064,29 +3179,24 @@ impl Service {
                             }
                             let info = inspected.get(&entry.id);
                             let entry = self.entry(&entry.id).unwrap_or(entry);
-                            let now = self.look(&entry, false).await;
+                            // Re-check suppression right before returning (covers an approval or
+                            // startup trust answered while `inspect` ran).
+                            if !is_text && Self::question_suppressed_locked(&self.lock(), &entry.id, &now.cls, now.boxed.as_ref()) {
+                                turned_down.insert(turned);
+                                continue 'scan;
+                            }
                             let pending = Self::pending_tools(info);
                             let (state, error, _) = super::service::standing(&entry, &now.cls, info, now.cls.state != SubagentLiveState::Exited, (now.last_output_at, now.reports, now.expects));
-                            // (A rest that stood on its screen, and a turn on
-                            // by its conversation's file: not the rest that
-                            // was waited for. `state::turn_on`.)
                             let in_turn_yet = !is_text && first.state == SubagentLiveState::Idle && state == SubagentLiveState::Working;
-                            // (Nor a state that, settled with its conversation's
-                            // file, is not one that was asked for: an interrupted
-                            // Codex's "■ …" reads as an error on its screen and is
-                            // at rest by its file, and `--on error` was answered
-                            // with `idle`. The confirming review.)
                             let not_asked = !is_text && !spec.matches_state(state);
                             if !in_turn_yet && !not_asked {
-                                // (Answered from what stands, not written into the
-                                // log: the log is what happened, once each.)
                                 let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());
                                 ev.seq = self.cursor();
                                 if is_text {
                                     ev.event = name;
                                 }
                                 ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
-                                ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
+                                ev.approval = now.cls.approval.as_ref().map(|ap| Self::approval_json_with_box(ap, &pending, now.boxed.as_ref().map(|b| b.key.as_str())));
                                 ev.error = error_words(state, error, &now.screen);
                                 ev.tail = tail_of(&now.screen, 10);
                                 return answer(&ev, matched_line, had_gap);
@@ -3158,13 +3268,49 @@ impl Service {
             }
         }
         self.minder_did(caller, &entry.id, "send", raw.get("args").cloned().unwrap_or(Value::Null));
-        let before = self.look(&entry, true).await;
-        // What is typed into an agent is typed by its screen as read
-        // now. Where the server couldn't say, the last reading answered
-        // for it, and a box come since was typed into. (A code review,
-        // 2026-11-27.)
-        if entry.cli.is_agent() && !before.live && before.cls.state != SubagentLiveState::Exited {
-            return err(format!("`{}`'s screen couldn't be read just now: nothing was sent; try again", entry.id), 1);
+        let body = sanitize_paste_text(&spec.body);
+        // Query bracketed-paste mode BEFORE reading the screen so no intervening
+        // RPC await sits between the screen/survey gate and writing into the PTY.
+        let use_paste = if !body.is_empty() { self.bracketed_paste(&entry).await } else { false };
+        let mut before = self.look(&entry, true).await;
+        // If another reader owns an active feedback-survey dismissal (`Claimed`
+        // or `Submitted`), wait briefly on `survey_notify` (zero polling) so we
+        // never type text or `--key 2` into an active survey.
+        if entry.cli.is_agent() && before.survey_pending {
+            let wait_until = tokio::time::Instant::now() + Duration::from_millis(1200);
+            if let Some((_, _, survey_n)) = self.child_notifies(&entry.id) {
+                loop {
+                    let sw = survey_n.notified();
+                    tokio::pin!(sw);
+                    sw.as_mut().enable();
+                    if !self.survey_pending(&entry.id) {
+                        break;
+                    }
+                    if tokio::time::Instant::now() >= wait_until {
+                        break;
+                    }
+                    tokio::select! {
+                        _ = sw => {}
+                        _ = tokio::time::sleep_until(wait_until) => break,
+                    }
+                }
+            }
+            before = self.look(&entry, true).await;
+            if before.survey_pending {
+                return err(format!("`{}` has a feedback survey dismissal pending: nothing was sent; try again in a moment", entry.id), 1);
+            }
+        }
+        let out_at_before = before.pre_read_out_seq;
+        let mut had_intervening_await = false;
+        // What is typed into an agent is typed by its screen as read now, in order.
+        if entry.cli.is_agent() && !before.is_fresh_ordered() && before.cls.state != SubagentLiveState::Exited {
+            return err(format!("`{}`'s screen couldn't be read reliably just now: nothing was sent; try again", entry.id), 1);
+        }
+        let only_its_zero = spec.body.is_empty() && !spec.enter && !spec.has_ctrl && spec.post_keys.len() == 1 && spec.raw_keys.len() == 1 && spec.raw_keys[0].trim() == "0";
+        // Never type text or rating keys (`--key 1..3`) into a staying or partial
+        // feedback survey (only a non-minder's explicit `--key 0` or `--force` may pass).
+        if entry.cli.is_agent() && before.survey && !spec.force && (!only_its_zero || as_minder.is_some()) {
+            return err(format!("refusing to send to `{0}` while a feedback survey is on screen: nothing was sent (`olo agent send {0} --key 0` sets it aside)", entry.id), 1);
         }
         // Never into Claude Code's offer to send a feedback report it has
         // drafted ("1 to review · 2 to send · 0 to dismiss"): a message
@@ -3181,7 +3327,6 @@ impl Service {
         if let Some(agent) = entry.cli.screen_agent()
             && let Some(shows) = olo_agent_screen::feedback_draft(agent, &before.screen)
         {
-            let only_its_zero = spec.body.is_empty() && !spec.enter && !spec.has_ctrl && spec.post_keys.len() == 1 && spec.raw_keys.len() == 1 && spec.raw_keys[0].trim() == "0";
             if !only_its_zero || as_minder.is_some() {
                 return err(
                     format!(
@@ -3220,7 +3365,7 @@ impl Service {
                 return err(format!("`{}` is asking to trust a folder: escalate it to the parent, never answer with `send`", entry.name.as_deref().unwrap_or(&entry.id)), 69);
             }
             // Unrecognised `Activity::Blocked` dialog ("needs input (unrecognised dialog)")
-            // is NEVER answered with `send`: escalate to the parent!
+            // or incomplete approval fragment is NEVER answered with `send`: escalate to the parent!
             if before.cls.state == SubagentLiveState::WaitingQuestion && !before.cls.recognized_question {
                 return err(format!("`{}` has an unrecognised dialog active: escalate it to the parent, never answer with `send`", entry.name.as_deref().unwrap_or(&entry.id)), 69);
             }
@@ -3228,6 +3373,7 @@ impl Service {
             // while raw screen looks `Idle`/`Working`) so they go through the same
             // grant and `rules_gen` gate instead of slipping into the steer branch.
             let eff_state = if matches!(before.cls.state, SubagentLiveState::Idle | SubagentLiveState::Working) && entry.cli.is_agent() {
+                had_intervening_await = true;
                 let inspected = self.inspect(std::slice::from_ref(&entry)).await;
                 let info = inspected.get(&entry.id);
                 effective_state(&before.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true).0
@@ -3291,7 +3437,10 @@ impl Service {
             // Text is never typed into a question: answered by `approve`, or forced.
             // Nor a key that types a character (`--key 1`): there it is an
             // answer by its number, with none of what `approve` checks.
-            if (!spec.body.is_empty() || spec.types) && !spec.force && entry.cli.is_agent() && dialog_up(&before.cls) {
+            // Exception: explicit non-minder `--key 0` dismissing a staying feedback
+            // survey (`before.survey && only_its_zero`) MUST pass even if an approval
+            // or question sits behind the survey!
+            if (!spec.body.is_empty() || spec.types) && !spec.force && !(before.survey && only_its_zero) && entry.cli.is_agent() && dialog_up(&before.cls) {
                 let what = if spec.body.is_empty() { "press a character key in" } else { "type text into" };
                 return err(format!("refusing to {what} `{}` while a {} dialog is active (use `olo agent approve` to answer approvals, or pass `--force`)", entry.id, before.cls.state.as_str()), 1);
             }
@@ -3302,6 +3451,72 @@ impl Service {
             let st = self.lock();
             Self::minder_owns(&st, me, &entry.id) && st.rules_gen.get(&entry.id).copied().unwrap_or(0) == exp_gen && !st.pending_rules_rev.contains_key(&(me.id.clone(), entry.id.clone()))
         };
+        let survey_blocks_write = || -> bool { entry.cli.is_agent() && !spec.force && (!only_its_zero || as_minder.is_some()) && self.survey_active(&entry.id) };
+        // Validates that a fresh ordered foreground screen still permits
+        // dispatching input (for BOTH minders and non-minders): rejects
+        // unreadable/stale reads, surveys, feedback drafts, Exited state, and
+        // newly appeared approval / folder-trust / approval-fragment / changed
+        // question dialogs!
+        let check_foreground = |recheck: &super::service::Looked, phase: &str| -> Result<(), String> {
+            if !recheck.is_fresh_ordered() || recheck.survey || recheck.survey_pending || survey_blocks_write() {
+                return Err(format!("refusing to send to `{}`: screen or feedback survey changed {phase}; nothing more was sent", entry.id));
+            }
+            if recheck.cls.state == SubagentLiveState::Exited {
+                return Err(format!("refusing to send to `{}`: child exited {phase}; nothing more was sent", entry.id));
+            }
+            if entry.cli.screen_agent().is_some_and(|a| olo_agent_screen::feedback_draft(a, &recheck.screen).is_some()) {
+                return Err(format!("refusing to send to `{}`: Claude Code's feedback draft appeared {phase}; nothing more was sent", entry.id));
+            }
+            if as_minder.is_some() {
+                let changed_question = recheck.cls.state == SubagentLiveState::WaitingQuestion
+                    && (!recheck.cls.recognized_question || before.cls.state != SubagentLiveState::WaitingQuestion || super::service::subkey(&recheck.cls) != super::service::subkey(&before.cls));
+                // If a minder is sending chooser `--key`s, require the exact
+                // recognized chooser to still be standing (once it vanishes,
+                // never send remaining keys into whatever replaced it — Astra #9).
+                let chooser_vanished = !spec.raw_keys.is_empty()
+                    && (recheck.cls.state != SubagentLiveState::WaitingQuestion || !recheck.cls.recognized_question || super::service::subkey(&recheck.cls) != super::service::subkey(&before.cls));
+                if recheck.cls.approval.is_some() || recheck.cls.folder_trust.is_some() || recheck.cls.approval_fragment || changed_question || chooser_vanished {
+                    return Err(format!("refusing to send to `{}`: a {} dialog appeared {phase}; escalate or use `approve`", entry.id, recheck.cls.state.as_str()));
+                }
+            } else if (!body.is_empty() || spec.types) && dialog_up(&recheck.cls) {
+                return Err(format!("refusing to send to `{}`: a {} dialog appeared {phase}; nothing more was sent", entry.id, recheck.cls.state.as_str()));
+            }
+            Ok(())
+        };
+        // Unconditional feedback-draft protection even when `--force` is set
+        // (Astra #10: Ben's rule — "no feedback report is ever sent, `--force` or not").
+        let guard_feedback_draft = entry.cli.screen_agent().is_some() && (!only_its_zero || as_minder.is_some());
+        let check_feedback_draft_only = |recheck: &super::service::Looked, phase: &str| -> Result<(), String> {
+            if !recheck.is_fresh_ordered() {
+                return Err(format!("refusing to send to `{}`: screen unreadable {phase}; nothing more was sent", entry.id));
+            }
+            if entry.cli.screen_agent().is_some_and(|a| olo_agent_screen::feedback_draft(a, &recheck.screen).is_some()) {
+                return Err(format!("refusing to send to `{}`: Claude Code's feedback draft appeared {phase}; nothing more was sent", entry.id));
+            }
+            Ok(())
+        };
+        let guard_foreground = entry.cli.is_agent() && !spec.force && (!only_its_zero || as_minder.is_some());
+        // Recheck survey ownership and screen right before dispatching if an
+        // intervening await ran (e.g., minder `inspect`) or output arrived
+        // during/after the initial read (`pre_read_out_seq` — Astra #10).
+        if guard_foreground || guard_feedback_draft {
+            if guard_foreground && survey_blocks_write() {
+                return err(format!("refusing to send to `{}`: a feedback survey appeared before dispatch; nothing was sent", entry.id), 1);
+            }
+            if had_intervening_await || self.out_seq(&entry.id) != out_at_before {
+                let recheck = self.look_ordered(&entry, None).await;
+                if guard_foreground {
+                    if let Err(msg) = check_foreground(&recheck, "before dispatch") {
+                        return err(msg, 1);
+                    }
+                } else if let Err(msg) = check_feedback_draft_only(&recheck, "before dispatch") {
+                    return err(msg, 1);
+                }
+                if !minder_still_ok() || survey_blocks_write() {
+                    return err("rules, minder assignment, or survey state changed before dispatch; nothing was sent".into(), 1);
+                }
+            }
+        }
         // (From before the typing: a watch from this cursor has what follows it.)
         let pre_cursor = self.cursor();
         self.reset_edge(&entry, !spec.body.is_empty());
@@ -3318,42 +3533,74 @@ impl Service {
         let (rex, to) = (&self.rex, &entry);
         let write = |data: String| async move { rex.write(&to.session_id, &to.block_id, &data).await.map_err(|e| e.to_string()) };
         let mut total = 0usize;
-        let body = sanitize_paste_text(&spec.body);
+        let mut slept_before_enter = false;
+        let mut out_before_writes = self.out_seq(&entry.id);
+        let mut wrote_before_post = false;
         if !body.is_empty() {
-            if !minder_still_ok() {
-                return err("rules or minder assignment changed before sending; nothing was sent".into(), 1);
+            if !minder_still_ok() || survey_blocks_write() {
+                return err("rules, minder assignment, or survey state changed before sending; nothing was sent".into(), 1);
             }
             // As a paste where the program takes pastes (its keys are
             // then not keys); what would end a paste early is taken out.
-            let chunk = if self.bracketed_paste(&entry).await { format!("\x1b[200~{body}\x1b[201~") } else { body.clone() };
-            if !minder_still_ok() {
-                return err("rules or minder assignment changed before sending; nothing was sent".into(), 1);
-            }
+            let chunk = if use_paste { format!("\x1b[200~{body}\x1b[201~") } else { body.clone() };
             total += chunk.len();
             if let Err(e) = write(chunk).await {
                 return err(e, 1);
             }
+            wrote_before_post = true;
             if spec.enter {
-                // (Apart from the paste, so it isn't taken into it.)
-                tokio::time::sleep(Duration::from_millis(80)).await;
+                // (Apart from the paste, scaled slightly for longer pastes so it isn't taken into it.)
+                tokio::time::sleep(paste_settle_delay(body.len())).await;
+                slept_before_enter = true;
             }
         }
         if spec.enter {
-            if !minder_still_ok() {
-                return err("rules or minder assignment changed before Enter; stopped without submitting".into(), 1);
+            if !minder_still_ok() || survey_blocks_write() {
+                return err("rules, minder assignment, or survey state changed before Enter; stopped without submitting".into(), 1);
+            }
+            // Re-verify the live foreground screen after the paste-settle sleep
+            // before sending Enter, AND recheck `minder_still_ok()` AFTER the
+            // awaited `look_ordered` RPC (Astra #9 / #10).
+            if (guard_foreground || guard_feedback_draft) && slept_before_enter {
+                let recheck = self.look_ordered(&entry, None).await;
+                if guard_foreground {
+                    if let Err(msg) = check_foreground(&recheck, "before Enter") {
+                        return err(msg, 1);
+                    }
+                } else if let Err(msg) = check_feedback_draft_only(&recheck, "before Enter") {
+                    return err(msg, 1);
+                }
+                if !minder_still_ok() || survey_blocks_write() {
+                    return err("rules, minder assignment, or survey state changed before Enter; stopped without submitting".into(), 1);
+                }
             }
             total += 1;
             if let Err(e) = write("\r".into()).await {
                 return err(e, 1);
             }
+            wrote_before_post = true;
         }
         // (Each key by itself: Escape then Enter together is another key.)
         for (i, key) in spec.post_keys.iter().enumerate() {
             if i > 0 {
                 tokio::time::sleep(Duration::from_millis(35)).await;
             }
-            if !minder_still_ok() {
-                return err("rules or minder assignment changed while sending keys; stopped".into(), 1);
+            if !minder_still_ok() || survey_blocks_write() {
+                return err("rules, minder assignment, or survey state changed while sending keys; stopped".into(), 1);
+            }
+            if (guard_foreground || guard_feedback_draft) && (i > 0 || wrote_before_post || self.out_seq(&entry.id) != out_before_writes || !self.stream_connected(&entry.id)) {
+                let recheck = self.look_ordered(&entry, None).await;
+                out_before_writes = self.out_seq(&entry.id);
+                if guard_foreground {
+                    if let Err(msg) = check_foreground(&recheck, "while sending keys") {
+                        return err(msg, 1);
+                    }
+                } else if let Err(msg) = check_feedback_draft_only(&recheck, "while sending keys") {
+                    return err(msg, 1);
+                }
+                if !minder_still_ok() || survey_blocks_write() {
+                    return err("rules, minder assignment, or survey state changed while sending keys; stopped".into(), 1);
+                }
             }
             // (A key its bytes can't say: pressed and let go through the
             // server's own encoder, as its keyboard would; its bytes only
@@ -3373,42 +3620,111 @@ impl Service {
         }
         self.poke(&entry.id);
 
-        // That a message sent whole was taken: the agent works, or asks
-        // something, or its screen changed and the text is no longer in
-        // its input. Enter once more, only where it still sits there.
+        // That a message sent whole with `--enter` was taken: fresh ordered
+        // screen evidence that a dialog is up, OR the agent is genuinely
+        // Working (NOT blank `Working("starting")`!) with no unsubmitted draft
+        // in its input box (`!still_typed`), OR non-blank screen output changed
+        // and the draft is gone. Enter once more ONLY when `spec.enter` is true
+        // and the draft still sits in the field at 800 ms (checked in the main
+        // loop body so continuous spinner output can never starve `retry_at`).
         let mut delivered = true;
-        if spec.verify_delivery && !body.is_empty() && entry.cli.is_agent() {
+        if spec.verify_delivery && spec.enter && !body.is_empty() && entry.cli.is_agent() {
             delivered = false;
             let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
             let retry_at = tokio::time::Instant::now() + Duration::from_millis(800);
             let mut retried = false;
-            let first_line = body.lines().next().map(str::trim).filter(|s| s.len() >= 4);
+            let is_delivered = |now: &super::service::Looked| -> bool {
+                let genuinely_working = now.cls.state == SubagentLiveState::Working && now.cls.in_turn && now.cls.summary.as_deref() != Some(olo_rex_link::agents::state::STARTING);
+                // Neon #4 / Astra #15: Require `FieldState::VisibleCleared`
+                // (never treat an undrawn/absent input box as cleared!).
+                let field_cleared = classify_input_field(&now.screen, &body) == FieldState::VisibleCleared;
+                now.is_fresh_ordered() && (dialog_up(&now.cls) || (genuinely_working && field_cleared) || (now.last_output_at > before.last_output_at && now.screen != before.screen && field_cleared))
+            };
+            let notifies = self.child_notifies(&entry.id);
+            let mut last_out = self.out_seq(&entry.id);
+            let mut last_sgen = self.stream_gen(&entry.id);
+            let mut checked_once = false;
+            let mut fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
             loop {
-                let changed = self.changed.notified();
-                let now = self.look(&entry, true).await;
-                if dialog_up(&now.cls)
-                    || now.cls.state == SubagentLiveState::Working
-                    || (now.last_output_at > before.last_output_at && now.screen != before.screen && !still_typed(&now.screen, first_line))
-                {
-                    delivered = true;
+                let now_inst = tokio::time::Instant::now();
+                let cur_out = self.out_seq(&entry.id);
+                let cur_sgen = self.stream_gen(&entry.id);
+                let fallback_ready = fallback_due.is_some_and(|d| now_inst >= d);
+                if !checked_once || cur_out != last_out || cur_sgen != last_sgen || fallback_ready {
+                    checked_once = true;
+                    last_out = cur_out;
+                    last_sgen = cur_sgen;
+                    fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+                    let now = self.look_until(&entry, true, Some(deadline)).await;
+                    if is_delivered(&now) {
+                        delivered = true;
+                        break;
+                    }
+                }
+                // Check `retry_at` in the main loop body (outside `select!`) so
+                // continuous spinner/output ticks can NEVER starve the 800 ms retry!
+                let now_inst = tokio::time::Instant::now();
+                if spec.enter && !retried && now_inst >= retry_at && now_inst < deadline {
+                    retried = true;
+                    let check = self.look_until(&entry, true, Some(deadline)).await;
+                    if is_delivered(&check) {
+                        delivered = true;
+                        break;
+                    }
+                    // Astra #15: Require positive `VisibleHasDraft` match of the
+                    // SAME draft before sending retry Enter, bounded by `deadline`.
+                    if check.is_fresh_ordered()
+                        && minder_still_ok()
+                        && !survey_blocks_write()
+                        && check_foreground(&check, "before retry Enter").is_ok()
+                        && classify_input_field(&check.screen, &body) == FieldState::VisibleHasDraft
+                    {
+                        last_out = self.out_seq(&entry.id);
+                        last_sgen = self.stream_gen(&entry.id);
+                        let _ = tokio::time::timeout_at(deadline, write("\r".into())).await;
+                    }
+                }
+                let now_inst = tokio::time::Instant::now();
+                if now_inst >= deadline {
                     break;
                 }
-                if tokio::time::Instant::now() >= deadline {
-                    break;
-                }
-                let wake = if !retried && retry_at < deadline { retry_at } else { deadline };
-                tokio::select! {
-                    _ = changed => {}
-                    _ = tokio::time::sleep(Duration::from_millis(120)) => {}
-                    _ = tokio::time::sleep_until(wake) => {
-                        if !retried && tokio::time::Instant::now() >= retry_at {
-                            retried = true;
-                            let check = self.look(&entry, true).await;
-                            if minder_still_ok() && !dialog_up(&check.cls) && still_typed(&check.screen, first_line) {
-                                let _ = write("\r".into()).await;
+                let base_wake = if spec.enter && !retried && retry_at < deadline { retry_at } else { deadline };
+                let wake = fallback_due.map_or(base_wake, |f| f.min(base_wake));
+                if let Some((ref out_n, ref st_n, _)) = notifies {
+                    let out_wait = out_n.notified();
+                    tokio::pin!(out_wait);
+                    out_wait.as_mut().enable();
+                    let st_wait = st_n.notified();
+                    tokio::pin!(st_wait);
+                    st_wait.as_mut().enable();
+                    // Neon #3 / Astra #17: Check `out_seq`, `stream_gen`, and
+                    // disconnected fallback AFTER `enable()` so a disconnect
+                    // during the preceding RPC is never missed!
+                    if self.out_seq(&entry.id) != last_out || self.stream_gen(&entry.id) != last_sgen {
+                        if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                            fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                        continue;
+                    }
+                    if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                        fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        continue;
+                    }
+                    tokio::select! {
+                        _ = out_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
                             }
                         }
+                        _ = st_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = tokio::time::sleep_until(wake) => {}
                     }
+                } else {
+                    tokio::time::sleep_until(wake).await;
                 }
             }
         }
@@ -3509,21 +3825,62 @@ impl Service {
             Ok(e) => e,
             Err(e) => return err(e, 1),
         };
+        let as_minder = caller.child.as_ref().filter(|c| c.is_minder());
         // (A minder's yes is for this once: one that is kept answers
         // questions its rules were never asked about.)
-        if caller.child.as_ref().is_some_and(|c| c.is_minder()) && spec.answer == olo_rex_link::agents::Answer::Session {
+        if as_minder.is_some() && spec.answer == olo_rex_link::agents::Answer::Session {
             return err("a minder's yes is for this once (`--once`): one that is kept is the parent's to give".into(), 69);
         }
+        // Capture a minder's exact `(token, rules_gen)` grant BEFORE awaiting
+        // `answer_lock`, so a queued minder request can NEVER wait behind
+        // another answer and spend a future grant minted while it waited!
+        let captured_minder_grant: Option<(String, u64)> = if let Some(me) = as_minder {
+            let pair = (me.id.clone(), entry.id.clone());
+            let st = self.lock();
+            let who = entry.name.as_deref().unwrap_or(&entry.id);
+            if !Self::minder_owns(&st, me, &entry.id) {
+                return err(format!("`{who}` is no longer minded by you"), 1);
+            }
+            let cur_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
+            if st.pending_rules_rev.contains_key(&pair) {
+                let hint = if me.is_shared_minder() { format!("status {who} --json") } else { "status --json".to_owned() };
+                return err(
+                    format!(
+                        "rules for `{who}` changed since you were told of this question: nothing was answered. Watch for the `minding` update, re-read its rules at {}, run `{hint}`, then judge again",
+                        self.rules_path(&entry.id).display()
+                    ),
+                    1,
+                );
+            }
+            let grant = st.told.get(&pair).filter(|g| g.is_approval && g.rules_gen == cur_gen).cloned();
+            let Some(grant) = grant else {
+                let hint = if me.is_shared_minder() { format!("status {who} --json") } else { "status --json".to_owned() };
+                return err(format!("what it asks now isn't what you were last told of: nothing was answered. Look again (`{hint}` says what stands asked), judge that, then answer"), 1);
+            };
+            if let Some(meant) = spec.box_key.as_deref()
+                && meant != grant.token
+            {
+                return err(
+                    format!(
+                        "the box you answer (`{meant}`) isn't the one you were last told of (`{}`): nothing was answered. `olo agent status {who} --json` has what it asks; judge that, then answer it by its own key",
+                        grant.token
+                    ),
+                    1,
+                );
+            }
+            Some((grant.token, cur_gen))
+        } else {
+            None
+        };
+
         // One writer per child's answers. An asking that names its box
-        // (`--box KEY`), and a minder's (its grant is for one box), waits
-        // its turn and is held to that box. One that names none answers
-        // "whatever stands": waiting behind another answer, it would
-        // answer the box that came *after* it, which its asker never saw
-        // (a code review, 2026-11-27). It is told so instead.
+        // (`--box KEY`), and a minder's (now pinned to its captured pre-lock
+        // grant token), waits its turn and is held strictly to that box.
+        // An unkeyed parent request refuses contention immediately.
         let answers = self.answer_lock(&entry.id);
         let _answer_lock = match answers.clone().try_lock_owned() {
             Ok(held) => held,
-            Err(_) if spec.box_key.is_none() && !caller.child.as_ref().is_some_and(|c| c.is_minder()) => {
+            Err(_) if spec.box_key.is_none() && as_minder.is_none() => {
                 let who = entry.name.as_deref().unwrap_or(&entry.id);
                 return err(
                     format!(
@@ -3535,10 +3892,15 @@ impl Service {
             Err(_) => answers.lock_owned().await,
         };
         let pre_cursor = self.cursor();
-        // (As the server shows it this moment.)
+        // (As the server shows it this moment, fresh and in order.)
         let looked_ap = self.look(&entry, true).await;
-        if entry.cli.is_agent() && !looked_ap.live && looked_ap.cls.state != SubagentLiveState::Exited {
-            return err(format!("`{}`'s screen couldn't be read just now: nothing was answered; try again", entry.id), 1);
+        if entry.cli.is_agent() && !looked_ap.is_fresh_ordered() && looked_ap.cls.state != SubagentLiveState::Exited {
+            return err(format!("`{}`'s screen couldn't be read reliably just now: nothing was answered; try again", entry.id), 1);
+        }
+        // Require a clear foreground (no staying or active feedback survey
+        // overlay that would swallow arrow/Return keys!).
+        if entry.cli.is_agent() && (looked_ap.survey || looked_ap.survey_pending || self.survey_active(&entry.id)) {
+            return err(format!("`{}` has a feedback survey covering the foreground: dismiss it (`send {} --key 0`) before answering the approval", entry.id, entry.id), 1);
         }
         let standing_now = looked_ap.boxed.clone();
         let cls = looked_ap.cls;
@@ -3547,30 +3909,29 @@ impl Service {
         };
         // Exact numbered box instance (`bN-hhhhhhhh`): two askings of the same
         // command are two distinct box keys.
-        let Some((standing, already_answered)) = standing_now else {
+        let Some(standing_box) = standing_now else {
             return err(format!("`{}`'s screen changed as it was read: nothing was answered; look again and answer what stands", entry.id), 1);
         };
-        if already_answered {
+        let standing = standing_box.key.clone();
+        if standing_box.answered {
             return err(format!("the approval box (`{standing}`) on `{}` was already answered and is still dismissing", entry.name.as_deref().unwrap_or(&entry.id)), 1);
         }
-        // A minder answers the exact box instance it was last told of for this
-        // agent under its current rules, and no other: a rules update, an
-        // ownership change, or a second asking of the same command all void
-        // any earlier grant.
-        let minder_grant_gen: Option<u64> = if let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) {
+        // Verify captured minder grant still matches the exact standing box AND
+        // current ownership/rules generation after acquiring `answer_lock`.
+        if let (Some(me), Some((cap_token, cap_gen))) = (as_minder, captured_minder_grant.as_ref()) {
             let pair = (me.id.clone(), entry.id.clone());
             let st = self.lock();
+            let who = entry.name.as_deref().unwrap_or(&entry.id);
             if !Self::minder_owns(&st, me, &entry.id) {
-                return err(format!("`{}` is no longer minded by you", entry.name.as_deref().unwrap_or(&entry.id)), 1);
+                return err(format!("`{who}` is no longer minded by you"), 1);
             }
             let cur_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
             let pending_rev = st.pending_rules_rev.contains_key(&pair);
-            let valid = !pending_rev && st.told.get(&pair).is_some_and(|g| g.is_approval && g.token == standing && g.rules_gen == cur_gen);
+            let valid = !pending_rev && cur_gen == *cap_gen && standing == *cap_token && st.told.get(&pair).is_some_and(|g| g.is_approval && g.token == *cap_token && g.rules_gen == *cap_gen);
             if !valid {
                 drop(st);
-                let who = entry.name.as_deref().unwrap_or(&entry.id);
                 let hint = if me.is_shared_minder() { format!("status {who} --json") } else { "status --json".to_owned() };
-                if pending_rev {
+                if pending_rev || cur_gen != *cap_gen {
                     return err(
                         format!(
                             "rules for `{who}` changed since you were told of this question: nothing was answered. Watch for the `minding` update, re-read its rules at {}, run `{hint}`, then judge again",
@@ -3581,10 +3942,7 @@ impl Service {
                 }
                 return err(format!("what it asks now isn't what you were last told of: nothing was answered. Look again (`{hint}` says what stands asked), judge that, then answer"), 1);
             }
-            Some(cur_gen)
-        } else {
-            None
-        };
+        }
         self.minder_did(caller, &entry.id, "approve", raw.get("args").cloned().unwrap_or(Value::Null));
         // The box it was judged for, where the caller says which
         // (`--box KEY`): another that stands by now is not answered.
@@ -3599,28 +3957,42 @@ impl Service {
                 1,
             );
         }
-        // Check BOTH the exact box instance (`standing`) AND (for a minder)
-        // that ownership, rules generation, and pending revisions have not changed.
-        let same_instance = |now: &super::service::Looked| now.boxed.as_ref().is_some_and(|(key, _)| key == &standing);
+        let same_instance = |now: &super::service::Looked| now.boxed.as_ref().is_some_and(|b| b.key == standing);
         let ownership_and_rules_hold = || -> bool {
-            let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) else { return true };
-            let Some(exp_gen) = minder_grant_gen else { return false };
+            let Some(me) = as_minder else { return true };
+            let Some((_, exp_gen)) = captured_minder_grant.as_ref() else { return false };
             let st = self.lock();
             let pair = (me.id.clone(), entry.id.clone());
             let cur_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
-            Self::minder_owns(&st, me, &entry.id) && cur_gen == exp_gen && !st.pending_rules_rev.contains_key(&pair)
+            Self::minder_owns(&st, me, &entry.id) && cur_gen == *exp_gen && !st.pending_rules_rev.contains_key(&pair)
         };
-        let grant_holds = || -> bool {
-            let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) else { return true };
-            let Some(exp_gen) = minder_grant_gen else { return false };
+        // Includes BOTH minder authority AND `--by-list` re-validation on the
+        // LATEST `cur` prompt (so list revocation OR newly appeared folded lines
+        // aborts immediately during navigation!).
+        let grant_holds = |cur_ap: &olo_agent_screen::ApprovalPrompt| -> bool {
+            if spec.by_list && self.list_allows(&entry.id, cur_ap).is_none() {
+                return false;
+            }
+            let Some(me) = as_minder else { return true };
+            let Some((cap_tok, exp_gen)) = captured_minder_grant.as_ref() else { return false };
             let st = self.lock();
             let pair = (me.id.clone(), entry.id.clone());
             let cur_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
             Self::minder_owns(&st, me, &entry.id)
-                && cur_gen == exp_gen
+                && cur_gen == *exp_gen
                 && !st.pending_rules_rev.contains_key(&pair)
-                && st.told.get(&pair).is_some_and(|g| g.is_approval && g.token == standing && g.rules_gen == exp_gen)
+                && st.told.get(&pair).is_some_and(|g| g.is_approval && g.token == *cap_tok && g.rules_gen == *exp_gen)
         };
+        if !grant_holds(&ap) {
+            return err(
+                if spec.by_list {
+                    "its list no longer allows what it asks: nothing was answered".into()
+                } else {
+                    "rules or minder assignment changed before confirmation; nothing was answered".into()
+                },
+                1,
+            );
+        }
         // The one choice of the kind asked for: by what it means, never
         // by where it stands. Two of a kind is nobody's to choose between.
         let want = spec.answer.kind();
@@ -3634,11 +4006,10 @@ impl Service {
             return err(format!("no safe `{}` choice found in active dialog (choices: {})", want.as_str(), there.join("; ")), 1);
         };
         let write = |data: &'static str| self.rex.write(&entry.session_id, &entry.block_id, data);
+        let notifies = self.child_notifies(&entry.id);
         let delta = choice.index as isize - ap.selected_index.unwrap_or(0) as isize;
-        // Enter only where the mark is seen to stand on the very choice
-        // meant, in the very question instance asked about, under the same
-        // rules and ownership. After revocation, NEVER write Escape or any key.
         let on_it = |cur: &olo_agent_screen::ApprovalPrompt| cur.selected_index == Some(choice.index) && cur.choices.get(choice.index).is_some_and(|c| c.kind == want && c.label == choice.label);
+        let mut verified_ap = ap.clone();
         if delta != 0 {
             struct NavigatingGuard<'a> {
                 service: &'a Service,
@@ -3651,225 +4022,450 @@ impl Service {
             }
             self.set_navigating(&entry.id, true);
             let _nav_guard = NavigatingGuard { service: self, id: &entry.id };
-            for _ in 0..delta.unsigned_abs() {
-                if !grant_holds() {
-                    return err("rules or minder assignment changed during navigation; aborted without further input".into(), 1);
+            let mut last_out = self.out_seq(&entry.id);
+            let mut last_sgen = self.stream_gen(&entry.id);
+            for step in 0..delta.unsigned_abs() {
+                if self.survey_active(&entry.id) {
+                    return err("a feedback survey appeared over the approval dialog during navigation; aborted without further input".into(), 1);
+                }
+                // Astra #16: After an intervening sleep between arrows, recheck
+                // the live foreground screen before sending the next arrow so a
+                // survey or replacement dialog never receives arrow keys!
+                if step > 0 {
+                    let step_now = self.look_ordered(&entry, None).await;
+                    if !step_now.is_fresh_ordered() || step_now.survey || step_now.survey_pending || self.survey_active(&entry.id) {
+                        return err("a feedback survey or screen change interrupted approval navigation; aborted without further input".into(), 1);
+                    }
+                    if !same_instance(&step_now) {
+                        return err("approval dialog changed during navigation; nothing more was pressed".into(), 1);
+                    }
+                    if let Some(cur) = step_now.cls.approval.as_ref() {
+                        if !grant_holds(cur) {
+                            return err(
+                                if spec.by_list {
+                                    "its list no longer allows what it asks during navigation; aborted without further input".into()
+                                } else {
+                                    "rules or minder assignment changed during navigation; aborted without further input".into()
+                                },
+                                1,
+                            );
+                        }
+                        verified_ap = cur.clone();
+                    }
+                }
+                if !grant_holds(&verified_ap) {
+                    return err(
+                        if spec.by_list {
+                            "its list no longer allows what it asks during navigation; aborted without further input".into()
+                        } else {
+                            "rules or minder assignment changed during navigation; aborted without further input".into()
+                        },
+                        1,
+                    );
                 }
                 if let Err(e) = write(if delta > 0 { "\x1b[B" } else { "\x1b[A" }).await {
                     return err(format!("failed to navigate approval dialog: {e}"), 1);
                 }
-                tokio::time::sleep(Duration::from_millis(45)).await;
+                if step + 1 < delta.unsigned_abs() {
+                    tokio::time::sleep(Duration::from_millis(45)).await;
+                }
             }
+            // Wait for cursor to land using per-child `output_notify` + `state_notify`
+            // + single expiry timer (zero 55ms stationary polling while `stream_connected`;
+            // 250 ms fallback only while disconnected).
+            // On unresolved timeout or uncertainty, abort cleanly WITHOUT sending Escape!
             let verify_by = tokio::time::Instant::now() + Duration::from_millis(1500);
             let mut verified = false;
-            let mut gone_polls = 0u8;
-            while tokio::time::Instant::now() < verify_by {
-                tokio::time::sleep(Duration::from_millis(55)).await;
-                if !grant_holds() {
-                    return err("rules or minder assignment changed during navigation; aborted without further input".into(), 1);
+            let mut none_since: Option<tokio::time::Instant> = None;
+            let mut fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+            loop {
+                if !grant_holds(&verified_ap) {
+                    return err(
+                        if spec.by_list {
+                            "its list no longer allows what it asks during navigation; aborted without further input".into()
+                        } else {
+                            "rules or minder assignment changed during navigation; aborted without further input".into()
+                        },
+                        1,
+                    );
                 }
-                let cur_looked = self.look(&entry, true).await;
-                let still_it = same_instance(&cur_looked);
-                let Some(cur) = cur_looked.cls.approval else {
-                    gone_polls += 1;
-                    if gone_polls >= 3 {
+                let now_inst = tokio::time::Instant::now();
+                let cur_out = self.out_seq(&entry.id);
+                let cur_sgen = self.stream_gen(&entry.id);
+                let blank_ready = none_since.is_some_and(|s| s.elapsed() >= Duration::from_millis(180));
+                let fallback_ready = fallback_due.is_some_and(|d| now_inst >= d);
+                if cur_out != last_out || cur_sgen != last_sgen || blank_ready || fallback_ready {
+                    last_out = cur_out;
+                    last_sgen = cur_sgen;
+                    fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+                    let cur_looked = self.look_until(&entry, true, Some(verify_by)).await;
+                    if cur_looked.cls.state == SubagentLiveState::Exited {
                         drop(_nav_guard);
-                        self.box_gone(&entry.id);
+                        self.box_gone(&entry.id, standing_box.number);
                         return err("approval dialog disappeared before confirmation".into(), 1);
                     }
-                    continue;
-                };
-                gone_polls = 0;
-                // (Another question stands where this one was: nothing more
-                // is pressed. An Escape was, which put away the very
-                // question whoever looks after the child should be asked.)
-                if !still_it {
-                    return err("approval dialog changed during navigation; nothing more was pressed".into(), 1);
+                    if cur_looked.is_fresh_ordered() {
+                        if cur_looked.survey || cur_looked.survey_pending || self.survey_active(&entry.id) {
+                            return err("a feedback survey appeared over the approval dialog during navigation; aborted without pressing Enter".into(), 1);
+                        }
+                        let still_it = same_instance(&cur_looked);
+                        match cur_looked.cls.approval {
+                            None if super::service::is_positively_elsewhere(&cur_looked.cls) => {
+                                drop(_nav_guard);
+                                self.box_gone(&entry.id, standing_box.number);
+                                return err("approval dialog disappeared before confirmation".into(), 1);
+                            }
+                            None => match none_since {
+                                Some(since) if since.elapsed() >= Duration::from_millis(180) => {
+                                    drop(_nav_guard);
+                                    self.box_gone(&entry.id, standing_box.number);
+                                    return err("approval dialog disappeared before confirmation".into(), 1);
+                                }
+                                Some(_) => {}
+                                None => none_since = Some(tokio::time::Instant::now()),
+                            },
+                            Some(cur) => {
+                                none_since = None;
+                                if !still_it {
+                                    return err("approval dialog changed during navigation; nothing more was pressed".into(), 1);
+                                }
+                                if !grant_holds(&cur) {
+                                    return err(
+                                        if spec.by_list {
+                                            "its list no longer allows what it asks during navigation; aborted without further input".into()
+                                        } else {
+                                            "rules or minder assignment changed during navigation; aborted without further input".into()
+                                        },
+                                        1,
+                                    );
+                                }
+                                verified_ap = cur;
+                                if on_it(&verified_ap) {
+                                    verified = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
-                if on_it(&cur) {
-                    verified = true;
+                let now_inst = tokio::time::Instant::now();
+                if now_inst >= verify_by {
                     break;
+                }
+                let base_wake = none_since.map_or(verify_by, |s| (s + Duration::from_millis(180)).min(verify_by));
+                let wake_at = fallback_due.map_or(base_wake, |f| f.min(base_wake));
+                if let Some((ref out_n, ref st_n, _)) = notifies {
+                    let out_wait = out_n.notified();
+                    tokio::pin!(out_wait);
+                    out_wait.as_mut().enable();
+                    let st_wait = st_n.notified();
+                    tokio::pin!(st_wait);
+                    st_wait.as_mut().enable();
+                    if self.out_seq(&entry.id) != last_out || self.stream_gen(&entry.id) != last_sgen {
+                        if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                            fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                        continue;
+                    }
+                    if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                        fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        continue;
+                    }
+                    tokio::select! {
+                        _ = out_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = st_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = tokio::time::sleep_until(wake_at) => {}
+                    }
+                } else {
+                    tokio::time::sleep_until(wake_at).await;
                 }
             }
             if !verified {
-                if grant_holds() {
-                    let _ = write("\x1b").await;
-                    return err(format!("cursor did not land on `{}` (`{}`); sent Escape instead of Enter", choice.label, want.as_str()), 1);
+                if !grant_holds(&verified_ap) {
+                    return err(
+                        if spec.by_list {
+                            "its list no longer allows what it asks during navigation; aborted without further input".into()
+                        } else {
+                            "rules or minder assignment changed during navigation; aborted without further input".into()
+                        },
+                        1,
+                    );
                 }
-                return err("rules or minder assignment changed during navigation; aborted without further input".into(), 1);
+                // Abort cleanly WITHOUT sending Escape so a slow or replacement dialog is never cancelled blindly.
+                return err(format!("cursor did not land on `{}` (`{}`); aborted without pressing Enter or Escape", choice.label, want.as_str()), 1);
             }
         }
-        // Atomically re-check and consume the minder's grant AND mark this showing
-        // of the box as answered BEFORE writing Enter, so no second reading of the
-        // same showing can answer it again while the child redraws.
-        // (A list's yes is by the list as it stands now: one taken away
-        // while the mark was being walked to the answer allows nothing.)
-        if spec.by_list && self.list_allows(&entry.id, &ap).is_none() {
-            return err("its list no longer allows what it asks: nothing was answered".into(), 1);
+        // Pre-load the child's leave list outside the state lock, then atomically
+        // re-check the LATEST verified prompt against `list_allows_locked` (for
+        // `--by-list`), verify/consume the minder's grant, AND mark this showing
+        // as answered under ONE `self.lock()` hold BEFORE writing Enter.
+        if spec.by_list {
+            let _ = self.leave_of(&entry.id);
         }
-        let standing_num = {
+        let (standing_num, answer_event_gen) = {
             let mut st = self.lock();
-            if let Some(me) = caller.child.as_ref().filter(|c| c.is_minder()) {
-                let Some(exp_gen) = minder_grant_gen else {
+            if entry.cli.is_agent() && st.live.get(&entry.id).is_some_and(|l| l.survey_active_locked()) {
+                return err("a feedback survey is covering the foreground before confirmation; nothing was answered".into(), 1);
+            }
+            if spec.by_list && Self::list_allows_locked(&st, &entry.id, &verified_ap).is_none() {
+                return err("its list no longer allows what it asks: nothing was answered".into(), 1);
+            }
+            if let Some(me) = as_minder {
+                let Some((cap_tok, exp_gen)) = captured_minder_grant.as_ref() else {
                     return err("rules or minder assignment changed before confirmation; nothing was answered".into(), 1);
                 };
                 let pair = (me.id.clone(), entry.id.clone());
                 let cur_gen = st.rules_gen.get(&entry.id).copied().unwrap_or(0);
                 let holds = Self::minder_owns(&st, me, &entry.id)
-                    && cur_gen == exp_gen
+                    && cur_gen == *exp_gen
                     && !st.pending_rules_rev.contains_key(&pair)
-                    && st.told.get(&pair).is_some_and(|g| g.is_approval && g.token == standing && g.rules_gen == exp_gen);
+                    && st.told.get(&pair).is_some_and(|g| g.is_approval && g.token == *cap_tok && g.rules_gen == *exp_gen);
                 if !holds {
                     return err("rules or minder assignment changed before confirmation; nothing was answered".into(), 1);
                 }
                 st.told.remove(&pair);
             }
             match Service::box_mark_answered_locked(&mut st, &entry.id, &standing) {
-                Ok(num) => num,
+                Ok(v) => v,
                 Err(()) => return err(format!("the approval box (`{standing}`) was already answered or replaced before confirmation"), 1),
             }
         };
-        // (Marked answered, and so passed over by every reading, until it
-        // is finished below. Should this asking be dropped on the way, its
-        // asker gone, or its Return not be seen to be written (written
-        // or not: a timeout doesn't say), the box is finished all the
-        // same, as one that did not go: told again if it still stands,
-        // and never answered by a list a second time. Left marked, it
-        // would never be told again.)
         struct Answering<'a> {
             service: &'a Service,
             id: &'a str,
             number: u64,
+            answer_event_gen: u64,
             finished: bool,
         }
         impl Drop for Answering<'_> {
             fn drop(&mut self) {
                 if !self.finished {
-                    self.service.box_finish(self.id, self.number, super::service::BoxEnd::Stays);
-                    self.service.poke(self.id);
+                    self.service.box_finish(self.id, self.number, super::service::BoxEnd::Stays, Some(self.answer_event_gen));
                 }
             }
         }
-        let mut answering = Answering { service: self, id: &entry.id, number: standing_num, finished: false };
+        let mut answering = Answering { service: self, id: &entry.id, number: standing_num, answer_event_gen, finished: false };
+        let mut last_out = self.out_seq(&entry.id);
         if let Err(e) = write("\r").await {
             return err(format!("failed to confirm approval dialog: {e}"), 1);
         }
 
-        // Wait up to 2s for the box to dismiss or change. Never send an
-        // automatic retry Enter: if the terminal replaced box 1 immediately
-        // with an identical box 2 (no blank frame between), a retry Enter
-        // would confirm box 2 without anyone judging it.
+        // Wait up to 2s for the box to dismiss or change via per-child
+        // `output_notify` + `state_notify` + single expiry timer (zero 100ms
+        // stationary polling while `stream_connected`; 250 ms fallback only
+        // while disconnected). Never send an automatic retry Enter.
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         use super::service::BoxEnd;
         let mut end = BoxEnd::Stays;
-        // (Gone: another box in its place, or no box for two readings a
-        // moment apart. One reading with none on it is a repaint caught
-        // half-way as often as the box's going: taken for that, the box
-        // was put away while it still stood, and the list answered it
-        // again. And two such readings are a slow repaint as well as a
-        // box gone, on a busy host: that end is `Blank`, the same box
-        // seen next a person's.)
         let mut none_since: Option<tokio::time::Instant> = None;
+        let agent_opt = entry.cli.screen_agent();
+        let mut fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+        let mut last_sgen_d = self.stream_gen(&entry.id);
         loop {
-            let changed = self.changed.notified();
-            let now = self.look(&entry, true).await;
-            if now.cls.state == SubagentLiveState::Exited {
+            if self.box_was_retired_elsewhere(&entry.id, standing_num) {
                 end = BoxEnd::Gone;
                 break;
             }
-            if now.live {
-                match (now.cls.approval.is_some(), same_instance(&now)) {
-                    (true, true) => none_since = None,
-                    // (Another box, held as standing: this one went.)
-                    (true, false) if now.boxed.is_some() => {
-                        end = BoxEnd::Gone;
-                        break;
-                    }
-                    (true, false) => {}
-                    // (No box, and the agent plainly somewhere else: at
-                    // work in its turn, or at its own prompt. A whole
-                    // frame, not a repaint caught half-way.)
-                    (false, _) if now.cls.in_turn || now.cls.summary.as_deref() == Some(olo_rex_link::agents::state::AT_PROMPT) => {
-                        end = BoxEnd::Gone;
-                        break;
-                    }
-                    (false, _) => match none_since {
-                        Some(since) if since.elapsed() >= Duration::from_millis(150) => {
-                            end = BoxEnd::Blank;
+            let now_inst = tokio::time::Instant::now();
+            let cur_out = self.out_seq(&entry.id);
+            let cur_sgen = self.stream_gen(&entry.id);
+            let blank_ready = none_since.is_some_and(|s| s.elapsed() >= Duration::from_millis(150));
+            let fallback_ready = fallback_due.is_some_and(|d| now_inst >= d);
+            if cur_out != last_out || cur_sgen != last_sgen_d || blank_ready || fallback_ready {
+                last_out = cur_out;
+                last_sgen_d = cur_sgen;
+                fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+                let now = self.look_until(&entry, true, Some(deadline)).await;
+                if now.cls.state == SubagentLiveState::Exited || self.box_was_retired_elsewhere(&entry.id, standing_num) {
+                    end = BoxEnd::Gone;
+                    break;
+                }
+                if now.is_fresh_ordered() {
+                    match (now.cls.approval.is_some(), same_instance(&now)) {
+                        (true, true) => none_since = None,
+                        // Another complete standing box in its place: this one went.
+                        (true, false) if now.boxed.is_some() => {
+                            end = BoxEnd::Gone;
                             break;
                         }
-                        Some(_) => {}
-                        None => none_since = Some(tokio::time::Instant::now()),
-                    },
+                        (true, false) => {}
+                        // No box, and agent positively elsewhere (running turn, chat prompt, or refusal reason field).
+                        (false, _) if super::service::is_positively_elsewhere(&now.cls) || agent_opt.is_some_and(|a| is_refusal_reason_field(a, &now.screen, &now.cls)) => {
+                            end = BoxEnd::Gone;
+                            break;
+                        }
+                        (false, _) => match none_since {
+                            Some(since) if since.elapsed() >= Duration::from_millis(150) => {
+                                end = BoxEnd::Blank;
+                                break;
+                            }
+                            Some(_) => {}
+                            None => none_since = Some(tokio::time::Instant::now()),
+                        },
+                    }
                 }
             }
-            if tokio::time::Instant::now() >= deadline {
+            let now_inst = tokio::time::Instant::now();
+            if now_inst >= deadline {
                 break;
             }
-            tokio::select! {
-                _ = changed => {}
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+            let base_wake = none_since.map_or(deadline, |s| (s + Duration::from_millis(150)).min(deadline));
+            let wake_at = fallback_due.map_or(base_wake, |f| f.min(base_wake));
+            if let Some((ref out_n, ref st_n, _)) = notifies {
+                let out_wait = out_n.notified();
+                tokio::pin!(out_wait);
+                out_wait.as_mut().enable();
+                let st_wait = st_n.notified();
+                tokio::pin!(st_wait);
+                st_wait.as_mut().enable();
+                if self.out_seq(&entry.id) != last_out || self.stream_gen(&entry.id) != last_sgen_d || self.box_was_retired_elsewhere(&entry.id, standing_num) {
+                    if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                        fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                    }
+                    continue;
+                }
+                if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                    fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                    continue;
+                }
+                tokio::select! {
+                    _ = out_wait => {
+                        if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                            fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                    }
+                    _ = st_wait => {
+                        if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                            fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                    }
+                    _ = tokio::time::sleep_until(wake_at) => {}
+                }
+            } else {
+                tokio::time::sleep_until(wake_at).await;
             }
         }
 
-        // (Submitted: once dismissed or timed out, finish this box instance and
-        // reset edge dedupe so a genuinely new box — even an identical one — is
-        // seen as its own event. Never reset edge before the box leaves: poking
-        // `watch_child` while the answered box is still on screen caused a second
-        // confirmation task to answer the same showing twice under load.)
         let dismissed = end != BoxEnd::Stays;
-        self.box_finish(&entry.id, standing_num, end);
+        self.box_finish(&entry.id, standing_num, end, Some(answer_event_gen));
         answering.finished = true;
-        let post_event_recorded = self.lock().log.last_state_of(&entry.id).is_some_and(|ev| ev.seq > pre_cursor);
-        if !post_event_recorded {
-            self.reset_edge(&entry, false);
-        }
-        self.poke(&entry.id);
 
-        // A refusal's reason, only once the question is gone and none
-        // stands in its place — re-checking minder ownership and rules
-        // generation immediately before pasting AND before Enter.
-        if dismissed
+        // A refusal's reason is pasted ONLY when `end == BoxEnd::Gone` (NEVER
+        // after `BoxEnd::Blank`, `BoxEnd::Stays`, or timer expiry!), and ONLY
+        // after a fresh, live, ordered positive identification of a safe reason
+        // input target (chat prompt or refusal reason field — never a chooser,
+        // approval, folder trust, survey, or feedback draft), re-verified
+        // immediately before paste AND immediately before Enter.
+        let mut reason_sent = false;
+        if end == BoxEnd::Gone
             && spec.answer == olo_rex_link::agents::Answer::No
             && let Some(reason) = spec.reason.as_deref().map(sanitize_paste_text).map(|r| r.trim().to_owned()).filter(|r| !r.is_empty())
-            && let Some(agent) = entry.cli.screen_agent()
+            && let Some(agent) = agent_opt
         {
             let by = tokio::time::Instant::now() + Duration::from_millis(1200);
+            let mut last_out_r = self.out_seq(&entry.id);
+            let mut last_sgen_r = self.stream_gen(&entry.id);
+            let mut checked_once = false;
+            let mut fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
             let safe = loop {
                 if !ownership_and_rules_hold() {
                     break false;
                 }
-                let now = self.look(&entry, true).await;
-                if now.cls.approval.is_some() || now.cls.folder_trust.is_some() {
+                let now_inst = tokio::time::Instant::now();
+                let cur_out = self.out_seq(&entry.id);
+                let cur_sgen = self.stream_gen(&entry.id);
+                let fallback_ready = fallback_due.is_some_and(|d| now_inst >= d);
+                if !checked_once || cur_out != last_out_r || cur_sgen != last_sgen_r || fallback_ready {
+                    checked_once = true;
+                    last_out_r = cur_out;
+                    last_sgen_r = cur_sgen;
+                    fallback_due = (!self.stream_connected(&entry.id)).then(|| tokio::time::Instant::now() + Duration::from_millis(250));
+                    let now = self.look_ordered(&entry, Some(by)).await;
+                    if now.cls.state == SubagentLiveState::Exited || now.cls.approval.is_some() || now.cls.folder_trust.is_some() || now.cls.state == SubagentLiveState::WaitingQuestion {
+                        break false;
+                    }
+                    if is_safe_reason_target_for_paste(agent, &now) {
+                        break ownership_and_rules_hold();
+                    }
+                }
+                if tokio::time::Instant::now() >= by {
+                    // Never paste on timer expiry!
                     break false;
                 }
-                let low = now.screen.to_ascii_lowercase();
-                if olo_agent_screen::at_prompt(agent, &now.screen) || low.contains("tell ") || low.contains("what to do differently") || tokio::time::Instant::now() >= by {
-                    break ownership_and_rules_hold();
+                let wake_at = fallback_due.map_or(by, |f| f.min(by));
+                if let Some((ref out_n, ref st_n, _)) = notifies {
+                    let out_wait = out_n.notified();
+                    tokio::pin!(out_wait);
+                    out_wait.as_mut().enable();
+                    let st_wait = st_n.notified();
+                    tokio::pin!(st_wait);
+                    st_wait.as_mut().enable();
+                    if self.out_seq(&entry.id) != last_out_r || self.stream_gen(&entry.id) != last_sgen_r {
+                        if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                            fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                        continue;
+                    }
+                    if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                        fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        continue;
+                    }
+                    tokio::select! {
+                        _ = out_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = st_wait => {
+                            if fallback_due.is_none() && !self.stream_connected(&entry.id) {
+                                fallback_due = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                            }
+                        }
+                        _ = tokio::time::sleep_until(wake_at) => {}
+                    }
+                } else {
+                    tokio::time::sleep_until(wake_at).await;
                 }
-                tokio::time::sleep(Duration::from_millis(60)).await;
-            };
-            // (Nor into a drafted feedback report offered meanwhile: a
-            // reason that begins "2" would send it. Read again now.)
-            let safe = safe && {
-                let now = self.look(&entry, true).await;
-                now.live && olo_agent_screen::feedback_draft(agent, &now.screen).is_none()
             };
             if safe && ownership_and_rules_hold() {
-                let text = if self.bracketed_paste(&entry).await { format!("\x1b[200~{reason}\x1b[201~") } else { reason };
-                if ownership_and_rules_hold() {
-                    let _ = self.rex.write(&entry.session_id, &entry.block_id, &text).await;
+                let text = if self.bracketed_paste(&entry).await { format!("\x1b[200~{reason}\x1b[201~") } else { reason.clone() };
+                let pre_paste = self.look_ordered(&entry, None).await;
+                if ownership_and_rules_hold() && is_safe_reason_target_for_paste(agent, &pre_paste) && self.rex.write(&entry.session_id, &entry.block_id, &text).await.is_ok() {
                     tokio::time::sleep(Duration::from_millis(80)).await;
-                    let now = self.look(&entry, true).await.cls;
-                    if ownership_and_rules_hold() && now.approval.is_none() && now.folder_trust.is_none() {
-                        let _ = write("\r").await;
+                    let pre_enter = self.look_ordered(&entry, None).await;
+                    if ownership_and_rules_hold() && is_safe_reason_target_for_enter(agent, &pre_enter, &reason) && write("\r").await.is_ok() {
+                        reason_sent = true;
                     }
                     self.poke(&entry.id);
                 }
             }
         }
 
-        let payload = json!({ "ok": dismissed, "id": entry.id, "name": entry.name, "chosen_label": choice.label, "chosen_kind": choice.kind.as_str(), "dismissed": dismissed, "cursor": pre_cursor });
+        let dismissal = match end {
+            BoxEnd::Gone => "gone",
+            BoxEnd::Blank => "blank",
+            BoxEnd::Stays => "stays",
+        };
+        let payload = json!({
+            "ok": dismissed,
+            "id": entry.id,
+            "name": entry.name,
+            "chosen_label": choice.label,
+            "chosen_kind": choice.kind.as_str(),
+            "dismissed": dismissed,
+            "dismissal": dismissal,
+            "ambiguous": end == BoxEnd::Blank,
+            "reason_sent": reason_sent,
+            "cursor": pre_cursor,
+        });
         let stdout = if spec.json {
             format!("{payload}\n")
         } else if dismissed {
@@ -4277,5 +4873,336 @@ impl Service {
             return Response::err("focus", e.to_string(), 1);
         }
         Response::ok(format!("Focused {} ({}).\n", entry.id, entry.display_title()), json!({ "ok": true, "id": entry.id, "name": entry.name, "window_id": entry.window_id }))
+    }
+}
+
+/// Computes `opts["path_prepend"]` for `session.new_window`:
+/// - If the caller explicitly set or unset `PATH` (`--env PATH=…` / `--unset-env PATH`),
+///   returns empty so the caller's explicit `PATH` wins.
+/// - Preserves the caller's exact `PATH` order across `PATH_PREPEND` and
+///   `PATH_EXTRA` (never hoisting bridge dirs ahead of non-bridge dirs under
+///   `DesktopPolicy::Inherit`).
+/// - Rejects/drops relative entries and bare `.`, lexically normalizes `.`/`..`,
+///   and under `DesktopPolicy::None` / `Screens` defense-in-depth strips both
+///   lexical and canonical desktop-bridge directories (`!is_bridge_path_dir`).
+fn inherited_path_prepend(desktop: &DesktopPolicy, inherit: &[(String, String)], explicit_path: bool) -> Vec<String> {
+    if explicit_path {
+        return Vec::new();
+    }
+    let allow_bridge = matches!(desktop, DesktopPolicy::Inherit);
+    let mut out = Vec::new();
+    for (name, value) in inherit {
+        let include = match name.as_str() {
+            "PATH_PREPEND" => allow_bridge,
+            "PATH_EXTRA" => true,
+            _ => false,
+        };
+        if !include || value.is_empty() {
+            continue;
+        }
+        let p = Path::new(value);
+        if !p.is_absolute() {
+            continue;
+        }
+        let (resolved, lexical) = match std::fs::canonicalize(p) {
+            Ok(c) => (c.clone(), c),
+            Err(_) => {
+                let lex = super::client::normalize_lexical_path(p);
+                if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) { (p.to_path_buf(), lex) } else { (lex.clone(), lex) }
+            }
+        };
+        let norm = resolved.to_string_lossy().into_owned();
+        if norm.is_empty() {
+            continue;
+        }
+        if !allow_bridge && (super::client::is_bridge_path_dir(&norm) || super::client::is_bridge_path_dir(&lexical.to_string_lossy()) || super::client::is_bridge_path_dir(value)) {
+            continue;
+        }
+        if !out.iter().any(|d| d == &norm) {
+            out.push(norm);
+        }
+    }
+    out
+}
+
+/// True when the bottom of `screen` positively shows an agent's post-refusal
+/// reason input prompt (e.g., Claude's `"Tell Claude what to do differently:"`
+/// with an actual unnumbered input cursor line `>` / `❯` / `›`, or inline
+/// placeholder `"❯ Tell Claude what to do differently"`) with NO approval,
+/// approval fragment, trust, survey, feedback draft, or interactive chooser.
+/// Plain prose containing `"what to do differently"` with no input field chrome
+/// is strictly rejected.
+fn is_refusal_reason_field(agent: olo_agent_screen::Agent, screen: &str, cls: &ScreenClassification) -> bool {
+    if cls.approval.is_some()
+        || cls.folder_trust.is_some()
+        || cls.approval_fragment
+        || cls.state == SubagentLiveState::WaitingQuestion
+        || cls.state == SubagentLiveState::Exited
+        || olo_agent_screen::parse_survey(agent, screen).is_some()
+        || olo_agent_screen::has_survey_fragment(agent, screen)
+        || olo_agent_screen::feedback_draft(agent, screen).is_some()
+    {
+        return false;
+    }
+    let bottom: Vec<&str> = screen.lines().map(str::trim).filter(|l| !l.is_empty()).rev().take(8).collect::<Vec<_>>().into_iter().rev().collect();
+    // Never accept arbitrary markdown `> prose` lines as an input cursor for
+    // Claude/Codex: require real input chrome (`❯`, `›`, `│ ❯`, `│ >`), or an
+    // empty/placeholder `>` (or Antigravity prompt `>`).
+    fn strip_input_cursor(agent: olo_agent_screen::Agent, l: &str) -> Option<&str> {
+        let rest = l.strip_prefix("│ ❯").or_else(|| l.strip_prefix("│ >")).or_else(|| l.strip_prefix('❯')).or_else(|| l.strip_prefix('›')).or_else(|| {
+            let r = l.strip_prefix('>')?;
+            let tr = r.trim();
+            let empty_or_agy = tr.is_empty() || agent == olo_agent_screen::Agent::Antigravity;
+            empty_or_agy.then_some(r)
+        })?;
+        let trimmed = rest.trim_start();
+        let is_numbered = trimmed.split_once(". ").is_some_and(|(n, _)| !n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit()));
+        (!is_numbered).then_some(trimmed)
+    }
+    let is_reason_cue = |l: &str| -> bool {
+        let t = l.trim();
+        if t.starts_with(['●', '•', '⎿', '│']) {
+            return false;
+        }
+        let low = t.to_ascii_lowercase();
+        (low.starts_with("tell ") && (low.contains("what to do") || low.contains("instead") || low.contains("why")))
+            || (low.starts_with("what should ") && (low.contains("do instead") || low.contains("do differently")))
+            || low.starts_with("what to do differently")
+            || low.starts_with("reason:")
+            || low.starts_with("feedback:")
+    };
+    for (i, line) in bottom.iter().enumerate() {
+        if let Some(after_cursor) = strip_input_cursor(agent, line)
+            && is_reason_cue(after_cursor)
+        {
+            return true;
+        }
+        if is_reason_cue(line) && bottom[i + 1..].iter().any(|next| strip_input_cursor(agent, next).is_some()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// True ONLY when `now` is a fresh, live, ordered reading positively showing a
+/// safe **empty** (or placeholder-only) text input target for `--no --reason`
+/// before pasting (never pasting into a chat box holding an existing user draft!).
+fn is_safe_reason_target_for_paste(agent: olo_agent_screen::Agent, now: &super::service::Looked) -> bool {
+    is_safe_reason_target(agent, now) && input_field_is_empty_or_placeholder(&now.screen)
+}
+
+/// True ONLY when `now` is a fresh, live, ordered safe reason target AND the
+/// whole visible input field equals the requested `reason` (whitespace-collapsed,
+/// never accepting an unrelated `[Pasted text #` or combined user draft — Astra #6).
+fn is_safe_reason_target_for_enter(agent: olo_agent_screen::Agent, now: &super::service::Looked, reason: &str) -> bool {
+    if !is_safe_reason_target(agent, now) {
+        return false;
+    }
+    let Some((field, pasted)) = extract_input_field(&now.screen) else {
+        return false;
+    };
+    if pasted {
+        return false;
+    }
+    let want = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+    !want.is_empty() && field == want
+}
+
+/// True ONLY when `now` is a fresh, live, ordered reading positively showing a
+/// safe text input target for `--no --reason` (either the agent's own chat
+/// prompt or its post-refusal reason field — never a blank repaint, chooser,
+/// approval, approval fragment, folder trust, survey, or feedback draft).
+fn is_safe_reason_target(agent: olo_agent_screen::Agent, now: &super::service::Looked) -> bool {
+    if !now.is_fresh_ordered()
+        || now.survey
+        || now.survey_pending
+        || now.cls.state == SubagentLiveState::Exited
+        || now.cls.approval.is_some()
+        || now.cls.folder_trust.is_some()
+        || now.cls.approval_fragment
+        || now.cls.state == SubagentLiveState::WaitingQuestion
+        || olo_agent_screen::parse_survey(agent, &now.screen).is_some()
+        || olo_agent_screen::has_survey_fragment(agent, &now.screen)
+        || olo_agent_screen::feedback_draft(agent, &now.screen).is_some()
+    {
+        return false;
+    }
+    olo_agent_screen::at_prompt(agent, &now.screen) || is_refusal_reason_field(agent, &now.screen, &now.cls)
+}
+
+#[cfg(test)]
+mod ops_tests {
+    use super::*;
+
+    #[test]
+    fn non_bridge_path_preserved_under_desktop_none_and_bridge_dirs_stripped() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-ops-path-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let real_bridge = dir.join("state/rex-commands");
+        let symlink_bridge = dir.join("bridge-alias");
+        let sdk_real_bin = dir.join("opt/sdk/bin");
+        let sdk_cur = dir.join("opt/sdk/current");
+        let work_tools = dir.join("work/tools");
+        std::fs::create_dir_all(&real_bridge).unwrap();
+        std::fs::create_dir_all(&sdk_real_bin).unwrap();
+        std::fs::create_dir_all(&sdk_cur).unwrap();
+        std::fs::create_dir_all(dir.join("work")).unwrap();
+        std::os::unix::fs::symlink(&real_bridge, &symlink_bridge).unwrap();
+        std::os::unix::fs::symlink(&sdk_cur, &work_tools).unwrap();
+        let symlink_dotdot_bin = work_tools.join("../bin");
+
+        let inherit = vec![
+            ("PATH_EXTRA".to_owned(), "/home/u/.local/bin".to_owned()),
+            ("PATH_PREPEND".to_owned(), "/home/u/.local/share/olo/rex/bin".to_owned()),
+            ("PATH_EXTRA".to_owned(), "/home/u/.cargo/bin".to_owned()),
+            ("PATH_PREPEND".to_owned(), "/run/user/1000/rex-commands".to_owned()),
+            // Relative entries, bare `.`, lexical `..` bridge paths, and symlinks to bridge dirs
+            // are all normalized/fenced defense-in-depth under `--desktop none`!
+            // A32: `/work/tools/../bin` (where `/work/tools -> /opt/sdk/current`) MUST resolve
+            // through the real symlink target to `/opt/sdk/bin` (NOT `/work/bin`)!
+            ("PATH_EXTRA".to_owned(), ".".to_owned()),
+            ("PATH_EXTRA".to_owned(), "relative/bin".to_owned()),
+            ("PATH_EXTRA".to_owned(), "/var/tmp/fake/rex-commands/./sub/..".to_owned()),
+            ("PATH_EXTRA".to_owned(), symlink_bridge.display().to_string()),
+            ("PATH_EXTRA".to_owned(), symlink_dotdot_bin.display().to_string()),
+        ];
+        let canon_sdk_bin = std::fs::canonicalize(&sdk_real_bin).unwrap().to_string_lossy().into_owned();
+        let canon_bridge = std::fs::canonicalize(&real_bridge).unwrap().to_string_lossy().into_owned();
+        // Under `--desktop none`: bridge dirs (including lexical `..` and symlink) & relative entries stripped; user CLI dirs preserved in order!
+        assert_eq!(inherited_path_prepend(&DesktopPolicy::None, &inherit, false), vec!["/home/u/.local/bin", "/home/u/.cargo/bin", &canon_sdk_bin]);
+        // Under `--desktop inherit`: exact original caller precedence across PATH_EXTRA and PATH_PREPEND is preserved (bridge dirs are NOT hoisted ahead of earlier non-bridge dirs)!
+        assert_eq!(
+            inherited_path_prepend(&DesktopPolicy::Inherit, &inherit, false),
+            vec![
+                "/home/u/.local/bin".to_owned(),
+                "/home/u/.local/share/olo/rex/bin".to_owned(),
+                "/home/u/.cargo/bin".to_owned(),
+                "/run/user/1000/rex-commands".to_owned(),
+                "/var/tmp/fake/rex-commands/./sub/..".to_owned(),
+                canon_bridge,
+                canon_sdk_bin,
+            ]
+        );
+        // Explicit `--env PATH=...` or `--unset-env PATH` disables implicit PATH_PREPEND/PATH_EXTRA.
+        assert!(inherited_path_prepend(&DesktopPolicy::None, &inherit, true).is_empty());
+        assert!(inherited_path_prepend(&DesktopPolicy::Inherit, &inherit, true).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reason_target_rejects_blank_chooser_survey_and_accepts_prompt_or_reason_field() {
+        let make_looked = |screen: &str, state: SubagentLiveState, ordered: bool| super::super::service::Looked {
+            cls: ScreenClassification { state, summary: None, approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false, recognized_question: false, approval_fragment: false },
+            screen: screen.to_owned(),
+            last_output_at: 1,
+            last_state_change_at: 1,
+            pid: None,
+            survey: false,
+            survey_pending: false,
+            boxed: None,
+            expected: None,
+            reports: false,
+            expects: None,
+            live: true,
+            ordered,
+            rpc_failed: false,
+            seq: 1,
+            pre_read_out_seq: 0,
+        };
+        let rule = "─".repeat(40);
+        let at_chat = make_looked(&format!("{rule}\n❯ \n{rule}\n"), SubagentLiveState::Idle, true);
+        assert!(is_safe_reason_target(olo_agent_screen::Agent::Claude, &at_chat));
+        // Superseded/unordered read is NEVER safe.
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked(&at_chat.screen, SubagentLiveState::Idle, false)));
+        // Blank repaint is NEVER safe.
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked("", SubagentLiveState::Working, true)));
+        // Ordinary chooser Q (`WaitingQuestion`) is NEVER safe.
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked("Which branch?\n ❯ 1. main\n   2. dev\n Enter to select", SubagentLiveState::WaitingQuestion, true)));
+        // Plain prose containing "what to do differently" with NO input field chrome is NEVER safe!
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked("The report explains what to do differently.\n", SubagentLiveState::Idle, true)));
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked("● Tell Claude what to do differently in the docs.\n", SubagentLiveState::Idle, true)));
+        // A numbered refusal choice line is NEVER a reason input field!
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked("❯ 3. No, and tell Claude what to do differently (esc)\n", SubagentLiveState::Idle, true)));
+        // Genuine refusal reason field (cue + input cursor, or cursor with placeholder cue) IS safe.
+        assert!(is_safe_reason_target_for_paste(olo_agent_screen::Agent::Claude, &make_looked("Tell Claude what to do differently:\n> ", SubagentLiveState::Idle, true)));
+        assert!(is_safe_reason_target_for_paste(olo_agent_screen::Agent::Claude, &make_looked("❯ Tell Claude what to do differently", SubagentLiveState::Idle, true)));
+        // A25 / N11: Markdown blockquote `> prose` after `Reason:` is NEVER a Claude refusal reason field!
+        assert!(!is_safe_reason_target(olo_agent_screen::Agent::Claude, &make_looked("Reason: check failed\n> expected 42, got 0\n", SubagentLiveState::Idle, true)));
+        // A25: Occupied chat box with an existing unsent user draft is NEVER safe for reason paste!
+        let occupied_chat = make_looked(&format!("{rule}\n❯ Existing unsent user draft\n{rule}\n"), SubagentLiveState::Idle, true);
+        assert!(!is_safe_reason_target_for_paste(olo_agent_screen::Agent::Claude, &occupied_chat));
+        // Astra #6: User draft starting with `"Ask "` is NEVER a CLI placeholder!
+        let ask_owner_draft = make_looked(&format!("{rule}\n❯ Ask the release owner first\n{rule}\n"), SubagentLiveState::Idle, true);
+        assert!(!is_safe_reason_target_for_paste(olo_agent_screen::Agent::Claude, &ask_owner_draft));
+        // A25 / Astra #6: Pre-Enter verification requires whole-field equality with the pasted
+        // reason (rejects combined drafts and ambiguous collapsed `[Pasted text #` markers!).
+        let pasted_reason = make_looked(&format!("{rule}\n❯ use jato instead\n{rule}\n"), SubagentLiveState::Idle, true);
+        assert!(is_safe_reason_target_for_enter(olo_agent_screen::Agent::Claude, &pasted_reason, "use jato instead"));
+        assert!(!is_safe_reason_target_for_enter(olo_agent_screen::Agent::Claude, &at_chat, "use jato instead"));
+        let combined_draft = make_looked(&format!("{rule}\n❯ Ask the release owner first use jato instead\n{rule}\n"), SubagentLiveState::Idle, true);
+        assert!(!is_safe_reason_target_for_enter(olo_agent_screen::Agent::Claude, &combined_draft, "use jato instead"));
+        let collapsed_paste = make_looked(&format!("{rule}\n❯ [Pasted text #1 +5 lines]\n{rule}\n"), SubagentLiveState::Idle, true);
+        assert!(!is_safe_reason_target_for_enter(olo_agent_screen::Agent::Claude, &collapsed_paste, "use jato instead"));
+    }
+
+    #[test]
+    fn paste_settle_scales_and_still_typed_handles_tall_drafts_vs_echoed_submissions() {
+        assert_eq!(paste_settle_delay(50), Duration::from_millis(80));
+        assert_eq!(paste_settle_delay(4096), Duration::from_millis(160));
+        assert_eq!(paste_settle_delay(50_000), Duration::from_millis(350));
+
+        let rule = "─".repeat(50);
+        // 1. Tall 35-line unsubmitted draft (>29 lines, Neon #4) inside ruled input box IS VisibleHasDraft!
+        let mut tall_draft = format!("● Previous output\n{rule}\n❯ First line of tall prompt\n");
+        for i in 2..=35 {
+            tall_draft.push_str(&format!("  line {i} of pasted prompt\n"));
+        }
+        tall_draft.push_str(&format!("{rule}\n  ? for shortcuts\n"));
+        assert_eq!(classify_input_field(&tall_draft, "First line of tall prompt"), FieldState::VisibleHasDraft);
+        assert!(still_typed(&tall_draft, "First line of tall prompt"));
+
+        // 1b. Neon #4 / Astra #15: Undrawn field during repaint is `Undrawn`, NEVER `VisibleCleared`!
+        let undrawn_repaint = "✻ Thinking… (4s)\n  Working on task\n";
+        assert_eq!(classify_input_field(undrawn_repaint, "Fix bug"), FieldState::Undrawn);
+
+        // 1c. Astra #15: Short `"yes"` does NOT match unrelated `"yes please review the PR"` or unrelated `[Pasted text #`!
+        let other_draft = format!("{rule}\n❯ yes please review the PR\n{rule}\n");
+        assert_eq!(classify_input_field(&other_draft, "yes"), FieldState::VisibleDifferentDraft);
+        let unrelated_paste = format!("{rule}\n❯ [Pasted text #1 +5 lines]\n{rule}\n");
+        assert_eq!(classify_input_field(&unrelated_paste, "yes"), FieldState::VisibleDifferentDraft);
+
+        // 2. Same prompt AFTER submission (echoed above spinner, input box now empty `❯ `) MUST return false!
+        let submitted_working = format!("❯ First line of tall prompt\n  line 2\n✻ Thinking… (2s)\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        assert!(!still_typed(&submitted_working, "First line of tall prompt"));
+
+        // 3. Working agent with an UNSUBMITTED draft still sitting inside the ruled input box MUST return true!
+        let working_with_draft = format!("✻ Thinking… (2s)\n{rule}\n❯ Queued unsubmitted draft\n  second line\n{rule}\n  ⏸ manual mode on · esc to interrupt\n");
+        assert!(still_typed(&working_with_draft, "Queued unsubmitted draft"));
+
+        // 4. N4 / A22: Short (<4 char) message ("yes"), leading blank line, wrapped long first line,
+        //    and Claude's collapsed `[Pasted text #1 +5 lines]` MUST ALL return `still_typed == true`!
+        let short_draft = format!("{rule}\n❯ yes\n{rule}\n  ? for shortcuts\n");
+        assert!(still_typed(&short_draft, "yes"));
+        let leading_blank_draft = format!("{rule}\n❯ Run tests now\n{rule}\n");
+        assert!(still_typed(&leading_blank_draft, "\n\nRun tests now"));
+        let wrapped_draft = format!("{rule}\n❯ Please inspect why the auth middleware rejects\n  valid refresh tokens and add a regression test.\n{rule}\n");
+        assert!(still_typed(&wrapped_draft, "Please inspect why the auth middleware rejects valid refresh tokens and add a regression test."));
+        let collapsed_paste = format!("✻ Thinking… (2s)\n{rule}\n❯ [Pasted text #1 +5 lines]\n{rule}\n");
+        assert!(still_typed(&collapsed_paste, "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6"));
+
+        // 5. Unruled Codex screen: tall unsubmitted draft returns true, echoed submitted message above empty prompt returns false!
+        let codex_draft = "› Fix the parser\n  line 2\n  > quoted block\n  line 4\n  line 5\n  line 6\n  line 7\n  line 8\n";
+        assert!(still_typed(codex_draft, "Fix the parser"));
+        let codex_submitted =
+            "› Fix the parser\n• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n\n  gpt-5.4-codex high · /var/tmp/work · Fix the parser\n  ← for agents · ? for shortcuts\n";
+        assert!(!still_typed(codex_submitted, "Fix the parser"));
+        assert!(input_field_is_empty_or_placeholder(codex_submitted));
+        assert_eq!(extract_input_field(codex_submitted), Some(("Ask Codex to do anything".into(), false)));
+
+        // 6. Antigravity CLI mode placeholder is recognized as empty/placeholder, while a user draft is rejected!
+        let agy_placeholder = format!("{rule}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{rule}\n? for shortcuts\n");
+        assert!(input_field_is_empty_or_placeholder(&agy_placeholder));
+        let agy_user_draft = format!("{rule}\n> Accept-edits mode note: fix bug\n{rule}\n? for shortcuts\n");
+        assert!(!input_field_is_empty_or_placeholder(&agy_user_draft));
     }
 }
