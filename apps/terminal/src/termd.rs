@@ -584,7 +584,11 @@ fn handle(st: &St, conn: u64, f: Frame) {
                 return;
             }
             let home = s.env.iter().find(|(k, _)| k == "HOME").map(|(_, v)| PathBuf::from(v));
-            let cwd = spawn.cwd.filter(|d| d.is_dir()).or(home);
+            // Never call `is_dir()` while holding the daemon-wide state lock (a
+            // stalled NFS/FUSE/SSHFS mount would freeze every shell). `Pty::spawn`
+            // runs `chdir` inside the forked child; if it fails, the child stays
+            // in `termd`'s working directory (`$HOME`, set at startup).
+            let cwd = spawn_cwd_for_child(spawn.cwd, home);
             // The shell it stands in for: its lines, then when they're from.
             let before = spawn.restore.and_then(take_kept).map(|(mut lines, when)| {
                 let when = olo_kit_base::files::format_time(Some(when));
@@ -1632,6 +1636,10 @@ fn main() {
     run(st, events, listener, lock);
 }
 
+fn spawn_cwd_for_child(requested: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
+    requested.or(home)
+}
+
 #[cfg(test)]
 mod tests {
     use alacritty_terminal::{
@@ -1666,5 +1674,26 @@ mod tests {
         feed(&mut t, "me@box:~/x$ claude --dangerously-skip-permissions --resume 00000000\r\nme@box:~/x$ cl");
         let text = super::tail_text(t.grid(), 3);
         assert_eq!(text, "line 9\nme@box:~/x$ claude --dangerously-skip-permissions --resume 00000000\nme@box:~/x$ cl");
+    }
+
+    #[test]
+    fn spawn_cwd_passes_through_without_daemon_stat_and_child_falls_back_on_bad_dir() {
+        let missing = std::path::PathBuf::from("/var/tmp/olo-termd-does-not-exist-987654321");
+        let home = std::path::PathBuf::from("/home/sam");
+        // Must pass requested path straight to the child without calling stat(2) in termd.
+        assert_eq!(super::spawn_cwd_for_child(Some(missing.clone()), Some(home.clone())), Some(missing.clone()));
+        assert_eq!(super::spawn_cwd_for_child(None, Some(home.clone())), Some(home));
+        assert_eq!(super::spawn_cwd_for_child(None, None), None);
+
+        // Spawning a real child with a nonexistent cwd still succeeds because
+        // `chdir` failure in the child leaves it in the inherited cwd.
+        let cmd = vec!["/bin/sh".to_owned(), "-c".to_owned(), "pwd".to_owned()];
+        let size = alacritty_terminal::event::WindowSize { num_cols: 80, num_lines: 24, cell_width: 8, cell_height: 16 };
+        let env = vec![("PATH".to_owned(), "/usr/bin:/bin".to_owned()), ("HOME".to_owned(), "/var/tmp".to_owned())];
+        let p = super::pty::Pty::spawn(Some(&cmd), Some(&missing), size, &env).expect("spawn child with missing cwd");
+        let mut status = 0;
+        // SAFETY: waiting on the child we just spawned.
+        unsafe { libc::waitpid(p.pid, &mut status, 0) };
+        assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0, "child failed with status {status}");
     }
 }

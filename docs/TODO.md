@@ -1074,15 +1074,9 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Rex & Terminal: `Cmd+T` new tab opens immediately to the right of the active tab in its working directory**
-  (Ben, 2026-11-27: "in rex or terminal apps if i have a tab selected
-  and then press cmd+t to launch a new tab it should open the new tab
-  next to, on the right, the tab i launched from and it should open in
-  the same working dir as the tab i launched from"). Check both
-  `apps/terminal` and `apps/rex` (local and SSH host tabs): insert the
-  newly created tab immediately to the right of the selected tab rather
-  than appending at the end, and inherit the active pane's current
-  working directory (`pwd`).
+- **Rex & Terminal `Cmd+T` non-critical follow-ups (Round 2 code review `astra-a5f6cd2652`, 2026-11-28; reviewer's words):**
+  - *Rex pre-create input buffering (Astra #1):* "Record the pending input destination in the initiating workspace when Cmd+T is accepted. Bind subsequent user input to the returned block once it is ready, and discard that input with feedback if creation fails."
+  - *Terminal literal ` (deleted)` directory names (Astra #12):* "Disambiguate the suffix with filesystem identity or link-count information on a worker. Cover a live directory with the literal suffix and a genuinely unlinked directory."
 - **Update 11 `agentd` non-critical follow-ups (Round 2/3 code reviews `astra-03bf4977fe`, `astra-1579848924` & `agyrev-e8cd352778`, 2026-11-28; reviewers' words):**
   - "Require a positive receipt from a daemon implementing durable adoption before the helper prints the success phrase, including for duplicates" (protocol v2 `adopt` receipt handshake against legacy pre-Update-11 incumbents, Astra #2).
   - "Require a checked PID and evidence of a common PID namespace, or obtain the verified foreground cwd from Rex" (cross-PID-namespace pathless trust when Rex runs in a different PID namespace from `agentd`, Astra Add'l #2).

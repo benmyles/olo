@@ -372,14 +372,31 @@ pub fn active_transcript() -> Option<Arc<Mutex<TranscriptSession>>> {
 /// Close any active transcript overlay and return to the interactive terminal.
 pub fn close_viewer() {
     let mut mgr = manager().lock().unwrap_or_else(|e| e.into_inner());
-    let mut had = false;
-    if let Some(tr) = mgr.transcript.take() {
-        tr.lock().unwrap_or_else(|e| e.into_inner()).stop();
-        had = true;
-    }
+    let taken = mgr.transcript.take();
     drop(mgr);
-    if had {
+    if let Some(tr) = taken {
+        tr.lock().unwrap_or_else(|e| e.into_inner()).stop();
         crate::ui::activity_changed();
+    }
+}
+
+fn take_matching_transcript<T>(slot: &mut Option<Arc<T>>, expected: &Arc<T>) -> Option<Arc<T>> {
+    if slot.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, expected)) { slot.take() } else { None }
+}
+
+/// Close the active transcript viewer ONLY if it is still the exact
+/// `expected` session, comparing and removing under a single manager lock so a
+/// concurrently opened transcript can never be closed by a late callback.
+pub fn close_viewer_if(expected: &Arc<Mutex<TranscriptSession>>) -> bool {
+    let mut mgr = manager().lock().unwrap_or_else(|e| e.into_inner());
+    let taken = take_matching_transcript(&mut mgr.transcript, expected);
+    drop(mgr);
+    if let Some(tr) = taken {
+        tr.lock().unwrap_or_else(|e| e.into_inner()).stop();
+        crate::ui::activity_changed();
+        true
+    } else {
+        false
     }
 }
 
@@ -786,4 +803,45 @@ fn open_demo_transcript(bk: BlockKey, title: String) {
     sess.streaming = true;
     manager().lock().unwrap_or_else(|e| e.into_inner()).transcript = Some(Arc::new(Mutex::new(sess)));
     crate::ui::activity_changed();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn close_viewer_if_atomically_closes_only_matching_transcript() {
+        let tr_a = Arc::new(1u8);
+        let tr_b = Arc::new(2u8);
+
+        // Matching transcript is removed and returned under one lock.
+        let mut slot = Some(tr_a.clone());
+        let taken = take_matching_transcript(&mut slot, &tr_a);
+        assert!(taken.as_ref().is_some_and(|t| Arc::ptr_eq(t, &tr_a)));
+        assert!(slot.is_none());
+
+        // A concurrently replaced transcript (tr_B) is left untouched.
+        let mut slot = Some(tr_b.clone());
+        assert!(take_matching_transcript(&mut slot, &tr_a).is_none());
+        assert!(slot.as_ref().is_some_and(|t| Arc::ptr_eq(t, &tr_b)));
+
+        // Empty slot returns None cleanly.
+        let mut empty: Option<Arc<u8>> = None;
+        assert!(take_matching_transcript(&mut empty, &tr_a).is_none());
+
+        // End-to-end check on the real global manager lock with real TranscriptSessions.
+        let bk = BlockKey { host_key: "local".into(), session_id: "s-close-test".into(), block_id: "b-1".into() };
+        let sess_a = Arc::new(Mutex::new(TranscriptSession::new(ViewTarget::PaneTranscript { bk: bk.clone(), title: "A".into(), agent: "Claude".into(), path: None }, "Claude".into(), None)));
+        let sess_b = Arc::new(Mutex::new(TranscriptSession::new(ViewTarget::PaneTranscript { bk, title: "B".into(), agent: "Claude".into(), path: None }, "Claude".into(), None)));
+        {
+            let mut mgr = manager().lock().unwrap_or_else(|e| e.into_inner());
+            mgr.transcript = Some(sess_b.clone());
+        }
+        // Late callback for sess_a MUST NOT close sess_b.
+        assert!(!close_viewer_if(&sess_a));
+        assert!(active_transcript().is_some_and(|cur| Arc::ptr_eq(&cur, &sess_b)));
+        // Callback for sess_b closes and removes sess_b.
+        assert!(close_viewer_if(&sess_b));
+        assert!(active_transcript().is_none());
+    }
 }

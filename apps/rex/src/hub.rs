@@ -788,11 +788,6 @@ impl FocusTarget {
 
 /// Ordered terminal input operation serialized strictly FIFO per host so fast typing never reorders.
 enum HostInputOp {
-    Focus {
-        session_id: String,
-        switch: bool,
-        target: Arc<FocusTarget>,
-    },
     /// (`seq`: its number among what was typed in that terminal, given
     /// back to the terminal's predictions when the host has answered.)
     Write {
@@ -812,6 +807,58 @@ enum HostInputOp {
         session_id: String,
         block_ids: Vec<String>,
     },
+}
+
+/// Window focus and lifecycle operations serialized on their own per-host FIFO
+/// channel so `Write`/`Key` typing on any session never stalls behind tab
+/// creation, CWD lookup, or placement RPCs.
+enum HostWindowOp {
+    Focus {
+        session_id: String,
+        switch: bool,
+        target: Arc<FocusTarget>,
+    },
+    CreateWindow {
+        session_id: String,
+        explicit_cwd: Option<String>,
+        source_root_id: Option<String>,
+        active_block_id: Option<String>,
+        known_cwds: Vec<String>,
+        base_opts: Option<Value>,
+        feedback: Option<Feedback>,
+        on_created: Option<Box<dyn FnOnce() + Send>>,
+    },
+}
+
+/// Tracks per-session `(original_enqueued_root, last_created_window_id)` so
+/// rapid consecutive `Cmd+T` presses chain left-to-right (`[A, N1, N2, B]`)
+/// rather than reversing into `[A, N2, N1, B]`, resetting on any intervening
+/// explicit tab selection (`Focus`).
+#[derive(Default)]
+struct CreateChainTracker {
+    by_session: HashMap<String, (String, String)>,
+}
+
+impl CreateChainTracker {
+    fn resolve_source_root(&self, session_id: &str, enqueued_root: Option<String>) -> Option<String> {
+        let root = enqueued_root?;
+        if let Some((orig, last_new)) = self.by_session.get(session_id)
+            && orig == &root
+        {
+            return Some(last_new.clone());
+        }
+        Some(root)
+    }
+
+    fn record_created(&mut self, session_id: &str, enqueued_root: Option<&str>, new_window_id: &str) {
+        if let Some(root) = enqueued_root {
+            self.by_session.insert(session_id.to_owned(), (root.to_owned(), new_window_id.to_owned()));
+        }
+    }
+
+    fn on_focus(&mut self, session_id: &str) {
+        self.by_session.remove(session_id);
+    }
 }
 
 /// The name a host goes by when it is given none: the host in its
@@ -993,6 +1040,304 @@ pub fn moved_before(ids: &[String], from: usize, to: usize) -> Option<Option<Str
     }
     let others: Vec<&String> = ids.iter().enumerate().filter(|(i, _)| *i != from).map(|(_, id)| id).collect();
     Some(others.get(to).map(|id| (*id).clone()))
+}
+
+/// Top-level ancestor window ID of the currently active tab in `sess`.
+/// Validates `active_window_id` against `sess.windows` (falling back to the
+/// first window, matching `active_session_block`).
+pub fn active_top_level_window(subagents: &crate::subagents::SubagentRegistry, host_key: &str, sess: &SessionView) -> Option<String> {
+    let live: HashSet<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+    let active_raw = sess.active_window().or_else(|| sess.windows.first())?.window_id.as_str();
+    Some(subagents.root_ancestor(host_key, &sess.session_id, active_raw, &live))
+}
+
+/// Which top-level window stands immediately to the right of `source_root_id`
+/// in `sess`, ignoring `exclude_window_id` (the newly created tab itself).
+/// Returns `None` if `source_root_id` is gone or is already the rightmost
+/// top-level tab.
+pub fn successor_top_level_window(subagents: &crate::subagents::SubagentRegistry, host_key: &str, sess: &SessionView, source_root_id: &str, exclude_window_id: Option<&str>) -> Option<String> {
+    let live: HashSet<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+    let top_ids: Vec<&str> = sess
+        .windows
+        .iter()
+        .filter(|w| Some(w.window_id.as_str()) != exclude_window_id && !subagents.is_child_window(host_key, &sess.session_id, &w.window_id, &live))
+        .map(|w| w.window_id.as_str())
+        .collect();
+    let pos = top_ids.iter().position(|&id| id == source_root_id)?;
+    top_ids.get(pos + 1).map(|&id| id.to_owned())
+}
+
+/// Compute whether `new_wid` needs a `session.move_window` call to stand
+/// immediately to the right of `source_root_id` among top-level tabs in `sess`.
+///
+/// - `None`: already adjacent right of `source_root_id` (or `source_root_id` /
+///   `new_wid` is no longer present in `sess`).
+/// - `Some(Some(before_wid))`: move `new_wid` immediately before `before_wid`.
+/// - `Some(None)`: move `new_wid` to the end (`before_window_id = None`),
+///   because `source_root_id` is the rightmost other top-level tab while
+///   `new_wid` currently stands to its left.
+pub fn desired_move_for_new_tab(subagents: &crate::subagents::SubagentRegistry, host_key: &str, sess: &SessionView, source_root_id: &str, new_wid: &str) -> Option<Option<String>> {
+    let live: HashSet<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+    let all_top: Vec<&str> = sess.windows.iter().filter(|w| !subagents.is_child_window(host_key, &sess.session_id, &w.window_id, &live)).map(|w| w.window_id.as_str()).collect();
+    let src_pos = all_top.iter().position(|&id| id == source_root_id)?;
+    let new_pos = all_top.iter().position(|&id| id == new_wid)?;
+    if new_pos == src_pos + 1 {
+        return None;
+    }
+    let other_top: Vec<&str> = all_top.into_iter().filter(|&id| id != new_wid).collect();
+    let src_other = other_top.iter().position(|&id| id == source_root_id)?;
+    Some(other_top.get(src_other + 1).map(|&id| id.to_owned()))
+}
+
+/// Which top-level window a new tab opened from the active tab should be placed
+/// immediately before (`None`: append at the end of the tab strip).
+///
+/// When the active tab is a nested child/subagent tab, walks up to its
+/// top-level ancestor and returns the next top-level tab to its right (after
+/// any child tabs grouped under that ancestor).
+#[cfg(test)]
+pub fn new_tab_before_window(subagents: &crate::subagents::SubagentRegistry, host_key: &str, sess: &SessionView) -> Option<String> {
+    let root_id = active_top_level_window(subagents, host_key, sess)?;
+    successor_top_level_window(subagents, host_key, sess, &root_id, None)
+}
+
+fn active_session_block(sess: &SessionView) -> Option<&str> {
+    let win = sess.active_window().or_else(|| sess.windows.first())?;
+    win.focused_block_id.as_deref().filter(|id| win.all_blocks().any(|b| b.block_id == *id)).or_else(|| win.all_blocks().next().map(|b| b.block_id.as_str()))
+}
+
+fn is_usable_cwd(dir: &str) -> bool {
+    !dir.is_empty() && !dir.ends_with(" (deleted)")
+}
+
+fn push_unique_cwd(out: &mut Vec<String>, dir: &str) {
+    if is_usable_cwd(dir) && !out.iter().any(|existing| existing == dir) {
+        out.push(dir.to_owned());
+    }
+}
+
+/// Ordered deduplicated CWD candidates from a `TerminalProcessSnapshot`:
+/// foreground CWD first, followed by a distinct shell (`child`) CWD fallback,
+/// filtering out empty paths and kernel `" (deleted)"` markers.
+fn cwds_from_process(process: Option<&TerminalProcessSnapshot>) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(p) = process else { return out };
+    if let Some(dir) = p.foreground.as_ref().and_then(|info| info.cwd.as_deref()) {
+        push_unique_cwd(&mut out, dir);
+    }
+    if let Some(dir) = p.child.as_ref().and_then(|info| info.cwd.as_deref()) {
+        push_unique_cwd(&mut out, dir);
+    }
+    out
+}
+
+#[cfg(test)]
+fn cwd_from_process(process: Option<&TerminalProcessSnapshot>) -> Option<String> {
+    cwds_from_process(process).into_iter().next()
+}
+
+fn block_cwd_candidates(pwd: &str, process: Option<&TerminalProcessSnapshot>) -> Vec<String> {
+    let mut out = Vec::new();
+    push_unique_cwd(&mut out, pwd);
+    for dir in cwds_from_process(process) {
+        push_unique_cwd(&mut out, &dir);
+    }
+    out
+}
+
+/// Bounded deadline for querying live process CWD from the host before
+/// creating a new tab (never wait for the 30 s default RPC timeout).
+const CREATE_WINDOW_CWD_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Bounded deferral for `WindowCreated` event publication while awaiting our
+/// own `session.new_window` reply so the placement guard can arm for the exact
+/// `new_window_id` before any unmoved creation view paints.
+const CREATE_WINDOW_EVENT_DEFER: Duration = Duration::from_millis(250);
+
+/// Resolve ordered CWD candidates for a newly created tab:
+/// - If an explicit `cwd` was passed, use ONLY that explicit directory without
+///   consulting the active pane.
+/// - Otherwise query live process CWDs (`[foreground, shell]`) from the host
+///   that owns the PTY first under `timeout`, falling back to cached
+///   `known_cwds` only when live lookup returns empty or times out.
+async fn resolve_new_window_cwd_candidates<F, Fut>(explicit_cwd: Option<String>, cached_cwds: Vec<String>, timeout: Duration, live_lookup: F) -> Vec<String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Vec<String>>,
+{
+    if let Some(dir) = explicit_cwd.filter(|d| !d.is_empty()) {
+        return vec![dir];
+    }
+    let live: Vec<String> = tokio::time::timeout(timeout, live_lookup()).await.ok().unwrap_or_default().into_iter().filter(|d| is_usable_cwd(d)).collect();
+    if !live.is_empty() { live } else { cached_cwds.into_iter().filter(|d| is_usable_cwd(d)).collect() }
+}
+
+/// Whether a failed `session.new_window` that passed a `cwd` may safely retry
+/// with the next fallback directory (or default server cwd). Allowlists ONLY
+/// verified pre-creation working-directory rejections — never retries
+/// `not_found`, `session_not_found`, window-limit errors, generic internal
+/// errors, timeouts, or transport errors.
+fn should_retry_new_window_without_cwd(err: &olo_rex_client::RexError, used_cwd: bool) -> bool {
+    if !used_cwd {
+        return false;
+    }
+    let olo_rex_client::RexError::Api(api) = err else {
+        return false;
+    };
+    let code = api.code.to_ascii_lowercase();
+    if matches!(code.as_str(), "invalid_cwd" | "cwd_not_found") {
+        return true;
+    }
+    if matches!(code.as_str(), "invalid_argument" | "invalid_params" | "bad_request" | "invalid_option") {
+        let msg = api.message.to_ascii_lowercase();
+        return msg.contains("cwd")
+            || msg.contains("working directory")
+            || msg.contains("chdir")
+            || msg.contains("no such file or directory")
+            || msg.contains("not a directory")
+            || msg.contains("directory");
+    }
+    false
+}
+
+/// Try `session.new_window` across ordered `cwd_candidates` (e.g.
+/// `[foreground_cwd, shell_cwd]`), stepping to the next candidate and finally
+/// to `None` (server default) ONLY on a verified pre-creation directory
+/// rejection.
+async fn create_window_rpc_candidates<F, Fut>(cwd_candidates: &[String], base_opts: Option<Value>, mut call: F) -> Result<olo_rex_client::RpcResult<Value>, olo_rex_client::RexError>
+where
+    F: FnMut(Option<Value>) -> Fut,
+    Fut: std::future::Future<Output = Result<olo_rex_client::RpcResult<Value>, olo_rex_client::RexError>>,
+{
+    if cwd_candidates.is_empty() {
+        return call(base_opts).await;
+    }
+    for dir in cwd_candidates {
+        let opts = shell_opts_with_cwd(base_opts.clone(), Some(dir.as_str()));
+        match call(opts).await {
+            Ok(res) => return Ok(res),
+            Err(ref err) if should_retry_new_window_without_cwd(err, true) => continue,
+            Err(err) => return Err(err),
+        }
+    }
+    call(base_opts).await
+}
+
+fn timeout_problem_detail(refreshed: bool) -> &'static str {
+    if refreshed { "The server didn’t answer in time; refreshed the session." } else { "The server didn’t answer in time." }
+}
+
+fn shell_opts_with_cwd(base: Option<Value>, cwd: Option<&str>) -> Option<Value> {
+    let Some(dir) = cwd.filter(|d| !d.is_empty()) else {
+        return base;
+    };
+    let mut opts = base.unwrap_or_else(|| json!({}));
+    opts["cwd"] = json!(dir);
+    Some(opts)
+}
+
+/// An in-flight new-tab placement for the exact `new_window_id` returned by
+/// THIS request: keeps intermediate `WindowCreated` / `SessionViewChanged`
+/// snapshots arriving while `session.move_window` is in flight from flickering
+/// the new tab at the end of the strip first, without ever touching windows
+/// created by other clients or concurrent requests.
+struct PendingWindowPlacement {
+    token: u64,
+    new_window_id: String,
+    before_window_id: String,
+}
+
+fn next_placement_token() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn remove_placement_token(map: &mut HashMap<String, Vec<PendingWindowPlacement>>, session_id: &str, token: u64) {
+    if let Some(list) = map.get_mut(session_id) {
+        list.retain(|p| p.token != token);
+        if list.is_empty() {
+            map.remove(session_id);
+        }
+    }
+}
+
+fn apply_pending_placements(view: &mut SessionView, placements: &[PendingWindowPlacement]) -> bool {
+    let mut changed = false;
+    for p in placements {
+        let Some(before_pos) = view.windows.iter().position(|w| w.window_id == p.before_window_id) else {
+            continue;
+        };
+        if let Some(cur) = view.windows.iter().position(|w| w.window_id == p.new_window_id)
+            && cur > before_pos
+        {
+            let win = view.windows.remove(cur);
+            view.windows.insert(before_pos, win);
+            changed = true;
+        }
+    }
+    changed
+}
+
+struct PlacementGuard {
+    inner: Arc<RexHubInner>,
+    hk: String,
+    sid: String,
+    token: Option<u64>,
+}
+
+impl PlacementGuard {
+    /// Register or update the pending placement for `(new_window_id, before_window_id)`
+    /// and retroactively apply it to `host.sessions[sid]` if an early `WindowCreated`
+    /// view already installed `new_window_id` at the end, notifying the UI if order changed.
+    fn set(&mut self, new_window_id: String, before_window_id: String) {
+        let changed = {
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get_mut(&self.hk) else { return };
+            let mut updated = false;
+            if let Some(token) = self.token
+                && let Some(list) = host.pending_placements.get_mut(&self.sid)
+                && let Some(entry) = list.iter_mut().find(|p| p.token == token)
+            {
+                entry.new_window_id = new_window_id.clone();
+                entry.before_window_id = before_window_id.clone();
+                updated = true;
+            }
+            if !updated {
+                let token = next_placement_token();
+                host.pending_placements.entry(self.sid.clone()).or_default().push(PendingWindowPlacement { token, new_window_id, before_window_id });
+                self.token = Some(token);
+            }
+            if let Some(list) = host.pending_placements.get(&self.sid)
+                && let Some(sess) = host.sessions.get_mut(&self.sid)
+            {
+                apply_pending_placements(sess, list)
+            } else {
+                false
+            }
+        };
+        if changed {
+            (self.inner.notify)(HubNotice::StateChanged);
+        }
+    }
+
+    fn clear(&mut self) {
+        if let Some(token) = self.token.take() {
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(host) = st.hosts.get_mut(&self.hk) {
+                remove_placement_token(&mut host.pending_placements, &self.sid, token);
+            }
+        }
+    }
+
+    fn take_token(&mut self) -> Option<u64> {
+        self.token.take()
+    }
+}
+
+impl Drop for PlacementGuard {
+    fn drop(&mut self) {
+        self.clear();
+    }
 }
 
 /// A tab's name, if it was given one. The server names a tab it wasn't
@@ -1735,11 +2080,15 @@ pub struct HostRuntime {
     pub session_summaries: Vec<SessionSummary>,
     pub sessions: HashMap<String, SessionView>,
     pending_focus: HashMap<String, Arc<FocusTarget>>,
+    pending_placements: HashMap<String, Vec<PendingWindowPlacement>>,
+    pending_creates: HashMap<String, usize>,
+    creating_defer: HashMap<String, (u64, Instant, Arc<tokio::sync::Notify>)>,
     pub keymap_bindings: Vec<KeymapBinding>,
     pub keymap_modes: Vec<KeymapMode>,
     pub keymap_diagnostics: Vec<KeymapDiagnostic>,
     pub control: Option<ControlClient>,
     input_tx: Option<tokio::sync::mpsc::UnboundedSender<HostInputOp>>,
+    window_tx: Option<tokio::sync::mpsc::UnboundedSender<HostWindowOp>>,
 }
 
 // Only the ordered lifecycle events and bootstrap own list membership.
@@ -1888,11 +2237,15 @@ impl HostRuntime {
             session_summaries: Vec::new(),
             sessions,
             pending_focus: HashMap::new(),
+            pending_placements: HashMap::new(),
+            pending_creates: HashMap::new(),
+            creating_defer: HashMap::new(),
             keymap_bindings: Vec::new(),
             keymap_modes: Vec::new(),
             keymap_diagnostics: Vec::new(),
             control: None,
             input_tx: None,
+            window_tx: None,
         }
     }
 }
@@ -2647,6 +3000,37 @@ pub(crate) fn minder_and_its_agents(entries: &[crate::subagents::NativeSubagent]
 }
 
 impl RexHub {
+    #[cfg(test)]
+    fn test_offline(notify: impl Fn(HubNotice) + Send + Sync + 'static) -> Arc<Self> {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("test runtime");
+        let state = Arc::new(Mutex::new(HubState::test_empty()));
+        let notify: Arc<dyn Fn(HubNotice) + Send + Sync> = Arc::new(notify);
+        let ui_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let screen_opener = Arc::new(crate::screens_sock::HubScreenOpener::new(state.clone(), notify.clone(), ui_ready.clone()));
+        let owner_resolver = Arc::new(|_: &str, _: &olo_rex_link::screen_wire::OwnerPane| None);
+        let screens_service = crate::screens_sock::ScreensService::new(PathBuf::new(), PathBuf::new(), std::process::id(), screen_opener, owner_resolver, None, None);
+        let inner = Arc::new(RexHubInner {
+            state: state.clone(),
+            ssh_pool: Arc::new(SshSessionPool::default()),
+            askpass: None,
+            notify: notify.clone(),
+            spares: Mutex::new(HashMap::new()),
+            bridge_calls: Default::default(),
+            run_jobs: crate::bridge_run::RunJobs::new(),
+            run_approvals: crate::bridge_run::RunApprovals::new(|| {}, || {}),
+            agent_socks: Mutex::new(HashMap::new()),
+            keeping: Mutex::new(HashMap::new()),
+            agents_following: Mutex::new(HashMap::new()),
+            screens_putting: Mutex::new(HashMap::new()),
+            screens_service,
+            rt_handle: rt.handle().clone(),
+            ui_ready,
+            demo_mode: true,
+            desktop_screens_watch: Mutex::new(None),
+        });
+        Arc::new(Self { state, rt, notify, inner })
+    }
+
     pub fn start(
         settings: Settings,
         active_theme: TerminalTheme,
@@ -2721,11 +3105,15 @@ impl RexHub {
                 session_summaries: Vec::new(),
                 sessions: HashMap::new(),
                 pending_focus: HashMap::new(),
+                pending_placements: HashMap::new(),
+                pending_creates: HashMap::new(),
+                creating_defer: HashMap::new(),
                 keymap_bindings: Vec::new(),
                 keymap_modes: Vec::new(),
                 keymap_diagnostics: Vec::new(),
                 control: None,
                 input_tx: None,
+                window_tx: None,
             },
         );
         host_order.push("local".to_owned());
@@ -2774,11 +3162,15 @@ impl RexHub {
                         session_summaries: Vec::new(),
                         sessions: HashMap::new(),
                         pending_focus: HashMap::new(),
+                        pending_placements: HashMap::new(),
+                        pending_creates: HashMap::new(),
+                        creating_defer: HashMap::new(),
                         keymap_bindings: Vec::new(),
                         keymap_modes: Vec::new(),
                         keymap_diagnostics: Vec::new(),
                         control: None,
                         input_tx: None,
+                        window_tx: None,
                     },
                 );
                 host_order.push(sh.id.clone());
@@ -3494,11 +3886,15 @@ impl RexHub {
             session_summaries: sessions.iter().map(|s| SessionSummary { session_id: s.session_id.clone(), label: s.label.clone() }).collect(),
             sessions: sessions.into_iter().map(|s| (s.session_id.clone(), s)).collect(),
             pending_focus: HashMap::new(),
+            pending_placements: HashMap::new(),
+            pending_creates: HashMap::new(),
+            creating_defer: HashMap::new(),
             keymap_bindings: Vec::new(),
             keymap_modes: Vec::new(),
             keymap_diagnostics: Vec::new(),
             control: None,
             input_tx: None,
+            window_tx: None,
         };
         // (`OLO_REX_DEMO_LONG_NAME=1`: the host under a long name, as
         // real ones have: every window that says the host's name is
@@ -3840,11 +4236,15 @@ impl RexHub {
                     session_summaries: Vec::new(),
                     sessions: HashMap::new(),
                     pending_focus: HashMap::new(),
+                    pending_placements: HashMap::new(),
+                    pending_creates: HashMap::new(),
+                    creating_defer: HashMap::new(),
                     keymap_bindings: Vec::new(),
                     keymap_modes: Vec::new(),
                     keymap_diagnostics: Vec::new(),
                     control: None,
                     input_tx: None,
+                    window_tx: None,
                 },
             );
             let old_inst = if let Some(mut old) = replaced {
@@ -3966,10 +4366,16 @@ impl RexHub {
                 ctrl.close();
             }
             host.input_tx = None;
+            host.window_tx = None;
             host.tailscale = None;
             host.server_status = None;
             host.sessions.clear();
             host.pending_focus.clear();
+            host.pending_placements.clear();
+            host.pending_creates.clear();
+            for (_, (_, _, notify)) in host.creating_defer.drain() {
+                notify.notify_waiters();
+            }
             host.session_summaries.clear();
             host.connection_lost = None;
             host.conn_state = HostConnState::Disconnected;
@@ -4246,17 +4652,65 @@ impl RexHub {
         }
     }
 
-    pub fn create_window(&self, host_key: &str, session_id: &str, cwd: Option<String>) {
-        let hk = host_key.to_owned();
-        let sid = session_id.to_owned();
-        let opts = self.local_shell_opts(host_key, cwd);
-        self.with_control(host_key, move |ctrl, ep, inner| async move {
-            if ctrl.session_new_window(&sid, None, opts).await.is_ok()
-                && let Ok(v) = ctrl.session_view(&sid).await
-            {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+    pub fn create_window(&self, host_key: &str, session_id: &str, cwd: Option<String>, feedback: Option<Feedback>, on_created: Option<Box<dyn FnOnce() + Send>>) {
+        let explicit_cwd = cwd.filter(|d| !d.is_empty());
+        let has_explicit_cwd = explicit_cwd.is_some();
+        let base_opts = self.local_shell_opts(host_key, None);
+        let (window_tx, source_root_id, active_block_id, known_cwds) = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let st = &mut *st;
+            let Some(host) = st.hosts.get_mut(host_key) else {
+                if let Some(fb) = feedback {
+                    fb.problem("Couldn’t create the tab.", "The host wasn’t found.");
+                }
+                return;
+            };
+            let (source_root_id, active_block_id) = match host.sessions.get(session_id) {
+                Some(sess) => {
+                    let root = active_top_level_window(&st.subagents, host_key, sess);
+                    let active_bid = (!has_explicit_cwd).then(|| active_session_block(sess).map(str::to_owned)).flatten();
+                    (root, active_bid)
+                }
+                None => (None, None),
+            };
+            let known_cwds = if !has_explicit_cwd && let Some(ref bid) = active_block_id {
+                let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: bid.clone() };
+                st.blocks
+                    .get(&bk)
+                    .map(|br| {
+                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                        block_cwd_candidates(&g.pwd, g.process.as_ref())
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let tx = host.window_tx.clone();
+            if tx.is_some() {
+                *host.pending_creates.entry(session_id.to_owned()).or_insert(0) += 1;
             }
-        });
+            (tx, source_root_id, active_block_id, known_cwds)
+        };
+        let Some(tx) = window_tx else {
+            if let Some(fb) = feedback {
+                fb.problem("Couldn’t create the tab.", "The Rex server is disconnected.");
+            }
+            return;
+        };
+        if tx.send(HostWindowOp::CreateWindow { session_id: session_id.to_owned(), explicit_cwd, source_root_id, active_block_id, known_cwds, base_opts, feedback, on_created }).is_err() {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(host) = st.hosts.get_mut(host_key)
+                && let Some(n) = host.pending_creates.get_mut(session_id)
+            {
+                *n = n.saturating_sub(1);
+                if *n == 0 {
+                    host.pending_creates.remove(session_id);
+                }
+            }
+            if let Some(fb) = feedback {
+                fb.problem("Couldn’t create the tab.", "The Rex server is disconnected.");
+            }
+        }
     }
 
     pub fn select_window(&self, host_key: &str, session_id: &str, window_id: &str) {
@@ -4442,13 +4896,14 @@ impl RexHub {
             {
                 let _ = tx.send(HostInputOp::Own { session_id: session_id.to_owned(), block_ids: theirs });
             }
-            if !switch && restore.is_none() && block.is_none_or(|b| window.focused_block_id.as_deref() == Some(b)) {
+            let has_pending_create = host.pending_creates.get(session_id).copied().unwrap_or(0) > 0;
+            if !switch && !has_pending_create && restore.is_none() && block.is_none_or(|b| window.focused_block_id.as_deref() == Some(b)) {
                 return;
             }
             let target = Arc::new(FocusTarget { window: window.window_id.clone(), block: block.map(str::to_owned), restore });
             target.apply(view);
-            if let Some(tx) = &host.input_tx {
-                let op = HostInputOp::Focus { session_id: session_id.to_owned(), switch, target: target.clone() };
+            if let Some(tx) = &host.window_tx {
+                let op = HostWindowOp::Focus { session_id: session_id.to_owned(), switch: switch || has_pending_create, target: target.clone() };
                 if tx.send(op).is_ok() {
                     host.pending_focus.insert(session_id.to_owned(), target);
                 }
@@ -8237,9 +8692,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
 
                     // Spawn one strictly-FIFO input writer task for this host connection so rapid
                     // keystrokes can never race and arrive out of order on `terminal.write`.
+                    // Window focus and lifecycle ops run on their own FIFO worker (`window_worker`)
+                    // so typing on any session never stalls behind tab creation or placement.
                     let (in_tx, mut in_rx) = tokio::sync::mpsc::unbounded_channel::<HostInputOp>();
+                    let (win_tx, mut win_rx) = tokio::sync::mpsc::unbounded_channel::<HostWindowOp>();
                     let ctrl_in = ctrl.clone();
-                    let ep_in = endpoint.clone();
                     let host_in = host_key.clone();
                     let inner_in = self.clone();
                     let input_connection = ctrl.clone();
@@ -8288,35 +8745,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                 let Some(op) = typed_together(&mut waiting) else { continue };
                                 // (What isn't typed keeps its place behind what was;
                                 // and no more than so many are on their way at once.)
-                                let room = if matches!(op, HostInputOp::Focus { .. }) { 0 } else { MOST_UNANSWERED - 1 };
+                                let room = MOST_UNANSWERED - 1;
                                 while unanswered.len() > room {
                                     let Some(done) = oldest_answer(&mut unanswered).await else { break };
                                     inner_in.input_answered(&host_in, &done.session_id, &done.block_id, done.seq);
                                 }
                                 match op {
-                                    HostInputOp::Focus { session_id, switch, target } => {
-                                        if switch || target.block.is_none() {
-                                            let _ = ctrl_in.session_focus_window(&session_id, &target.window).await;
-                                        }
-                                        if let Some(l) = &target.restore {
-                                            let _ = ctrl_in.session_set_layer_state(&session_id, l, "normal", true).await;
-                                        }
-                                        if let Some(b) = &target.block {
-                                            let _ = ctrl_in.session_focus_block(&session_id, b).await;
-                                        }
-                                        let view = ctrl_in.session_view(&session_id).await;
-                                        {
-                                            let mut st = inner_in.state.lock().unwrap_or_else(|e| e.into_inner());
-                                            let Some(host) = st.hosts.get_mut(&host_in) else { continue };
-                                            if !host.pending_focus.get(&session_id).is_some_and(|newest| Arc::ptr_eq(newest, &target)) {
-                                                continue;
-                                            }
-                                            host.pending_focus.remove(&session_id);
-                                        }
-                                        if let Ok(view) = view {
-                                            inner_in.ingest_session(&host_in, &ctrl_in, &ep_in, view.payload, &[]).await;
-                                        }
-                                    }
                                     // (Taken: its size is this client's to set from
                                     // now, said here at once so the next paint sets
                                     // it; the server's word of it follows.)
@@ -8360,6 +8794,66 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         tokio::select! { biased; _=input_connection.disconnected()=>{}, _=write=>{} }
                     });
 
+                    let ctrl_win = ctrl.clone();
+                    let ep_win = endpoint.clone();
+                    let host_win = host_key.clone();
+                    let inner_win = self.clone();
+                    let window_connection = ctrl.clone();
+                    let window_worker = tokio::spawn(async move {
+                        let run_ops = async {
+                            let mut chain = CreateChainTracker::default();
+                            let mut placement_tail: HashMap<String, tokio::sync::oneshot::Receiver<()>> = HashMap::new();
+                            while let Some(op) = win_rx.recv().await {
+                                match op {
+                                    HostWindowOp::Focus { session_id, switch, target } => {
+                                        chain.on_focus(&session_id);
+                                        if switch || target.block.is_none() {
+                                            let _ = ctrl_win.session_focus_window(&session_id, &target.window).await;
+                                        }
+                                        if let Some(l) = &target.restore {
+                                            let _ = ctrl_win.session_set_layer_state(&session_id, l, "normal", true).await;
+                                        }
+                                        if let Some(b) = &target.block {
+                                            let _ = ctrl_win.session_focus_block(&session_id, b).await;
+                                        }
+                                        let view = ctrl_win.session_view(&session_id).await;
+                                        {
+                                            let mut st = inner_win.state.lock().unwrap_or_else(|e| e.into_inner());
+                                            let Some(host) = st.hosts.get_mut(&host_win) else { continue };
+                                            if !host.pending_focus.get(&session_id).is_some_and(|newest| Arc::ptr_eq(newest, &target)) {
+                                                continue;
+                                            }
+                                            host.pending_focus.remove(&session_id);
+                                        }
+                                        if let Ok(view) = view {
+                                            inner_win.ingest_session(&host_win, &ctrl_win, &ep_win, view.payload, &[]).await;
+                                        }
+                                    }
+                                    HostWindowOp::CreateWindow { session_id, explicit_cwd, source_root_id, active_block_id, known_cwds, base_opts, feedback, on_created } => {
+                                        let orig_root = source_root_id.clone();
+                                        let effective_root = chain.resolve_source_root(&session_id, source_root_id);
+                                        if let Some((new_wid, guard)) = inner_win
+                                            .start_create_window(&host_win, &ctrl_win, &ep_win, &session_id, explicit_cwd, effective_root.as_deref(), active_block_id, known_cwds, base_opts, feedback)
+                                            .await
+                                        {
+                                            if let Some(ref wid) = new_wid {
+                                                chain.record_created(&session_id, orig_root.as_deref(), wid);
+                                            }
+                                            let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+                                            let prev_placement = placement_tail.insert(session_id.clone(), done_rx);
+                                            let (inner_p, hk_p, ctrl_p, ep_p) = (inner_win.clone(), host_win.clone(), ctrl_win.clone(), ep_win.clone());
+                                            tokio::spawn(async move {
+                                                inner_p.finish_create_window_placement(&hk_p, &ctrl_p, &ep_p, &session_id, new_wid, effective_root, guard, prev_placement, feedback, on_created).await;
+                                                let _ = done_tx.send(());
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        };
+                        tokio::select! { biased; _=window_connection.disconnected()=>{}, _=run_ops=>{} }
+                    });
+
                     let screens_connected = {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                         let preferred_helper = (st.settings.host_helper && crate::link::carried()).then_some(crate::link::ID);
@@ -8387,6 +8881,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.session_summaries = summaries;
                             h.control = Some(ctrl.clone());
                             h.input_tx = Some(in_tx);
+                            h.window_tx = Some(win_tx);
                             if !is_local_host && let RexEndpoint::Ssh { target, pool, askpass } = &endpoint {
                                 let conn_id = crate::screens_sock::next_conn_id();
                                 h.screens_conn_id = conn_id;
@@ -8400,6 +8895,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         } else {
                             ctrl.close();
                             input_worker.abort();
+                            window_worker.abort();
                             return;
                         }
                     };
@@ -8479,6 +8975,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     }
                     last_seq = sequence.seen;
                     input_worker.abort();
+                    window_worker.abort();
                     let dropped_host = {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                         let label = if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(&ctrl))) {
@@ -8487,9 +8984,16 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.server_version = None;
                             h.sessions.clear();
                             h.pending_focus.clear();
+                            h.pending_placements.clear();
+                            h.pending_creates.clear();
+                            for (_, (_, _, notify)) in h.creating_defer.drain() {
+                                notify.notify_waiters();
+                            }
                             h.session_summaries.clear();
                             h.control = None;
                             h.input_tx = None;
+                            h.window_tx = None;
+                            h.window_tx = None;
                             let prev_conn_id = h.screens_conn_id;
                             h.screens_conn_id = 0;
                             h.screens_state_seq += 1;
@@ -8535,6 +9039,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.host_instance_id == host_inst_id && h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
                             h.control = None;
                             h.input_tx = None;
+                            h.window_tx = None;
                             h.screens_conn_id = 0;
                             h.screens_state_seq += 1;
                             h.conn_state = HostConnState::Reconnecting { attempt, last_error: err_msg.clone() };
@@ -8561,24 +9066,306 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         }
     }
 
+    /// Phase 1 of `HostWindowOp::CreateWindow` (runs inside `window_worker`):
+    /// resolves live CWD candidates, runs `session.new_window` (focusing the
+    /// new tab on the server), arms a provisional `PlacementGuard` immediately
+    /// for the exact `new_window_id` (retroactively reordering if `WindowCreated`
+    /// won), and releases the `window_worker` so subsequent `Focus` ops never
+    /// stall behind post-create reordering.
+    #[allow(clippy::too_many_arguments)]
+    async fn start_create_window(
+        self: &Arc<Self>,
+        host_key: &str,
+        ctrl: &ControlClient,
+        ep: &RexEndpoint,
+        session_id: &str,
+        explicit_cwd: Option<String>,
+        source_root_id: Option<&str>,
+        active_block_id: Option<String>,
+        known_cwds: Vec<String>,
+        base_opts: Option<Value>,
+        feedback: Option<Feedback>,
+    ) -> Option<(Option<String>, PlacementGuard)> {
+        struct CreateCountGuard {
+            inner: Arc<RexHubInner>,
+            hk: String,
+            sid: String,
+        }
+        impl Drop for CreateCountGuard {
+            fn drop(&mut self) {
+                let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(host) = st.hosts.get_mut(&self.hk)
+                    && let Some(n) = host.pending_creates.get_mut(&self.sid)
+                {
+                    *n = n.saturating_sub(1);
+                    if *n == 0 {
+                        host.pending_creates.remove(&self.sid);
+                    }
+                }
+            }
+        }
+        struct DeferGuard {
+            inner: Arc<RexHubInner>,
+            hk: String,
+            sid: String,
+            token: u64,
+            notify: Arc<tokio::sync::Notify>,
+        }
+        impl Drop for DeferGuard {
+            fn drop(&mut self) {
+                let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(host) = st.hosts.get_mut(&self.hk)
+                    && host.creating_defer.get(&self.sid).is_some_and(|(t, _, _)| *t == self.token)
+                {
+                    host.creating_defer.remove(&self.sid);
+                }
+                drop(st);
+                self.notify.notify_waiters();
+            }
+        }
+
+        let _count_guard = CreateCountGuard { inner: self.clone(), hk: host_key.to_owned(), sid: session_id.to_owned() };
+
+        // Resolve live process CWDs (`[foreground, shell]`) from the host that
+        // owns the PTY first (under a bounded deadline), falling back to cached
+        // `known_cwds` only when live lookup returns empty or times out.
+        let cwd_candidates = resolve_new_window_cwd_candidates(explicit_cwd, known_cwds, CREATE_WINDOW_CWD_TIMEOUT, || async {
+            let Some(bid) = active_block_id.as_deref() else { return Vec::new() };
+            match ctrl.terminal_process(session_id, bid).await {
+                Ok(proc_res) => cwds_from_process(Some(&proc_res.payload)),
+                Err(_) => Vec::new(),
+            }
+        })
+        .await;
+
+        // Briefly defer `WindowCreated` event publication while `session.new_window`
+        // is in flight so `PlacementGuard` arms for the exact returned `new_window_id`
+        // before any unmoved creation view paints (Astra #9).
+        let defer_guard = {
+            let token = next_placement_token();
+            let notify = Arc::new(tokio::sync::Notify::new());
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(host) = st.hosts.get_mut(host_key) {
+                host.creating_defer.insert(session_id.to_owned(), (token, Instant::now() + CREATE_WINDOW_EVENT_DEFER, notify.clone()));
+            }
+            DeferGuard { inner: self.clone(), hk: host_key.to_owned(), sid: session_id.to_owned(), token, notify }
+        };
+
+        let created = create_window_rpc_candidates(&cwd_candidates, base_opts, |opts| ctrl.session_new_window(session_id, None, opts)).await;
+        let res = match created {
+            Ok(res) => res,
+            Err(err) => {
+                drop(defer_guard);
+                if matches!(err, olo_rex_client::RexError::Timeout) {
+                    let refreshed = match tokio::time::timeout(Duration::from_secs(5), ctrl.session_view(session_id)).await {
+                        Ok(Ok(v)) => {
+                            self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                            true
+                        }
+                        _ => false,
+                    };
+                    if let Some(fb) = feedback {
+                        fb.problem("Couldn’t confirm the new tab.", timeout_problem_detail(refreshed));
+                    }
+                } else if let Some(fb) = feedback {
+                    fb.problem("Couldn’t create the tab.", err);
+                }
+                return None;
+            }
+        };
+
+        let new_wid = res.payload.get("window_id").and_then(Value::as_str).map(str::to_owned);
+        let mut guard = PlacementGuard { inner: self.clone(), hk: host_key.to_owned(), sid: session_id.to_owned(), token: None };
+
+        // Arm provisional placement IMMEDIATELY for the exact `new_wid` before
+        // releasing `defer_guard` or awaiting post-create `session_view` so
+        // an early `WindowCreated` event never flickers `new_wid` to the end.
+        if let (Some(new_wid), Some(root_id)) = (new_wid.as_deref(), source_root_id) {
+            let provisional_before = {
+                let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.hosts.get(host_key).and_then(|h| h.sessions.get(session_id)).and_then(|sess| successor_top_level_window(&st.subagents, host_key, sess, root_id, Some(new_wid)))
+            };
+            if let Some(bwid) = provisional_before {
+                guard.set(new_wid.to_owned(), bwid);
+            }
+        }
+        drop(defer_guard);
+        Some((new_wid, guard))
+    }
+
+    /// Phase 2 of `HostWindowOp::CreateWindow` (spawned onto its own task so
+    /// subsequent `Focus` ops never stall on reordering): awaits any earlier
+    /// placement task on the same session, fetches a fresh post-create view,
+    /// moves `new_wid` immediately right of `source_root_id`, verifies post-move
+    /// adjacency with one bounded correction (including move-to-end), and retires
+    /// `PlacementGuard` atomically inside `ingest_session_retiring`.
+    #[allow(clippy::too_many_arguments)]
+    async fn finish_create_window_placement(
+        self: &Arc<Self>,
+        host_key: &str,
+        ctrl: &ControlClient,
+        ep: &RexEndpoint,
+        session_id: &str,
+        new_wid: Option<String>,
+        source_root_id: Option<String>,
+        mut guard: PlacementGuard,
+        prev_placement: Option<tokio::sync::oneshot::Receiver<()>>,
+        feedback: Option<Feedback>,
+        on_created: Option<Box<dyn FnOnce() + Send>>,
+    ) {
+        if let Some(prev) = prev_placement {
+            let _ = prev.await;
+        }
+
+        let mut final_view: Option<SessionView> = None;
+
+        if let (Some(new_wid), Some(root_id)) = (new_wid.as_deref(), source_root_id.as_deref()) {
+            // Fetch fresh post-create view (retry once on transient failure so
+            // placement is never silently skipped; Astra #8).
+            let post_create = match ctrl.session_view(session_id).await {
+                Ok(v) => Ok(v),
+                Err(_) => ctrl.session_view(session_id).await,
+            };
+            match post_create {
+                Ok(v) => {
+                    let desired = {
+                        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                        desired_move_for_new_tab(&st.subagents, host_key, &v.payload, root_id, new_wid)
+                    };
+                    match desired {
+                        None => {
+                            guard.clear();
+                            final_view = Some(v.payload);
+                        }
+                        Some(target_before) => {
+                            if let Some(ref bwid) = target_before {
+                                guard.set(new_wid.to_owned(), bwid.clone());
+                            } else {
+                                guard.clear();
+                            }
+                            let mut move_err = ctrl.session_move_window(session_id, new_wid, target_before.as_deref()).await.err();
+                            // Fetch post-move view to verify adjacency (Astra #6)
+                            // or recompute once if the target neighbor vanished.
+                            match ctrl.session_view(session_id).await {
+                                Ok(after) => {
+                                    let correction = {
+                                        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                                        desired_move_for_new_tab(&st.subagents, host_key, &after.payload, root_id, new_wid)
+                                    };
+                                    match correction {
+                                        None => {
+                                            // Adjacency confirmed (even if first move errored
+                                            // because the neighbor vanished and `new_wid` is now
+                                            // adjacent right of `root_id`).
+                                            move_err = None;
+                                            final_view = Some(after.payload);
+                                        }
+                                        Some(retry_before) => {
+                                            if let Some(ref bwid2) = retry_before {
+                                                guard.set(new_wid.to_owned(), bwid2.clone());
+                                            } else {
+                                                guard.clear();
+                                            }
+                                            match ctrl.session_move_window(session_id, new_wid, retry_before.as_deref()).await {
+                                                Ok(_) => {
+                                                    move_err = None;
+                                                    final_view = ctrl.session_view(session_id).await.ok().map(|v| v.payload);
+                                                }
+                                                Err(e) => {
+                                                    move_err = Some(e);
+                                                    final_view = ctrl.session_view(session_id).await.ok().map(|v| v.payload).or(Some(after.payload));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    if move_err.is_none() {
+                                        move_err = Some(e);
+                                    }
+                                }
+                            }
+                            if let Some(err) = move_err {
+                                tracing::warn!("Couldn't place new tab {new_wid}: {err}");
+                                if let Some(fb) = feedback {
+                                    fb.problem("Couldn’t place the new tab.", err);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    guard.clear();
+                    tracing::warn!("Couldn't refresh session to place new tab {new_wid}: {err}");
+                    if let Some(fb) = feedback {
+                        fb.problem("Couldn’t place the new tab.", err);
+                    }
+                }
+            }
+        }
+
+        if final_view.is_none() {
+            final_view = ctrl.session_view(session_id).await.ok().map(|v| v.payload);
+        }
+        // Atomically retire `guard`'s placement token under `self.state` lock
+        // right after `install_view` succeeds (and BEFORE `apply_pending_placements`),
+        // so lagging pre-move views cannot flicker while an authoritative
+        // post-move view is never rewritten back to stale local order (Astra #7 / Neon #2).
+        if let Some(v) = final_view {
+            let retire = guard.take_token();
+            self.ingest_session_retiring(host_key, ctrl, ep, v, &[], retire).await;
+        } else {
+            drop(guard);
+        }
+        if let Some(cb) = on_created {
+            cb();
+        }
+    }
+
     async fn ingest_session(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint, view: SessionView, pre_tickets: &[olo_rex_client::DataTicket]) {
+        self.ingest_session_retiring(host_key, ctrl, ep, view, pre_tickets, None).await;
+    }
+
+    async fn ingest_session_retiring(
+        self: &Arc<Self>,
+        host_key: &str,
+        ctrl: &ControlClient,
+        ep: &RexEndpoint,
+        view: SessionView,
+        pre_tickets: &[olo_rex_client::DataTicket],
+        retire_placement: Option<u64>,
+    ) {
         let session_id = view.session_id.clone();
         let blocks: Vec<BlockInfo> = view.windows.iter().flat_map(|w| w.all_blocks()).cloned().collect();
 
         let mut to_attach = Vec::new();
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let Some(h) = st.hosts.get_mut(host_key) else { return };
-            if !h.control.as_ref().is_some_and(|c| c.same_connection(ctrl)) {
-                return;
-            }
-            if !install_view(&mut h.session_summaries, &mut h.sessions, view) {
-                return;
-            }
-            if let Some(target) = h.pending_focus.get(&session_id)
-                && let Some(view) = h.sessions.get_mut(&session_id)
             {
-                target.apply(view);
+                let st = &mut *st;
+                let Some(h) = st.hosts.get_mut(host_key) else { return };
+                if !h.control.as_ref().is_some_and(|c| c.same_connection(ctrl)) {
+                    return;
+                }
+                if !install_view(&mut h.session_summaries, &mut h.sessions, view) {
+                    if let Some(token) = retire_placement {
+                        remove_placement_token(&mut h.pending_placements, &session_id, token);
+                    }
+                    return;
+                }
+                if let Some(token) = retire_placement {
+                    remove_placement_token(&mut h.pending_placements, &session_id, token);
+                }
+                if let Some(placements) = h.pending_placements.get(&session_id)
+                    && let Some(view) = h.sessions.get_mut(&session_id)
+                {
+                    apply_pending_placements(view, placements);
+                }
+                if let Some(target) = h.pending_focus.get(&session_id)
+                    && let Some(view) = h.sessions.get_mut(&session_id)
+                {
+                    target.apply(view);
+                }
             }
             let theme = st.active_theme.clone();
             let live_ids: HashSet<String> = blocks.iter().map(|b| b.block_id.clone()).collect();
@@ -9087,6 +9874,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     if let Some(h) = st.hosts.get_mut(host_key) {
                         h.sessions.remove(&session_id);
                         h.pending_focus.remove(&session_id);
+                        h.pending_placements.remove(&session_id);
+                        h.pending_creates.remove(&session_id);
+                        if let Some((_, _, notify)) = h.creating_defer.remove(&session_id) {
+                            notify.notify_waiters();
+                        }
                         h.session_summaries.retain(|s| s.session_id != session_id);
                     }
                     st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id));
@@ -9116,10 +9908,25 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 }
                 (self.notify)(HubNotice::StateChanged);
             }
-            ControlEvent::SessionViewChanged { session_id, .. }
-            | ControlEvent::ActiveWindowChanged { session_id, .. }
-            | ControlEvent::WindowCreated { session_id, .. }
-            | ControlEvent::WindowClosed { session_id, .. }
+            ControlEvent::SessionViewChanged { session_id, .. } | ControlEvent::ActiveWindowChanged { session_id, .. } | ControlEvent::WindowCreated { session_id, .. } => {
+                // If this desktop is awaiting its own `session.new_window` reply for
+                // `session_id`, wait briefly for the reply to identify `new_wid` and
+                // arm `PlacementGuard` before publishing the creation view (Astra #9).
+                let defer = {
+                    let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.hosts.get(host_key).and_then(|h| h.creating_defer.get(&session_id)).map(|(_, deadline, notify)| (*deadline, notify.clone()))
+                };
+                if let Some((deadline, notify)) = defer {
+                    let wait = deadline.saturating_duration_since(Instant::now());
+                    if !wait.is_zero() {
+                        let _ = tokio::time::timeout(wait, notify.notified()).await;
+                    }
+                }
+                if let Ok(v) = ctrl.session_view(&session_id).await {
+                    self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                }
+            }
+            ControlEvent::WindowClosed { session_id, .. }
             | ControlEvent::WindowLabelChanged { session_id, .. }
             | ControlEvent::SessionLabelChanged { session_id, .. }
             | ControlEvent::BlockCreated { session_id, .. }
@@ -10205,7 +11012,6 @@ mod tests {
             out.push(match op {
                 HostInputOp::Write { block_id, text, .. } => format!("{block_id}:{text}"),
                 HostInputOp::Key { .. } => "key".to_owned(),
-                HostInputOp::Focus { .. } => "focus".to_owned(),
                 HostInputOp::Own { .. } => "own".to_owned(),
             });
         }
@@ -10778,6 +11584,724 @@ mod tests {
         let rt_host = HostRuntime::test_connected("dev-box", HashMap::new());
         assert_eq!(rt_host.key, "dev-box");
         assert!(crate::screens_sock::is_ssh_endpoint(&rt_host.endpoint_raw));
+    }
+
+    #[test]
+    fn new_tab_before_window_places_right_of_active_and_respects_subagents() {
+        let win = |id: &str| olo_rex_client::WindowView { window_id: id.into(), label: id.into(), focused_block_id: None, zoomed_block_id: None, layers: Vec::new() };
+        let sub = |id: &str, wid: &str, parent: &str| crate::subagents::NativeSubagent {
+            id: id.into(),
+            name: None,
+            host_key: "local".into(),
+            session_id: "s1".into(),
+            window_id: wid.into(),
+            block_id: format!("b-{wid}"),
+            parent_window_id: parent.into(),
+            parent_block_id: None,
+            cli: crate::subagents::AgentCli::Claude,
+            model: String::new(),
+            effort: String::new(),
+            title: wid.into(),
+            role: None,
+            cwd: None,
+            resume_id: None,
+            cli_session_id: None,
+            transcript_path: None,
+            desktop_policy: crate::subagents::DesktopPolicy::None,
+            stream_mode: false,
+            started_at: 0,
+            exited_at: None,
+            exit_code: None,
+            last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
+            command: Vec::new(),
+            minds: None,
+            minded_by: None,
+            shared_minder: false,
+        };
+
+        let mut reg = crate::subagents::SubagentRegistry::default();
+        reg.register(sub("sa-1", "c1", "w1"));
+        reg.register(sub("sa-1a", "c1a", "c1"));
+        reg.register(sub("sa-2", "c2", "w2"));
+
+        let mk_sess = |ids: &[&str], active: Option<&str>| SessionView {
+            session_id: "s1".into(),
+            label: "work".into(),
+            revision: 1,
+            active_window_id: active.map(str::to_owned),
+            windows: ids.iter().map(|id| win(id)).collect(),
+        };
+
+        // Empty session & single tab: append at end (None).
+        assert_eq!(new_tab_before_window(&reg, "local", &mk_sess(&[], None)), None);
+        assert_eq!(new_tab_before_window(&reg, "local", &mk_sess(&["w0"], Some("w0"))), None);
+
+        // Active tab in middle (with children grouped under w1): insert before w2.
+        let sess_mid = mk_sess(&["w0", "w1", "c1", "c1a", "w2", "c2"], Some("w1"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_mid).as_deref(), Some("w2"));
+
+        // Active tab at start: insert before w1.
+        let sess_start = mk_sess(&["w0", "w1", "c1", "c1a", "w2", "c2"], Some("w0"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_start).as_deref(), Some("w1"));
+
+        // Active tab at end (last top-level tab): append at end (None).
+        let sess_end = mk_sess(&["w0", "w1", "c1", "c1a", "w2", "c2"], Some("w2"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_end), None);
+
+        // Active tab is a direct child or grandchild subagent under middle top-level tab w1:
+        // insert immediately right of w1 (and its children), i.e., before w2.
+        let sess_child = mk_sess(&["w0", "w1", "c1", "c1a", "w2", "c2"], Some("c1"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_child).as_deref(), Some("w2"));
+        let sess_grand = mk_sess(&["w0", "w1", "c1", "c1a", "w2", "c2"], Some("c1a"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_grand).as_deref(), Some("w2"));
+
+        // Active tab is a child under the last top-level tab w2: append at end (None).
+        let sess_last_child = mk_sess(&["w0", "w1", "c1", "c1a", "w2", "c2"], Some("c2"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_last_child), None);
+
+        // Stale or empty `active_window_id` validates against `sess.windows` and
+        // falls back to the first window (Neon #5).
+        let sess_stale_active = mk_sess(&["w0", "w1", "w2"], Some("w_gone"));
+        assert_eq!(active_top_level_window(&reg, "local", &sess_stale_active).as_deref(), Some("w0"));
+        assert_eq!(new_tab_before_window(&reg, "local", &sess_stale_active).as_deref(), Some("w1"));
+        let sess_empty_active = mk_sess(&["w0", "w1"], Some(""));
+        assert_eq!(active_top_level_window(&reg, "local", &sess_empty_active).as_deref(), Some("w0"));
+
+        // Neighbor recomputation after concurrent reorder or close (Astra #6, #8):
+        // Start with [w0, w1, w2], source_root_id = w0. If another client moves
+        // w1 to the front -> [w1, w0, w2, w_new], successor of w0 is w2 (NOT w1!).
+        let moved_neighbor = mk_sess(&["w1", "w0", "w2", "w_new"], Some("w_new"));
+        assert_eq!(successor_top_level_window(&reg, "local", &moved_neighbor, "w0", Some("w_new")).as_deref(), Some("w2"));
+        // Post-move adjacency verification: if a concurrent move of w1 put w_new
+        // to the LEFT of w0 (`[w_new, w1, w0, w2]`), `desired_move_for_new_tab`
+        // detects non-adjacency and requests moving w_new before w2.
+        let wrong_side = mk_sess(&["w_new", "w1", "w0", "w2"], Some("w_new"));
+        assert_eq!(desired_move_for_new_tab(&reg, "local", &wrong_side, "w0", "w_new"), Some(Some("w2".into())));
+        // If another client moved w0 to the end behind w_new (`[w_new, w1, w0]`),
+        // `desired_move_for_new_tab` requests moving w_new to the END (`Some(None)`).
+        let source_at_end = mk_sess(&["w_new", "w1", "w0"], Some("w_new"));
+        assert_eq!(desired_move_for_new_tab(&reg, "local", &source_at_end, "w0", "w_new"), Some(None));
+        // Already adjacent right of w0 (`[w1, w0, w_new, w2]` or `[w1, w0, w_new]`): None.
+        let adjacent_mid = mk_sess(&["w1", "w0", "w_new", "w2"], Some("w_new"));
+        assert_eq!(desired_move_for_new_tab(&reg, "local", &adjacent_mid, "w0", "w_new"), None);
+        let adjacent_end = mk_sess(&["w1", "w0", "w_new"], Some("w_new"));
+        assert_eq!(desired_move_for_new_tab(&reg, "local", &adjacent_end, "w0", "w_new"), None);
+        // If w1 closed instead -> [w0, w2, w_new], successor of w0 is w2.
+        let closed_neighbor = mk_sess(&["w0", "w2", "w_new"], Some("w_new"));
+        assert_eq!(successor_top_level_window(&reg, "local", &closed_neighbor, "w0", Some("w_new")).as_deref(), Some("w2"));
+        // If all neighbors right of w0 closed -> [w0, w_new], successor is None.
+        let last_now = mk_sess(&["w0", "w_new"], Some("w_new"));
+        assert_eq!(successor_top_level_window(&reg, "local", &last_now, "w0", Some("w_new")), None);
+
+        // Rapid double/triple Cmd+T chaining resets cleanly on intervening Focus (Astra #2 / Neon #3).
+        let mut chain = CreateChainTracker::default();
+        assert_eq!(chain.resolve_source_root("s1", Some("w0".into())).as_deref(), Some("w0"));
+        chain.record_created("s1", Some("w0"), "n1");
+        assert_eq!(chain.resolve_source_root("s1", Some("w0".into())).as_deref(), Some("n1"));
+        chain.record_created("s1", Some("w0"), "n2");
+        assert_eq!(chain.resolve_source_root("s1", Some("w0".into())).as_deref(), Some("n2"));
+        // Intervening explicit Focus clears the chain back to the clicked tab.
+        chain.on_focus("s1");
+        assert_eq!(chain.resolve_source_root("s1", Some("w0".into())).as_deref(), Some("w0"));
+    }
+
+    #[test]
+    fn pending_window_placement_only_moves_exact_id_and_retires_atomically() {
+        let win = |id: &str| olo_rex_client::WindowView { window_id: id.into(), label: id.into(), focused_block_id: None, zoomed_block_id: None, layers: Vec::new() };
+        let p_w3 = PendingWindowPlacement { token: 1, new_window_id: "w3".into(), before_window_id: "w2".into() };
+
+        // Intermediate view where server appended w3 before session.move_window finishes.
+        let mut view = SessionView { session_id: "s1".into(), label: "work".into(), revision: 2, active_window_id: Some("w3".into()), windows: vec![win("w0"), win("w1"), win("w2"), win("w3")] };
+        assert!(apply_pending_placements(&mut view, &[p_w3]));
+        let order: Vec<&str> = view.windows.iter().map(|w| w.window_id.as_str()).collect();
+        assert_eq!(order, ["w0", "w1", "w3", "w2"]);
+        assert_eq!(view.active_window_id.as_deref(), Some("w3"));
+
+        // An unfamiliar window `x_other` created by another client is NEVER moved
+        // by a placement targeting `w3` (Astra #7 / Neon #4).
+        let p_w3 = PendingWindowPlacement { token: 1, new_window_id: "w3".into(), before_window_id: "w2".into() };
+        let mut view_other =
+            SessionView { session_id: "s1".into(), label: "work".into(), revision: 3, active_window_id: Some("w1".into()), windows: vec![win("w0"), win("w1"), win("w2"), win("x_other")] };
+        assert!(!apply_pending_placements(&mut view_other, &[p_w3]));
+        let order: Vec<&str> = view_other.windows.iter().map(|w| w.window_id.as_str()).collect();
+        assert_eq!(order, ["w0", "w1", "w2", "x_other"]);
+
+        // Two concurrent placements with exact IDs never collide or steal each other's window.
+        let p1 = PendingWindowPlacement { token: 1, new_window_id: "w3".into(), before_window_id: "w2".into() };
+        let p2 = PendingWindowPlacement { token: 2, new_window_id: "w4".into(), before_window_id: "w1".into() };
+        let mut view_both =
+            SessionView { session_id: "s1".into(), label: "work".into(), revision: 4, active_window_id: Some("w4".into()), windows: vec![win("w0"), win("w1"), win("w2"), win("w3"), win("w4")] };
+        assert!(apply_pending_placements(&mut view_both, &[p1, p2]));
+        let order: Vec<&str> = view_both.windows.iter().map(|w| w.window_id.as_str()).collect();
+        assert_eq!(order, ["w0", "w4", "w1", "w3", "w2"]);
+
+        // Atomic retirement inside ingest (Astra #7 / Neon #2): if another client
+        // moved w3 to the end (rev 11: [w0, w1, w2, w3]) before final ingest,
+        // retiring token 1 BEFORE `apply_pending_placements` preserves server order.
+        let mut placements: HashMap<String, Vec<PendingWindowPlacement>> = HashMap::new();
+        placements.insert("s1".into(), vec![PendingWindowPlacement { token: 1, new_window_id: "w3".into(), before_window_id: "w2".into() }]);
+        let mut rows = vec![SessionSummary { session_id: "s1".into(), label: "work".into() }];
+        let mut sessions = HashMap::new();
+        let rev11 = SessionView { session_id: "s1".into(), label: "work".into(), revision: 11, active_window_id: Some("w3".into()), windows: vec![win("w0"), win("w1"), win("w2"), win("w3")] };
+        assert!(install_view(&mut rows, &mut sessions, rev11));
+        remove_placement_token(&mut placements, "s1", 1);
+        if let Some(list) = placements.get("s1")
+            && let Some(v) = sessions.get_mut("s1")
+        {
+            apply_pending_placements(v, list);
+        }
+        let final_order: Vec<&str> = sessions["s1"].windows.iter().map(|w| w.window_id.as_str()).collect();
+        assert_eq!(final_order, ["w0", "w1", "w2", "w3"]);
+        assert!(placements.is_empty());
+    }
+
+    #[test]
+    fn select_honors_source_tab_click_while_create_pending_and_guard_reorders_retroactively() {
+        let win = |id: &str| olo_rex_client::WindowView { window_id: id.into(), label: id.into(), focused_block_id: None, zoomed_block_id: None, layers: Vec::new() };
+        let notified = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let notified_cb = notified.clone();
+        let hub = RexHub::test_offline(move |_| {
+            notified_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        let (in_tx, mut in_rx) = tokio::sync::mpsc::unbounded_channel::<HostInputOp>();
+        let (win_tx, mut win_rx) = tokio::sync::mpsc::unbounded_channel::<HostWindowOp>();
+        let sess = SessionView { session_id: "s1".into(), label: "work".into(), revision: 5, active_window_id: Some("w0".into()), windows: vec![win("w0"), win("w1")] };
+        {
+            let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut host = HostRuntime::test_connected("local", HashMap::from([("s1".into(), sess)]));
+            host.input_tx = Some(in_tx);
+            host.window_tx = Some(win_tx);
+            st.hosts.insert("local".into(), host);
+        }
+
+        // Without a pending create, clicking already-active `w0` is a no-op.
+        hub.select_window("local", "s1", "w0");
+        assert!(win_rx.try_recv().is_err());
+
+        // With a pending create on `s1` (Astra #2), clicking `w0` MUST queue
+        // `HostWindowOp::Focus { switch: true }` on `window_tx` (NOT `input_tx`, Astra #3 / Neon #1).
+        hub.create_window("local", "s1", None, None, None);
+        hub.select_window("local", "s1", "w0");
+        assert!(in_rx.try_recv().is_err(), "window lifecycle/focus must stay off typing channel");
+        assert!(matches!(win_rx.try_recv(), Ok(HostWindowOp::CreateWindow { ref session_id, .. }) if session_id == "s1"));
+        match win_rx.try_recv() {
+            Ok(HostWindowOp::Focus { session_id, switch, target }) => {
+                assert_eq!(session_id, "s1");
+                assert!(switch, "source-tab click while create is pending must force focus RPC");
+                assert_eq!(target.window, "w0");
+            }
+            _ => panic!("expected HostWindowOp::Focus for source tab w0"),
+        }
+
+        // Retroactive reorder (Neon #2 / Astra #9): if `WindowCreated` already
+        // installed `[w0, w1, w2]`, calling `PlacementGuard::set("w2", "w1")`
+        // reorders `host.sessions["s1"]` immediately and notifies UI.
+        {
+            let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let sess = st.hosts.get_mut("local").unwrap().sessions.get_mut("s1").unwrap();
+            sess.windows.push(win("w2"));
+            sess.active_window_id = Some("w2".into());
+        }
+        let before_notifies = notified.load(std::sync::atomic::Ordering::SeqCst);
+        let mut guard = PlacementGuard { inner: hub.inner.clone(), hk: "local".into(), sid: "s1".into(), token: None };
+        guard.set("w2".into(), "w1".into());
+        {
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let order: Vec<&str> = st.hosts["local"].sessions["s1"].windows.iter().map(|w| w.window_id.as_str()).collect();
+            assert_eq!(order, ["w0", "w2", "w1"]);
+        }
+        assert!(notified.load(std::sync::atomic::Ordering::SeqCst) > before_notifies, "retroactive reorder must notify UI");
+        drop(guard);
+        assert!(hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts["local"].pending_placements.is_empty());
+    }
+
+    #[test]
+    fn cwd_resolution_prefers_live_keeps_shell_fallback_filters_deleted_and_respects_timeout() {
+        let proc_snap = TerminalProcessSnapshot {
+            foreground: Some(olo_rex_client::ProcessInfo { pid: 222, name: "vim".into(), cwd: Some("/work/sub".into()), ..Default::default() }),
+            child: Some(olo_rex_client::ProcessInfo { pid: 111, name: "zsh".into(), cwd: Some("/work".into()), ..Default::default() }),
+            ..Default::default()
+        };
+        // Retains BOTH foreground and distinct shell fallback candidates (Astra #13).
+        assert_eq!(cwds_from_process(Some(&proc_snap)), vec!["/work/sub", "/work"]);
+        assert_eq!(block_cwd_candidates("/cached/dir", Some(&proc_snap)), vec!["/cached/dir", "/work/sub", "/work"]);
+        assert_eq!(block_cwd_candidates("", Some(&proc_snap)), vec!["/work/sub", "/work"]);
+
+        // Kernel ` (deleted)` foreground CWD is skipped in favor of live shell CWD (Neon #9).
+        let deleted_fg = TerminalProcessSnapshot {
+            foreground: Some(olo_rex_client::ProcessInfo { pid: 222, name: "vim".into(), cwd: Some("/var/tmp/tmp123 (deleted)".into()), ..Default::default() }),
+            child: Some(olo_rex_client::ProcessInfo { pid: 111, name: "zsh".into(), cwd: Some("/work".into()), ..Default::default() }),
+            ..Default::default()
+        };
+        assert_eq!(cwds_from_process(Some(&deleted_fg)), vec!["/work"]);
+        assert_eq!(block_cwd_candidates("/gone (deleted)", Some(&deleted_fg)), vec!["/work"]);
+        assert!(block_cwd_candidates("", None).is_empty());
+
+        // shell_opts_with_cwd preserves existing options and attaches cwd cleanly.
+        let base = Some(json!({ "env": { "SSH_AUTH_SOCK": "/tmp/a" } }));
+        let with = shell_opts_with_cwd(base.clone(), Some("/srv/app")).unwrap();
+        assert_eq!(with["cwd"], "/srv/app");
+        assert_eq!(with["env"]["SSH_AUTH_SOCK"], "/tmp/a");
+        assert_eq!(shell_opts_with_cwd(base.clone(), None), base);
+        assert_eq!(shell_opts_with_cwd(base.clone(), Some("")), base);
+
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            // Live host lookup beats stale cached `g.pwd`, keeping distinct shell fallback.
+            let got = resolve_new_window_cwd_candidates(None, vec!["/stale/home".into()], Duration::from_secs(1), || async { vec!["/live/fg".into(), "/live/shell".into()] }).await;
+            assert_eq!(got, vec!["/live/fg", "/live/shell"]);
+
+            // Explicit `cwd` skips live lookup and cached `g.pwd` entirely.
+            let mut called = false;
+            let got = resolve_new_window_cwd_candidates(Some("/explicit/dir".into()), vec!["/stale/home".into()], Duration::from_secs(1), || {
+                called = true;
+                async { vec!["/live/cd/dir".into()] }
+            })
+            .await;
+            assert_eq!(got, vec!["/explicit/dir"]);
+            assert!(!called);
+
+            // Timed-out live lookup falls back to cached candidates cleanly within deadline.
+            let got = resolve_new_window_cwd_candidates(None, vec!["/cached/fallback".into()], Duration::from_millis(20), || async {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                vec!["/too/late".into()]
+            })
+            .await;
+            assert_eq!(got, vec!["/cached/fallback"]);
+
+            // Empty live lookup falls back to cached candidates.
+            let got = resolve_new_window_cwd_candidates(None, vec!["/cached/fallback".into()], Duration::from_secs(1), || async { Vec::new() }).await;
+            assert_eq!(got, vec!["/cached/fallback"]);
+        });
+    }
+
+    #[test]
+    fn create_window_retry_allowlists_directory_rejections_and_uses_shell_fallback() {
+        use olo_rex_client::{ApiError, RexError};
+        let api_bad_cwd = RexError::Api(ApiError { code: "invalid_argument".into(), message: "cwd does not exist".into(), status: 400 });
+        let api_invalid_cwd = RexError::Api(ApiError { code: "invalid_cwd".into(), message: "missing".into(), status: 400 });
+        let api_not_found = RexError::Api(ApiError { code: "not_found".into(), message: "session gone".into(), status: 404 });
+        let api_session_not_found = RexError::Api(ApiError { code: "session_not_found".into(), message: "session gone".into(), status: 404 });
+        let api_window_limit = RexError::Api(ApiError { code: "resource_exhausted".into(), message: "window limit reached".into(), status: 429 });
+        let api_internal = RexError::Api(ApiError { code: "internal".into(), message: "spawn failed".into(), status: 500 });
+        let api_bad_other = RexError::Api(ApiError { code: "invalid_argument".into(), message: "invalid window_label".into(), status: 400 });
+
+        assert!(should_retry_new_window_without_cwd(&api_bad_cwd, true));
+        assert!(should_retry_new_window_without_cwd(&api_invalid_cwd, true));
+        assert!(!should_retry_new_window_without_cwd(&api_bad_cwd, false));
+        assert!(!should_retry_new_window_without_cwd(&api_not_found, true));
+        assert!(!should_retry_new_window_without_cwd(&api_session_not_found, true));
+        assert!(!should_retry_new_window_without_cwd(&api_window_limit, true));
+        assert!(!should_retry_new_window_without_cwd(&api_internal, true));
+        assert!(!should_retry_new_window_without_cwd(&api_bad_other, true));
+        assert!(!should_retry_new_window_without_cwd(&RexError::Timeout, true));
+        assert!(!should_retry_new_window_without_cwd(&RexError::Closed("eof".into()), true));
+        assert!(!should_retry_new_window_without_cwd(&RexError::Io(std::io::Error::other("reset")), true));
+
+        // Accurate timeout error copy (Astra #8 / Neon #7).
+        assert!(timeout_problem_detail(true).contains("refreshed"));
+        assert!(!timeout_problem_detail(false).contains("refreshed"));
+
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            let base = Some(json!({ "env": { "SSH_AUTH_SOCK": "/sock" } }));
+
+            // When foreground cwd is rejected as invalid directory, tries shell cwd
+            // NEXT before falling back to server default (Astra #13).
+            let mut seen_opts = Vec::new();
+            let candidates = vec!["/fg/deleted".to_owned(), "/work/shell".to_owned()];
+            let res = create_window_rpc_candidates(&candidates, base.clone(), |opts| {
+                seen_opts.push(opts.clone());
+                let attempt = seen_opts.len();
+                async move {
+                    if attempt == 1 {
+                        Err(RexError::Api(ApiError { code: "invalid_argument".into(), message: "working directory not found".into(), status: 400 }))
+                    } else {
+                        Ok(olo_rex_client::RpcResult { seq: 1, payload: json!({ "window_id": "w-shell" }) })
+                    }
+                }
+            })
+            .await;
+            assert!(res.is_ok());
+            assert_eq!(seen_opts.len(), 2);
+            assert_eq!(seen_opts[0].as_ref().unwrap()["cwd"], "/fg/deleted");
+            assert_eq!(seen_opts[1].as_ref().unwrap()["cwd"], "/work/shell");
+            assert_eq!(seen_opts[1].as_ref().unwrap()["env"]["SSH_AUTH_SOCK"], "/sock");
+
+            // If both candidates are rejected as bad directories, falls back to None (preserving base_opts).
+            let mut seen_opts = Vec::new();
+            let res = create_window_rpc_candidates(&candidates, base.clone(), |opts| {
+                seen_opts.push(opts.clone());
+                let attempt = seen_opts.len();
+                async move {
+                    if attempt <= 2 {
+                        Err(RexError::Api(ApiError { code: "invalid_cwd".into(), message: "no such directory".into(), status: 400 }))
+                    } else {
+                        Ok(olo_rex_client::RpcResult { seq: 2, payload: json!({ "window_id": "w-default" }) })
+                    }
+                }
+            })
+            .await;
+            assert!(res.is_ok());
+            assert_eq!(seen_opts.len(), 3);
+            assert!(seen_opts[2].as_ref().unwrap().get("cwd").is_none());
+            assert_eq!(seen_opts[2].as_ref().unwrap()["env"]["SSH_AUTH_SOCK"], "/sock");
+
+            // Window limit, session_not_found, internal error, and Timeout MUST NOT retry (call count == 1; Astra #5).
+            for err_factory in [
+                || RexError::Api(ApiError { code: "resource_exhausted".into(), message: "window limit reached".into(), status: 429 }),
+                || RexError::Api(ApiError { code: "session_not_found".into(), message: "session missing".into(), status: 404 }),
+                || RexError::Api(ApiError { code: "internal".into(), message: "internal error".into(), status: 500 }),
+                || RexError::Timeout,
+            ] {
+                let mut calls = 0usize;
+                let res = create_window_rpc_candidates(&["/srv/app".to_owned()], base.clone(), |_opts| {
+                    calls += 1;
+                    let e = err_factory();
+                    async move { Err(e) }
+                })
+                .await;
+                assert!(res.is_err());
+                assert_eq!(calls, 1, "non-cwd error must never retry");
+            }
+        });
+    }
+
+    /// Resolve the concrete absolute path to the `rex` binary in the parent
+    /// before clearing `PATH` for the isolated child test process (Astra #15 / Neon #6).
+    fn resolve_rex_binary_abs() -> Option<PathBuf> {
+        let candidate = olo_rex_client::find_rex_binary();
+        if candidate.is_absolute() && candidate.is_file() {
+            return Some(candidate);
+        }
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).map(|d| d.join(&candidate)).find(|p| p.is_absolute() && p.is_file())
+    }
+
+    /// End-to-end live check driving the real `RexHub::create_window` against
+    /// an isolated scratch Rex server in its own private `/var/tmp` directory:
+    /// - Pane runs `/bin/bash --norc` (no OSC 7) and runs `cd project-sub`
+    ///   after attach while cached `BlockRuntime::pwd` still holds stale `dir`.
+    /// - Drives real `RexHub::create_window` and asserts:
+    ///   1. Placement immediately right of `w0` (`[w0, w_mid, w1]`).
+    ///   2. Focus on `w_mid` and exactly 1 additional window.
+    ///   3. New tab's shell starts in `project-sub` (live lookup beats stale cache).
+    ///   4. `on_created` callback fires only after creation succeeds.
+    /// - Exercises rapid double `Cmd+T` producing left-to-right chaining.
+    /// - Exercises explicit stale/deleted `cwd` producing 1 usable shell tab.
+    #[test]
+    fn live_new_tab_placement_cwd_and_stale_dir_recovery() {
+        const CASE: &str = "OLO_REX_CMD_T_CASE";
+        const SCRATCH_ENV: &str = "OLO_REX_CMD_T_SCRATCH";
+        const BIN_ENV: &str = "OLO_REX_CMD_T_BIN";
+        const CHILD_SENTINEL: &str = "isolated-child-v1";
+
+        let root = std::env::var_os("OLO_REX_TEST_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/var/tmp"));
+
+        if std::env::var_os(CASE).is_none() {
+            let Some(rex_abs) = resolve_rex_binary_abs() else {
+                eprintln!("skipping live Rex Cmd+T test: rex binary unavailable");
+                return;
+            };
+            use std::os::unix::fs::DirBuilderExt as _;
+            let dir = root.join(format!("olo-rex-cmd-t-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]));
+            std::fs::DirBuilder::new().mode(0o700).create(&dir).expect("create private scratch dir");
+
+            struct DirGuard(PathBuf);
+            impl Drop for DirGuard {
+                fn drop(&mut self) {
+                    let _ = std::fs::remove_dir_all(&self.0);
+                }
+            }
+            let _dir_guard = DirGuard(dir.clone());
+
+            let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+            cmd.args(["--exact", "hub::tests::live_new_tab_placement_cwd_and_stale_dir_recovery", "--nocapture"])
+                .env_clear()
+                .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+                .env("SHELL", "/bin/sh")
+                .env("HOME", &dir)
+                .env("XDG_RUNTIME_DIR", &dir)
+                .env("XDG_CONFIG_HOME", dir.join("config"))
+                .env("XDG_CACHE_HOME", dir.join("cache"))
+                .env("XDG_STATE_HOME", dir.join("state-home"))
+                .env("TMPDIR", &dir)
+                .env("REX_SERVER_SOCKET", dir.join("rex.sock"))
+                .env("OLO_REX_AGENTS_DIR", dir.join("agents"))
+                .env("OLO_REX_TEST_DIR", &root)
+                .env(CASE, CHILD_SENTINEL)
+                .env(SCRATCH_ENV, &dir)
+                .env(BIN_ENV, &rex_abs)
+                .current_dir(&dir)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            if let Some(path) = std::env::var_os("LD_LIBRARY_PATH") {
+                cmd.env("LD_LIBRARY_PATH", path);
+            }
+            let mut child = cmd.spawn().expect("spawn isolated live Cmd+T test child");
+            let deadline = Instant::now() + Duration::from_secs(45);
+            let status = loop {
+                if let Some(st) = child.try_wait().expect("poll live Cmd+T child") {
+                    break Some(st);
+                }
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            };
+            let mut out = String::new();
+            let mut err = String::new();
+            if let Some(mut s) = child.stdout.take() {
+                let _ = std::io::Read::read_to_string(&mut s, &mut out);
+            }
+            if let Some(mut s) = child.stderr.take() {
+                let _ = std::io::Read::read_to_string(&mut s, &mut err);
+            }
+            let last_phase = err.lines().rev().find(|l| l.contains("[phase]")).unwrap_or("(no phase reported)");
+            match status {
+                Some(st) => assert!(st.success(), "child failed ({st}) at {last_phase}\nstdout:\n{out}\nstderr:\n{err}"),
+                None => panic!("isolated live Cmd+T test timed out after 45s at {last_phase}\nstdout:\n{out}\nstderr:\n{err}"),
+            }
+            return;
+        }
+
+        // Strict child isolation validation (Astra #14 & #15): reject accidental
+        // direct entry with inherited env vars before touching any path.
+        assert_eq!(std::env::var(CASE).as_deref(), Ok(CHILD_SENTINEL), "unexpected {CASE} value; refuse unisolated run");
+        let dir = PathBuf::from(std::env::var_os(SCRATCH_ENV).expect("missing parent-issued scratch dir"));
+        let home = PathBuf::from(std::env::var_os("HOME").expect("missing HOME"));
+        let sock = PathBuf::from(std::env::var_os("REX_SERVER_SOCKET").expect("missing REX_SERVER_SOCKET"));
+        let rex_bin = PathBuf::from(std::env::var_os(BIN_ENV).expect("missing parent-resolved rex binary"));
+        assert!(dir.is_absolute() && dir.starts_with(&root) && dir.is_dir(), "scratch dir {} must be an existing directory inside {}", dir.display(), root.display());
+        assert_eq!(home, dir, "HOME must equal parent-issued scratch dir");
+        assert_eq!(sock, dir.join("rex.sock"), "REX_SERVER_SOCKET must live inside scratch dir");
+        assert!(rex_bin.is_absolute() && rex_bin.is_file(), "parent-resolved rex binary missing: {}", rex_bin.display());
+
+        eprintln!("[phase] server_starting");
+        let sub_dir = dir.join("project-sub");
+        std::fs::create_dir_all(&sub_dir).expect("create sub_dir");
+        let addr = format!("unix://{}", sock.display());
+        let child = std::process::Command::new(&rex_bin)
+            .args(["-S", &addr, "server", "run", "--listen", &addr, "--restore=false", "--state-dir"])
+            .arg(dir.join("rex-state"))
+            .current_dir(&dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::fs::File::create(dir.join("server.log")).expect("server.log"))
+            .spawn()
+            .expect("spawn scratch rex server");
+
+        struct Fixture(std::process::Child);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let mut fixture = Fixture(child);
+
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
+        let (ctrl, sid, w0, b0, w1) = rt
+            .block_on(async {
+                tokio::time::timeout(Duration::from_secs(15), async {
+                    // Wait until the scratch server is actually accepting connections.
+                    tokio::time::timeout(Duration::from_secs(6), async {
+                        loop {
+                            if tokio::net::UnixStream::connect(&sock).await.is_ok() {
+                                return Ok::<(), String>(());
+                            }
+                            if let Some(status) = fixture.0.try_wait().map_err(|e| e.to_string())? {
+                                let log = std::fs::read_to_string(dir.join("server.log")).unwrap_or_default();
+                                return Err(format!("scratch rex exited {status}: {log}"));
+                            }
+                            tokio::time::sleep(Duration::from_millis(20)).await;
+                        }
+                    })
+                    .await
+                    .map_err(|_| "scratch rex did not start listening".to_owned())??;
+                    eprintln!("[phase] server_listening");
+
+                    let ep = RexEndpoint::Unix(sock.clone());
+                    let (stream, host_hdr) = ep.connect_stream().await.map_err(|e| e.to_string())?;
+                    let (ctrl, _ev) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(Some("cmd-t-setup".into())), None).await.map_err(|e| e.to_string())?;
+
+                    // Start w0 with `/bin/bash --norc` (no OSC 7) in `dir`, then add w1 and focus w0.
+                    let created = ctrl.session_create(Some("tabs"), Some(json!({ "command": ["/bin/bash", "--norc"], "cwd": dir }))).await.map_err(|e| e.to_string())?;
+                    let sid = created.payload.get("session_id").and_then(Value::as_str).ok_or("missing session_id")?.to_owned();
+                    let att = ctrl.session_attach(&sid).await.map_err(|e| e.to_string())?;
+                    let w0 = att.payload.view.windows[0].window_id.clone();
+                    let b0 = att.payload.view.windows[0].all_blocks().next().ok_or("missing b0")?.block_id.clone();
+                    let w1 = ctrl.session_new_window(&sid, Some("W1"), Some(json!({ "command": ["/bin/bash", "--norc"], "cwd": dir }))).await.map_err(|e| e.to_string())?.payload["window_id"]
+                        .as_str()
+                        .ok_or("missing w1")?
+                        .to_owned();
+                    ctrl.session_focus_window(&sid, &w0).await.map_err(|e| e.to_string())?;
+                    Ok::<_, String>((ctrl, sid, w0, b0, w1))
+                })
+                .await
+                .expect("scratch Rex setup timed out")
+            })
+            .expect("scratch Rex setup failed");
+
+        // Boot a real RexHub outside `rt.block_on` so its internal runtime
+        // drops cleanly in a non-async context after `rt.block_on` returns.
+        let hub = RexHub::start(Settings::default(), TerminalTheme::default(), None, None, |_| {});
+        let res: Result<(), String> = rt.block_on(async {
+            tokio::time::timeout(Duration::from_secs(20), async {
+                let bk0 = BlockKey { host_key: "local".into(), session_id: sid.clone(), block_id: b0.clone() };
+                loop {
+                    let ready = {
+                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                        st.hosts.get("local").is_some_and(|h| h.window_tx.is_some() && h.sessions.get(&sid).is_some_and(|s| s.windows.len() == 2 && s.active_window_id.as_deref() == Some(w0.as_str())))
+                            && st.blocks.contains_key(&bk0)
+                    };
+                    if ready {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                eprintln!("[phase] hub_ready");
+
+                // Change directory inside w0's non-OSC-7 shell to `sub_dir` and
+                // wait until the host's live `terminal_process` reflects it.
+                ctrl.terminal_write(&sid, &b0, &format!("cd {}\n", shell_quote(sub_dir.to_str().unwrap()))).await.map_err(|e| e.to_string())?;
+                loop {
+                    if let Ok(proc_res) = ctrl.terminal_process(&sid, &b0).await
+                        && cwd_from_process(Some(&proc_res.payload)).as_deref() == sub_dir.to_str()
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                }
+                eprintln!("[phase] cd_complete");
+
+                // Force cached `BlockRuntime::pwd` to the stale initial `dir` to
+                // prove `RexHub::create_window` resolves live host CWD first!
+                {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(br) = st.blocks.get(&bk0) {
+                        br.lock().unwrap_or_else(|e| e.into_inner()).pwd = dir.to_string_lossy().into_owned();
+                    }
+                }
+
+                // Drive the real `RexHub::create_window` entry point.
+                let (created_tx, created_rx) = tokio::sync::oneshot::channel::<()>();
+                hub.create_window(
+                    "local",
+                    &sid,
+                    None,
+                    None,
+                    Some(Box::new(move || {
+                        let _ = created_tx.send(());
+                    })),
+                );
+                created_rx.await.map_err(|_| "on_created callback did not fire".to_owned())?;
+                eprintln!("[phase] create_window_called");
+
+                let server_view = ctrl.session_view(&sid).await.map_err(|e| e.to_string())?.payload;
+                assert_eq!(server_view.windows.len(), 3, "expected exactly 1 new window");
+                let w_mid = server_view.windows[1].window_id.clone();
+                let mid_block = server_view.windows[1].all_blocks().next().ok_or("missing mid block")?.block_id.clone();
+                let order: Vec<&str> = server_view.windows.iter().map(|w| w.window_id.as_str()).collect();
+                assert_eq!(order, [w0.as_str(), w_mid.as_str(), w1.as_str()]);
+                assert_eq!(server_view.active_window_id.as_deref(), Some(w_mid.as_str()));
+
+                // Hub state matches server order and focus.
+                {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let hub_view = st.hosts.get("local").and_then(|h| h.sessions.get(&sid)).ok_or("missing hub session")?;
+                    let hub_order: Vec<&str> = hub_view.windows.iter().map(|w| w.window_id.as_str()).collect();
+                    assert_eq!(hub_order, [w0.as_str(), w_mid.as_str(), w1.as_str()]);
+                    assert_eq!(hub_view.active_window_id.as_deref(), Some(w_mid.as_str()));
+                }
+
+                // Verify the new tab's shell is running in `sub_dir` (not stale `dir`).
+                let mut observed_cwd = None;
+                for _ in 0..40 {
+                    if let Ok(proc_res) = ctrl.terminal_process(&sid, &mid_block).await {
+                        observed_cwd = cwd_from_process(Some(&proc_res.payload));
+                        if observed_cwd.as_deref() == sub_dir.to_str() {
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                assert_eq!(observed_cwd.as_deref(), sub_dir.to_str());
+
+                // Rapid double Cmd+T from `w_mid` produces left-to-right order `[w0, w_mid, r1, r2, w1]` (Astra #2 / Neon #3).
+                let (r1_tx, r1_rx) = tokio::sync::oneshot::channel::<()>();
+                let (r2_tx, r2_rx) = tokio::sync::oneshot::channel::<()>();
+                hub.create_window(
+                    "local",
+                    &sid,
+                    Some(sub_dir.to_string_lossy().into_owned()),
+                    None,
+                    Some(Box::new(move || {
+                        let _ = r1_tx.send(());
+                    })),
+                );
+                hub.create_window(
+                    "local",
+                    &sid,
+                    Some(sub_dir.to_string_lossy().into_owned()),
+                    None,
+                    Some(Box::new(move || {
+                        let _ = r2_tx.send(());
+                    })),
+                );
+                r1_rx.await.map_err(|_| "rapid create #1 did not finish".to_owned())?;
+                r2_rx.await.map_err(|_| "rapid create #2 did not finish".to_owned())?;
+                let after_rapid = ctrl.session_view(&sid).await.map_err(|e| e.to_string())?.payload;
+                assert_eq!(after_rapid.windows.len(), 5, "rapid double Cmd+T must add exactly 2 tabs");
+                assert_eq!(after_rapid.windows[0].window_id, w0);
+                assert_eq!(after_rapid.windows[1].window_id, w_mid);
+                assert_eq!(after_rapid.windows[4].window_id, w1);
+                // Active window should be the second rapid tab (at index 3, right of index 2).
+                assert_eq!(after_rapid.active_window_id.as_deref(), Some(after_rapid.windows[3].window_id.as_str()));
+                eprintln!("[phase] rapid_double_checked");
+
+                // Verify explicit stale/deleted `cwd` still creates exactly 1 usable tab via RexHub::create_window.
+                let stale = dir.join("deleted-dir-does-not-exist");
+                let (stale_tx, stale_rx) = tokio::sync::oneshot::channel::<()>();
+                hub.create_window(
+                    "local",
+                    &sid,
+                    Some(stale.to_string_lossy().into_owned()),
+                    None,
+                    Some(Box::new(move || {
+                        let _ = stale_tx.send(());
+                    })),
+                );
+                stale_rx.await.map_err(|_| "stale cwd create_window did not complete".to_owned())?;
+                let after_stale = ctrl.session_view(&sid).await.map_err(|e| e.to_string())?.payload;
+                assert_eq!(after_stale.windows.len(), 6, "stale cwd create must add exactly 1 tab");
+                let stale_win = after_stale.active_window().ok_or("missing active stale window")?;
+                let stale_block = stale_win.all_blocks().next().ok_or("missing stale block")?.block_id.clone();
+                let mut stale_has_shell = false;
+                for _ in 0..40 {
+                    if let Ok(proc_res) = ctrl.terminal_process(&sid, &stale_block).await
+                        && cwd_from_process(Some(&proc_res.payload)).is_some()
+                    {
+                        stale_has_shell = true;
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                assert!(stale_has_shell, "tab created after stale cwd should have a running shell");
+                eprintln!("[phase] done");
+                Ok(())
+            })
+            .await
+            .expect("scratch Rex cmd-t test timed out")
+        });
+        res.expect("live new tab placement & cwd test failed");
     }
 }
 

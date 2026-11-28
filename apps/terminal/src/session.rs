@@ -171,8 +171,13 @@ pub enum Start {
         cwd: Option<PathBuf>,
         from: u64,
     },
-    /// One olo-termd already has.
-    Attach(u64),
+    /// One olo-termd already has, with its known shell PID and/or saved
+    /// directory as fallback until `Chunk::Attached` arrives.
+    Attach {
+        id: u64,
+        pid: Option<libc::pid_t>,
+        cwd: Option<PathBuf>,
+    },
     /// One this process ran itself, before olo-termd: hand it over.
     Adopt {
         pty: std::os::fd::OwnedFd,
@@ -199,6 +204,9 @@ pub struct Session {
     /// Title set by the program (OSC 0/2), if any.
     pub title: Option<String>,
     pub exited: Option<Option<i32>>,
+    /// Working directory requested when spawning/restoring this shell, kept as
+    /// a fallback until `olo-termd` attaches and supplies a live PID/PTY.
+    spawn_cwd: Option<PathBuf>,
 }
 
 /// A new size for the screen, made on a worker: a new width reflows the
@@ -221,7 +229,7 @@ impl Session {
     pub fn start(proxy: Proxy, link: &Link, size: Size, cell: (u16, u16), scheme: crate::colors::Scheme, start: Start) -> Session {
         let id = match &start {
             Start::Spawn { .. } | Start::Restore { .. } | Start::Adopt { .. } => link.new_id(),
-            Start::Attach(id) => *id,
+            Start::Attach { id, .. } => *id,
         };
         let shared = Arc::new(io::Shared::new(cell, size, scheme));
         let writer = link.writer(id);
@@ -256,10 +264,19 @@ impl Session {
         };
         let (tx, rx) = mpsc::channel();
         spawn_feeder(rx, term.clone(), shared.clone(), wake, writer, exited);
+        let spawn_cwd = match &start {
+            Start::Spawn { cwd, .. } | Start::Restore { cwd, .. } | Start::Attach { cwd, .. } => cwd.clone(),
+            Start::Adopt { .. } => None,
+        };
+        if let Start::Attach { pid: Some(pid), .. } = &start
+            && *pid > 0
+        {
+            shared.pid.store(*pid, Ordering::Relaxed);
+        }
         match start {
             Start::Spawn { command, cwd } => link.spawn(id, tx, wire::Spawn { command, cwd, grid: grid(size, cell), restore: None }),
-            Start::Restore { cwd, from } => link.spawn(id, tx, wire::Spawn { command: None, cwd: cwd.filter(|d| d.is_dir()), grid: grid(size, cell), restore: Some(from) }),
-            Start::Attach(id) => link.attach(id, tx, grid(size, cell)),
+            Start::Restore { cwd, from } => link.spawn(id, tx, wire::Spawn { command: None, cwd, grid: grid(size, cell), restore: Some(from) }),
+            Start::Attach { id, .. } => link.attach(id, tx, grid(size, cell)),
             Start::Adopt { pty, pid, title, replay } => {
                 link.adopt(id, tx, wire::Adopt { pid, grid: grid(size, cell), title, replay }, pty);
                 // It's still our child: collect it when it exits.
@@ -270,7 +287,7 @@ impl Session {
                 });
             }
         }
-        Session { id, term, link: link.clone(), pending, drawn_in, proxy, reflow: Arc::default(), shared, size, cell, title: None, exited: None }
+        Session { id, term, link: link.clone(), pending, drawn_in, proxy, reflow: Arc::default(), shared, size, cell, title: None, exited: None, spawn_cwd }
     }
 
     /// What drawing the screen takes, to keep in a frame's paint.
@@ -377,9 +394,19 @@ impl Session {
         }
     }
 
-    /// The shell's working directory.
+    /// The shell's working directory (used for layout persistence and Undo
+    /// Close Tab), falling back to the requested spawn directory only until
+    /// `olo-termd` attaches and supplies a live shell PID.
     pub fn cwd(&self) -> Option<PathBuf> {
-        std::fs::read_link(format!("/proc/{}/cwd", self.shared.shell()?)).ok()
+        resolve_shell_cwd(self.shared.shell(), self.exited.is_some(), self.spawn_cwd.as_deref(), proc_cwd)
+    }
+
+    /// The tab's active working directory: prefers its foreground process
+    /// group's `/proc/{fg}/cwd` when readable, falling back to its shell's
+    /// `/proc/{shell}/cwd` (and to the requested spawn directory while waiting
+    /// for `olo-termd` to attach). Never calls `stat(2)` on user mounts.
+    pub fn foreground_cwd(&self) -> Option<PathBuf> {
+        resolve_foreground_cwd(self.shared.foreground(), self.shared.shell(), self.exited.is_some(), self.spawn_cwd.as_deref(), proc_cwd)
     }
 
     /// The foreground program's name, when it isn't the shell.
@@ -485,4 +512,158 @@ fn spawn_feeder(
             exited(code);
         })
         .expect("shell output thread");
+}
+
+fn is_live_proc_cwd(path: &std::path::Path) -> bool {
+    !path.as_os_str().is_empty() && !path.as_os_str().as_encoded_bytes().ends_with(b" (deleted)")
+}
+
+fn proc_cwd(pid: libc::pid_t) -> Option<PathBuf> {
+    // Pure procfs lookup (never `stat(2)` on user mounts, which can stall the
+    // UI thread on hung NFS/FUSE/SSHFS mounts). `olo-termd` validates `is_dir`
+    // off the UI thread when spawning a shell.
+    let path = std::fs::read_link(format!("/proc/{pid}/cwd")).ok()?;
+    is_live_proc_cwd(&path).then_some(path)
+}
+
+fn resolve_shell_cwd<F>(shell: Option<libc::pid_t>, exited: bool, spawn_cwd: Option<&std::path::Path>, mut read_dir: F) -> Option<PathBuf>
+where
+    F: FnMut(libc::pid_t) -> Option<PathBuf>,
+{
+    match shell.filter(|&p| p > 0) {
+        Some(pid) => read_dir(pid),
+        None if !exited => spawn_cwd.map(PathBuf::from),
+        None => None,
+    }
+}
+
+fn resolve_foreground_cwd<F>(foreground: Option<libc::pid_t>, shell: Option<libc::pid_t>, exited: bool, spawn_cwd: Option<&std::path::Path>, mut read_dir: F) -> Option<PathBuf>
+where
+    F: FnMut(libc::pid_t) -> Option<PathBuf>,
+{
+    let fg = foreground.filter(|&p| p > 0);
+    let sh = shell.filter(|&p| p > 0);
+    if fg.is_none() && sh.is_none() {
+        return (!exited).then(|| spawn_cwd.map(PathBuf::from)).flatten();
+    }
+    if let Some(pid) = fg
+        && let Some(dir) = read_dir(pid)
+    {
+        return Some(dir);
+    }
+    if let Some(pid) = sh
+        && Some(pid) != fg
+    {
+        return read_dir(pid);
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn foreground_cwd_prefers_foreground_and_falls_back_to_shell() {
+        let mut probed = Vec::new();
+        let dir = resolve_foreground_cwd(Some(200), Some(100), false, None, |pid| {
+            probed.push(pid);
+            match pid {
+                200 => Some(PathBuf::from("/work/subshell")),
+                100 => Some(PathBuf::from("/work")),
+                _ => None,
+            }
+        });
+        assert_eq!(dir, Some(PathBuf::from("/work/subshell")));
+        assert_eq!(probed, [200]);
+
+        // Unreadable or deleted foreground cwd falls back to shell cwd.
+        let mut probed = Vec::new();
+        let dir = resolve_foreground_cwd(Some(200), Some(100), false, None, |pid| {
+            probed.push(pid);
+            match pid {
+                100 => Some(PathBuf::from("/work")),
+                _ => None,
+            }
+        });
+        assert_eq!(dir, Some(PathBuf::from("/work")));
+        assert_eq!(probed, [200, 100]);
+
+        // Same pid as foreground and shell is only probed once.
+        let mut probed = Vec::new();
+        let dir = resolve_foreground_cwd(Some(100), Some(100), false, None, |pid| {
+            probed.push(pid);
+            None
+        });
+        assert_eq!(dir, None);
+        assert_eq!(probed, [100]);
+
+        // Missing or non-positive pids with no spawn_cwd return None cleanly.
+        assert_eq!(resolve_foreground_cwd(None, None, false, None, |_| Some(PathBuf::from("/x"))), None);
+        assert_eq!(resolve_foreground_cwd(Some(0), Some(-1), false, None, |_| Some(PathBuf::from("/x"))), None);
+    }
+
+    #[test]
+    fn shell_cwd_stays_on_shell_while_foreground_cwd_tracks_foreground() {
+        let read = |pid: libc::pid_t| match pid {
+            200 => Some(PathBuf::from("/scratch")),
+            100 => Some(PathBuf::from("/work")),
+            _ => None,
+        };
+        // Persistence / Undo uses shell cwd; Cmd+T / folder UI uses foreground-first cwd.
+        assert_eq!(resolve_shell_cwd(Some(100), false, None, read), Some(PathBuf::from("/work")));
+        assert_eq!(resolve_foreground_cwd(Some(200), Some(100), false, None, read), Some(PathBuf::from("/scratch")));
+    }
+
+    #[test]
+    fn rapid_double_cmd_t_keeps_spawn_cwd_until_termd_attaches() {
+        let shared = io::Shared::new((8, 16), Size { cols: 80, rows: 24 }, crate::colors::Scheme::light());
+        let spawn = PathBuf::from("/work/project");
+        // Before Chunk::Attached arrives, pid == 0 and pty == None: both accessors
+        // return the requested spawn_cwd so a second rapid Cmd+T inherits it.
+        assert_eq!(shared.shell(), None);
+        assert_eq!(shared.foreground(), None);
+        assert_eq!(resolve_foreground_cwd(shared.foreground(), shared.shell(), false, Some(&spawn), proc_cwd), Some(spawn.clone()));
+        assert_eq!(resolve_shell_cwd(shared.shell(), false, Some(&spawn), proc_cwd), Some(spawn.clone()));
+        // If the session already exited before attach, don't return stale spawn_cwd.
+        assert_eq!(resolve_foreground_cwd(shared.foreground(), shared.shell(), true, Some(&spawn), proc_cwd), None);
+
+        // Once termd attaches and supplies a live shell PID, live /proc wins
+        // (and spawn_cwd is no longer used even if the live lookup later returns None).
+        let me = std::process::id() as libc::pid_t;
+        shared.pid.store(me, Ordering::Relaxed);
+        let expected = std::env::current_dir().ok();
+        assert_eq!(resolve_foreground_cwd(shared.foreground(), shared.shell(), false, Some(&spawn), proc_cwd), expected);
+        assert_eq!(resolve_shell_cwd(shared.shell(), false, Some(&spawn), proc_cwd), expected);
+        assert_eq!(resolve_foreground_cwd(shared.foreground(), shared.shell(), false, Some(&spawn), |_| None), None);
+    }
+
+    #[test]
+    fn reattached_tab_preserves_saved_cwd_or_known_pid_before_chunk_attached() {
+        let saved = PathBuf::from("/work/restored");
+        // Case 1: reattached tab knows its saved cwd before Chunk::Attached (pid not yet stored).
+        let shared = io::Shared::new((8, 16), Size { cols: 80, rows: 24 }, crate::colors::Scheme::light());
+        assert_eq!(resolve_foreground_cwd(shared.foreground(), shared.shell(), false, Some(&saved), proc_cwd), Some(saved.clone()));
+        assert_eq!(resolve_shell_cwd(shared.shell(), false, Some(&saved), proc_cwd), Some(saved.clone()));
+
+        // Case 2: reattached tab was seeded with ShellInfo::pid before Chunk::Attached arrives.
+        let me = std::process::id() as libc::pid_t;
+        shared.pid.store(me, Ordering::Relaxed);
+        let live = std::env::current_dir().ok();
+        assert_eq!(resolve_foreground_cwd(shared.foreground(), shared.shell(), false, Some(&saved), proc_cwd), live);
+        assert_eq!(resolve_shell_cwd(shared.shell(), false, Some(&saved), proc_cwd), live);
+    }
+
+    #[test]
+    fn proc_cwd_reads_live_process_and_rejects_deleted_without_stat() {
+        let me = std::process::id() as libc::pid_t;
+        let expected = std::env::current_dir().ok();
+        assert_eq!(proc_cwd(me), expected);
+        // Missing /proc entry returns None without failing.
+        assert_eq!(proc_cwd(i32::MAX), None);
+        // Kernel-marked unlinked directories are rejected without calling stat(2).
+        assert!(is_live_proc_cwd(std::path::Path::new("/var/tmp/nonexistent-without-stat")));
+        assert!(!is_live_proc_cwd(std::path::Path::new("/var/tmp/gone (deleted)")));
+        assert!(!is_live_proc_cwd(std::path::Path::new("")));
+    }
 }

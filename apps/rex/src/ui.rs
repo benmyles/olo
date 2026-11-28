@@ -2557,7 +2557,7 @@ impl RexWindow {
             }
             "window.new" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
-                    hub.create_window(&hk, &sess.session_id, None);
+                    request_new_tab(&hub, self.id, &hk, &sess.session_id);
                 } else {
                     hub.create_session(&self.active_host, None, None, Feedback::start(self.id));
                 }
@@ -3761,6 +3761,7 @@ impl RexWindow {
             && let Some((hk, sess)) = &sess_info
         {
             let hub = hub.clone();
+            let win_id = self.id;
             let (hk, sid) = (hk.clone(), sess.session_id.clone());
             let ids = top_ids;
             let mut strip = TabStrip::new("rex-tabs", strip_tabs, active_tab_idx).content(tab_content_bg, tab_content_fg).tree_open(self.open_tree_tab).in_window(surface).on_action(cx.msg_with(
@@ -3777,7 +3778,7 @@ impl RexWindow {
                                 hub.close_window(&hk, &sid, id);
                             }
                         }
-                        StripAction::New => hub.create_window(&hk, &sid, None),
+                        StripAction::New => request_new_tab(&hub, win_id, &hk, &sid),
                         StripAction::Menu(i, at) => return WinMsg::TabMenu(*i, *at),
                         StripAction::TreeMenu(i, bounds) => return WinMsg::TabTreeMenu(*i, *bounds),
                         StripAction::Move { from, to, .. } => {
@@ -9996,6 +9997,20 @@ pub(crate) fn rewrite_local_paths_for_remote(text: &str, home: Option<&std::path
         }
     }
     out
+}
+
+/// Request a new tab right of the active tab in the active pane's working
+/// directory, closing the initiating transcript viewer ONLY once creation
+/// succeeds and atomically only if the user is still viewing that exact
+/// transcript.
+fn request_new_tab(hub: &Arc<RexHub>, window: WinId, host_key: &str, session_id: &str) {
+    let started = crate::activity_watch::active_transcript();
+    let on_created: Option<Box<dyn FnOnce() + Send>> = started.map(|tr| {
+        Box::new(move || {
+            let _ = crate::activity_watch::close_viewer_if(&tr);
+        }) as Box<dyn FnOnce() + Send>
+    });
+    hub.create_window(host_key, session_id, None, Some(Feedback::start(window)), on_created);
 }
 
 #[cfg(test)]

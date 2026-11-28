@@ -142,8 +142,7 @@ fn about_text(shell: Option<&str>, folder: Option<&std::path::Path>, running: Op
 
 /// The folder a tab works in: its foreground program's, else its shell's.
 fn tab_folder(tab: &Tab) -> Option<PathBuf> {
-    let shared = &tab.session.shared;
-    shared.foreground().or(shared.shell()).and_then(|pid| std::fs::read_link(format!("/proc/{pid}/cwd")).ok())
+    tab.session.foreground_cwd()
 }
 
 /// The tab's folder (what its program, else its shell, is in, as its
@@ -1162,10 +1161,8 @@ impl Terminal {
         let (cols, rows) = t.grid();
         let mut tab = self.start(cx, Size { cols, rows }, start);
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
-        let (at, group) = match into.filter(|&g| g < t.groups.len()) {
-            Some(g) => (t.members(g).last().map_or(t.tabs.len(), |&i| i + 1), Some(g)),
-            None => (t.active + 1, t.tab().group),
-        };
+        let tab_groups: Vec<Option<usize>> = t.tabs.iter().map(|tab| tab.group).collect();
+        let (at, group) = new_tab_placement(&tab_groups, t.active, t.groups.len(), into);
         // Made in a group by the person (⌘T there): theirs; one put in its
         // repository's group (`into`) joined it on its own.
         tab.own_grouping = into.is_none() && group.is_some();
@@ -1292,7 +1289,7 @@ impl Terminal {
                         if grid.is_none() || Some(id) == shown {
                             grid = Some(*s);
                         }
-                        Start::Attach(id)
+                        Start::Attach { id, pid: (s.pid > 0).then_some(s.pid), cwd: w.cwds.get(i).cloned().flatten() }
                     }
                     None if restore && !shells.iter().any(|s| s.id == id) => Start::Restore { cwd: w.cwds.get(i).cloned().flatten(), from: id },
                     None => continue,
@@ -1373,7 +1370,7 @@ impl Terminal {
         // (A window moved here brings its own shells, no others.)
         let rest: Vec<&wire::ShellInfo> = if moved.is_empty() { free.iter().filter(|s| !used.contains(&s.id)).copied().collect() } else { Vec::new() };
         for shell in &rest {
-            self.reopen(cx, vec![Start::Attach(shell.id)], Some(shell), None, 0, Default::default(), None);
+            self.reopen(cx, vec![Start::Attach { id: shell.id, pid: (shell.pid > 0).then_some(shell.pid), cwd: None }], Some(shell), None, 0, Default::default(), None);
         }
         any || !rest.is_empty()
     }
@@ -1772,7 +1769,7 @@ impl Terminal {
             }
             "group-new-tab" => {
                 let Some(g) = g else { return true };
-                let cwd = t.members(g).last().and_then(|&i| t.tabs[i].session.cwd());
+                let cwd = t.members(g).last().and_then(|&i| t.tabs[i].session.foreground_cwd());
                 self.add_tab_at(cx, win, Start::Spawn { command: None, cwd }, Some(g));
             }
             "save-group" | "group-save" => {
@@ -2692,7 +2689,7 @@ impl Terminal {
                     cx.redraw(id);
                 }
                 None => {
-                    self.reopen(cx, vec![Start::Attach(shell.id)], Some(&shell), None, 0, Default::default(), None);
+                    self.reopen(cx, vec![Start::Attach { id: shell.id, pid: (shell.pid > 0).then_some(shell.pid), cwd: None }], Some(&shell), None, 0, Default::default(), None);
                 }
             },
         }
@@ -2927,11 +2924,11 @@ impl Terminal {
         let Some(Win::Term(t)) = self.windows.get_mut(&window) else { return };
         match command {
             "new" => {
-                let cwd = t.tab().session.cwd();
+                let cwd = t.tab().session.foreground_cwd();
                 self.open(cx, cwd, None);
             }
             "new-tab" => {
-                let cwd = t.tab().session.cwd();
+                let cwd = t.tab().session.foreground_cwd();
                 self.add_tab(cx, window, Start::Spawn { command: None, cwd });
             }
             "close" => {
@@ -3754,6 +3751,17 @@ fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
+/// Insertion index and group for a new tab in a window whose tabs belong to
+/// `tab_groups` with `active` currently selected. When `into` names a valid
+/// group, appends at the end of that group; otherwise inserts immediately to
+/// the right of `active` in the active tab's group.
+fn new_tab_placement(tab_groups: &[Option<usize>], active: usize, group_count: usize, into: Option<usize>) -> (usize, Option<usize>) {
+    match into.filter(|&g| g < group_count) {
+        Some(g) => (tab_groups.iter().rposition(|&tg| tg == Some(g)).map_or(tab_groups.len(), |i| i + 1), Some(g)),
+        None => ((active + 1).min(tab_groups.len()), tab_groups.get(active).copied().flatten()),
+    }
+}
+
 /// `s` as one shell word: as it is when that is safe, else single-quoted.
 fn shell_quote(s: &str) -> String {
     if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"/-._+,:@%=".contains(&b)) { s.to_owned() } else { format!("'{}'", s.replace('\'', "'\\''")) }
@@ -3887,6 +3895,27 @@ mod drop_tests {
         assert_eq!(super::shell_quote("/tmp/a.png"), "/tmp/a.png");
         assert_eq!(super::shell_quote("/tmp/My Photo.png"), "'/tmp/My Photo.png'");
         assert_eq!(super::shell_quote("/tmp/it's"), "'/tmp/it'\\''s'");
+    }
+
+    #[test]
+    fn new_tab_opens_immediately_right_of_active_tab() {
+        // Active at start, middle, and end of ungrouped tabs.
+        let ungrouped = [None, None, None];
+        assert_eq!(super::new_tab_placement(&ungrouped, 0, 0, None), (1, None));
+        assert_eq!(super::new_tab_placement(&ungrouped, 1, 0, None), (2, None));
+        assert_eq!(super::new_tab_placement(&ungrouped, 2, 0, None), (3, None));
+        // Single tab appends at index 1.
+        assert_eq!(super::new_tab_placement(&[None], 0, 0, None), (1, None));
+        // Active inside a group inserts immediately right of active in that group.
+        let grouped = [Some(0), Some(0), None, Some(1)];
+        assert_eq!(super::new_tab_placement(&grouped, 0, 2, None), (1, Some(0)));
+        assert_eq!(super::new_tab_placement(&grouped, 1, 2, None), (2, Some(0)));
+        assert_eq!(super::new_tab_placement(&grouped, 2, 2, None), (3, None));
+        // Explicit `into` appends at the end of that group.
+        assert_eq!(super::new_tab_placement(&grouped, 2, 2, Some(0)), (2, Some(0)));
+        assert_eq!(super::new_tab_placement(&grouped, 0, 2, Some(1)), (4, Some(1)));
+        // Out-of-range `into` falls back to right of active.
+        assert_eq!(super::new_tab_placement(&grouped, 1, 2, Some(9)), (2, Some(0)));
     }
 }
 
