@@ -5668,5 +5668,17 @@
   "title": "Viewer plain-English error card and DeskCalc polish",
   "caption": "Centered BeOS error card for unreadable images and fonts with balanced headroom and off-thread Show in Tracker",
   "image": "2026-11-28/135258-viewer-plain-english-error-card-and-deskcalc-pol.png"
+ },
+ {
+  "time": "2026-11-28T15:55:28",
+  "title": "Rex Activity context menu with Open in Tracker",
+  "caption": "Regrouped four-section agent menu with Open in Tracker, check-column Keep It Going, and child-accurate Collapse labels",
+  "image": "2026-11-28/155528-rex-activity-context-menu-with-open-in-tracker.png"
+ },
+ {
+  "time": "2026-11-28T15:55:29",
+  "title": "Rex Activity disabled Tracker and mixed-child Collapse",
+  "caption": "Fail-closed disabled Open in Tracker when unreachable over SSH, Collapse for mixed screens and subagents, and Stop 1 Subagent...",
+  "image": "2026-11-28/155529-rex-activity-disabled-tracker-and-mixed-child-co.png"
  }
 ]

@@ -4602,3 +4602,15 @@ prompts while staying sandboxed to its scratch cwd.
 - Preferences' Backup panel lists the session's XDG folders rather than
   `HOME`'s directly, and Noto Color Emoji lives under
   `~/.local/share/fonts/olo-screens/` on this host.
+
+**Rex server half-open stream takeover & owner state (API rev 19)** (2026-11-28):
+- When a client reconnects with a reconnect token (`resumed=true`) while the
+  server still holds the old half-open TCP data stream (e.g. Wi-Fi → Ethernet),
+  new terminal stream hellos are refused `AlreadyConnected` indefinitely, and
+  `TerminalDataStream::connect_resume` with the old stream's token and byte
+  count takes over the held stream so it can be closed cleanly before
+  reattaching.
+- The Rex session view carries each pane's `owner`, and `rex -C CLIENT api call`
+  does not call as that client. A headless Rex connected to a scratch server
+  spawns an `olo-rex-link agent --server … serve` child that outlives
+  `tsession stop` until its scratch server stops.

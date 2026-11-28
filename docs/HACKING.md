@@ -32160,7 +32160,12 @@ over.
   ticket had, the old one is ended (`TerminalDataStream::close`: the
   server takes one stream of a terminal from a client at a time,
   "AlreadyConnected" otherwise, tried anew a few times), and the new
-  one's first screen replaces the terminal. Not while the person
+  one's first screen replaces the terminal. No key goes in meanwhile
+  (`input_ready`: it would be typed against the old screen), and the
+  new stream's first screen has its whole time from its welcome
+  (`FIRST_SCREEN_QUIET`: it was given the old one's, long run out, and
+  ended as it began; `a_pane_caught_up_waits_for_its_new_screen`).
+  Not while the person
   reads what scrolled by (the viewport isn't at the bottom, or text
   is being selected by keys). A stream's first screen isn't counted
   as pouring (on a narrow link it takes seconds to come, and counted
@@ -32183,6 +32188,132 @@ over.
   whatever its link), so that what follows from a host being far is
   as on a real one; `OLO_REX_SSH_WINDOW` fixes the window, for
   measuring.
+- *A stream had again, and one a network left behind*
+  (`spawn_block_data_stream`, `attach_terminal`, `StreamLeft`; Ben,
+  2026-11-28: "after i switch from wifi to ethernet and rex
+  reconnects, most of the subagents come back but the parent ones
+  don't seem to show anything"). A terminal whose stream couldn't be
+  had, or ended while its host's connection stood, stayed blank until
+  its session next changed, and a lead's tab, idle while its agents
+  work in theirs, never did. Now it is had again: 250 ms after a first
+  failure, twice as long after each next, at most 30 s apart and
+  twelve times in a row (`ATTACH_TRIES`), while the host's connection
+  is the one it was had on and the pane the same; nothing is tried
+  once either ends, and nothing runs once a stream is had. A stream
+  that showed the pane for 30 s is a new failure's first when it ends
+  (`stream_lasted`, counted from its first screen: one that never
+  showed the pane, however long each lasted, was tried for ever). A
+  pane whose tries ran out is tried again when it is chosen (its tab
+  or the pane), and one whose stream brings no part of a first screen
+  for 20 s (`FIRST_SCREEN_QUIET`; a frame with nothing in it is no
+  part of one) is let go of and had again; once its screen is whole,
+  no clock runs. And a server holds a client's stream until its end
+  reaches it: one whose way here went with a network (the server's own
+  connection to an address that went stays open, a quarter of an hour
+  or hours over SSH, whose server keeps no watch of its own) has every
+  new stream of that terminal from the same client (which a connection
+  made again with its token is) refused "AlreadyConnected" (tried on a
+  scratch server through a relay that left the server's ends open:
+  refused for the 100 s tried, idle pane and busy pane alike, the
+  bootstrap's tickets and new ones alike; taken at once once their end
+  came). So a stream that ends here without the server's word leaves
+  its own token and count, and where a new one is refused so, the old
+  one is taken over with them (the server's resume of that very
+  stream, `connect_resume`), closed, and the terminal attached anew
+  straight after. What a stream left is its own host's and client's
+  (`StreamOwner`, read with the check that the connection is the
+  host's and the pane this one), never offered to a host edited or
+  replaced since, kept an hour at most (read as well as written), and
+  kept through a takeover cut on its way (renewed by the resumed
+  stream's welcome): it is forgotten only once the server has had its
+  end (a close answered, not a connection dropped, code 1006), refuses
+  its token, or a new stream is had. Each task that has a pane's
+  streams is numbered (`StreamLeft::task`): what one that ends after a
+  later one began leaves, or forgets, never touches what the later one
+  left. Through the app's own hub and that relay: both panes showed
+  again 276 ms after the connection was made again
+  (`streams_held_after_a_network_change`; with the first takeover cut
+  too: `a_takeover_cut_on_its_way_is_tried_again`; five networks in a
+  row, nothing left behind: `nothing_is_left_behind_across_networks`).
+  Which panes come back by themselves depends on how their old streams
+  came: over the helper's own link the host ends a dead one in 30 s
+  (`wire::IDLE`), over SSH only when the TCP connection gives up, and
+  the streams of the panes there when a connection is made go over SSH
+  while the link is still being made. Panes come in the order a person
+  sees them: the sessions Rex's windows show first (each window's,
+  kept through a disconnect: `RexHub::window_shows`), and in each the
+  tab in front's, the one typed into first of all. The streams opened
+  beforehand (`SparesOf`) are as many as the host had terminals when
+  its connection was lost (counted by the word that has a stream had,
+  `attaches_a_stream`), kept once the connection is the host's, and
+  that connection's alone: kept under the host's key before that was
+  known, those of a connection the host had replaced were left for the
+  next one's panes, which sent their tickets down them.
+- *When the network changes* (`olo_net::on_change`): a host connected
+  over the network is asked at once whether it still is
+  (`ControlClient::probe`: a ping answered within five seconds), when
+  a network comes and when the last goes, so one whose way went is
+  found then, not at its keepalive minutes on
+  (`a_network_change_asks_at_once`, `a_network_gone_asks_at_once`);
+  and a connection lost, or not made, after the network changed is
+  made again on SSH connections of its own
+  (`SshSessionPool::on_network_change`: the old network's connections
+  leave the pool, whoever waits on them is told at once, and the
+  forwarded agent's channel and the helper's link go with them, a link
+  refused on the old network tried again on the new). The pool lets go
+  of a target's connections once a network, however many saved hosts
+  reach that account (the second to say it let go of what the first
+  had made on the new one); an agent's channel had on a network since
+  left isn't kept, and the agent's path is said of a host only for the
+  connection it was given for. The network a host's connections were
+  made on is carried from try to try and looked at again once its
+  helper is there (a change while it was being put there had the try
+  reach the host on the old network's way), and a connection made while
+  the network changed is asked at once whether it still is. A TLS
+  handshake cut short on its way (a reset, an end mid-handshake) is the
+  way's error, tried again like any other; TLS's own (a certificate, a
+  name) is not.
+- *A pane's size* (`RexHub::resize_block`, `SizeAsked`; Ben,
+  2026-11-28: "when i move it to a bigger display the terminal TUIs
+  didn't auto resize"). The way from the display to the program was
+  tried end to end, headless (a Rex window zoomed and moved from a
+  1280 × 800 display to a 1920 × 1200 one, the displays' scale
+  changed, the server's own size of the terminal asked after each
+  step): 163 × 43, 269 × 70 on the larger, 163 × 44 at 1.5× (cells
+  9 × 22), 109 × 31 at 2×. What failed was here: each size was asked
+  of the host as it came, all on their way at once, and the server
+  does two at once in either order (a drag of 24 steps left the
+  terminal at 118 columns and the view at 123), and a size was taken
+  as given the moment it was asked, so a view already that size
+  asked nothing more. Now one asker a pane asks the host one size at a
+  time, the last wanted last (a size wanted while one is on its way
+  waits for its answer, and doesn't wake the asker); none is taken as
+  given until the host answers or says its size (its stream's resize,
+  which outlasts an answer that comes after it); an answer that
+  doesn't come leaves the host's size unknown; a refusal counts
+  against the size refused, not a newer one; eight in a row and the
+  asker stops, at once; and a new stream's screen is the host's size
+  now, its tries anew and an answer to an ask of before it taken as
+  saying nothing. A pane another client holds the size of (another
+  desktop's view, an older agents service) kept that client's size
+  through all a window did, taken only when the person chose its tab;
+  it is taken too when a window of Rex's is brought forward where its
+  terminals show (not under an Agent Screen, a transcript, an overlay,
+  nor a side pane alone in the window: `terminals_shown`), and when the
+  panes' area changes size, or the display's scale changes, with the
+  window forward (`take_tab_in_front`); of a tab, the panes it shows
+  (`panes_shown`, as `PanesView` draws them: the one zoomed, or those
+  of its tiled layout, and floating ones not put away); asked once
+  however many steps a drag has before the host answers (`owning`);
+  never as it paints. Whose a pane's size is comes from the host's
+  numbered word: an owner change, a session's view (each with the
+  number of the answer it came in), a claim's answer (`owner_said`:
+  an older word never undoes a newer, and a claim answered after
+  another desktop took the pane back stands aside); a stream's resize
+  says it only until the host has numbered one.
+- *A pane's statuses asked again* (a stream had again asks its
+  program statuses anew): only the last request's answer applies, and
+  events are kept to replay over it only while one is on its way.
 
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,
@@ -32410,24 +32541,55 @@ connected to, is off). The port a pane's program listens on and
   frames the exact `cols × rows` remote grid inside a BeOS sunken well
   (`style::sunken`) with a neutral grey unfocused cursor, centred in the
   canvas when it fits and pinned 12 pt top-left with scrollbars when larger.
-- **An Activity row's menu** (right-click): `Show Transcript`, `Show
-  Terminal` (the one shown ticked), then **`Keep It Going` and `Auto
-  Approve` for that row's own pane**, each ticked while it is on, then
-  what the row has of its own: what folds (a tab's agent: `Collapse`/
-  `Expand Subagents`; a child with children: `Collapse`/`Expand
-  Children`), then, apart by a separator, what stops (`Stop N
-  Subagents…`; a child: `Stop Subagent`, `Stop Subagent & Children`,
-  `Force Close Tab`: a child's act at once, so a slip of one row from
-  a view item must not be one of them). The two are the tab menu's along the
-  top (`RexHub::set_help`, `toggle_auto_approve`: asked for through the
-  commands socket, Auto Approve asks the person first), on every row:
-  a child's row had them, a tab's own agent's row did not (Ben,
-  2026-11-27: "i should be able to right click any agent in the
-  activity list to toggle keep going and auto approve"), and the
-  child's menu had its first two items the other way round and its
-  fold item between two Stops.
-  `tools/dev/rex-slow/tree.py` chooses each from both rows as a person
-  does and reads the tick from the menu opened again.
+- **An Activity row's menu** (right-click; `ui::agent_row_menu`), in
+  four groups, each kind apart (2026-11-28, as two reviewers asked):
+  the view, `Show Transcript` and `Show Terminal` (the one shown
+  ticked); what to do with the agent, **`Open in Tracker`** (its own
+  folder: below) and what folds under its row, named for what that is
+  (`ui::fold_label`: `Collapse`/`Expand Subagents`, `… Screens`, or
+  plain `Collapse`/`Expand` for a row with both; none for a row with
+  neither); then **`Keep It Going` and `Auto Approve` for that row's
+  own pane**, ticked in the check column while on (no glyph beside the
+  label: the row itself shows Keep It Going's `↻`); then what stops
+  (`Stop N Subagents…`, counted for one too, "Stop 1 Subagent…", apart
+  from a child's own `Stop Subagent`; a child: `Stop Subagent`, `Stop
+  Subagent & Children`, `Force Close Tab`: a child's act at once, so a
+  slip of one row from a view item must not be one of them). The two
+  settings are the tab menu's along the top (`RexHub::set_help`,
+  `toggle_auto_approve`: asked for through the commands socket, Auto
+  Approve asks the person first), on every row: a child's row had
+  them, a tab's own agent's row did not (Ben, 2026-11-27: "i should be
+  able to right click any agent in the activity list to toggle keep
+  going and auto approve"). The menu opens under its row, at the
+  pointer's x, 12 points in at least. `tools/dev/rex-slow/tree.py`
+  chooses each setting from both rows as a person does, reads the tick
+  from the menu opened again, and reads both rows' menus whole, Open in
+  Tracker offered (`REX_TREE_TARGET`: where the tree's builds are, a
+  worktree's kept by Jato elsewhere).
+- **Open in Tracker for an agent** (Ben, 2026-11-28: "if i righ click
+  on an agent in the rex activity sidebar it should also have the open
+  in tracker option there and open in that agent's working directory
+  (eg worktree or whatever)"): the agent's own folder
+  (`RexHub::tracker_place`: where its program works now, else where
+  `olo agent` started it, for one that has exited or whose host hasn't
+  said, else home), on this computer as a folder, on a host as
+  `rex://HOST/PATH`. A host is named there by its label where that
+  names it alone, else by its key, tagged (`rex://id:KEY/…`,
+  `hub::tracker_authority`): where its label is another host's too, or
+  "Local" (`rex://local/…` is this computer's), or empty. The files
+  service finds a tagged key exactly, and an untagged name as it always
+  has, a label first, so a bookmark goes where it went; its answers name
+  the host the same way (Tracker names the folder by the answer's
+  `host`, and asks by it next: answering by label sent the next request
+  of a host named by its key to another host, or this computer's
+  folders). The item is off where Tracker can't reach the host
+  (`files_sock::tracker_reaches`: connected over SSH, Olo's helper
+  allowed there, and this build's helper there or one this build can
+  put there that keeps files), and every menu that has it keeps the
+  host as it was made (`HostPin::MustMatch`): nothing opens where the
+  host connected again or was replaced since, nor where no pin could be
+  had (it fails closed). The tab's menu, a pane's and the menu bar's
+  are off on the same terms.
 - **Live streaming Transcript view**: Available for any top-level agent
   (right-click tab or Activity row → `Show Transcript`) and every subagent
   (read-only when no tmux terminal exists). `olo-rex-link activity tail`

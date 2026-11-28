@@ -175,10 +175,7 @@ impl RexEndpoint {
                 let tls_cfg = build_tls_config()?;
                 let connector = TlsConnector::from(Arc::new(tls_cfg));
                 let server_name = ServerName::try_from(host.clone()).map_err(|e| RexError::Tls(format!("invalid server name {host}: {e}")))?;
-                let tls = tokio::time::timeout(Duration::from_secs(10), connector.connect(server_name, tcp))
-                    .await
-                    .map_err(|_| RexError::Timeout)?
-                    .map_err(|e| RexError::Tls(format!("TLS handshake with {host}:{port} failed: {e}")))?;
+                let tls = tokio::time::timeout(Duration::from_secs(10), connector.connect(server_name, tcp)).await.map_err(|_| RexError::Timeout)?.map_err(|e| tls_handshake_failed(host, *port, e))?;
                 let host_hdr = if *port == 443 { authority_host(host) } else { format!("{}:{port}", authority_host(host)) };
                 Ok((RexStream::Tls(Box::new(tls)), host_hdr))
             }
@@ -188,6 +185,17 @@ impl RexEndpoint {
             }
         }
     }
+}
+
+/// A TLS handshake's failure, as what it is: one of the way there (the
+/// connection reset, or ended mid-handshake: an I/O error, tried again
+/// by whoever retries a stream) apart from one of TLS itself (a
+/// certificate, a name, a protocol it won't speak: `Tls`, which no retry
+/// mends). Both were `Tls`, and a pane whose stream met a reset as its
+/// handshake began was never tried again.
+fn tls_handshake_failed(host: &str, port: u16, e: std::io::Error) -> RexError {
+    let of_tls = e.kind() == std::io::ErrorKind::InvalidData || e.get_ref().is_some_and(|inner| inner.is::<rustls::Error>());
+    if of_tls { RexError::Tls(format!("TLS handshake with {host}:{port} failed: {e}")) } else { RexError::Io(e) }
 }
 
 /// Unified async stream over Unix sockets, TCP, TLS, or SSH channels.
@@ -374,4 +382,19 @@ async fn probe_rex_cli_socket() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod handshake_tests {
+    use super::*;
+
+    #[test]
+    fn a_handshake_cut_short_is_the_ways_not_tls() {
+        use std::io::{Error, ErrorKind};
+        for kind in [ErrorKind::ConnectionReset, ErrorKind::UnexpectedEof, ErrorKind::BrokenPipe, ErrorKind::ConnectionAborted] {
+            assert!(matches!(tls_handshake_failed("dev-box", 443, Error::new(kind, "cut")), RexError::Io(_)), "{kind:?}");
+        }
+        let refused = Error::new(ErrorKind::InvalidData, rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName));
+        assert!(matches!(tls_handshake_failed("dev-box", 443, refused), RexError::Tls(_)));
+    }
 }

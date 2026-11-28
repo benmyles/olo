@@ -580,6 +580,10 @@ pub struct SshSessionPool {
     peers: std::sync::Mutex<HashMap<SshTarget, PeerCell>>,
     /// Each host's key as its primary connection checked it ([`Self::verified`]).
     keys: std::sync::Mutex<HashMap<SshTarget, KeyCell>>,
+    /// The network each target's connections are of: the generation the
+    /// last [`Self::on_network_change`] for it was given (none: the one
+    /// they were made on, before any change was said).
+    networks: std::sync::Mutex<HashMap<SshTarget, u64>>,
 }
 
 /// An authenticated `russh` session paired with the Tokio runtime that drives
@@ -939,6 +943,64 @@ impl SshSessionPool {
 
     fn target_pool_if_same(&self, target: &SshTarget, target_gen: u64) -> bool {
         self.targets.lock().unwrap_or_else(|e| e.into_inner()).get(target).is_some_and(|tp| tp.generation == target_gen && !tp.is_closed())
+    }
+
+    /// The network changed under `target`'s connections (an address went,
+    /// the way out moved: `olo_net`): what was made on the old one is let
+    /// go of at once. Its connections leave the pool, so new channels go
+    /// on one made on the new network; whoever waits on them is told now
+    /// (`until_closed`), not after the old one's time-outs; the forwarded
+    /// agent's channel goes with them; and the helper's own link is made
+    /// again on the new network, even one that failed on the old within
+    /// [`LINK_AGAIN`] (a network that let no UDP through, left for one
+    /// that does). Nothing is waited for: the old connections may never
+    /// answer.
+    ///
+    /// Once a network (`network`, its generation): two saved hosts that
+    /// reach the same account share its connections, and the second to
+    /// say the change let go of what the first had made on the new one
+    /// (its link, its agent's channel: Astra R2 #9). Whether it let go.
+    pub fn on_network_change(&self, target: &SshTarget, network: u64) -> bool {
+        {
+            let mut networks = self.networks.lock().unwrap_or_else(|e| e.into_inner());
+            let of = networks.entry(target.clone()).or_insert(0);
+            if *of >= network {
+                return false;
+            }
+            *of = network;
+        }
+        if let Some(tp) = self.targets.lock().unwrap_or_else(|e| e.into_inner()).remove(target) {
+            // (Kept whoever waits: `send` keeps nothing while nobody has
+            // subscribed yet, and a wait begun after it never ended.)
+            tp.closed_tx.send_replace(true);
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.primary = None;
+            st.further.clear();
+            st.screens.clear();
+            st.screen_secondary_disabled_gen = None;
+        }
+        self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
+        self.links.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
+        true
+    }
+
+    /// The network `target`'s connections are of ([`Self::on_network_change`]).
+    fn network_of(&self, target: &SshTarget) -> u64 {
+        self.networks.lock().unwrap_or_else(|e| e.into_inner()).get(target).copied().unwrap_or(0)
+    }
+
+    /// `value` kept in `kept` for `target` where the network its
+    /// connections are of is still `network` (what it was when the
+    /// work that had it began), and none otherwise: what was had on a
+    /// network since left is never put in place of what the new one's
+    /// gave. Whether it was kept.
+    fn keep_if_network<T>(&self, kept: &std::sync::Mutex<HashMap<SshTarget, T>>, target: &SshTarget, network: u64, value: T) -> bool {
+        let mut kept = kept.lock().unwrap_or_else(|e| e.into_inner());
+        if self.network_of(target) != network {
+            return false;
+        }
+        kept.insert(target.clone(), value);
+        true
     }
 
     /// Drop any cached SSH session for `target` (e.g. after disconnect/reconnect).
@@ -1577,6 +1639,9 @@ impl SshSessionPool {
         if self.agent_cell(target).lock().unwrap_or_else(|e| e.into_inner()).is_none() {
             return Err(RexError::Ssh("no agent has been given for this host".to_owned()));
         }
+        // (The network it is had on: kept only while that is still the
+        // one, its channel never put in place of one had on the new.)
+        let network = self.network_of(target);
         let kept = async {
             let mut channel = self.session(target, askpass).await?;
             channel.agent_forward(false).await.map_err(|e| RexError::Ssh(format!("asking {} to forward the agent failed: {e}", target.display())))?;
@@ -1603,7 +1668,14 @@ impl SshSessionPool {
             }
         };
         let (path, channel) = tokio::time::timeout(Duration::from_secs(15), kept).await.map_err(|_| RexError::Timeout)??;
-        self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).insert(target.clone(), channel);
+        // (Kept only while its relay is still given and the network the
+        // channel was had on still the one: a forward that ended after a
+        // network change put its old channel in place of the new one's,
+        // Astra R2 #10.)
+        let relay_given = self.agent_cell(target).lock().unwrap_or_else(|e| e.into_inner()).is_some();
+        if !relay_given || !self.keep_if_network(&self.agent_channels, target, network, channel) {
+            return Err(RexError::Ssh(format!("the agent forwarded to {} on a network since left, or since taken back, was let go of", target.display())));
+        }
         Ok(path)
     }
 
@@ -4015,6 +4087,72 @@ mod dial_tests {
         script(&file("with space"), &capable_helper("spaced", all_verbs));
         assert_eq!(run(&screen_command(None, &["follow".into()])), (0, "spaced: [screen] [follow]".to_owned()));
         assert!(!screen_marker.exists());
+    }
+
+    /// A network change lets go of what was made for a host on the old
+    /// network at once (Astra R1 #12, Neon R1 #10): a wait on its
+    /// connections ends now, not at the old one's time-outs; the helper's
+    /// link, refused on the old network, is tried again on the new; a
+    /// channel opened next goes on a connection of the new network. Other
+    /// hosts' are left as they were.
+    #[tokio::test]
+    async fn a_network_change_lets_go_of_the_old_networks_connections() {
+        let pool = SshSessionPool::default();
+        let (here, other) = (SshTarget::parse("ssh://you@dev-box:22").unwrap(), SshTarget::parse("ssh://you@build-box:22").unwrap());
+        let (tp, kept) = (pool.target_pool(&here), pool.target_pool(&other));
+        {
+            let mut links = pool.links.lock().unwrap();
+            links.insert(here.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
+            links.insert(other.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
+        }
+        let waiting = tokio::spawn({
+            let tp = tp.clone();
+            async move { tp.until_closed().await }
+        });
+        assert!(pool.on_network_change(&here, 1));
+        tokio::time::timeout(Duration::from_secs(2), waiting).await.expect("a wait on the old connections ends at once").unwrap();
+        assert!(tp.is_closed());
+        assert!(!Arc::ptr_eq(&pool.target_pool(&here), &tp), "the next channel goes on a pool of the new network");
+        let links = pool.links.lock().unwrap();
+        assert!(!links.contains_key(&here), "the link is tried again on the new network");
+        assert!(matches!(links.get(&other), Some(Link::Down(_))), "another host's is left as it was");
+        assert!(!kept.is_closed() && Arc::ptr_eq(&pool.target_pool(&other), &kept));
+    }
+
+    /// Two saved hosts that reach the same account share its connections:
+    /// the second to say a network's change lets go of nothing the first
+    /// made on the new network (Astra R2 #9: it let go of the first's new
+    /// link and agent channel); a network after that, it does.
+    #[tokio::test]
+    async fn a_network_change_lets_go_once_however_many_hosts_say_it() {
+        let pool = SshSessionPool::default();
+        let target = SshTarget::parse("ssh://you@dev-box:22").unwrap();
+        assert!(pool.on_network_change(&target, 4), "the first host to say it");
+        let made_on_new = pool.target_pool(&target);
+        pool.links.lock().unwrap().insert(target.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
+        assert!(!pool.on_network_change(&target, 4), "the second, of the same network");
+        assert!(!made_on_new.is_closed() && Arc::ptr_eq(&pool.target_pool(&target), &made_on_new), "what the first made on the new network stays");
+        assert!(pool.links.lock().unwrap().contains_key(&target));
+        assert!(!pool.on_network_change(&target, 3), "an older network's word");
+        assert!(pool.on_network_change(&target, 5), "the next network");
+        assert!(made_on_new.is_closed());
+    }
+
+    /// What a forward had on a network since left is never put in place
+    /// of what the new one's gave (Astra R2 #10: a forward that ended
+    /// after a network change put its old agent channel in place of the
+    /// new one's).
+    #[test]
+    fn what_was_had_on_a_network_since_left_is_not_kept() {
+        let pool = SshSessionPool::default();
+        let target = SshTarget::parse("ssh://you@dev-box:22").unwrap();
+        let kept: std::sync::Mutex<HashMap<SshTarget, &str>> = Default::default();
+        let began_on = pool.network_of(&target);
+        assert!(pool.keep_if_network(&kept, &target, began_on, "had on the first network"));
+        assert!(pool.on_network_change(&target, 2));
+        assert!(pool.keep_if_network(&kept, &target, pool.network_of(&target), "had on the new network"));
+        assert!(!pool.keep_if_network(&kept, &target, began_on, "had on the old one, ended late"), "not kept");
+        assert_eq!(kept.lock().unwrap().get(&target), Some(&"had on the new network"));
     }
 
     #[tokio::test]

@@ -149,29 +149,66 @@ pub fn toggle_auto_approve(hub: &Arc<RexHub>, key: &BlockKey, said: &str) {
     });
 }
 
-/// The panes of a tab Keep It Going and Auto Approve are offered for in
-/// its menu: those an agent runs in or with either on, else the one with
-/// the keyboard.
-/// Open a pane's working folder in Olo Tracker (local path on this computer,
-/// canonical `rex://HOST/PATH` URI on a remote Rex host).
-fn open_block_in_tracker(hub: &Arc<RexHub>, bk: &BlockKey) {
-    let info = {
-        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-        let host = st.hosts.get(&bk.host_key).map(|h| (h.is_local, h.label.clone()));
-        let pwd = st.blocks.get(bk).map(|br| br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).unwrap_or_default();
-        host.map(|(is_local, label)| (is_local, label, pwd))
-    };
-    let Some((is_local, label, pwd)) = info else { return };
-    if is_local {
-        let dir = if pwd.is_empty() { std::env::var("HOME").unwrap_or_else(|_| "/".into()) } else { pwd };
-        bridge::open_folder_in_tracker(std::path::Path::new(&dir));
-    } else {
-        let path = if pwd.is_empty() { "~" } else { &pwd };
-        let uri = olo_kit_base::tracker::RexPath::new(label, path).to_uri();
-        bridge::open_uri_in_tracker(&uri);
+/// Open a pane's folder in Olo Tracker (`RexHub::tracker_place`: where
+/// its program works, else where its agent was started, else home): a
+/// folder of this computer's as itself, a host's as `rex://HOST/PATH`.
+/// `pin`: its host's live pin as the menu asking was made (nothing is
+/// opened if the host is another, or no longer connected, since).
+fn open_block_in_tracker(hub: &Arc<RexHub>, bk: &BlockKey, pin: crate::hub::HostPin) {
+    match hub.tracker_place(bk, pin) {
+        Some(crate::hub::TrackerPlace::Here(dir)) => bridge::open_folder_in_tracker(&dir),
+        Some(crate::hub::TrackerPlace::There(uri)) => bridge::open_uri_in_tracker(&uri),
+        None => tracing::info!(pane = bk.block_id, "Open in Tracker: the pane's host isn't the one the menu was made for"),
     }
 }
 
+/// The first groups of an agent's menu in Activity (`prefix`: `row` for
+/// a pane at the top of its host's list, `sub` for a child of a tab
+/// under it), each kind apart: the choice of its view (Transcript or
+/// Terminal, one checked); what to do with it, Open in Tracker (Ben,
+/// 2026-11-28: "if i righ click on an agent in the rex activity sidebar
+/// it should also have the open in tracker option there and open in
+/// that agent's working directory (eg worktree or whatever)") and its
+/// tree's fold (`fold`, where it has children or screens); then its
+/// settings, Keep It Going and Auto Approve, checked when on. What may
+/// stop it comes after, apart. Open in Tracker is off where Tracker
+/// can't reach the host's folders (`tracker`: `RexHub::tracker_pin`).
+fn agent_row_menu(prefix: &str, viewing_transcript: bool, help: &crate::agent::Help, tracker: bool, fold: Option<&'static str>) -> Menu {
+    let mut menu = Menu::new("")
+        .item("Show Transcript", format!("{prefix}.transcript"))
+        .checked(viewing_transcript)
+        .item("Show Terminal", format!("{prefix}.terminal"))
+        .checked(!viewing_transcript)
+        .separator()
+        .item(olo_kit_base::tracker::LABEL, format!("{prefix}.open_in_tracker"))
+        .enabled(tracker);
+    if let Some(fold) = fold {
+        menu = menu.item(fold, format!("{prefix}.toggle_fold"));
+    }
+    menu.separator().item("Keep It Going", format!("{prefix}.keep_going")).checked(help.keep_going).item("Auto Approve", format!("{prefix}.auto_approve")).checked(help.auto_approve)
+}
+
+/// The item of an Activity row's menu that folds or unfolds what is
+/// under it, named for what that is: its subagents, its screens, or
+/// both ("Collapse", "Expand"); none for a row with neither. (A lead of
+/// three screens and one subagent said "Collapse Subagents": Opus R2 #9,
+/// Neon look R2.) `screens`: the row's own, not those of its subagents,
+/// which fold with them.
+fn fold_label(subagents: bool, screens: bool, expanded: bool) -> Option<&'static str> {
+    Some(match (subagents, screens, expanded) {
+        (false, false, _) => return None,
+        (true, false, true) => "Collapse Subagents",
+        (true, false, false) => "Expand Subagents",
+        (false, true, true) => "Collapse Screens",
+        (false, true, false) => "Expand Screens",
+        (true, true, true) => "Collapse",
+        (true, true, false) => "Expand",
+    })
+}
+
+/// The panes of a tab Keep It Going and Auto Approve are offered for in
+/// its menu: those an agent runs in or with either on, else the one with
+/// the keyboard.
 fn tab_agent_panes(hub: &RexHub, host_key: &str, session_id: &str, w: &olo_rex_client::WindowView) -> Vec<BlockKey> {
     let key = |block_id: &str| BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: block_id.to_owned() };
     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1427,6 +1464,10 @@ pub struct RexWindow {
     sidebar_row_bounds: Rc<std::cell::RefCell<HashMap<String, Bounds<Pixels>>>>,
     open_tree_tab: Option<usize>,
     pub panes_view: Option<Child<PanesView>>,
+    /// Whether the window shows its tab's terminals now (`shows_terminals`,
+    /// as it last drew): its panes view takes them as its size or scale
+    /// changes only then (under an overlay it did all the same).
+    terminals_shown: Rc<std::cell::Cell<bool>>,
     pub overlay: Option<ActiveOverlay>,
     pub overlay_field: Option<Child<TextField>>,
     pub find_open: bool,
@@ -2737,7 +2778,9 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None, width: None, area: Rc::new(std::cell::Cell::new(olo_kit::Size::default())) });
+        let terminals_shown = Rc::new(std::cell::Cell::new(true));
+        let panes_view =
+            cx.new_view(|_| PanesView { win_id: id, session: None, width: None, area: Rc::new(std::cell::Cell::new(olo_kit::Size::default())), scale_seen: None, shown: terminals_shown.clone() });
 
         // (The demo's other windows, opened as it starts, for the live
         // lint and for pictures: `OLO_REX_DEMO_OPEN=app.hosts`, the
@@ -2806,6 +2849,7 @@ impl RexWindow {
             notice: Default::default(),
             due: Default::default(),
             panes_view: Some(panes_view),
+            terminals_shown,
             overlay: None,
             overlay_field: Some(overlay_field),
             find_open: false,
@@ -3050,6 +3094,7 @@ impl RexWindow {
             notice: Default::default(),
             due: Default::default(),
             panes_view: None,
+            terminals_shown: Rc::new(std::cell::Cell::new(false)),
             overlay: None,
             overlay_field: None,
             find_open: false,
@@ -3228,6 +3273,14 @@ impl RexWindow {
         let (hk, sess) = self.resolve_active_session()?;
         let bid = selected_block(&sess)?.to_owned();
         Some(BlockKey { host_key: hk, session_id: sess.session_id, block_id: bid })
+    }
+
+    /// Whether the window shows its tab's terminals now (`width`: its
+    /// own): not an Agent Screen, a transcript or an overlay in their
+    /// place, nor a side pane alone in the window (as front-pane notices
+    /// go by).
+    fn shows_terminals(&self, width: f32) -> bool {
+        self.active_screen.is_none() && self.overlay.is_none() && crate::activity_watch::active_transcript().is_none() && !matches!(self.side_pane.panes(width, 460.0), SidePanes::Pane)
     }
 
     fn cancel_preview(&mut self) {
@@ -4240,7 +4293,7 @@ impl RexWindow {
             }
             "files.open_in_tracker" => {
                 if let Some(bk) = self.focused_block_key() {
-                    open_block_in_tracker(&hub, &bk);
+                    open_block_in_tracker(&hub, &bk, crate::hub::HostPin::Any);
                 }
             }
             "agent.keep_going_toggle" => {
@@ -4870,7 +4923,7 @@ impl RexWindow {
                 .item("Quick Look", "files.quick_look")
                 .enabled(pane)
                 .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
-                .enabled(pane)
+                .enabled(pane && hub.tracker_pin(&self.active_host).is_some())
                 .separator()
                 .item("Close Pane", "pane.close")
                 .enabled(pane),
@@ -4908,6 +4961,8 @@ impl RexWindow {
 
     fn render_workspace(&mut self, cx: &mut olo_kit::Cx<Self>) -> Element {
         let viewport = cx.viewport_size();
+        // (What its panes view may take its terminals by, as it is now.)
+        self.terminals_shown.set(self.shows_terminals(f32::from(viewport.width)));
         let scale = cx.scale_factor();
         let surface = cx.surface_id();
         let hub = the_hub().clone();
@@ -4975,6 +5030,9 @@ impl RexWindow {
             slot.selection.block = focused.map(str::to_owned);
             slot.selection.active = self.window_active;
         }
+        // (What it shows, for the order a connection made again attaches
+        // in: the choice is kept while its host is away.)
+        hub.window_shows(self.id, &self.active_host, self.active_session.as_deref());
         if previous.is_some() && previous != self.active_session {
             self.clear_feedback();
             self.find_open = false;
@@ -6330,6 +6388,8 @@ impl RexWindow {
                     continue;
                 }
                 let host_pin = capture_live_host_pin(the_hub(), hk);
+                // (Open in Tracker's: a host Tracker can reach, `tracker_pin`.)
+                let tracker_pin = the_hub().tracker_pin(hk);
                 let top_pad = if rendered_any_host { 10.0 } else { 0.0 };
                 rows = rows.child(div().w_full().pt(px(top_pad)).pb(px(6.0)).pr(px(m::TIGHT)).child(StringView::new(host_label.clone()).bold(true).size(style::SMALL_SIZE).dim(true).height(14.0)));
                 rendered_any_host = true;
@@ -6369,6 +6429,7 @@ impl RexWindow {
                         .map(|c| RunningChild { window_id: c.row.entry.window_id.clone(), name: c.row.entry.display_title(), command: c.command, minder: c.row.entry.is_shared_minder() })
                         .collect();
                     let has_sub_children = total_children > 0;
+                    let has_own_screens = !direct_screens.is_empty();
                     let parent_menu_key = format!("row:{}:{}:{}", row.bk.host_key, row.bk.session_id, row.bk.block_id);
                     active_bounds_keys.insert(parent_menu_key.clone());
                     let parent_menu_target = self.context_menu_row.as_deref() == Some(parent_menu_key.as_str());
@@ -6406,26 +6467,8 @@ impl RexWindow {
                             let bk = bk_menu.clone();
                             let title = row_title.clone();
                             let running_for_menu = running_kids.clone();
-                            let mut menu = Menu::new("")
-                                .item("Show Transcript", "row.transcript")
-                                .checked(viewing_tr)
-                                .item("Show Terminal", "row.terminal")
-                                .checked(!viewing_tr)
-                                .separator()
-                                .item("Keep It Going  ↻", "row.keep_going")
-                                .checked(row_help.keep_going)
-                                .item("Auto Approve", "row.auto_approve")
-                                .checked(row_help.auto_approve);
-                            if has_children {
-                                let fold_word = match (has_sub_children, total_screens > 0, expanded) {
-                                    (true, _, true) => "Collapse Subagents",
-                                    (true, _, false) => "Expand Subagents",
-                                    (false, true, true) => "Collapse Screens",
-                                    (false, true, false) => "Expand Screens",
-                                    _ => "Collapse",
-                                };
-                                menu = menu.separator().item(fold_word, "row.toggle_fold");
-                            }
+                            let fold_word = fold_label(has_sub_children, has_own_screens, expanded);
+                            let mut menu = agent_row_menu("row", viewing_tr, &row_help, tracker_pin.is_some(), fold_word);
                             if has_sub_children {
                                 let stop_label = stop_children_label(&running_for_menu);
                                 menu = menu.separator().item(stop_label, "row.stop_all").enabled(!running_for_menu.is_empty());
@@ -6449,6 +6492,9 @@ impl RexWindow {
                                         if let Some(slot) = wins().map.get(&win_id) {
                                             slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
                                         }
+                                    }
+                                    "row.open_in_tracker" if tracker_pin.is_some() => {
+                                        open_block_in_tracker(the_hub(), &bk, crate::hub::HostPin::MustMatch(tracker_pin));
                                     }
                                     "row.keep_going" => {
                                         the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
@@ -6524,7 +6570,8 @@ impl RexWindow {
                             let sub_end = subs[c_idx + 1..].iter().position(|n| n.row.depth <= child.row.depth).map_or(subs.len(), |off| c_idx + 1 + off);
                             let sub_kids: &[NativeChildItem] = &subs[c_idx + 1..sub_end];
                             let child_has_sub_kids = !sub_kids.is_empty();
-                            let child_has_kids = child_has_sub_kids || !child.screens.is_empty();
+                            let child_has_screens = !child.screens.is_empty();
+                            let child_has_kids = child_has_sub_kids || child_has_screens;
                             let child_expanded = child_has_kids && (force_expand || !crate::activity_watch::is_folded(&child.bk));
                             if child_has_kids && !child_expanded {
                                 folded_depth = Some(child.row.depth);
@@ -6603,31 +6650,15 @@ impl RexWindow {
                                     let title = child_title.clone();
                                     let minds = child_minds;
                                     let child_has_agents = minds && the_hub().minder_and_its_agents(&bk.host_key, &bk.session_id, &wid).len() > 1;
-                                    let mut menu = Menu::new("")
-                                        .item("Show Transcript", "sub.transcript")
-                                        .checked(viewing_child_tr)
-                                        .item("Show Terminal", "sub.terminal")
-                                        .checked(!viewing_child_tr)
+                                    let fold_word = fold_label(child_has_sub_kids, child_has_screens, child_expanded);
+                                    // (What ends it, together, last.)
+                                    let mut menu = agent_row_menu("sub", viewing_child_tr, &child_help, tracker_pin.is_some(), fold_word)
                                         .separator()
-                                        .item("Keep It Going  ↻", "sub.keep_going")
-                                        .checked(child_help.keep_going)
-                                        .item("Auto Approve", "sub.auto_approve")
-                                        .checked(child_help.auto_approve)
-                                        .separator();
-                                    if child_has_kids {
-                                        let fold_word = match (child_has_sub_kids, child_expanded) {
-                                            (true, true) => "Collapse Subagents",
-                                            (true, false) => "Expand Subagents",
-                                            (false, true) => "Collapse Screens",
-                                            (false, false) => "Expand Screens",
-                                        };
-                                        menu = menu.item(fold_word, "sub.toggle_fold").separator();
-                                    }
-                                    menu = menu.item(if minds { "Stop Minder…" } else { "Stop Subagent" }, "sub.stop");
+                                        .item(if minds { "Stop Minder…" } else { "Stop Subagent" }, "sub.stop");
                                     if (minds && child_has_agents) || (!minds && child_has_sub_kids) {
                                         menu = menu.item(if minds { "Stop Minder & Its Subagents…" } else { "Stop Subagent & Children" }, "sub.stop_tree");
                                     }
-                                    menu = menu.separator().item("Force Close Tab", "sub.force_stop");
+                                    menu = menu.item("Force Close Tab", "sub.force_stop");
                                     menu::resolve(std::slice::from_mut(&mut menu), true);
                                     if let Some(slot) = wins().map.get(&win_id) {
                                         slot.handle.messenger().send(WinMsg::SetContextMenuRow(Some(sub_menu_key.clone())));
@@ -6648,6 +6679,9 @@ impl RexWindow {
                                                 if let Some(slot) = wins().map.get(&win_id) {
                                                     slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title.clone()));
                                                 }
+                                            }
+                                            "sub.open_in_tracker" if tracker_pin.is_some() => {
+                                                open_block_in_tracker(the_hub(), &bk, crate::hub::HostPin::MustMatch(tracker_pin));
                                             }
                                             "sub.keep_going" => {
                                                 the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
@@ -8591,7 +8625,14 @@ impl View for RexWindow {
                 let several = sess.windows.get(w_idx).is_some_and(|w| w.all_blocks().count() > 1);
                 let active_view = crate::activity_watch::active_view_target();
                 let viewing_transcript = tab_block.as_ref().is_some_and(|tb| matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == tb));
-                let mut menu = Menu::new("").item("Rename Tab…", "window.rename").item(olo_kit_base::tracker::LABEL, "files.open_in_tracker").enabled(tab_block.is_some()).separator();
+                // (Open in Tracker: only where Tracker reaches the host, as it
+                // is as the menu is made; checked again when chosen.)
+                let tab_tracker_pin = the_hub().tracker_pin(&hk);
+                let mut menu = Menu::new("")
+                    .item("Rename Tab…", "window.rename")
+                    .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
+                    .enabled(tab_block.is_some() && tab_tracker_pin.is_some())
+                    .separator();
                 if tab_block.is_some() {
                     menu = menu.item("Show Transcript", "pane.show_transcript").checked(viewing_transcript).item("Show Terminal", "pane.show_terminal").checked(!viewing_transcript).separator();
                 }
@@ -8623,9 +8664,9 @@ impl View for RexWindow {
                             slot.handle.messenger().send(WinMsg::RenameTab(hk.clone(), sess.session_id.clone(), tab.clone()));
                         }
                     }
-                    "files.open_in_tracker" => {
+                    "files.open_in_tracker" if tab_tracker_pin.is_some() => {
                         if let Some(bk) = &tab_block {
-                            open_block_in_tracker(&hub, bk);
+                            open_block_in_tracker(&hub, bk, crate::hub::HostPin::MustMatch(tab_tracker_pin));
                         }
                     }
                     "pane.show_transcript" => {
@@ -8843,16 +8884,33 @@ impl View for RexWindow {
                     pane.update(cx, |p, cx| p.stop_controlling(cx));
                 }
             }
-        } else if let Some(st) = &mut self.active_screen
-            && st.pending_take_control
-        {
-            // Neon #7: flush one-shot Take Control armed while `!self.window_active`
-            // (e.g. `OLO_REX_DEMO_ACTIVITY=screens-control` or context menu on an
-            // unfocused workspace) once the window activates.
-            st.pending_take_control = false;
-            if let Some(pane) = &self.screen_pane {
-                pane.update(cx, |p, cx| p.request_control_when_ready(cx));
-                st.controlling = pane.read(cx).controlling();
+        } else {
+            // Brought forward by the person: the panes of its tab in front
+            // are its to size, as choosing the tab takes them (another
+            // client's view held their size: a pane drawn at another's
+            // size from its top left loses its last rows, where a program
+            // keeps its prompt).
+            // (Only where its terminals show: not under an Agent Screen, a
+            // transcript, an overlay, or a side pane alone in the window,
+            // whose terminals another desktop may be showing.)
+            if self.role == WinRole::Workspace
+                && self.shows_terminals(f32::from(cx.viewport_size().width))
+                && let Some(session) = &self.active_session
+                && let Some(hub) = HUB.get()
+            {
+                hub.take_tab_in_front(&self.active_host, session);
+            }
+            if let Some(st) = &mut self.active_screen
+                && st.pending_take_control
+            {
+                // Neon #7: flush one-shot Take Control armed while `!self.window_active`
+                // (e.g. `OLO_REX_DEMO_ACTIVITY=screens-control` or context menu on an
+                // unfocused workspace) once the window activates.
+                st.pending_take_control = false;
+                if let Some(pane) = &self.screen_pane {
+                    pane.update(cx, |p, cx| p.request_control_when_ready(cx));
+                    st.controlling = pane.read(cx).controlling();
+                }
             }
         }
         cx.invalidate();
@@ -8860,6 +8918,9 @@ impl View for RexWindow {
 
     fn window_closing(&mut self, cx: &mut olo_kit::Cx<Self>) {
         self.close_screen(cx);
+        if let Some(hub) = HUB.get() {
+            hub.window_shows(self.id, &self.active_host, None);
+        }
     }
 
     fn takes_drops(&self) -> bool {
@@ -8986,6 +9047,10 @@ impl Drop for RexWindow {
         app().attention.hide(self.id);
         if let Some(hub) = HUB.get() {
             hub.hide_window_front_pane(self.id);
+            // (Nor does it show a session any more: a window that goes
+            // without `window_closing` left its session first in line
+            // for every connection after.)
+            hub.window_shows(self.id, &self.active_host, None);
         }
         wins().map.remove(&self.id);
         if self.role == WinRole::Workspace && !wins().map.values().any(|s| s.role == WinRole::Workspace) {
@@ -9080,6 +9145,13 @@ pub struct PanesView {
     /// floating layer's place is a share of, and what a drag of one is
     /// measured against.
     area: Rc<std::cell::Cell<olo_kit::Size<Pixels>>>,
+    /// The scale it was last shown at.
+    scale_seen: Option<f32>,
+    /// Whether its window shows its terminals now (the window's
+    /// `terminals_shown`): its panes are taken as its size or scale
+    /// changes only then, never under an overlay, an Agent Screen, a
+    /// transcript or a side pane alone in the window (Astra R2 #13).
+    shown: Rc<std::cell::Cell<bool>>,
 }
 
 impl View for PanesView {
@@ -9093,6 +9165,12 @@ impl View for PanesView {
         let hub = the_hub().clone();
         let scale = cx.scale_factor();
         let Some((hk, sid)) = &self.session else { return div() };
+        // (A new scale with the window forward, its size the same: moved
+        // to a display of another scale, whose cells are another size.
+        // Its area's size alone said nothing of it.)
+        if self.scale_seen.replace(scale).is_some_and(|seen| seen != scale) && cx.is_window_active() && self.shown.get() {
+            the_hub().take_tab_in_front(hk, sid);
+        }
         let (settings, active_theme, host_key, host_label, is_local, sess) = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(h) = st.hosts.get(hk) else { return div() };
@@ -9112,10 +9190,18 @@ impl View for PanesView {
         // (Its own size known as it is laid out, and said again when it
         // changes; what floats in it is cut at its edges.)
         let (area_now, area_told) = (self.area.clone(), cx.messenger());
-        let mut layer_stack = div().relative().size_full().overflow_hidden().on_bounds_changed(move |b: &Bounds<Pixels>, _| {
+        let (in_front, shown) = ((hk.clone(), sid.clone()), self.shown.clone());
+        let mut layer_stack = div().relative().size_full().overflow_hidden().on_bounds_changed(move |b: &Bounds<Pixels>, wcx| {
             if area_now.get() != b.size {
                 area_now.set(b.size);
                 area_told.send(());
+                // (A new size with the window forward, the person's doing:
+                // moved to a larger display, resized. The panes in front
+                // are this view's to size, as when it was brought forward.
+                // Forward as the window is now, not as it last drew.)
+                if wcx.is_window_active() && shown.get() {
+                    the_hub().take_tab_in_front(&in_front.0, &in_front.1);
+                }
             }
         });
 
@@ -9766,8 +9852,11 @@ fn render_single_pane(
         let (want_cols, want_rows) = metrics_paint.grid_size(f32::from(rect.size.width), f32::from(rect.size.height), pad);
         let (cw_px, ch_px) = metrics_paint.device_cell();
         let resize = {
+            // (The grid here may be that size already while its host isn't
+            // known to be: the size is handed on all the same.)
             let g = br_paint.lock().unwrap_or_else(|e| e.into_inner());
-            !g.other_size_owner && g.geometry != Some((want_cols, want_rows, cw_px, ch_px))
+            let want = (want_cols, want_rows, cw_px, ch_px);
+            !g.other_size_owner && (g.geometry != Some(want) || g.size.needs_ask(want))
         };
         if resize && hub_paint.resize_block(&bk_paint, want_cols, want_rows, cw_px, ch_px) {
             if let Some(slot) = wins().map.get(&win_id) {
@@ -9957,6 +10046,9 @@ fn render_single_pane(
             let g = br_menu.lock().unwrap_or_else(|e| e.into_inner());
             (g.terminal.has_selection(), g.copy_mode.is_some(), g.runs_agent() || g.agent_activity != AgentActivity::Idle)
         };
+        // (The host as the menu was made: Open in Tracker opens on it
+        // only, not on a connection made since.)
+        let tracker_pin = the_hub().tracker_pin(&bk_rclick.host_key);
         let mut menu = Menu::new("")
             .item("Copy", "terminal.copy")
             .enabled(selected)
@@ -9968,6 +10060,7 @@ fn render_single_pane(
             .item("Quick Look", "files.quick_look")
             .enabled(selected)
             .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
+            .enabled(tracker_pin.is_some())
             .item("Clear Scrollback", "terminal.clear_scrollback")
             .separator()
             .item("Split Right", "pane.split_right")
@@ -9986,6 +10079,13 @@ fn render_single_pane(
         let target = bk_rclick.clone();
         let w = win_id;
         menu::context_menu(cx, menu, e.position, move |cmd: &str, _| {
+            // (The pane the menu was made for, on the host as it was then:
+            // sent as a command of the pane in front, it opened on whatever
+            // connection was the host's by then: Astra R2 #16.)
+            if cmd == "files.open_in_tracker" {
+                open_block_in_tracker(the_hub(), &target, crate::hub::HostPin::MustMatch(tracker_pin));
+                return;
+            }
             if let Some(slot) = wins().map.get(&w) {
                 slot.handle.messenger().send(WinMsg::PaneCommand(target.clone(), cmd.to_owned()));
             }
@@ -11152,12 +11252,13 @@ fn stop_order(children: &[RunningChild]) -> Vec<String> {
 
 /// What stopping a tab's children is called, by what they are: agents
 /// are subagents, a command of the asker's own is a command ("Stop 2
-/// Subagents and 1 Command…"), so the words say what would be stopped.
+/// Subagents and 1 Command…"), so the words say what would be stopped;
+/// counted, one too ("Stop 1 Subagent…": as "Stop Subagent…" it read as
+/// a child row's own "Stop Subagent", the row itself: Neon look R2 #4).
 fn stop_children_label(kids: &[RunningChild]) -> String {
     let commands = kids.iter().filter(|k| k.command).count();
     let agents = kids.len() - commands;
     let said = |count: usize, one: &str, many: &str| match count {
-        1 if kids.len() == 1 => one.to_owned(),
         1 => format!("1 {one}"),
         n => format!("{n} {many}"),
     };
@@ -12120,12 +12221,26 @@ mod child_words_tests {
     #[test]
     fn stopping_children_names_agents_and_commands_apart() {
         assert_eq!(stop_children_label(&[]), "Stop Subagents…");
-        assert_eq!(stop_children_label(&[kid("a", false)]), "Stop Subagent…");
+        assert_eq!(stop_children_label(&[kid("a", false)]), "Stop 1 Subagent…");
         assert_eq!(stop_children_label(&[kid("a", false), kid("b", false)]), "Stop 2 Subagents…");
-        assert_eq!(stop_children_label(&[kid("log", true)]), "Stop Command…");
+        assert_eq!(stop_children_label(&[kid("log", true)]), "Stop 1 Command…");
         assert_eq!(stop_children_label(&[kid("log", true), kid("srv", true)]), "Stop 2 Commands…");
         assert_eq!(stop_children_label(&[kid("a", false), kid("b", false), kid("log", true)]), "Stop 2 Subagents and 1 Command…");
         assert_eq!(stop_children_label(&[kid("a", false), kid("log", true), kid("srv", true)]), "Stop 1 Subagent and 2 Commands…");
+    }
+
+    /// A row's fold is named for what it folds: its subagents, its own
+    /// screens, or both; none where it has neither (Opus R2 #9: a lead of
+    /// three screens and one subagent said "Collapse Subagents").
+    #[test]
+    fn a_rows_fold_says_what_it_folds() {
+        assert_eq!(fold_label(true, false, true), Some("Collapse Subagents"));
+        assert_eq!(fold_label(true, false, false), Some("Expand Subagents"));
+        assert_eq!(fold_label(false, true, true), Some("Collapse Screens"));
+        assert_eq!(fold_label(false, true, false), Some("Expand Screens"));
+        assert_eq!(fold_label(true, true, true), Some("Collapse"), "screens and a subagent");
+        assert_eq!(fold_label(true, true, false), Some("Expand"));
+        assert_eq!(fold_label(false, false, true), None);
     }
 
     /// A tab's children are stopped agents and commands first, their
@@ -12271,6 +12386,43 @@ mod workspace_tests {
 #[cfg(test)]
 mod activity_tests {
     use super::*;
+
+    /// An agent's menu in Activity, at the top of its host's list and as
+    /// a child under a tab, grouped by kind (Opus R1 #1, Neon look R1
+    /// #2): the choice of view alone (one checked); then what to do,
+    /// Open in Tracker with the tree's fold; then its settings, checked
+    /// when on in the check column, with no glyph beside a label (Opus R1
+    /// #4). Open in Tracker is off where Tracker can't reach the host.
+    #[test]
+    fn an_agents_menu_opens_its_folder_in_tracker() {
+        let said = |menu: &Menu| -> Vec<(String, String, bool, bool)> {
+            menu.items
+                .iter()
+                .map(|item| match item {
+                    menu::MenuItem::Action(a) => (a.label.to_string(), a.command.to_string(), a.enabled, a.checked),
+                    menu::MenuItem::Separator => ("—".into(), String::new(), false, false),
+                    menu::MenuItem::Submenu(m) => (m.title.to_string(), String::new(), false, false),
+                })
+                .collect()
+        };
+        let help = crate::agent::Help { keep_going: true, ..Default::default() };
+        for prefix in ["row", "sub"] {
+            let menu = said(&agent_row_menu(prefix, false, &help, true, Some("Collapse Subagents")));
+            let labels: Vec<&str> = menu.iter().map(|(l, ..)| l.as_str()).collect();
+            assert_eq!(labels, ["Show Transcript", "Show Terminal", "—", olo_kit_base::tracker::LABEL, "Collapse Subagents", "—", "Keep It Going", "Auto Approve"], "{prefix}");
+            assert_eq!(menu[3], (olo_kit_base::tracker::LABEL.to_owned(), format!("{prefix}.open_in_tracker"), true, false));
+            assert_eq!(menu[4].1, format!("{prefix}.toggle_fold"));
+            assert!(menu[1].3 && !menu[0].3, "the view shown, checked");
+            assert!(menu[6].3 && !menu[7].3, "Keep It Going on: checked; Auto Approve off: not");
+            // A leaf (no subagents, no screens): no fold, the rest the same.
+            let leaf = said(&agent_row_menu(prefix, true, &crate::agent::Help::default(), true, None));
+            let labels: Vec<&str> = leaf.iter().map(|(l, ..)| l.as_str()).collect();
+            assert_eq!(labels, ["Show Transcript", "Show Terminal", "—", olo_kit_base::tracker::LABEL, "—", "Keep It Going", "Auto Approve"], "{prefix}");
+            assert!(leaf[0].3 && !leaf[5].3);
+            let off = said(&agent_row_menu(prefix, false, &help, false, None));
+            assert_eq!((off[3].1.as_str(), off[3].2), (format!("{prefix}.open_in_tracker").as_str(), false), "off where Tracker can't reach the host");
+        }
+    }
 
     /// An Activity row goes by its tab's name, as the strip shows it: the
     /// name the tab was given over what its program calls itself (Ben,

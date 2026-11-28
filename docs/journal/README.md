@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Rex Activity disabled Tracker and mixed-child Collapse
+
+*15:55* — Fail-closed disabled Open in Tracker when unreachable over SSH, Collapse for mixed screens and subagents, and Stop 1 Subagent...
+
+![Rex Activity disabled Tracker and mixed-child Collapse](2026-11-28/155529-rex-activity-disabled-tracker-and-mixed-child-co.png)
+
+### Rex Activity context menu with Open in Tracker
+
+*15:55* — Regrouped four-section agent menu with Open in Tracker, check-column Keep It Going, and child-accurate Collapse labels
+
+![Rex Activity context menu with Open in Tracker](2026-11-28/155528-rex-activity-context-menu-with-open-in-tracker.png)
+
 ### Viewer plain-English error card and DeskCalc polish
 
 *13:52* — Centered BeOS error card for unreadable images and fonts with balanced headroom and off-thread Show in Tracker

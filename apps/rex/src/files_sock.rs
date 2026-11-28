@@ -52,7 +52,14 @@ enum HelperPolicy {
 
 struct ResolvedHost {
     key: String,
+    /// What a person reads it by: for what is said to them.
     label: String,
+    /// What answers name it by (`hub::tracker_authority`): Tracker names
+    /// the folder by it, and asks by it next. (Its label was given, and
+    /// a host named by its key, its label another's or "Local", was
+    /// asked for by its label next: another host's, or this computer's
+    /// folder: Astra R2 #1, Neon R2 #2.)
+    authority: String,
     target: SshTarget,
     pool: Arc<SshSessionPool>,
     askpass: Option<Arc<dyn SshAskpass>>,
@@ -210,7 +217,19 @@ fn conn_state_str(s: &HostConnState) -> (&'static str, Option<String>) {
     }
 }
 
+/// The host a `rex://HOST/…` names: the host of the key it names where
+/// it is tagged as one (`id:KEY`, as Rex names a host whose label
+/// doesn't name it alone: `hub::tracker_authority`), exactly; else as
+/// a name always was (so that a bookmark goes where it went: a key
+/// looked up first sent one of a host whose label is another's key to
+/// that other, Astra R2 #2): a host's label, as written, then in any
+/// case, then its key.
 fn find_host_key(st: &HubState, host: &str) -> Option<String> {
+    if let Some(key) = host.strip_prefix(crate::hub::KEY_AUTHORITY)
+        && let Some(h) = st.hosts.get(key).filter(|h| !h.is_local)
+    {
+        return Some(h.key.clone());
+    }
     if let Some(h) = st.hosts.values().find(|h| !h.is_local && h.label == host) {
         return Some(h.key.clone());
     }
@@ -218,6 +237,46 @@ fn find_host_key(st: &HubState, host: &str) -> Option<String> {
         return Some(h.key.clone());
     }
     st.hosts.get(host).filter(|h| !h.is_local).map(|h| h.key.clone())
+}
+
+#[cfg(test)]
+pub(crate) fn find_host_key_for_test(st: &HubState, host: &str) -> Option<String> {
+    find_host_key(st, host)
+}
+
+/// What this socket's answers name a host by (their `host`, by which
+/// Tracker names the folder from then on, and asks next), as Rex named
+/// it to Tracker: `resolve_host`'s, for a test.
+#[cfg(test)]
+pub(crate) fn answers_name_for_test(state: &Arc<Mutex<HubState>>, host: &str) -> Result<String, String> {
+    resolve_host(state, host).map(|h| h.authority)
+}
+
+/// Whether Tracker can reach a host's folders through Rex now: this
+/// computer always; a host while connected over SSH, with Olo's helper
+/// allowed there (what this socket asks of each request it serves),
+/// and either this build's helper there already or one this build can
+/// put there that keeps files (what it asks before it serves one: the
+/// item was offered where every request would be refused, Astra R2 #18).
+pub(crate) fn tracker_reaches(st: &HubState, host_key: &str) -> bool {
+    let Some(h) = st.hosts.get(host_key) else { return false };
+    h.is_local
+        || (h.conn_state == HostConnState::Connected
+            && matches!(h.endpoint, Some(RexEndpoint::Ssh { .. }))
+            && helper_policy_allows(st.settings.host_helper, st.settings.helper_hosts.get(host_key).map(String::as_str))
+            && files_served(&h.helper, h.helper_current, crate::link::carried() && crate::link::syncs()))
+}
+
+/// Whether a host's files can be served (`ensure_helper_core`'s word):
+/// its helper there is this build's (`helper_is_current`), or this build
+/// carries one that keeps files, to put there (`provides`).
+fn files_served(helper: &HostHelper, helper_current: Option<bool>, provides: bool) -> bool {
+    helper_is_current(helper, helper_current) || provides
+}
+
+#[cfg(test)]
+pub(crate) fn files_served_for_test(helper: &HostHelper, helper_current: Option<bool>, provides: bool) -> bool {
+    files_served(helper, helper_current, provides)
 }
 
 /// A host's helper can run this build's `fs` subcommands (such as `--len` and
@@ -334,7 +393,8 @@ fn resolve_host(state: &Arc<Mutex<HubState>>, host: &str) -> Result<ResolvedHost
     };
     let helper_ready = helper_is_current(&h.helper, h.helper_current);
     let policy = helper_policy(st.settings.host_helper, st.settings.helper_hosts.get(&key).map(String::as_str));
-    Ok(ResolvedHost { key, label: h.label.clone(), target, pool, askpass, helper_ready, helper_policy: policy })
+    let authority = crate::hub::tracker_authority(&st.hosts, h);
+    Ok(ResolvedHost { key, label: h.label.clone(), authority, target, pool, askpass, helper_ready, helper_policy: policy })
 }
 
 fn host_same_endpoint(st: &HubState, host: &ResolvedHost) -> bool {
@@ -1369,6 +1429,9 @@ async fn handle_client(stream: UnixStream, state: Arc<Mutex<HubState>>, inline_b
                         json!({
                             "key": h.key,
                             "label": h.label,
+                            // (What a `rex://` URI of it is to name it by:
+                            // its label where that names it alone.)
+                            "authority": crate::hub::tracker_authority(&st.hosts, h),
                             "state": state_s,
                             "error": err,
                             "ssh": matches!(h.endpoint, Some(RexEndpoint::Ssh { .. })) || h.endpoint_raw.starts_with("ssh://"),
@@ -1525,7 +1588,7 @@ async fn handle_client(stream: UnixStream, state: Arc<Mutex<HubState>>, inline_b
                         feeder.abort();
                         match res {
                             Ok(ran) => parse_helper_json(&ran.output, &host.label).map(|mut v| {
-                                v["host"] = json!(host.label);
+                                v["host"] = json!(host.authority);
                                 v
                             }),
                             Err(e) => Err(e.to_string()),
@@ -1672,7 +1735,7 @@ async fn run_one_shot_fs_op(
                 res = work => match res {
                     Ok((mut v, verified)) => {
                         if attach_host {
-                            v["host"] = json!(host.label);
+                            v["host"] = json!(host.authority);
                             v["endpoint_id"] = json!(format_verified_identity(&host.target, verified.as_ref()));
                         }
                         v
@@ -2387,7 +2450,7 @@ async fn handle_upload(
     drop(cancel_mon);
 
     let resp = match final_res {
-        Ok(Ok((path, bytes))) => json!({ "ok": true, "complete": true, "endpoint_id": endpoint_id, "path": path, "host": host.label, "bytes": bytes }),
+        Ok(Ok((path, bytes))) => json!({ "ok": true, "complete": true, "endpoint_id": endpoint_id, "path": path, "host": host.authority, "bytes": bytes }),
         Ok(Err(TransferError::Cancelled)) => json!({ "ok": false, "cancelled": true, "error": "cancelled" }),
         Ok(Err(TransferError::Failed(e))) => json!({ "ok": false, "error": e }),
         Err(e) => json!({ "ok": false, "error": e.to_string() }),

@@ -9,6 +9,7 @@ drawn by the window's own thread. That its tree can still be read says nothing: 
 is read as it last was.)
 
     tree.py [BIN]      BIN: another build of olo-rex to try (to compare); else this tree's dev build
+                       (REX_TREE_TARGET: where this tree's builds are, when not in its target/)
 
 Each of these stopped the window for good until 2026-11-26: the hub was kept inside the app's locked
 state, `app().hub.select_window(…)` held that lock for the whole statement, and the hub's notice (told at
@@ -20,9 +21,11 @@ import json, os, socket, subprocess, sys, time
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 NAME = os.environ.get("REX_TREE_NAME", "rex-tree")
 SCRATCH = os.environ.get("REX_TREE_DIR", "/var/tmp/olo-rex-tree")
-BIN = sys.argv[1] if len(sys.argv) > 1 else f"{ROOT}/target/debug/olo-rex"
-# (The session's own programs from the tree's builds, whatever target folder the asker has.)
-ENV = {**os.environ, "CARGO_TARGET_DIR": f"{ROOT}/target"}
+# (The session's own programs from the tree's builds, whatever target folder the asker has; or from
+# REX_TREE_TARGET, where the tree's builds are kept elsewhere: a worktree's, by Jato.)
+TARGET = os.environ.get("REX_TREE_TARGET", f"{ROOT}/target")
+BIN = sys.argv[1] if len(sys.argv) > 1 else f"{TARGET}/debug/olo-rex"
+ENV = {**os.environ, "CARGO_TARGET_DIR": TARGET}
 ok = True
 
 
@@ -121,6 +124,12 @@ def main():
             click(menu_at[0] + it["x"] + 20, menu_at[1] + it["y"] + it["height"] / 2)
             return None
 
+        def row_menu_at(row, spot):
+            """Where a row's menu in Activity opens, right-clicked at `spot`: under the row, at the
+            pointer's x, 12 points in at least. (Clicked as if it opened at the pointer, each choice
+            fell on the item below the one meant.)"""
+            return max(spot[0], row["x"] + 12), row["y"] + row["height"] + 2
+
         # 1. A child chosen from its tab's tree menu.
         found = nodes(pid)
         tree_btn = next((n for n in found or [] if n.get("role") == "Button" and str(n.get("name") or "").startswith("Child tabs of")), None)
@@ -164,7 +173,7 @@ def main():
                 was = ticked(item)
                 spot = centre(row)
                 click(*spot, "right")
-                missing = chosen(spot, item)
+                missing = chosen(row_menu_at(row, spot), item)
                 time.sleep(0.4)
                 now = ticked(item)
                 check(f"{item} chosen for {who} in Activity: its menu, opened again, has it ticked", was is False and now is True and not missing, {"ticked before": was, "after": now, "menu lacked": missing})
@@ -173,21 +182,27 @@ def main():
             # Chosen again: off again (each row's own, and the other row's untouched).
             spot = centre(row)
             click(*spot, "right")
-            chosen(spot, "Keep It Going")
+            chosen(row_menu_at(row, spot), "Keep It Going")
             time.sleep(0.4)
             check(f"Keep It Going chosen again for {who}: off again", ticked("Keep It Going") is False, None)
         # (The child's Auto Approve is still on, the parent's too; the parent's Keep It Going did not turn the child's on.)
-        row = named(nodes(pid), "ListItem", "API Audit")
-        spot = centre(row)
-        click(*spot, "right")
-        items = wait(lambda: (lambda f: f if named(f, "MenuItem", "Keep It Going") else None)(nodes(pid)), 5)
-        ts("key", NAME, "1")
-        had = [str(n.get("name")) for n in items or [] if n.get("role") == "MenuItem"]
-        check(
-            "a child's menu in Activity, in its parent's order: what shows, the two, what folds, what stops",
-            had == ["Show Transcript", "Show Terminal", "Keep It Going", "Auto Approve", "Collapse Children", "Stop Subagent", "Stop Subagent & Children", "Force Close Tab"],
-            had,
-        )
+        # Each agent's menu in Activity, the tab's own agent's and a child's, in one order (2026-11-28):
+        # the view shown; what to do with it, Open in Tracker (its folder) and what folds under it; its
+        # two settings; what stops it. Open in Tracker offered: the demo's agents are this computer's.
+        for who, expected in (
+            ("olo-rex", ["Show Transcript", "Show Terminal", "Open in Tracker", "Collapse Subagents", "Keep It Going", "Auto Approve", "Stop 2 Subagents…"]),
+            ("API Audit", ["Show Transcript", "Show Terminal", "Open in Tracker", "Collapse Subagents", "Keep It Going", "Auto Approve", "Stop Subagent", "Stop Subagent & Children", "Force Close Tab"]),
+        ):
+            row = named(nodes(pid), "ListItem", who)
+            spot = centre(row)
+            click(*spot, "right")
+            items = wait(lambda: (lambda f: f if named(f, "MenuItem", "Keep It Going") else None)(nodes(pid)), 5)
+            ts("key", NAME, "1")
+            menu = [n for n in items or [] if n.get("role") == "MenuItem"]
+            had = [str(n.get("name")) for n in menu]
+            check(f"{who}'s menu in Activity, in one order: what shows, what to do with it, the two, what stops", had == expected, had)
+            tracker = named(menu, "MenuItem", "Open in Tracker")
+            check(f"{who}'s Open in Tracker offered", bool(tracker and tracker.get("enabled")), tracker and {k: tracker.get(k) for k in ("name", "enabled")})
     finally:
         log = f"/var/tmp/olo-dev/{NAME}/olo-rex.log"
         if not ok and os.path.exists(log):

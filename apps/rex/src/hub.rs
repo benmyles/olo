@@ -133,6 +133,10 @@ const CATCH_UP_LOOK_MOST: Duration = Duration::from_secs(60);
 /// Live terminal + metadata runtime for one Rex block.
 pub struct BlockRuntime {
     pub creator_name: String,
+    /// Whether a stream is had for it ([`attaches_a_stream`], said of
+    /// it by its session's view): what the streams opened beforehand
+    /// for its host are counted by ([`terminals_of`]).
+    pub is_terminal: bool,
     pub terminal: GhosttyTerminal,
     pub render_state: RenderState,
     pub frame: crate::frame::Frame,
@@ -142,7 +146,21 @@ pub struct BlockRuntime {
     find_generation: u64,
     pub finding: bool,
     pub geometry: Option<(u16, u16, u32, u32)>,
+    /// The size its host is to give the terminal, and how far that has
+    /// got ([`RexHub::resize_block`]).
+    pub size: SizeAsked,
     pub other_size_owner: bool,
+    /// Its size asked to be this client's, the answer not in yet: asked
+    /// once (a window dragged asked again at every step, each a round
+    /// trip ahead of what was typed next).
+    owning: bool,
+    /// The event number of the last word of whose its size is (an owner
+    /// change, or a session's view): an older view's is not taken over a
+    /// newer one's.
+    owner_seq: u64,
+    /// Woken when the view wants a new size while its asker waits to ask
+    /// again ([`RexHubInner::ask_size`]).
+    size_wake: Arc<tokio::sync::Notify>,
     pub copy_mode: Option<CopyMode>,
     pub title: String,
     /// The name the server has for the pane itself ("shell"), which its
@@ -152,6 +170,8 @@ pub struct BlockRuntime {
     pub program_statuses: Vec<ProgramStatusRecord>,
     // Events can arrive while the initial program_status request is in flight.
     pending_status: Option<Vec<(u64, StatusUpdate)>>,
+    /// The number of the last status request ([`Self::begin_status`]).
+    status_asked: u64,
     snapshot_seq: u64,
     pub ports: PortsSnapshot,
     pub process: Option<TerminalProcessSnapshot>,
@@ -281,6 +301,207 @@ fn merge_process(current: &mut Option<TerminalProcessSnapshot>, payload: &Value)
     stored.foreground.as_ref().or(stored.child.as_ref()).and_then(|p| p.cwd.clone())
 }
 
+/// A terminal's size: columns, rows, and a cell's width and height in
+/// pixels.
+pub type TermSize = (u16, u16, u32, u32);
+
+/// The size a pane's host is to give its terminal, and how far that has
+/// got ([`RexHub::resize_block`]): one request at a time (two sent
+/// together may be done there in either order), the last size wanted
+/// asked last, and none taken as given until the host says so (its
+/// answer, or its own word of its size).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SizeAsked {
+    /// What the view wants.
+    wanted: Option<TermSize>,
+    /// What the host has, as it last said or answered; none where that
+    /// isn't known (an answer that didn't come: the size may have been
+    /// given, or not).
+    host: Option<TermSize>,
+    /// Asked of the host, its answer not in yet.
+    asking: Option<TermSize>,
+    /// The host said its size while `asking` was on its way: the answer,
+    /// come after, isn't taken over that word.
+    said_meanwhile: bool,
+    /// Asks of the size wanted now that failed in a row.
+    failures: u32,
+    /// An asker runs for the pane (one at a time: a size wanted while it
+    /// waits to ask again wakes it, `BlockRuntime::size_wake`).
+    asker: bool,
+}
+
+/// Asks of a pane's size that failed in a row before it is left (until
+/// the view's size next changes): about a minute, at
+/// [`attach_again_after`]'s pace.
+const SIZE_TRIES: u32 = 8;
+
+/// What a pane's size asker does next ([`BlockRuntime::size_answered`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SizeStep {
+    /// Nothing more (stopped: the host has the size, or the size is
+    /// another's, or no try is left).
+    Done,
+    /// Ask this size now.
+    Ask(TermSize),
+    /// Ask again after the wait for so many failures in a row.
+    Wait(u32),
+}
+
+/// How the host answered being asked a size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SizeAnswer {
+    Given,
+    /// No answer that says (a time-out, the connection's trouble): the
+    /// size may have been given or not.
+    Unsure,
+    /// Refused as such (a request it doesn't take, a pane gone).
+    Refused,
+}
+
+impl SizeAsked {
+    fn want(&mut self, size: TermSize) {
+        if self.wanted != Some(size) {
+            self.wanted = Some(size);
+            self.failures = 0;
+        }
+    }
+
+    /// Whether the view's `size` is a size to hand the hub: a new one,
+    /// or one its host isn't known to have that nobody is asking for
+    /// (the view's grid may be that size already: it is made so here at
+    /// once, its host asked after).
+    pub fn needs_ask(&self, size: TermSize) -> bool {
+        self.wanted != Some(size) || (self.host != Some(size) && !self.asker && self.failures < SIZE_TRIES)
+    }
+
+    /// The size to ask the host for now, if any (it is then on its way):
+    /// what is wanted, where the host isn't known to have it and nothing
+    /// is on its way already.
+    fn next(&mut self) -> Option<TermSize> {
+        let wanted = self.wanted?;
+        if self.asking.is_some() || self.host == Some(wanted) || self.failures >= SIZE_TRIES {
+            return None;
+        }
+        self.asking = Some(wanted);
+        self.said_meanwhile = false;
+        Some(wanted)
+    }
+
+    /// The host's answer to being asked `asked`. Whether it was a failure
+    /// of the size wanted now (one of a size wanted no longer is no
+    /// failure of the new one's).
+    fn answered(&mut self, asked: TermSize, answer: SizeAnswer) -> bool {
+        if self.asking == Some(asked) {
+            self.asking = None;
+        }
+        let said = std::mem::take(&mut self.said_meanwhile);
+        let current = self.wanted == Some(asked);
+        match answer {
+            SizeAnswer::Given => {
+                if !said {
+                    self.host = Some(asked);
+                }
+                if current {
+                    self.failures = 0;
+                }
+                false
+            }
+            SizeAnswer::Unsure => {
+                self.host = None;
+                if current {
+                    self.failures += 1;
+                }
+                current
+            }
+            SizeAnswer::Refused => {
+                if current {
+                    self.failures = SIZE_TRIES;
+                }
+                current
+            }
+        }
+    }
+
+    /// The host's own word of its size (its stream's resize).
+    fn host_said(&mut self, size: TermSize) {
+        self.host = Some(size);
+        if self.asking.is_some() {
+            self.said_meanwhile = true;
+        }
+    }
+}
+
+/// The panes `window` shows whose size another client holds (whose size
+/// the host keeps to that client's view), not asked for already: never
+/// one it hides ([`panes_shown`]).
+fn panes_sized_by_others(host_key: &str, session_id: &str, window: &olo_rex_client::WindowView, blocks: &HashMap<BlockKey, Arc<Mutex<BlockRuntime>>>) -> Vec<String> {
+    panes_shown(window).into_iter().filter(|id| sized_by_another(host_key, session_id, id, blocks)).map(str::to_owned).collect()
+}
+
+/// The panes a tab shows, as Rex draws it (`ui::PanesView`): the one
+/// zoomed, else those of its tiled layer's layout (its first alone
+/// where it has none); and over them each floating layer's, but for one
+/// put away (minimized: a button to bring it back is all that shows of
+/// it). What taking a tab's panes takes (choosing it, bringing its
+/// window forward, its window's size or scale changed): a pane hidden
+/// here may be shown at its size on another desktop, and was taken
+/// from it all the same (Astra R2 #13, Neon R2 #7).
+pub(crate) fn panes_shown(window: &olo_rex_client::WindowView) -> Vec<&str> {
+    use olo_rex_client::{LayerKind, LayerState};
+    fn of_layout<'a>(node: &'a olo_rex_client::LayoutNode, shown: &mut Vec<&'a str>) {
+        if let Some(id) = &node.block_id {
+            shown.push(id);
+        }
+        if let Some(split) = &node.split {
+            of_layout(&split.before, shown);
+            of_layout(&split.after, shown);
+        }
+    }
+    let mut shown = Vec::new();
+    if let Some(zoomed) = &window.zoomed_block_id {
+        shown.push(zoomed.as_str());
+    } else if let Some(tiled) = window.layers.iter().find(|l| l.layer_kind() == LayerKind::Tiled) {
+        match &tiled.layout {
+            Some(root) => of_layout(root, &mut shown),
+            None => shown.extend(tiled.blocks.first().map(|b| b.block_id.as_str())),
+        }
+    }
+    for floating in window.layers.iter().filter(|l| l.layer_kind() == LayerKind::Floating && l.layer_state() != LayerState::Minimized) {
+        shown.extend(floating.blocks.first().map(|b| b.block_id.as_str()));
+    }
+    shown
+}
+
+/// Whether a pane's size is another client's, and not asked for already.
+fn sized_by_another(host_key: &str, session_id: &str, block_id: &str, blocks: &HashMap<BlockKey, Arc<Mutex<BlockRuntime>>>) -> bool {
+    let key = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: block_id.to_owned() };
+    blocks.get(&key).is_some_and(|runtime| {
+        let g = runtime.lock().unwrap_or_else(|e| e.into_inner());
+        g.other_size_owner && !g.owning
+    })
+}
+
+/// `block_ids`' size asked to be this client's, each marked as asked
+/// (`BlockRuntime::owning`) until the host answers: asked once however
+/// often a window asks. Whether it was asked.
+fn ask_to_own(host: &HostRuntime, session_id: &str, block_ids: Vec<String>, blocks: &HashMap<BlockKey, Arc<Mutex<BlockRuntime>>>) -> bool {
+    let Some(tx) = host.input_tx.as_ref().filter(|_| !block_ids.is_empty()) else { return false };
+    let mark = |on: bool| {
+        for id in &block_ids {
+            let key = BlockKey { host_key: host.key.clone(), session_id: session_id.to_owned(), block_id: id.clone() };
+            if let Some(block) = blocks.get(&key) {
+                block.lock().unwrap_or_else(|e| e.into_inner()).owning = on;
+            }
+        }
+    };
+    mark(true);
+    let sent = tx.send(HostInputOp::Own { session_id: session_id.to_owned(), block_ids: block_ids.clone() }).is_ok();
+    if !sent {
+        mark(false);
+    }
+    sent
+}
+
 impl BlockRuntime {
     pub fn new(cols: u16, rows: u16, theme: &TerminalTheme) -> Self {
         let mut terminal = GhosttyTerminal::new(cols.max(2), rows.max(1)).expect("libghostty-vt terminal allocation");
@@ -289,6 +510,7 @@ impl BlockRuntime {
         let search = TerminalSearch::new(&terminal).expect("libghostty-vt search");
         Self {
             creator_name: "com.superlogical.terminal".to_owned(),
+            is_terminal: true,
             terminal,
             render_state,
             frame: crate::frame::Frame::new(),
@@ -298,13 +520,18 @@ impl BlockRuntime {
             find_generation: 0,
             finding: false,
             geometry: None,
+            size: SizeAsked::default(),
             other_size_owner: false,
+            owning: false,
+            owner_seq: 0,
+            size_wake: Arc::new(tokio::sync::Notify::new()),
             copy_mode: None,
             title: String::new(),
             label: String::new(),
             pwd: String::new(),
             program_statuses: Vec::new(),
-            pending_status: Some(Vec::new()),
+            pending_status: None,
+            status_asked: 0,
             snapshot_seq: 0,
             ports: PortsSnapshot::default(),
             process: None,
@@ -356,6 +583,18 @@ impl BlockRuntime {
         self.find_generation = self.find_generation.wrapping_add(1);
         self.finding = self.find_query.is_some();
         self.geometry = None;
+        // (A new stream's screen is the host's size now, whatever it was
+        // asked before: the view's size is asked again, not taken as had;
+        // with its tries anew, those spent being the last stream's, and an
+        // answer on its way to an ask of before it taken as saying nothing
+        // of the host's size now, as one after the host's own word: Astra
+        // R2 #14, a pane whose host timed out eight asks kept its old size
+        // until its window's next changed.)
+        self.size.host = None;
+        self.size.failures = 0;
+        if self.size.asking.is_some() {
+            self.size.said_meanwhile = true;
+        }
         self.render_state = RenderState::new()?;
         self.frame = crate::frame::Frame::new();
         self.search = search;
@@ -372,9 +611,17 @@ impl BlockRuntime {
     fn inline(&mut self, apc: InlineApc, client: Option<&str>) -> Option<InlineApc> {
         match apc {
             InlineApc::Resize { cols, rows, cell_width_px, cell_height_px, owner } => {
-                if self.resize(cols, rows, cell_width_px, cell_height_px).is_ok() {
+                // (Whose its size is, from its stream, only until the host
+                // has numbered a word of it (an owner change, a session's
+                // view, a claim's answer): the stream's comes in its own
+                // time, unnumbered, and a resize sent before a newer owner
+                // change undid it: Astra R2 #11.)
+                if self.resize(cols, rows, cell_width_px, cell_height_px).is_ok() && self.owner_seq == 0 {
                     self.other_size_owner = owner.is_some() && owner.as_deref() != client;
                 }
+                // (The host's own word of its size: where it isn't what this
+                // view wants, the view asks again at its next paint.)
+                self.size.host_said((cols, rows, cell_width_px, cell_height_px));
             }
             InlineApc::Theme { foreground, background, cursor, palette, .. } => {
                 let mut theme = self.current_theme.clone();
@@ -552,8 +799,69 @@ impl BlockRuntime {
         Some((self.blocked_gen, body))
     }
 
+    /// The host's answer to being asked `asked` its size, and what its
+    /// asker does next: the next size at once; after a failure of the
+    /// size wanted now, the same a little later, but not after the last
+    /// try; nothing once the size is another client's (whose answer `{}`
+    /// says nothing of the host's size: it kept the size as a wish).
+    fn size_answered(&mut self, asked: TermSize, answer: SizeAnswer) -> SizeStep {
+        if self.other_size_owner {
+            self.size.asking = None;
+            self.size.said_meanwhile = false;
+            self.size.asker = false;
+            return SizeStep::Done;
+        }
+        let failed = self.size.answered(asked, answer);
+        if failed && self.size.failures >= SIZE_TRIES {
+            self.size.asker = false;
+            return SizeStep::Done;
+        }
+        if failed {
+            return SizeStep::Wait(self.size.failures);
+        }
+        match self.size.next() {
+            Some(next) => SizeStep::Ask(next),
+            None => {
+                self.size.asker = false;
+                SizeStep::Done
+            }
+        }
+    }
+
+    /// Whose its size is, as the host said at event number `seq` (an
+    /// owner change, or a session's view: `0` where the number isn't
+    /// known): taken unless a later word was had already.
+    fn owner_said(&mut self, seq: u64, owner: Option<&str>, client: Option<&str>) {
+        if seq != 0 && seq < self.owner_seq {
+            return;
+        }
+        self.owner_seq = self.owner_seq.max(seq);
+        self.other_size_owner = owner.is_some_and(|o| Some(o) != client);
+    }
+
+    /// Its programs' status is being asked for (a stream had, events
+    /// missed): what changes meanwhile is kept, to be replayed over the
+    /// answer. The request's number: only the last one asked
+    /// ([`Self::status_answered`]) applies its answer, so an earlier
+    /// one's answer, come later, neither spends what the later one
+    /// keeps nor undoes what that replayed.
+    fn begin_status(&mut self) -> u64 {
+        self.status_asked = self.status_asked.wrapping_add(1);
+        self.pending_status = Some(Vec::new());
+        self.status_asked
+    }
+
+    /// The answer to the status request numbered `asked`.
+    fn status_answered(&mut self, asked: u64, snapshot: Option<olo_rex_client::RpcResult<Vec<ProgramStatusRecord>>>) {
+        if asked == self.status_asked {
+            self.status_snapshot(snapshot);
+        }
+    }
+
     fn status_snapshot(&mut self, snapshot: Option<olo_rex_client::RpcResult<Vec<ProgramStatusRecord>>>) {
         if snapshot.as_ref().is_some_and(|r| r.seq < self.snapshot_seq) {
+            // (Older than what is had: nothing to replay over it either.)
+            self.pending_status = None;
             return;
         }
         let prev_blocked = self.blocked_record().cloned();
@@ -1142,6 +1450,71 @@ fn active_session_block(sess: &SessionView) -> Option<&str> {
 
 fn is_usable_cwd(dir: &str) -> bool {
     !dir.is_empty() && !dir.ends_with(" (deleted)")
+}
+
+/// What a pane's Open in Tracker is checked against
+/// ([`RexHub::tracker_place`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostPin {
+    /// The host as it is now: a command that acts at once (the menu
+    /// bar's, a pane's own menu).
+    Any,
+    /// The host a menu was made for, as `RexHub::tracker_pin` gave it
+    /// then: nothing opens where the host is another, or reconnected,
+    /// since; and none (no pin could be had) opens nothing, never as if
+    /// unpinned.
+    MustMatch(Option<(u64, u64)>),
+}
+
+/// How Rex names a host by its key in a Tracker `rex://` URI
+/// (`rex://id:KEY/…`): the files service takes it as that host's key
+/// alone; a name without it as it always has (a host's label first, so
+/// a bookmark made before goes where it went).
+pub(crate) const KEY_AUTHORITY: &str = "id:";
+
+/// How a host is named in a Tracker `rex://` URI (and in the files
+/// service's answers, which Tracker names the folder by from then on):
+/// by its label, as a person reads it, where that names it alone; else
+/// by its key, tagged so ([`KEY_AUTHORITY`]): where its label is another
+/// host's too, or this computer's reserved name (`rex://local/…` is a
+/// path here), or empty, or tagged so itself. (Untagged, a key was
+/// looked up first, and a bookmark of a host whose label was another's
+/// key went to that other: Astra R2 #2.)
+pub(crate) fn tracker_authority(hosts: &HashMap<String, HostRuntime>, host: &HostRuntime) -> String {
+    let label = host.label.trim();
+    let reserved = label.is_empty() || label.eq_ignore_ascii_case(olo_kit_base::tracker::LOCAL_HOST) || label.starts_with(KEY_AUTHORITY);
+    let shared = hosts.values().any(|other| other.key != host.key && !other.is_local && other.label == host.label);
+    if reserved || shared { format!("{KEY_AUTHORITY}{}", host.key) } else { host.label.clone() }
+}
+
+/// Where a pane's Open in Tracker opens ([`RexHub::tracker_place`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TrackerPlace {
+    /// A folder of this computer's.
+    Here(PathBuf),
+    /// A folder of a host's, as Tracker reaches it (`rex://HOST/PATH`).
+    There(String),
+}
+
+/// The folder a pane's Open in Tracker opens: where its program works
+/// now (`live`: its folder as the terminal or its host said, an
+/// agent's worktree); else where the agent there was started
+/// (`started_in`, the agents service's word: a child that has exited,
+/// or whose host hasn't said its folder yet); else the home folder
+/// (`home`, this computer's; a host's own `~`). A host's as Tracker
+/// names it (`authority`, [`tracker_authority`]).
+pub(crate) fn tracker_place(is_local: bool, authority: &str, live: &[String], started_in: Option<&str>, home: Option<&str>) -> TrackerPlace {
+    let dir = live.iter().map(String::as_str).find(|d| is_usable_cwd(d)).or(started_in.filter(|d| is_usable_cwd(d)));
+    if !is_local {
+        return TrackerPlace::There(olo_kit_base::tracker::RexPath::new(authority, dir.unwrap_or("~")).to_uri());
+    }
+    // (A folder said from home, `~/…` or relative, as a host's is read.)
+    let home = home.filter(|h| !h.is_empty()).unwrap_or("/");
+    TrackerPlace::Here(match dir {
+        Some("~") | None => PathBuf::from(home),
+        Some(d) if d.starts_with('/') => PathBuf::from(d),
+        Some(d) => Path::new(home).join(d.strip_prefix("~/").unwrap_or(d)),
+    })
 }
 
 fn push_unique_cwd(out: &mut Vec<String>, dir: &str) {
@@ -1829,10 +2202,14 @@ pub enum ForwardState {
 
 /// Authoritative membership and the views attached on this connection. Some servers
 /// bootstrap only the preferred view. Older peers support the list/attach calls.
+/// (`seq`: the membership's number; each view has its own, the number of the
+/// answer it came in: one attached after the list was stamped with the list's,
+/// and an event between them, older than the view, was taken over it, and a
+/// pane's owner said in the view was missed: Astra R2 #12.)
 struct SessionSnapshot {
     seq: u64,
     rows: Vec<SessionSummary>,
-    views: Vec<SessionView>,
+    views: Vec<(SessionView, u64)>,
     tickets: Vec<olo_rex_client::DataTicket>,
 }
 
@@ -1848,8 +2225,8 @@ impl SessionSnapshot {
             Ok(r) => {
                 let b = r.payload;
                 let views = match b.attached_sessions {
-                    Some(attached) => attached.into_iter().map(|a| a.view).collect(),
-                    None => b.selected_session.into_iter().map(|a| a.view).collect(),
+                    Some(attached) => attached.into_iter().map(|a| (a.view, r.seq)).collect(),
+                    None => b.selected_session.into_iter().map(|a| (a.view, r.seq)).collect(),
                 };
                 Self { seq: r.seq, rows: b.attach_all.sessions, views, tickets: b.data_tickets.unwrap_or_default() }
             }
@@ -1863,7 +2240,7 @@ impl SessionSnapshot {
         let asked: Vec<_> = snapshot
             .rows
             .iter()
-            .filter(|row| !snapshot.views.iter().any(|v| v.session_id == row.session_id))
+            .filter(|row| !snapshot.views.iter().any(|(v, _)| v.session_id == row.session_id))
             .map(|row| {
                 let (ctrl, id) = (ctrl.clone(), row.session_id.clone());
                 tokio::spawn(async move { ctrl.session_attach(&id).await })
@@ -1871,7 +2248,7 @@ impl SessionSnapshot {
             .collect();
         for attached in asked {
             match attached.await.map_err(|e| olo_rex_client::RexError::Closed(format!("attaching a session: {e}")))? {
-                Ok(r) => snapshot.views.push(r.payload.view),
+                Ok(r) => snapshot.views.push((r.payload.view, r.seq)),
                 // Removed since the list. Its ordered destruction event follows.
                 Err(olo_rex_client::RexError::Api(e)) if e.status == 404 => {}
                 Err(e) => return Err(e),
@@ -2738,8 +3115,21 @@ struct RexHubInner {
     askpass: Option<Arc<dyn SshAskpass>>,
     notify: Arc<dyn Fn(HubNotice) + Send + Sync>,
     /// Terminals' streams opened beforehand for a host that is being
-    /// connected to, by the host's key ([`Spare`]).
-    spares: Mutex<HashMap<String, Vec<Spare>>>,
+    /// connected to, by the host's key, with the connection they are
+    /// for ([`SparesOf`]).
+    spares: Mutex<HashMap<String, SparesOf>>,
+    /// What each terminal's last stream left to be taken over with, by
+    /// the pane's key ([`StreamLeft`]): for a stream the server may
+    /// still hold after its way here went with a network.
+    streams_left: Mutex<HashMap<BlockKey, StreamLeft>>,
+    /// The number of the last task begun to have a pane's streams
+    /// ([`RexHubInner::spawn_block_data_stream`]): each one's is higher
+    /// than any before it ([`StreamLeft::task`]).
+    stream_gen: std::sync::atomic::AtomicU64,
+    /// The host and session each workspace window shows, as chosen
+    /// there: kept while its host is disconnected (the window then shows
+    /// none), for the order a connection made again attaches in.
+    shown_sessions: Mutex<HashMap<crate::ui::WinId, (String, String)>>,
     /// Where Passwords' SSH agent is on each host that has it, by the
     /// host's key: the path its terminals take as `SSH_AUTH_SOCK`
     /// ([`Self::give_the_agent`]).
@@ -2778,8 +3168,49 @@ struct RexHubInner {
 /// while the control connection says its own hello and asks for the
 /// sessions, so that a terminal shows a round trip of the link after
 /// those are in, not three (over SSH: a channel, the upgrade, the
-/// hello). `None`: it couldn't be opened.
-type Spare = tokio::task::JoinHandle<Option<olo_rex_client::TerminalUpgrade<olo_rex_client::RexStream>>>;
+/// hello). An error: it couldn't be opened.
+type Spare = tokio::task::JoinHandle<Result<olo_rex_client::TerminalUpgrade<olo_rex_client::RexStream>, olo_rex_client::RexError>>;
+
+/// The streams opened beforehand for a host's connection, and the
+/// connection: kept once the connection is the host's (it was kept
+/// under the host's key before that was known, and a connection the
+/// host had replaced left its streams there, to its endpoint, for the
+/// next connection's panes to send their tickets down: Astra R2 #3),
+/// taken by its own panes only, and let go of by itself only.
+struct SparesOf {
+    connection: ControlClient,
+    streams: Vec<Spare>,
+}
+
+impl RexHubInner {
+    /// `streams`, opened beforehand for `connection`, the host's now.
+    fn keep_spares(&self, host_key: &str, connection: &ControlClient, streams: Vec<Spare>) {
+        let old = self.spares.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key.to_owned(), SparesOf { connection: connection.clone(), streams });
+        for spare in old.into_iter().flat_map(|s| s.streams) {
+            spare.abort();
+        }
+    }
+
+    /// One of the streams opened beforehand for `connection`: none of
+    /// another connection's.
+    fn take_spare(&self, host_key: &str, connection: &ControlClient) -> Option<Spare> {
+        self.spares.lock().unwrap_or_else(|e| e.into_inner()).get_mut(host_key).filter(|s| s.connection.same_connection(connection)).and_then(|s| s.streams.pop())
+    }
+
+    /// The streams opened beforehand for `connection` that no terminal
+    /// took are let go (one kept would be closed by the host before a
+    /// pane opened later could use it); another connection's stay.
+    fn let_go_of_spares(&self, host_key: &str, connection: &ControlClient) {
+        let mut all = self.spares.lock().unwrap_or_else(|e| e.into_inner());
+        if all.get(host_key).is_some_and(|s| s.connection.same_connection(connection))
+            && let Some(left) = all.remove(host_key)
+        {
+            for spare in left.streams {
+                spare.abort();
+            }
+        }
+    }
+}
 
 /// The most streams opened beforehand for a host: as many as it had
 /// terminals when its connection was lost, one where none is known
@@ -2787,9 +3218,197 @@ type Spare = tokio::task::JoinHandle<Option<olo_rex_client::TerminalUpgrade<olo_
 const MOST_SPARES: usize = 8;
 
 /// A terminal's stream opened as far as its upgrade, now.
-async fn open_terminal_stream(ep: &RexEndpoint) -> Option<olo_rex_client::TerminalUpgrade<olo_rex_client::RexStream>> {
-    let (raw, header) = ep.connect_stream().await.ok()?;
-    TerminalDataStream::upgrade(raw, &header).await.ok()
+async fn open_terminal_stream(ep: &RexEndpoint) -> Result<olo_rex_client::TerminalUpgrade<olo_rex_client::RexStream>, olo_rex_client::RexError> {
+    let (raw, header) = ep.connect_stream().await?;
+    TerminalDataStream::upgrade(raw, &header).await
+}
+
+/// A terminal's ticket for a stream of its own (`data.connect`).
+async fn terminal_ticket(ctrl: &ControlClient, bk: &BlockKey) -> Result<String, olo_rex_client::RexError> {
+    Ok(ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket)
+}
+
+/// What a terminal's stream left when it ended here without the
+/// server's word (cut, or ended as its connection was lost): its own
+/// token and how far it had come, with which the server gives that
+/// very stream a new way here (`TerminalDataStream::connect_resume`).
+///
+/// A server holds a client's stream until its end reaches it, and the
+/// end of one whose way here went with a network never does (Ben,
+/// 2026-11-28: "after i switch from wifi to ethernet and rex
+/// reconnects, most of the subagents come back but the parent ones
+/// don't seem to show anything"): the server's own connection to an
+/// address that went stays open until its timeouts end it, a quarter
+/// of an hour or hours over SSH, where its SSH server keeps no watch
+/// of its own. Meanwhile every new stream of that terminal from the
+/// same client, which a connection made again with its token is, is
+/// answered "AlreadyConnected" (tried on a real server, a cut that
+/// left its side open: refused for the 100 s tried, the bootstrap's
+/// tickets and new ones alike; taken at once once its end came). The
+/// stream is taken over and ended instead, and the terminal attached
+/// anew straight after (the same server: a resume of the held stream
+/// was taken, and a new stream after its end).
+///
+/// It is kept until that stream's end is certain: the server's own word
+/// of its close, a refusal of the token itself, or a new stream had. A
+/// takeover that failed on the way (its connection, a time-out, the
+/// pane let go of meanwhile) leaves it for the next try, renewed with
+/// the token of the stream resumed, if it was. And it is the client's
+/// and the host's it was had of (`StreamOwner`): a host connected
+/// anew from its settings, or replaced, is another server, which is
+/// never handed it.
+#[derive(Clone, Debug)]
+struct StreamLeft {
+    token: [u8; 16],
+    bytes: u64,
+    at: Instant,
+    owner: StreamOwner,
+    /// The pane's task that left it ([`RexHubInner::stream_gen`]): what
+    /// a task that ends late leaves never takes the place of what a
+    /// later one of the pane's left, nor does its new stream forget that
+    /// (Astra R2 #4: a pane had anew after a reconnect lost its stream,
+    /// and the old task, ending after, left its own token over the new
+    /// one's, which the server then refused).
+    task: u64,
+}
+
+/// Whose a terminal's stream is, as its task has it: its host's
+/// instance (`HostRuntime::host_instance_id`) and the client its
+/// control connection is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StreamOwner {
+    host_instance: u64,
+    client: Option<String>,
+}
+
+/// How taking over a stream the server still held came out
+/// ([`RexHubInner::end_stream_left`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Taken {
+    /// The server said it ended (its close, answering ours).
+    Ended,
+    /// The server refused the token itself: nothing to take over with.
+    Refused,
+    /// Not known (the way there failed, or ended without the server's
+    /// word): what the stream left is kept for the next try.
+    Unsure,
+}
+
+/// What a stream left is kept no longer than this: a connection is
+/// made again in seconds, and a terminal not attached by then has its
+/// stream ended or long given up.
+const STREAM_LEFT_KEPT: Duration = Duration::from_secs(3600);
+
+/// The longest a stream may bring nothing before its first screen is
+/// whole: then it is ended and the terminal had again (a stream whose
+/// way stopped just after its welcome waited for ever, the pane blank
+/// and taking no keys). Not after: a terminal at rest brings nothing,
+/// and costs nothing.
+const FIRST_SCREEN_QUIET: Duration = Duration::from_secs(20);
+
+/// A terminal whose stream couldn't be had, or ended while its host's
+/// connection stands, is attached again (nothing else would: until
+/// now, until its session next changed): this soon after a first
+/// failure, twice as long after each next, never longer apart than
+/// [`ATTACH_AGAIN_MOST`], and no more than [`ATTACH_TRIES`] times in a
+/// row (about three minutes; then, as before, when its session next
+/// changes). Nothing is tried after the connection ends, or the pane.
+const ATTACH_AGAIN: Duration = Duration::from_millis(250);
+const ATTACH_AGAIN_MOST: Duration = Duration::from_secs(30);
+const ATTACH_TRIES: u32 = 12;
+
+/// [`ATTACH_TRIES`], or in a test `OLO_REX_ATTACH_TRIES`.
+fn attach_tries() -> u32 {
+    std::env::var("OLO_REX_ATTACH_TRIES").ok().and_then(|v| v.parse().ok()).unwrap_or(ATTACH_TRIES)
+}
+
+/// [`FIRST_SCREEN_QUIET`], or in a test `OLO_REX_FIRST_SCREEN_QUIET_MS`.
+fn first_screen_quiet() -> Duration {
+    std::env::var("OLO_REX_FIRST_SCREEN_QUIET_MS").ok().and_then(|v| v.parse().ok()).map_or(FIRST_SCREEN_QUIET, Duration::from_millis)
+}
+
+/// How long a stream has to have shown its pane for its end to be a
+/// new failure's first, not one more in a row: [`ATTACH_AGAIN_MOST`],
+/// counted from its first screen (it was counted from its welcome, so a
+/// stream that never brought a screen, each try lasting half a minute,
+/// was tried for ever: Astra R2 #7); or in a test
+/// `OLO_REX_STREAM_LASTED_MS`.
+fn stream_lasted() -> Duration {
+    std::env::var("OLO_REX_STREAM_LASTED_MS").ok().and_then(|v| v.parse().ok()).map_or(ATTACH_AGAIN_MOST, Duration::from_millis)
+}
+
+/// How long to wait before the `failures`-th attempt at a terminal's
+/// stream: [`ATTACH_AGAIN`], doubling, at most [`ATTACH_AGAIN_MOST`],
+/// and up to a quarter more by the pane (a host's thirty panes cut at
+/// once don't all ask again in the same instant).
+fn attach_again_after(failures: u32, key: &BlockKey) -> Duration {
+    use std::hash::{Hash as _, Hasher as _};
+    let base = ATTACH_AGAIN.saturating_mul(1u32 << failures.saturating_sub(1).min(16)).min(ATTACH_AGAIN_MOST);
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut h);
+    let quarter = u64::try_from(base.as_millis() / 4).unwrap_or(0);
+    base + Duration::from_millis(h.finish() % (quarter + 1))
+}
+
+/// Whether trying again may get a terminal a stream this failure
+/// didn't: anything of the way there (a connection, a channel the SSH
+/// server had no room for, a time-out), a ticket gone stale, a stream
+/// still held. Not a pane the server no longer has, nor what no
+/// trying mends (a request or a handshake it won't take, a host whose
+/// key or sign-in isn't).
+fn attach_again(e: &olo_rex_client::RexError) -> bool {
+    use olo_rex_client::{DataRejectReason as Reject, RexError as E};
+    match e {
+        E::Api(api) => !matches!(api.status, 400 | 403 | 404),
+        E::DataRejected(Reject::MalformedHandshake | Reject::WrongSubprotocol) => false,
+        E::InvalidEndpoint(_) | E::SshRefused(_) | E::SshHostUnknown(_) | E::Tls(_) => false,
+        _ => true,
+    }
+}
+
+/// How many terminals a host has here (its other panes have no stream:
+/// none is opened beforehand for them), as each was had: by the same
+/// word that has a stream had for it ([`attaches_a_stream`]; they were
+/// counted by its creator's name, which a terminal's may not have, and
+/// a pane of another creator whose name begins so did: Astra R2 #17).
+fn terminals_of(blocks: &HashMap<BlockKey, Arc<Mutex<BlockRuntime>>>, host_key: &str) -> usize {
+    blocks.iter().filter(|(key, block)| key.host_key == host_key && block.lock().unwrap_or_else(|e| e.into_inner()).is_terminal).count()
+}
+
+/// Whether a pane of a session's view is a terminal, whose stream is
+/// had: its creator is the terminal, or its flavor one of a terminal's.
+fn attaches_a_stream(b: &BlockInfo) -> bool {
+    b.creator_name == "com.superlogical.terminal" || b.flavor.starts_with("com.superlogical.terminal")
+}
+
+/// Where a session's panes come in the order their streams are had
+/// (`ingest_session`): the one typed into in the tab in front, then
+/// that tab's others; the rest after, as the session lists them.
+fn attach_ranks(view: &SessionView) -> HashMap<String, u8> {
+    let Some(front) = view.active_window() else { return HashMap::new() };
+    front.all_blocks().map(|b| (b.block_id.clone(), if front.focused_block_id.as_deref() == Some(b.block_id.as_str()) { 0 } else { 1 })).collect()
+}
+
+/// How a terminal's stream ended.
+enum StreamEnd {
+    /// The pane was let go of (gone, or its host's connection with it).
+    LetGo,
+    /// Otherwise: had again while the connection stands.
+    Lost,
+}
+
+/// Why a terminal's stream couldn't be had: said in the log, and
+/// whether trying again may help ([`attach_again`]).
+#[derive(Debug)]
+struct AttachFailed {
+    why: String,
+    again: bool,
+}
+
+impl AttachFailed {
+    fn of(what: &str, e: olo_rex_client::RexError) -> Self {
+        Self { again: attach_again(&e), why: format!("{what}: {e}") }
+    }
 }
 
 /// This computer's home folder, as the status bar shortens folders
@@ -3228,6 +3847,13 @@ fn wanted_back(conn: &HostConnState) -> bool {
     matches!(conn, HostConnState::Reconnecting { .. } | HostConnState::Error(_))
 }
 
+/// The control connections a change of the network may have taken the
+/// way of: those of hosts reached over it (SSH, HTTP), not this
+/// computer's own (a socket here says at once when its peer goes).
+fn connections_to_ask(hosts: &HashMap<String, HostRuntime>) -> Vec<ControlClient> {
+    hosts.values().filter(|h| !h.is_local && matches!(h.endpoint, Some(RexEndpoint::Ssh { .. } | RexEndpoint::Http { .. } | RexEndpoint::Https { .. }))).filter_map(|h| h.control.clone()).collect()
+}
+
 /// Matches strict launcher minder names (`minder`, `minder-2`, `Minder 2`, `minder2`)
 /// without false-matching descriptive worker names like `minder-fix` or `Minder notifications`.
 fn is_minder_label(s: &str) -> bool {
@@ -3323,6 +3949,9 @@ impl RexHub {
             askpass: None,
             notify: notify.clone(),
             spares: Mutex::new(HashMap::new()),
+            stream_gen: std::sync::atomic::AtomicU64::new(0),
+            streams_left: Mutex::new(HashMap::new()),
+            shown_sessions: Mutex::new(HashMap::new()),
             bridge_calls: Default::default(),
             run_jobs: crate::bridge_run::RunJobs::new(),
             run_approvals: crate::bridge_run::RunApprovals::new(|| {}, || {}),
@@ -3688,6 +4317,9 @@ impl RexHub {
             askpass,
             notify: notify.clone(),
             spares: Mutex::new(HashMap::new()),
+            stream_gen: std::sync::atomic::AtomicU64::new(0),
+            streams_left: Mutex::new(HashMap::new()),
+            shown_sessions: Mutex::new(HashMap::new()),
             bridge_calls: Default::default(),
             run_jobs: crate::bridge_run::RunJobs::new(),
             run_approvals: run_approvals.unwrap_or_else(|| crate::bridge_run::RunApprovals::new(|| {}, || {})),
@@ -3749,19 +4381,28 @@ impl RexHub {
         // any disconnected/reconnecting remote hosts when Wi-Fi, Ethernet, or VPN changes.
         let hub_net = Arc::downgrade(&hub);
         olo_net::on_change(move || {
-            if !olo_net::online() {
-                return;
-            }
             if let Some(h) = hub_net.upgrade() {
-                let to_reconnect: Vec<String> = {
+                let (to_reconnect, to_ask) = {
                     let st = h.state.lock().unwrap_or_else(|e| e.into_inner());
-                    // (Those that were being connected to: one the
-                    // person let go of, or never connected, isn't
-                    // connected because the network came back.)
-                    st.hosts.values().filter(|hr| !hr.is_local && wanted_back(&hr.conn_state)).map(|hr| hr.key.clone()).collect()
+                    // (Those that were being connected to, once there is a
+                    // way out: one the person let go of, or never
+                    // connected, isn't connected because the network came
+                    // back.)
+                    let back: Vec<String> = if olo_net::online() { st.hosts.values().filter(|hr| !hr.is_local && wanted_back(&hr.conn_state)).map(|hr| hr.key.clone()).collect() } else { Vec::new() };
+                    (back, connections_to_ask(&st.hosts))
                 };
                 for hk in to_reconnect {
                     h.connect_host(&hk);
+                }
+                // Those connected over the network are asked at once
+                // whether they still are (a ping answered within five
+                // seconds, `ControlClient::probe`): a connection whose way
+                // went with the network is found now, not by its next
+                // keepalive, minutes on (over the helper's own link, which
+                // the network's news doesn't end); one that stands costs
+                // a ping.
+                for ctrl in to_ask {
+                    ctrl.probe();
                 }
             }
         });
@@ -4622,6 +5263,9 @@ impl RexHub {
         };
         if let Some(old_inst) = replaced_inst {
             self.inner.screens_service.host_removed(&id, old_inst);
+            // (Another server under the same name: nothing of the old
+            // one's streams goes to it.)
+            self.inner.forget_streams_of(&id);
         }
         if is_ssh {
             self.inner.screens_service.host_added(&id, inst_id, &label, init_rex_conn);
@@ -4815,6 +5459,7 @@ impl RexHub {
             inst_id
         };
         self.inner.invalidate_agents_follower(&key, false);
+        self.inner.forget_streams_of(&key);
         if let Some(inst_id) = removed_inst_id {
             self.inner.screens_service.host_removed(&key, inst_id);
         }
@@ -4837,6 +5482,24 @@ impl RexHub {
     /// approval as seen so a later minder detach does not alert on it.
     pub fn set_window_front_pane(&self, window: crate::ui::WinId, pane: Option<BlockKey>) {
         self.inner.set_window_front_pane(window, pane);
+    }
+
+    /// The host and session a workspace window shows, as chosen there
+    /// (none: it shows none, or it closed): whatever its host's
+    /// connection, so that a connection made again attaches what the
+    /// person was looking at first.
+    pub fn window_shows(&self, window: crate::ui::WinId, host_key: &str, session_id: Option<&str>) {
+        let mut shown = self.inner.shown_sessions.lock().unwrap_or_else(|e| e.into_inner());
+        match session_id {
+            Some(sid) => {
+                if shown.get(&window).is_none_or(|(h, s)| h != host_key || s != sid) {
+                    shown.insert(window, (host_key.to_owned(), sid.to_owned()));
+                }
+            }
+            None => {
+                shown.remove(&window);
+            }
+        }
     }
 
     pub fn hide_window_front_pane(&self, window: crate::ui::WinId) {
@@ -4987,7 +5650,7 @@ impl RexHub {
                         if let Some(sid) = res.payload.get("session_id").and_then(Value::as_str)
                             && let Ok(att) = ctrl.session_attach(sid).await
                         {
-                            inner.ingest_session(&hk, &ctrl, &ep, att.payload.view, &[]).await;
+                            inner.ingest_session(&hk, &ctrl, &ep, att.payload.view, att.seq, &[]).await;
                             feedback.created(hk, sid.to_owned());
                         }
                     }
@@ -5107,7 +5770,7 @@ impl RexHub {
                 match ctrl.session_set_window_label(&sid, &wid, &title).await {
                     Ok(_) => {
                         if let Ok(v) = ctrl.session_view(&sid).await {
-                            inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                            inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
                         }
                         (inner.notify)(HubNotice::StateChanged);
                     }
@@ -5128,7 +5791,7 @@ impl RexHub {
             if ctrl.session_close_window(&sid, Some(&wid)).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5233,7 +5896,7 @@ impl RexHub {
             if ctrl.session_move_window(&sid, &wid, before_window_id.as_deref()).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5248,7 +5911,7 @@ impl RexHub {
             if ctrl.session_new_split(&sid, Some(&bid), &dir, opts).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5261,7 +5924,7 @@ impl RexHub {
             if ctrl.block_close(&sid, &bid).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5286,12 +5949,13 @@ impl RexHub {
     /// a choice of the person's only, never as it paints: two desktops
     /// showing one pane would take it from each other for ever.
     fn select(&self, host_key: &str, session_id: &str, window_id: &str, block: Option<&str>) {
-        {
+        let mut to_attach = None;
+        let told = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let st = &mut *st;
             let (hosts, blocks) = (&mut st.hosts, &st.blocks);
             let Some(host) = hosts.get_mut(host_key) else { return };
-            let Some(view) = host.sessions.get_mut(session_id) else { return };
+            let Some(view) = host.sessions.get(session_id) else { return };
             let (window, restore) = match block {
                 Some(b) => {
                     let Some((w, l, _)) = view.find_block(b) else { return };
@@ -5304,34 +5968,64 @@ impl RexHub {
             };
             let switch = view.active_window_id.as_ref() != Some(&window.window_id);
             // (Asked before anything else is: a tab already in front, a
-            // pane already the one typed into, is taken all the same.)
-            let theirs: Vec<String> = window
-                .all_blocks()
-                .filter(|b| {
-                    let key = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: b.block_id.clone() };
-                    blocks.get(&key).is_some_and(|runtime| runtime.lock().unwrap_or_else(|e| e.into_inner()).other_size_owner)
-                })
-                .map(|b| b.block_id.clone())
-                .collect();
-            if !theirs.is_empty()
-                && let Some(tx) = &host.input_tx
+            // pane already the one typed into, is taken all the same; of
+            // its panes, those it shows: a zoomed tab's hidden splits, a
+            // floating pane put away, keep whose they are.)
+            let mut theirs = panes_sized_by_others(host_key, session_id, window, blocks);
+            // (A floating pane put away, brought back by this choice, is
+            // shown once it is: taken with them.)
+            if let (Some(b), Some(_)) = (block, &restore)
+                && !theirs.iter().any(|t| t == b)
+                && sized_by_another(host_key, session_id, b, blocks)
             {
-                let _ = tx.send(HostInputOp::Own { session_id: session_id.to_owned(), block_ids: theirs });
+                theirs.push(b.to_owned());
             }
+            // (And a pane of it left with no stream, its tries spent, is
+            // had again: choosing its tab is asking to see it.)
+            let blank: Vec<(BlockKey, Arc<Mutex<BlockRuntime>>)> = window
+                .all_blocks()
+                .filter(|b| attaches_a_stream(b))
+                .filter_map(|b| {
+                    let key = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: b.block_id.clone() };
+                    let runtime = blocks.get(&key)?;
+                    (!runtime.lock().unwrap_or_else(|e| e.into_inner()).data_connected).then(|| (key, runtime.clone()))
+                })
+                .collect();
+            let window_id = window.window_id.clone();
+            let focused = window.focused_block_id.clone();
             let has_pending_create = host.pending_creates.get(session_id).copied().unwrap_or(0) > 0;
-            if !switch && !has_pending_create && restore.is_none() && block.is_none_or(|b| window.focused_block_id.as_deref() == Some(b)) {
-                return;
+            ask_to_own(host, session_id, theirs, blocks);
+            if !blank.is_empty()
+                && let (Some(ctrl), Some(ep)) = (host.control.clone(), host.endpoint.clone())
+            {
+                to_attach = Some((ctrl, ep, blank));
             }
-            let target = Arc::new(FocusTarget { window: window.window_id.clone(), block: block.map(str::to_owned), restore });
-            target.apply(view);
-            if let Some(tx) = &host.window_tx {
-                let op = HostWindowOp::Focus { session_id: session_id.to_owned(), switch: switch || has_pending_create, target: target.clone() };
-                if tx.send(op).is_ok() {
-                    host.pending_focus.insert(session_id.to_owned(), target);
+            if !switch && !has_pending_create && restore.is_none() && block.is_none_or(|b| focused.as_deref() == Some(b)) {
+                false
+            } else {
+                let target = Arc::new(FocusTarget { window: window_id, block: block.map(str::to_owned), restore });
+                if let Some(view) = host.sessions.get_mut(session_id) {
+                    target.apply(view);
                 }
+                if let Some(tx) = &host.window_tx {
+                    let op = HostWindowOp::Focus { session_id: session_id.to_owned(), switch: switch || has_pending_create, target: target.clone() };
+                    if tx.send(op).is_ok() {
+                        host.pending_focus.insert(session_id.to_owned(), target);
+                    }
+                }
+                true
+            }
+        };
+        if let Some((ctrl, ep, blank)) = to_attach {
+            let _guard = self.rt.enter();
+            for (key, runtime) in blank {
+                tracing::info!("Rex: {} chosen with no stream: had again", key.block_id);
+                self.inner.spawn_block_data_stream(ctrl.clone(), ep.clone(), key, runtime, None);
             }
         }
-        (self.notify)(HubNotice::StateChanged);
+        if told {
+            (self.notify)(HubNotice::StateChanged);
+        }
     }
 
     pub fn focus_direction(&self, host_key: &str, session_id: &str, direction: &str) {
@@ -5342,7 +6036,7 @@ impl RexHub {
             if ctrl.session_focus_direction(&sid, &dir).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5362,7 +6056,7 @@ impl RexHub {
             if ctrl.session_zoom_block(&sid, block_id.as_deref(), None).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5375,7 +6069,7 @@ impl RexHub {
             if ctrl.session_new_layer(&sid, None, bounds, true, opts).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5389,7 +6083,7 @@ impl RexHub {
             if ctrl.session_close_layer(&sid, &lid).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5411,7 +6105,7 @@ impl RexHub {
             if ctrl.session_set_layer_state(&sid, &lid, state, !minimized).await.is_ok()
                 && let Ok(v) = ctrl.session_view(&sid).await
             {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                inner.ingest_session(&hk, &ctrl, &ep, v.payload, v.seq, &[]).await;
             }
         });
     }
@@ -5658,23 +6352,110 @@ impl RexHub {
         }
     }
 
+    /// A pane's view is this many cells of this many pixels: its
+    /// terminal is made so here at once, and its host is asked to make
+    /// its own so (the program in it is told: SIGWINCH). Whether the
+    /// terminal here changed (to be drawn again).
+    ///
+    /// The host is asked one size at a time and the last one wanted
+    /// last ([`SizeAsked`]): asked as each came, two at once could be
+    /// done there in either order and the terminal left at the earlier;
+    /// and a size it wasn't given (its connection busy or lost, a time-
+    /// out) is asked again, where it was taken as given and never asked
+    /// again: the view had its size, so its next paint asked nothing,
+    /// and a program there kept the size it had (Ben, 2026-11-28: "when
+    /// i move it to a bigger display the terminal TUIs didn't auto
+    /// resize").
     pub fn resize_block(&self, key: &BlockKey, cols: u16, rows: u16, cell_w: u32, cell_h: u32) -> bool {
-        let br_opt = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned();
-        let changed = if let Some(br) = br_opt {
+        let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned() else { return false };
+        let (changed, ask) = {
             let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-            !g.other_size_owner && g.resize(cols, rows, cell_w, cell_h).unwrap_or(false)
-        } else {
-            false
+            if g.other_size_owner {
+                return false;
+            }
+            let changed = g.resize(cols, rows, cell_w, cell_h).unwrap_or(false);
+            g.size.want((cols, rows, cell_w, cell_h));
+            // (One asker a pane: one that waits to ask again is woken for
+            // the new size, and none is started beside it. Not one whose
+            // ask is on its way: it asks the last size wanted when its
+            // answer comes, and a wake kept for it meanwhile had its next
+            // wait after a failure skipped: Neon R2 #6.)
+            if g.size.asker {
+                if g.size.asking.is_none() {
+                    g.size_wake.notify_one();
+                }
+                (changed, None)
+            } else {
+                let ask = g.size.next();
+                g.size.asker = ask.is_some();
+                (changed, ask)
+            }
         };
-        if !changed {
-            return false;
+        if let Some(asked) = ask {
+            let _guard = self.rt.enter();
+            self.inner.ask_size(key.clone(), br, asked);
         }
-        let sid = key.session_id.clone();
-        let bid = key.block_id.clone();
-        self.with_control(&key.host_key, move |ctrl, _, _| async move {
-            let _ = ctrl.terminal_resize(&sid, &bid, cols, rows, Some(cell_w as u16), Some(cell_h as u16)).await;
+        changed
+    }
+
+    /// Where a pane's Open in Tracker opens ([`tracker_place`]): its
+    /// program's folder now, else the one its agent was started in
+    /// (`olo agent`'s word, for an exited child or one whose host hasn't
+    /// said its folder yet), else home. With `pin` (the host's live pin
+    /// as a menu was made, `host_live_pin`): none where the host is
+    /// another or no longer connected since (its paths would be another
+    /// host's, or not reached).
+    pub(crate) fn tracker_place(&self, bk: &BlockKey, pin: HostPin) -> Option<TrackerPlace> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        match pin {
+            HostPin::Any => {}
+            HostPin::MustMatch(Some((instance, conn))) if host_matches_pin_in(&st.hosts, &bk.host_key, instance, conn) => {}
+            HostPin::MustMatch(_) => return None,
+        }
+        // (And Tracker reaches it still: connected, over SSH, its helper
+        // allowed there.)
+        if !crate::files_sock::tracker_reaches(&st, &bk.host_key) {
+            return None;
+        }
+        let host = st.hosts.get(&bk.host_key)?;
+        let live = st.blocks.get(bk).map(|b| {
+            let g = b.lock().unwrap_or_else(|e| e.into_inner());
+            block_cwd_candidates(&g.pwd, g.process.as_ref())
         });
-        true
+        let started_in = st.subagents.by_block_any(&bk.host_key, Some(&bk.session_id), &bk.block_id).and_then(|e| e.cwd.as_deref());
+        let home = host.is_local.then(local_home).flatten();
+        Some(tracker_place(host.is_local, &tracker_authority(&st.hosts, host), live.as_deref().unwrap_or_default(), started_in, home.as_deref()))
+    }
+
+    /// The host's live pin (`host_live_pin`) where Tracker can reach its
+    /// folders now (`files_sock::tracker_reaches`: this computer; a host
+    /// connected over SSH with Olo's helper allowed there), none
+    /// otherwise: what a menu offering Open in Tracker is made with,
+    /// enabled by, and checked against when chosen.
+    pub(crate) fn tracker_pin(&self, host_key: &str) -> Option<(u64, u64)> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if !crate::files_sock::tracker_reaches(&st, host_key) {
+            return None;
+        }
+        host_live_pin_in(&st.hosts, host_key)
+    }
+
+    /// The panes of the tab in front of a session another client holds
+    /// the size of are taken, as choosing the tab takes them
+    /// ([`Self::select`]): for a window of Rex's the person brings
+    /// forward, or that changes size while it is forward (moved to a
+    /// larger display, the display's scale changed, the window resized):
+    /// the person is looking at it, and its view is the one whose size
+    /// counts. Never as it paints. Whether any was asked for.
+    pub fn take_tab_in_front(&self, host_key: &str, session_id: &str) -> bool {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(host) = st.hosts.get(host_key) else { return false };
+        let Some(window) = host.sessions.get(session_id).and_then(|view| view.active_window().or_else(|| view.windows.first())) else { return false };
+        // (Those it shows: a tab with a pane zoomed shows that pane alone,
+        // and a floating pane put away shows only its button; the others
+        // keep whose they are.)
+        let theirs = panes_sized_by_others(host_key, session_id, window, &st.blocks);
+        ask_to_own(host, session_id, theirs, &st.blocks)
     }
 
     pub fn respond_prompt(&self, host_key: &str, call_id: &str, cancelled: bool, value: Option<Value>) {
@@ -7286,8 +8067,22 @@ impl RexHubInner {
         );
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
+        // (The connection it is given for: what the forward ends in is said
+        // of the host only while that is still the host's, so that one
+        // given for a connection since replaced never sets or clears what
+        // the new one's said: Astra R2 #10.)
+        let given_for = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).and_then(|h| h.control.clone());
         tokio::spawn(async move {
-            match pool.forward_agent(&target, askpass).await {
+            let forwarded = pool.forward_agent(&target, askpass).await;
+            let still = {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.hosts.get(&host_key).and_then(|h| h.control.as_ref()).is_some_and(|now| given_for.as_ref().is_some_and(|given| given.same_connection(now)))
+            };
+            if !still {
+                tracing::debug!("Rex: the SSH agent given to {host_key} for a connection since replaced: left as it is");
+                return;
+            }
+            match forwarded {
                 Ok(path) => {
                     hub.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key, path);
                 }
@@ -8903,6 +9698,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
     async fn run_host_connection(self: Arc<Self>, host_key: String, retry: Arc<tokio::sync::Notify>) {
         let mut attempt = 0u32;
         let mut last_seq = 0;
+        // (How many panes the host had when its connection was last lost,
+        // which are let go of with it: as many streams are opened
+        // beforehand when it is made again. Counted once they were gone,
+        // it was always none, and one was opened.)
+        let mut panes_at_loss = 0usize;
+        // (The network the host's SSH connections were made on.)
+        let mut pool_net = olo_net::generation();
         loop {
             let (endpoint_raw, reconnect_token, user_overrides, is_local_host, host_inst_id, is_ssh_host, connecting_seq) = {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -8956,15 +9758,46 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 }
             };
 
+            // A connection lives on the network it was made on: once the
+            // network has changed since the host's SSH connections were
+            // made, this attempt (and its helper's) goes on new ones, not
+            // on the old network's, which may not know yet that they're
+            // gone (where an address stayed and the way out changed, the
+            // kernel ends one only when it has gone 15 s unanswered, and a
+            // channel asked of it meanwhile waits). Looked at before each
+            // attempt, so a change during the wait between two, or during
+            // one, is never missed.
+            // (The pool is another saved host's too where both reach the
+            // same account: it lets go of a target's connections once a
+            // network, so the second to look doesn't let go of what the
+            // first made on the new one: Astra R2 #9.)
+            let network_moved = |pool_net: &mut u64| {
+                let net = olo_net::generation();
+                if net != *pool_net {
+                    if let RexEndpoint::Ssh { target, pool, .. } = &endpoint
+                        && pool.on_network_change(target, net)
+                    {
+                        tracing::info!("Rex: the network changed since {host_key}'s SSH connections were made: made anew");
+                    }
+                    *pool_net = net;
+                }
+            };
+            network_moved(&mut pool_net);
+
             // (A host nothing is known of: its helper first, so this
             // connection goes through it.)
             let helper_seen = self.helper_before_connecting(&host_key, &endpoint).await;
+            // (And looked at again after it: a network that changed while
+            // the helper was being put there, over the old one's SSH, would
+            // have this attempt reach the host on the old one's too, and
+            // wait through its time-outs: Astra R2 #8.)
+            network_moved(&mut pool_net);
 
             // (Connecting in as few round trips of the link as it takes,
             // HACKING, Rex, "Connecting in fewer round trips": nine
             // passed before a terminal's first screen came, one after
             // another, and over SSH more.)
-            let terminals_known = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.keys().filter(|bk| bk.host_key == host_key).count();
+            let terminals_known = terminals_of(&self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks, &host_key).max(panes_at_loss);
             let connected = async {
                 // The host is reached first (over SSH: signed in to):
                 // from here its streams are opened side by side. (Not
@@ -9049,7 +9882,6 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             .await;
             match connected {
                 Ok((ctrl, mut events, client_id, token, status, version, hosts_resp, km_resp, boot, spares)) => {
-                    self.spares.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key.clone(), spares);
                     let SessionSnapshot { seq: boot_seq, rows: summaries, views: initial_views, tickets: pre_tickets } = boot;
 
                     // Spawn one strictly-FIFO input writer task for this host connection so rapid
@@ -9118,12 +9950,28 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                     // it; the server's word of it follows.)
                                     HostInputOp::Own { session_id, block_ids } => {
                                         for block_id in block_ids {
-                                            if ctrl_in.session_own_block(&session_id, &block_id).await.is_ok() {
-                                                let key = BlockKey { host_key: host_in.to_string(), session_id: session_id.clone(), block_id };
-                                                let block = inner_in.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned();
-                                                if let Some(block) = block {
-                                                    block.lock().unwrap_or_else(|e| e.into_inner()).other_size_owner = false;
+                                            let key = BlockKey { host_key: host_in.to_string(), session_id: session_id.clone(), block_id };
+                                            let block = inner_in.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned();
+                                            let Some(block) = block else { continue };
+                                            // (Still another's? It may have been given
+                                            // up, or taken, while this waited its turn:
+                                            // looked at, and let go of if not, at once.)
+                                            {
+                                                let mut g = block.lock().unwrap_or_else(|e| e.into_inner());
+                                                if !g.other_size_owner {
+                                                    g.owning = false;
+                                                    continue;
                                                 }
+                                            }
+                                            let taken = ctrl_in.session_own_block(&session_id, &key.block_id).await;
+                                            let mut g = block.lock().unwrap_or_else(|e| e.into_inner());
+                                            g.owning = false;
+                                            // (Taken as the host numbered it: a later word
+                                            // of whose it is, come first, stands. It was
+                                            // taken as this client's whatever came between:
+                                            // Astra R2 #11, Neon R2 #3.)
+                                            if let Ok(answer) = taken {
+                                                g.owner_said(answer.seq, ctrl_in.client_id(), ctrl_in.client_id());
                                             }
                                         }
                                         (inner_in.notify)(HubNotice::StateChanged);
@@ -9188,7 +10036,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                             host.pending_focus.remove(&session_id);
                                         }
                                         if let Ok(view) = view {
-                                            inner_win.ingest_session(&host_win, &ctrl_win, &ep_win, view.payload, &[]).await;
+                                            inner_win.ingest_session(&host_win, &ctrl_win, &ep_win, view.payload, view.seq, &[]).await;
                                         }
                                     }
                                     HostWindowOp::CreateWindow { session_id, explicit_cwd, source_root_id, active_block_id, known_cwds, base_opts, feedback, on_created } => {
@@ -9260,9 +10108,24 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             ctrl.close();
                             input_worker.abort();
                             window_worker.abort();
+                            for spare in spares {
+                                spare.abort();
+                            }
                             return;
                         }
                     };
+                    // (Its streams opened beforehand, now that it is the
+                    // host's: for its own panes.)
+                    self.keep_spares(&host_key, &ctrl, spares);
+                    // (The network changed while it was being made: the
+                    // change's probe of each connection missed this one,
+                    // not yet the host's, which may have been made on the
+                    // old network's way out. Asked now: one gone ends in
+                    // seconds, and is made again on the new network.)
+                    if olo_net::generation() != pool_net {
+                        tracing::info!("Rex: the network changed while {host_key} was being connected to: asked whether it still is");
+                        ctrl.probe();
+                    }
 
                     // (What is kept of the helper there follows what this
                     // connection found: gone from a host that had one, it
@@ -9293,13 +10156,18 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         }
                     }
 
-                    for view in initial_views {
-                        self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;
+                    // (A session shown in a window first: its panes are
+                    // what the person is waiting to see.)
+                    let mut initial_views = initial_views;
+                    let shown = self.sessions_shown(&host_key);
+                    initial_views.sort_by_key(|(v, _)| !shown.contains(&v.session_id));
+                    for (view, seq) in initial_views {
+                        self.ingest_session(&host_key, &ctrl, &endpoint, view, seq, &pre_tickets).await;
                     }
                     // (The streams opened beforehand that no terminal
                     // took are let go: one kept would be closed by the
                     // host before a pane opened later could use it.)
-                    self.spares.lock().unwrap_or_else(|e| e.into_inner()).remove(&host_key);
+                    self.let_go_of_spares(&host_key, &ctrl);
                     self.write_palette_index();
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
@@ -9372,6 +10240,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         for f in st.forwards.iter_mut().filter(|f| f.host_key == host_key) {
                             f.state = ForwardState::Waiting;
                         }
+                        panes_at_loss = terminals_of(&st.blocks, &host_key);
                         st.retain_blocks(|k| k.host_key != host_key);
                         st.bump_topology();
                         label
@@ -9527,7 +10396,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 if matches!(err, olo_rex_client::RexError::Timeout) {
                     let refreshed = match tokio::time::timeout(Duration::from_secs(5), ctrl.session_view(session_id)).await {
                         Ok(Ok(v)) => {
-                            self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                            self.ingest_session(host_key, ctrl, ep, v.payload, v.seq, &[]).await;
                             true
                         }
                         _ => false,
@@ -9585,7 +10454,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             let _ = prev.await;
         }
 
-        let mut final_view: Option<SessionView> = None;
+        let mut final_view: Option<(SessionView, u64)> = None;
 
         if let (Some(new_wid), Some(root_id)) = (new_wid.as_deref(), source_root_id.as_deref()) {
             // Fetch fresh post-create view (retry once on transient failure so
@@ -9603,7 +10472,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     match desired {
                         None => {
                             guard.clear();
-                            final_view = Some(v.payload);
+                            final_view = Some((v.payload, v.seq));
                         }
                         Some(target_before) => {
                             if let Some(ref bwid) = target_before {
@@ -9626,7 +10495,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                             // because the neighbor vanished and `new_wid` is now
                                             // adjacent right of `root_id`).
                                             move_err = None;
-                                            final_view = Some(after.payload);
+                                            final_view = Some((after.payload, after.seq));
                                         }
                                         Some(retry_before) => {
                                             if let Some(ref bwid2) = retry_before {
@@ -9637,11 +10506,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                             match ctrl.session_move_window(session_id, new_wid, retry_before.as_deref()).await {
                                                 Ok(_) => {
                                                     move_err = None;
-                                                    final_view = ctrl.session_view(session_id).await.ok().map(|v| v.payload);
+                                                    final_view = ctrl.session_view(session_id).await.ok().map(|v| (v.payload, v.seq));
                                                 }
                                                 Err(e) => {
                                                     move_err = Some(e);
-                                                    final_view = ctrl.session_view(session_id).await.ok().map(|v| v.payload).or(Some(after.payload));
+                                                    final_view = ctrl.session_view(session_id).await.ok().map(|v| (v.payload, v.seq)).or(Some((after.payload, after.seq)));
                                                 }
                                             }
                                         }
@@ -9673,15 +10542,15 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         }
 
         if final_view.is_none() {
-            final_view = ctrl.session_view(session_id).await.ok().map(|v| v.payload);
+            final_view = ctrl.session_view(session_id).await.ok().map(|v| (v.payload, v.seq));
         }
         // Atomically retire `guard`'s placement token under `self.state` lock
         // right after `install_view` succeeds (and BEFORE `apply_pending_placements`),
         // so lagging pre-move views cannot flicker while an authoritative
         // post-move view is never rewritten back to stale local order (Astra #7 / Neon #2).
-        if let Some(v) = final_view {
+        if let Some((v, seq)) = final_view {
             let retire = guard.take_token();
-            self.ingest_session_retiring(host_key, ctrl, ep, v, &[], retire).await;
+            self.ingest_session_retiring(host_key, ctrl, ep, v, seq, &[], retire).await;
         } else {
             drop(guard);
         }
@@ -9690,8 +10559,8 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         }
     }
 
-    async fn ingest_session(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint, view: SessionView, pre_tickets: &[olo_rex_client::DataTicket]) {
-        self.ingest_session_retiring(host_key, ctrl, ep, view, pre_tickets, None).await;
+    async fn ingest_session(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint, view: SessionView, seq: u64, pre_tickets: &[olo_rex_client::DataTicket]) {
+        self.ingest_session_retiring(host_key, ctrl, ep, view, seq, pre_tickets, None).await;
     }
 
     async fn ingest_session_retiring(
@@ -9700,11 +10569,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         ctrl: &ControlClient,
         ep: &RexEndpoint,
         view: SessionView,
+        seq: u64,
         pre_tickets: &[olo_rex_client::DataTicket],
         retire_placement: Option<u64>,
     ) {
         let session_id = view.session_id.clone();
         let blocks: Vec<BlockInfo> = view.windows.iter().flat_map(|w| w.all_blocks()).cloned().collect();
+        let in_front = attach_ranks(&view);
 
         let mut to_attach = Vec::new();
         {
@@ -9741,13 +10612,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             st.bump_topology();
             for b in &blocks {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: b.block_id.clone() };
-                let is_terminal = b.creator_name == "com.superlogical.terminal" || b.flavor.starts_with("com.superlogical.terminal");
+                let is_terminal = attaches_a_stream(b);
                 if let Some(existing) = st.blocks.get(&bk) {
                     let mut g = existing.lock().unwrap_or_else(|e| e.into_inner());
                     if !b.label.is_empty() && g.title.is_empty() {
                         g.title = b.label.clone();
                     }
                     g.label.clone_from(&b.label);
+                    g.is_terminal = is_terminal;
+                    // (Whose its size is, as a view newer than the last
+                    // word of it says: an owner change missed, while its
+                    // stream was down, is mended by the next view.)
+                    if seq != 0 {
+                        g.owner_said(seq, b.owner.as_deref(), ctrl.client_id());
+                    }
                     if !g.data_connected && is_terminal {
                         let ticket = pre_tickets.iter().find(|t| t.session_id == session_id && t.block_id == b.block_id).map(|t| t.ticket.clone());
                         to_attach.push((bk, existing.clone(), ticket));
@@ -9755,7 +10633,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 } else {
                     let mut br = BlockRuntime::new(120, 32, &theme);
                     br.predict.set_on(st.settings.type_ahead);
+                    // (Whose size it is, as the session says, from the
+                    // first: it was known only once its stream said so,
+                    // and a pane whose stream hadn't come was sized as
+                    // this client's, its host asked for a size it kept.)
+                    br.owner_said(seq, b.owner.as_deref(), ctrl.client_id());
                     br.creator_name = b.creator_name.clone();
+                    br.is_terminal = is_terminal;
                     br.title = b.label.clone();
                     br.label = b.label.clone();
                     let arc = Arc::new(Mutex::new(br));
@@ -9768,6 +10652,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
         }
 
+        // (What the person sees first: its streams asked for, and the one
+        // opened beforehand taken, before a session's thirty others.)
+        to_attach.sort_by_key(|(bk, ..): &(BlockKey, _, _)| in_front.get(&bk.block_id).copied().unwrap_or(u8::MAX));
         for (bk, br, pre_ticket) in to_attach {
             self.spawn_block_data_stream(ctrl.clone(), ep.clone(), bk, br, pre_ticket);
         }
@@ -9778,333 +10665,672 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
 
     fn spawn_block_data_stream(self: &Arc<Self>, ctrl: ControlClient, ep: RexEndpoint, bk: BlockKey, br: Arc<Mutex<BlockRuntime>>, pre_ticket: Option<String>) {
         let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
-        {
+        // (Whose its streams are, read as this connection is seen to be
+        // the host's and the pane this one, together: what one leaves is
+        // offered back to this host and this client only. And this task's
+        // number: what a task of the pane's that ends after a later one
+        // began leaves, or forgets, never touches the later one's.)
+        let (owner, task) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get(&bk.host_key).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(&ctrl))) else { return };
+            if !st.blocks.get(&bk).is_some_and(|b| Arc::ptr_eq(b, &br)) {
+                return;
+            }
             let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
             if g.data_connected {
                 return;
             }
             g.data_connected = true;
             g.input_ready = false;
-            g.pending_status = Some(Vec::new());
             g.data_cancel = Some(tx);
-        }
+            (StreamOwner { host_instance: host.host_instance_id, client: ctrl.client_id().map(str::to_owned) }, self.stream_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1)
+        };
         let inner = self.clone();
-        // (One opened beforehand, where the host is being connected to.)
-        let spare = self.spares.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&bk.host_key).and_then(|spares| spares.pop());
+        // (One opened beforehand for this connection, where the host is
+        // being connected to.)
+        let spare = self.take_spare(&bk.host_key, &ctrl);
         tokio::spawn(async move {
-            // The stream is opened while its ticket is asked for (or was
-            // opened beforehand): the ticket goes in the hello, which is
-            // all that waits for it.
-            let asked = async {
-                match pre_ticket {
-                    Some(ticket) => Ok(ticket),
-                    None => ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await.map(|r| r.payload.ticket),
-                }
-            };
-            let opened = async {
-                match spare {
-                    Some(spare) => match spare.await {
-                        Ok(Some(upgrade)) => Some((upgrade, true)),
-                        _ => open_terminal_stream(&ep).await.map(|upgrade| (upgrade, false)),
-                    },
-                    None => open_terminal_stream(&ep).await.map(|upgrade| (upgrade, false)),
-                }
-            };
-            let (ticket, opened) = tokio::join!(asked, opened);
-            let ticket = match ticket {
-                Ok(ticket) => ticket,
-                Err(e) => {
-                    tracing::debug!("data.connect {} failed: {e}", bk.block_id);
-                    br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
-                    return;
-                }
-            };
-            let Some((upgrade, beforehand)) = opened else {
-                br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
-                return;
-            };
-            let mut stream = match upgrade.hello(&ticket).await {
-                Ok(s) => s,
-                // (One opened beforehand may have been closed by the
-                // host while it waited, and the ticket spent on it or
-                // not: both anew, once.)
-                Err(first) if beforehand => {
-                    tracing::debug!("terminal stream {} opened beforehand failed ({first}): opened anew", bk.block_id);
-                    let anew = async {
-                        let ticket = ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket;
-                        let (raw, header) = ep.connect_stream().await?;
-                        TerminalDataStream::connect_hello(raw, &header, &ticket).await
-                    };
-                    match anew.await {
-                        Ok(s) => s,
-                        Err(e) => {
-                            tracing::debug!("terminal stream connect {} failed: {e}", bk.block_id);
-                            br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
-                            return;
+            let (mut pre_ticket, mut spare) = (pre_ticket, spare);
+            // (Failures in a row, of having the stream or of its lasting.)
+            let mut failures = 0u32;
+            // A stream had, read until it ends, and had again while this
+            // connection is the host's and the pane this one: a pane whose
+            // stream couldn't be had, or ended, stayed blank until its
+            // session next changed, which may be never (a lead's tab idle
+            // while its agents work in theirs).
+            'attach: loop {
+                let got = tokio::select! {
+                    biased;
+                    _ = &mut rx => break 'attach,
+                    _ = ctrl.disconnected() => break 'attach,
+                    got = inner.attach_terminal(&ctrl, &ep, &bk, &owner, pre_ticket.take(), spare.take()) => got,
+                };
+                let mut stream = match got {
+                    Ok(stream) => stream,
+                    Err(failed) => {
+                        failures += 1;
+                        if !failed.again || failures >= attach_tries() {
+                            tracing::warn!("Rex: no stream for {} ({}; {failures} tries): left until its tab is chosen or its session changes", bk.block_id, failed.why);
+                            break 'attach;
                         }
-                    }
-                }
-                Err(e) => {
-                    tracing::debug!("terminal stream connect {} failed: {e}", bk.block_id);
-                    br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
-                    return;
-                }
-            };
-
-            // Also fetch initial terminal metadata (ports, process, program_status) asynchronously.
-            let c_meta = ctrl.clone();
-            let bk_meta = bk.clone();
-            let br_meta = br.clone();
-            let notify_meta = inner.notify.clone();
-            tokio::spawn(async move {
-                // (Asked together: one round trip of the link for the
-                // three, where each waited for the one before.)
-                let (status, ports, process) = tokio::join!(
-                    c_meta.terminal_program_status(&bk_meta.session_id, &bk_meta.block_id),
-                    c_meta.terminal_ports(&bk_meta.session_id, &bk_meta.block_id),
-                    c_meta.terminal_process(&bk_meta.session_id, &bk_meta.block_id)
-                );
-                {
-                    let mut block = br_meta.lock().unwrap_or_else(|e| e.into_inner());
-                    block.status_snapshot(status.ok());
-                    if let Ok(r) = ports {
-                        block.set_ports(r.seq, r.payload);
-                    }
-                    if let Ok(r) = process {
-                        block.process_snapshot(r);
-                    }
-                }
-                notify_meta(HubNotice::StateChanged);
-            });
-
-            let mut attachment = Some(crate::attach::Attachment::default());
-            let mut apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
-            // Catching up (HACKING, Rex, "A pane catches up"): the
-            // server sends a stream everything its terminal wrote,
-            // however far behind the reader is, so after a flood on a
-            // narrow link a pane goes on scrolling what is long over.
-            // While a stream pours, the host is asked now and then
-            // whether the shell itself is at its prompt again; where it
-            // is and the stream still pours, what comes is the past,
-            // and the terminal is given a new stream, whose first
-            // screen is the present.
-            let (mut pouring_since, mut poured, mut last_chunk) = (None::<Instant>, 0u64, Instant::now());
-            let (mut look_at, mut looks_apart, mut caught_up_at) = (None::<tokio::time::Instant>, CATCH_UP_LOOK, None::<Instant>);
-            let (looked_tx, mut looked_rx) = tokio::sync::mpsc::unbounded_channel::<bool>();
-            // (The host said the shell reads: when to see whether the
-            // stream went on pouring all the same, and how much had
-            // come by then.)
-            let mut said_over = None::<(tokio::time::Instant, u64)>;
-            loop {
-                let frame = tokio::select! {
-                    _ = &mut rx => { stream.close_clean().await; break; }
-                    res=stream.next_frame()=>res,
-                    _ = async { tokio::time::sleep_until(look_at.unwrap_or_else(tokio::time::Instant::now)).await }, if look_at.is_some() => {
-                        look_at = None;
-                        let pours = last_chunk.elapsed() < POUR_PAUSE && poured >= POURED && pouring_since.is_some_and(|since| since.elapsed() >= POURED_FOR);
-                        if pours {
-                            // (Not from under someone reading what scrolled by.)
-                            let reading = {
-                                let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                g.copy_mode.is_some() || !g.terminal.is_viewport_at_bottom()
-                            };
-                            if !reading {
-                                let (ctrl, bk, looked) = (ctrl.clone(), bk.clone(), looked_tx.clone());
-                                tokio::spawn(async move {
-                                    match tokio::try_join!(ctrl.terminal_input_mode(&bk.session_id, &bk.block_id), ctrl.terminal_process(&bk.session_id, &bk.block_id)) {
-                                        Ok((mode, process)) => {
-                                            let _ = looked.send(shell_reads(&mode.payload, &process.payload));
-                                        }
-                                        Err(e) => tracing::debug!("{} pours, and its host couldn't be asked whether its shell reads: {e}", bk.block_id),
-                                    }
-                                });
-                            }
+                        tracing::debug!("Rex: no stream for {} yet ({}): tried again", bk.block_id, failed.why);
+                        if !inner.attach_again_later(&ctrl, &bk, &br, &mut rx, failures).await {
+                            break 'attach;
                         }
-                        // (Looked at again while it brings anything: a
-                        // narrow link's stream takes its time to have
-                        // poured, and was looked at once, too soon, and
-                        // never again.)
-                        if last_chunk.elapsed() < POUR_PAUSE {
-                            look_at = Some(tokio::time::Instant::now() + if pours { looks_apart } else { POURED_FOR });
-                        }
-                        continue;
-                    }
-                    Some(reads) = looked_rx.recv() => {
-                        if reads && said_over.is_none() {
-                            said_over = Some((tokio::time::Instant::now() + POUR_PAUSE, poured));
-                        }
-                        continue;
-                    }
-                    _ = async { tokio::time::sleep_until(said_over.map_or_else(tokio::time::Instant::now, |(at, _)| at)).await }, if said_over.is_some() => {
-                        let had = said_over.take().map_or(0, |(_, had)| had);
-                        // The shell was at its prompt, and its terminal
-                        // has gone on pouring since: what comes is the
-                        // past. A new stream in the old one's place.
-                        // (The old one isn't read meanwhile, so the host
-                        // sends no more of it than its window.)
-                        tracing::debug!("{} poured {} kB more in the {POUR_PAUSE:?} after its shell was said to read", bk.block_id, poured.saturating_sub(had) / 1024);
-                        if poured >= had + POURS_ON && pouring_since.is_some() {
-                            // The new stream is opened as far as its upgrade and
-                            // its ticket had while the old one still stands; then
-                            // the old one is ended, and the new one says whose it
-                            // is: the server takes one stream of a terminal from a
-                            // client at a time ("AlreadyConnected" otherwise, and
-                            // again if its end hasn't reached it yet: tried anew
-                            // a few times, each with a ticket of its own).
-                            let anew = async {
-                                let (ticket, opened) = tokio::join!(ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL), open_terminal_stream(&ep));
-                                let (ticket, opened) = (ticket?.payload.ticket, opened.ok_or_else(|| olo_rex_client::RexError::Closed("no stream".to_owned()))?);
-                                stream.close().await;
-                                let mut tried = opened.hello(&ticket).await;
-                                for wait in [200u64, 500, 1200] {
-                                    if tried.is_ok() {
-                                        break;
-                                    }
-                                    tokio::time::sleep(Duration::from_millis(wait)).await;
-                                    let ticket = ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket;
-                                    let (raw, header) = ep.connect_stream().await?;
-                                    tried = TerminalDataStream::connect_hello(raw, &header, &ticket).await;
-                                }
-                                tried
-                            };
-                            match tokio::time::timeout(Duration::from_secs(30), anew).await {
-                                Ok(Ok(fresh)) => {
-                                    tracing::info!("Rex: {} went on pouring with its shell at its prompt ({} kB in {:.1} s): caught up with a new stream", bk.block_id, poured / 1024, pouring_since.map_or(0.0, |since| since.elapsed().as_secs_f64()));
-                                    stream = fresh;
-                                    attachment = Some(crate::attach::Attachment::default());
-                                    apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
-                                    // (Caught up twice within a short while: something goes on
-                                    // writing there; looked at less often.)
-                                    looks_apart = if caught_up_at.is_some_and(|at| at.elapsed() < looks_apart * 5) { (looks_apart * 2).min(CATCH_UP_LOOK_MOST) } else { CATCH_UP_LOOK };
-                                    caught_up_at = Some(Instant::now());
-                                    (pouring_since, poured, look_at) = (None, 0, None);
-                                }
-                                // (The old stream may be ended by now: the terminal is
-                                // left to be attached again, as after any stream's end.)
-                                Ok(Err(e)) => {
-                                    tracing::warn!("Rex: catching {} up failed: {e}", bk.block_id);
-                                    break;
-                                }
-                                Err(_) => {
-                                    tracing::warn!("Rex: catching {} up took too long", bk.block_id);
-                                    break;
-                                }
-                            }
-                        }
-                        continue;
+                        continue 'attach;
                     }
                 };
-                let Ok(TerminalStreamFrame::Bytes(chunk)) = frame else { break };
-                if chunk.is_empty() {
-                    continue;
-                }
-                let (terminal, snapshot_size, live) = if let Some(attach) = &mut attachment {
-                    match attach.push(&chunk) {
-                        Ok(None) => continue,
-                        Ok(Some(screen)) => {
-                            attachment = None;
-                            (screen.terminal, screen.snapshot_size, screen.live)
+                // (Had: nothing of an older one is the server's now.)
+                inner.forget_stream_left_before(&bk, task);
+                // (When its first screen came: a stream that has shown the
+                // pane long enough is a new failure's first when it ends.)
+                let mut shown_since = None::<Instant>;
+
+                // Also fetch initial terminal metadata (ports, process, program_status) asynchronously.
+                let c_meta = ctrl.clone();
+                let bk_meta = bk.clone();
+                let br_meta = br.clone();
+                let notify_meta = inner.notify.clone();
+                tokio::spawn(async move {
+                    // (Its programs' status asked anew with the stream: what
+                    // changes meanwhile is kept for after its answer, and
+                    // only this request's answer replays it.)
+                    let asked = br_meta.lock().unwrap_or_else(|e| e.into_inner()).begin_status();
+                    // (Asked together: one round trip of the link for the
+                    // three, where each waited for the one before.)
+                    let (status, ports, process) = tokio::join!(
+                        c_meta.terminal_program_status(&bk_meta.session_id, &bk_meta.block_id),
+                        c_meta.terminal_ports(&bk_meta.session_id, &bk_meta.block_id),
+                        c_meta.terminal_process(&bk_meta.session_id, &bk_meta.block_id)
+                    );
+                    {
+                        let mut block = br_meta.lock().unwrap_or_else(|e| e.into_inner());
+                        block.status_answered(asked, status.ok());
+                        if let Ok(r) = ports {
+                            block.set_ports(r.seq, r.payload);
                         }
-                        Err(e) => {
-                            tracing::warn!("Could not read the snapshot for {}: {e}", bk.block_id);
-                            stream.close_clean().await;
-                            break;
+                        if let Ok(r) = process {
+                            block.process_snapshot(r);
                         }
                     }
-                } else {
-                    (None, 0, std::borrow::Cow::Borrowed(chunk.as_slice()))
-                };
-                // (Pouring: what the terminal writes, with no long
-                // pause in it. Not a stream's first screen, which on a
-                // narrow link takes seconds to come and isn't the
-                // terminal writing: counted, it had a terminal caught
-                // up again and again, each time for the last time's
-                // first screen.)
-                if !live.is_empty() {
-                    if last_chunk.elapsed() > POUR_PAUSE || pouring_since.is_none() {
-                        (pouring_since, poured) = (Some(Instant::now()), 0);
-                        look_at = Some(tokio::time::Instant::now() + POURED_FOR);
-                    }
-                    poured += live.len() as u64;
-                    last_chunk = Instant::now();
-                }
-                let terminal = terminal.map(|mut t| {
-                    let theme = inner.state.lock().unwrap_or_else(|e| e.into_inner()).active_theme.clone();
-                    let _ = t.apply_theme(&theme);
-                    t
+                    notify_meta(HubNotice::StateChanged);
                 });
-                let items = apc.push(&live);
-                let mut notices = Vec::new();
-                let restored = terminal.is_some();
-                let (applied, guess) = {
-                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                    let result = terminal.map_or(Ok(()), |t| g.restore_terminal(t));
-                    let mut guess = false;
-                    if result.is_ok() {
-                        for item in items {
-                            match item {
-                                DemuxItem::Vt(b) => g.terminal.vt_write(&b),
-                                DemuxItem::Apc(a) => notices.extend(g.inline(a, ctrl.client_id())),
-                            }
+
+                let mut attachment = Some(crate::attach::Attachment::default());
+                let mut apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
+                // Catching up (HACKING, Rex, "A pane catches up"): the
+                // server sends a stream everything its terminal wrote,
+                // however far behind the reader is, so after a flood on a
+                // narrow link a pane goes on scrolling what is long over.
+                // While a stream pours, the host is asked now and then
+                // whether the shell itself is at its prompt again; where it
+                // is and the stream still pours, what comes is the past,
+                // and the terminal is given a new stream, whose first
+                // screen is the present.
+                let (mut pouring_since, mut poured, mut last_chunk) = (None::<Instant>, 0u64, Instant::now());
+                let (mut look_at, mut looks_apart, mut caught_up_at) = (None::<tokio::time::Instant>, CATCH_UP_LOOK, None::<Instant>);
+                let (looked_tx, mut looked_rx) = tokio::sync::mpsc::unbounded_channel::<bool>();
+                // (The host said the shell reads: when to see whether the
+                // stream went on pouring all the same, and how much had
+                // come by then.)
+                let mut said_over = None::<(tokio::time::Instant, u64)>;
+                // (Until its first screen is whole: given up after so long
+                // with nothing, `FIRST_SCREEN_QUIET`; no clock after.)
+                let mut first_screen_by = tokio::time::Instant::now() + first_screen_quiet();
+                let ended = loop {
+                    let frame = tokio::select! {
+                        _ = &mut rx => {
+                            // (Its end may not reach the server, whose way
+                            // here may be gone with its host's connection:
+                            // what it leaves is kept, and it isn't waited for.)
+                            inner.leave_stream(&bk, &owner, task, &stream);
+                            let _ = tokio::time::timeout(Duration::from_secs(2), stream.close_clean()).await;
+                            break StreamEnd::LetGo;
                         }
-                        g.input_ready = true;
-                        g.received_bytes += (snapshot_size + live.len()) as u64;
-                        guess = g.guess_later();
-                    }
-                    (result, guess)
-                };
-                if guess {
-                    // What an agent is doing there, looked at while the
-                    // chunks come (every so often, not with each) and
-                    // once more when they stop; the window is told when
-                    // it changes (the sidebar and the pane's head show
-                    // it). And when they stop, whether the program now
-                    // asks for something secret: the server has no
-                    // event for a terminal's input mode (it was read as
-                    // a pane was attached and never again, so a
-                    // password asked for later was never seen), and a
-                    // program that asks has printed its question by
-                    // then. One request for each pause in a pane's
-                    // output; none while it streams or rests.
-                    let (br, notify, ctrl, bk, helper) = (br.clone(), inner.notify.clone(), ctrl.clone(), bk.clone(), inner.clone());
-                    tokio::spawn(async move {
-                        loop {
-                            tokio::time::sleep(GUESS_AFTER).await;
-                            let (changed, quiet) = br.lock().unwrap_or_else(|e| e.into_inner()).guess_now(GUESS_AFTER);
-                            if changed {
-                                notify(HubNotice::StateChanged);
-                            }
-                            // (Keep It Going's and Auto Approve's look,
-                            // where the pane has either on.)
-                            helper.agent_look(&bk);
-                            if quiet {
-                                break;
-                            }
+                        res=stream.next_frame()=>res,
+                        _ = tokio::time::sleep_until(first_screen_by), if attachment.is_some() => {
+                            tracing::info!("Rex: {}'s first screen brought nothing for {:?}: had again", bk.block_id, first_screen_quiet());
+                            inner.leave_stream(&bk, &owner, task, &stream);
+                            let _ = tokio::time::timeout(Duration::from_secs(2), stream.close_clean()).await;
+                            break StreamEnd::Lost;
                         }
-                        ask_the_host(&br, &ctrl, &bk, &notify).await;
-                    });
-                }
-                if let Err(e) = applied {
-                    tracing::warn!("Could not restore the terminal for {}: {e}", bk.block_id);
-                    stream.close_clean().await;
-                    break;
-                }
-                if restored {
-                    let generation = {
-                        let b = br.lock().unwrap_or_else(|e| e.into_inner());
-                        b.finding.then_some(b.find_generation)
+                        _ = async { tokio::time::sleep_until(look_at.unwrap_or_else(tokio::time::Instant::now)).await }, if look_at.is_some() => {
+                            look_at = None;
+                            let pours = last_chunk.elapsed() < POUR_PAUSE && poured >= POURED && pouring_since.is_some_and(|since| since.elapsed() >= POURED_FOR);
+                            if pours {
+                                // (Not from under someone reading what scrolled by.)
+                                let reading = {
+                                    let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                    g.copy_mode.is_some() || !g.terminal.is_viewport_at_bottom()
+                                };
+                                if !reading {
+                                    let (ctrl, bk, looked) = (ctrl.clone(), bk.clone(), looked_tx.clone());
+                                    tokio::spawn(async move {
+                                        match tokio::try_join!(ctrl.terminal_input_mode(&bk.session_id, &bk.block_id), ctrl.terminal_process(&bk.session_id, &bk.block_id)) {
+                                            Ok((mode, process)) => {
+                                                let _ = looked.send(shell_reads(&mode.payload, &process.payload));
+                                            }
+                                            Err(e) => tracing::debug!("{} pours, and its host couldn't be asked whether its shell reads: {e}", bk.block_id),
+                                        }
+                                    });
+                                }
+                            }
+                            // (Looked at again while it brings anything: a
+                            // narrow link's stream takes its time to have
+                            // poured, and was looked at once, too soon, and
+                            // never again.)
+                            if last_chunk.elapsed() < POUR_PAUSE {
+                                look_at = Some(tokio::time::Instant::now() + if pours { looks_apart } else { POURED_FOR });
+                            }
+                            continue;
+                        }
+                        Some(reads) = looked_rx.recv() => {
+                            if reads && said_over.is_none() {
+                                said_over = Some((tokio::time::Instant::now() + POUR_PAUSE, poured));
+                            }
+                            continue;
+                        }
+                        _ = async { tokio::time::sleep_until(said_over.map_or_else(tokio::time::Instant::now, |(at, _)| at)).await }, if said_over.is_some() => {
+                            let had = said_over.take().map_or(0, |(_, had)| had);
+                            // The shell was at its prompt, and its terminal
+                            // has gone on pouring since: what comes is the
+                            // past. A new stream in the old one's place.
+                            // (The old one isn't read meanwhile, so the host
+                            // sends no more of it than its window.)
+                            tracing::debug!("{} poured {} kB more in the {POUR_PAUSE:?} after its shell was said to read", bk.block_id, poured.saturating_sub(had) / 1024);
+                            if poured >= had + POURS_ON && pouring_since.is_some() {
+                                // The new stream is opened as far as its upgrade and
+                                // its ticket had while the old one still stands; then
+                                // the old one is ended, and the new one says whose it
+                                // is: the server takes one stream of a terminal from a
+                                // client at a time ("AlreadyConnected" otherwise, and
+                                // again if its end hasn't reached it yet: tried anew
+                                // a few times, each with a ticket of its own).
+                                // (What the old one leaves is kept before its end
+                                // is asked: a network gone meanwhile leaves it
+                                // the server's.)
+                                inner.leave_stream(&bk, &owner, task, &stream);
+                                let old_token = stream.welcome.reconnect_token;
+                                // (No keys while the screen they'd be typed
+                                // against is the old stream's, until the new
+                                // one's comes: Astra R2 #5.)
+                                br.lock().unwrap_or_else(|e| e.into_inner()).input_ready = false;
+                                let anew = async {
+                                    let (ticket, opened) = tokio::join!(terminal_ticket(&ctrl, &bk), open_terminal_stream(&ep));
+                                    let (ticket, opened) = (ticket?, opened?);
+                                    stream.close().await;
+                                    let mut tried = opened.hello(&ticket).await;
+                                    for wait in [200u64, 500, 1200] {
+                                        if tried.is_ok() {
+                                            break;
+                                        }
+                                        tokio::time::sleep(Duration::from_millis(wait)).await;
+                                        let ticket = terminal_ticket(&ctrl, &bk).await?;
+                                        let (raw, header) = ep.connect_stream().await?;
+                                        tried = TerminalDataStream::connect_hello(raw, &header, &ticket).await;
+                                    }
+                                    tried
+                                };
+                                // (Not waited for once the pane is let go of, or its
+                                // host's connection ends.)
+                                let caught = tokio::select! {
+                                    biased;
+                                    _ = &mut rx => None,
+                                    _ = ctrl.disconnected() => None,
+                                    caught = tokio::time::timeout(Duration::from_secs(30), anew) => Some(caught),
+                                };
+                                let Some(caught) = caught else { break StreamEnd::LetGo };
+                                match caught {
+                                    Ok(Ok(fresh)) => {
+                                        tracing::info!("Rex: {} went on pouring with its shell at its prompt ({} kB in {:.1} s): caught up with a new stream", bk.block_id, poured / 1024, pouring_since.map_or(0.0, |since| since.elapsed().as_secs_f64()));
+                                        inner.forget_stream_left(&bk, &old_token);
+                                        stream = fresh;
+                                        attachment = Some(crate::attach::Attachment::default());
+                                        // (Its first screen given its whole time from
+                                        // its welcome: the old stream's had long run
+                                        // out, and the new one was ended as it began,
+                                        // its screen still on its way: Astra R2 #5,
+                                        // Neon R2 #1.)
+                                        first_screen_by = tokio::time::Instant::now() + first_screen_quiet();
+                                        shown_since = None;
+                                        apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
+                                        // (Caught up twice within a short while: something goes on
+                                        // writing there; looked at less often.)
+                                        looks_apart = if caught_up_at.is_some_and(|at| at.elapsed() < looks_apart * 5) { (looks_apart * 2).min(CATCH_UP_LOOK_MOST) } else { CATCH_UP_LOOK };
+                                        caught_up_at = Some(Instant::now());
+                                        (pouring_since, poured, look_at) = (None, 0, None);
+                                    }
+                                    // (The old stream may be ended by now: the terminal is
+                                    // attached again, as after any stream's end.)
+                                    Ok(Err(e)) => {
+                                        tracing::warn!("Rex: catching {} up failed: {e}", bk.block_id);
+                                        break StreamEnd::Lost;
+                                    }
+                                    Err(_) => {
+                                        tracing::warn!("Rex: catching {} up took too long", bk.block_id);
+                                        break StreamEnd::Lost;
+                                    }
+                                }
+                            }
+                            continue;
+                        }
                     };
-                    if let Some(generation) = generation {
-                        inner.search_on_worker(br.clone(), generation);
+                    let chunk = match frame {
+                        Ok(TerminalStreamFrame::Bytes(chunk)) => chunk,
+                        // (Ended by the server, its close said: nothing of it is
+                        // held there. A stream that just stopped, with no close,
+                        // is said as 1006, never sent: maybe still held.)
+                        Ok(TerminalStreamFrame::Closed { code, reason }) => {
+                            tracing::debug!("Rex: {}'s stream ended ({code} {reason})", bk.block_id);
+                            if code == 1006 {
+                                inner.leave_stream(&bk, &owner, task, &stream);
+                            }
+                            break StreamEnd::Lost;
+                        }
+                        Err(e) => {
+                            tracing::debug!("Rex: {}'s stream was lost: {e}", bk.block_id);
+                            inner.leave_stream(&bk, &owner, task, &stream);
+                            break StreamEnd::Lost;
+                        }
+                    };
+                    if chunk.is_empty() {
+                        continue;
                     }
+                    // (Its first screen coming: its time given again with
+                    // each part of it, and never for a frame with nothing in
+                    // it, of which one every so often kept a stream that
+                    // brought no screen for ever: Astra R2 #7.)
+                    if attachment.is_some() {
+                        first_screen_by = tokio::time::Instant::now() + first_screen_quiet();
+                    }
+                    let (terminal, snapshot_size, live) = if let Some(attach) = &mut attachment {
+                        match attach.push(&chunk) {
+                            Ok(None) => continue,
+                            Ok(Some(screen)) => {
+                                attachment = None;
+                                shown_since = Some(Instant::now());
+                                (screen.terminal, screen.snapshot_size, screen.live)
+                            }
+                            Err(e) => {
+                                tracing::warn!("Could not read the snapshot for {}: {e}", bk.block_id);
+                                inner.leave_stream(&bk, &owner, task, &stream);
+                                let _ = tokio::time::timeout(Duration::from_secs(2), stream.close_clean()).await;
+                                break StreamEnd::Lost;
+                            }
+                        }
+                    } else {
+                        (None, 0, std::borrow::Cow::Borrowed(chunk.as_slice()))
+                    };
+                    // (Pouring: what the terminal writes, with no long
+                    // pause in it. Not a stream's first screen, which on a
+                    // narrow link takes seconds to come and isn't the
+                    // terminal writing: counted, it had a terminal caught
+                    // up again and again, each time for the last time's
+                    // first screen.)
+                    if !live.is_empty() {
+                        if last_chunk.elapsed() > POUR_PAUSE || pouring_since.is_none() {
+                            (pouring_since, poured) = (Some(Instant::now()), 0);
+                            look_at = Some(tokio::time::Instant::now() + POURED_FOR);
+                        }
+                        poured += live.len() as u64;
+                        last_chunk = Instant::now();
+                    }
+                    let terminal = terminal.map(|mut t| {
+                        let theme = inner.state.lock().unwrap_or_else(|e| e.into_inner()).active_theme.clone();
+                        let _ = t.apply_theme(&theme);
+                        t
+                    });
+                    let items = apc.push(&live);
+                    let mut notices = Vec::new();
+                    let restored = terminal.is_some();
+                    let (applied, guess) = {
+                        let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                        let result = terminal.map_or(Ok(()), |t| g.restore_terminal(t));
+                        let mut guess = false;
+                        if result.is_ok() {
+                            for item in items {
+                                match item {
+                                    DemuxItem::Vt(b) => g.terminal.vt_write(&b),
+                                    DemuxItem::Apc(a) => notices.extend(g.inline(a, ctrl.client_id())),
+                                }
+                            }
+                            g.input_ready = true;
+                            g.received_bytes += (snapshot_size + live.len()) as u64;
+                            guess = g.guess_later();
+                        }
+                        (result, guess)
+                    };
+                    if guess {
+                        // What an agent is doing there, looked at while the
+                        // chunks come (every so often, not with each) and
+                        // once more when they stop; the window is told when
+                        // it changes (the sidebar and the pane's head show
+                        // it). And when they stop, whether the program now
+                        // asks for something secret: the server has no
+                        // event for a terminal's input mode (it was read as
+                        // a pane was attached and never again, so a
+                        // password asked for later was never seen), and a
+                        // program that asks has printed its question by
+                        // then. One request for each pause in a pane's
+                        // output; none while it streams or rests.
+                        let (br, notify, ctrl, bk, helper) = (br.clone(), inner.notify.clone(), ctrl.clone(), bk.clone(), inner.clone());
+                        tokio::spawn(async move {
+                            loop {
+                                tokio::time::sleep(GUESS_AFTER).await;
+                                let (changed, quiet) = br.lock().unwrap_or_else(|e| e.into_inner()).guess_now(GUESS_AFTER);
+                                if changed {
+                                    notify(HubNotice::StateChanged);
+                                }
+                                // (Keep It Going's and Auto Approve's look,
+                                // where the pane has either on.)
+                                helper.agent_look(&bk);
+                                if quiet {
+                                    break;
+                                }
+                            }
+                            ask_the_host(&br, &ctrl, &bk, &notify).await;
+                        });
+                    }
+                    if let Err(e) = applied {
+                        tracing::warn!("Could not restore the terminal for {}: {e}", bk.block_id);
+                        inner.leave_stream(&bk, &owner, task, &stream);
+                        let _ = tokio::time::timeout(Duration::from_secs(2), stream.close_clean()).await;
+                        break StreamEnd::Lost;
+                    }
+                    if restored {
+                        let generation = {
+                            let b = br.lock().unwrap_or_else(|e| e.into_inner());
+                            b.finding.then_some(b.find_generation)
+                        };
+                        if let Some(generation) = generation {
+                            inner.search_on_worker(br.clone(), generation);
+                        }
+                    }
+                    for a in notices {
+                        inner.handle_inline_apc(&bk, a);
+                    }
+                    (inner.notify)(HubNotice::BlockOutput(bk.clone()));
+                };
+                if matches!(ended, StreamEnd::LetGo) {
+                    break 'attach;
                 }
-                for a in notices {
-                    inner.handle_inline_apc(&bk, a);
+                // (No keys go to a pane with no stream: none is seen go in.)
+                br.lock().unwrap_or_else(|e| e.into_inner()).input_ready = false;
+                // A stream that showed the pane long enough is a new
+                // failure's first; one that ended as it began, or never
+                // showed it however long it lasted, one more in a row.
+                failures = if shown_since.is_some_and(|at| at.elapsed() >= stream_lasted()) { 1 } else { failures + 1 };
+                if failures >= attach_tries() {
+                    tracing::warn!("Rex: {}'s stream ended again ({failures} times in a row): left until its tab is chosen or its session changes", bk.block_id);
+                    break 'attach;
                 }
-                (inner.notify)(HubNotice::BlockOutput(bk.clone()));
+                if !inner.attach_again_later(&ctrl, &bk, &br, &mut rx, failures).await {
+                    break 'attach;
+                }
             }
             br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
         });
+    }
+
+    /// A terminal's stream, had ([`Self::spawn_block_data_stream`]): it
+    /// is opened while its ticket is asked for (or the one the sessions
+    /// came with is taken), or one opened beforehand is taken, and the
+    /// ticket goes in the hello, which is all that waits for it. One
+    /// opened beforehand that the host has closed meanwhile is opened
+    /// anew, once; and where the server still holds this terminal's
+    /// last stream ("AlreadyConnected"), that one is taken over and
+    /// ended first, where what it left is known ([`StreamLeft`]).
+    async fn attach_terminal(
+        self: &Arc<Self>,
+        ctrl: &ControlClient,
+        ep: &RexEndpoint,
+        bk: &BlockKey,
+        owner: &StreamOwner,
+        pre_ticket: Option<String>,
+        spare: Option<Spare>,
+    ) -> Result<TerminalDataStream<olo_rex_client::RexStream>, AttachFailed> {
+        let asked = async {
+            match pre_ticket {
+                Some(ticket) => Ok(ticket),
+                None => terminal_ticket(ctrl, bk).await,
+            }
+        };
+        let opened = async {
+            if let Some(spare) = spare
+                && let Ok(Ok(upgrade)) = spare.await
+            {
+                return Ok((upgrade, true));
+            }
+            open_terminal_stream(ep).await.map(|upgrade| (upgrade, false))
+        };
+        let (ticket, opened) = tokio::join!(asked, opened);
+        let ticket = ticket.map_err(|e| AttachFailed::of("its ticket", e))?;
+        let (upgrade, beforehand) = opened.map_err(|e| AttachFailed::of("its stream", e))?;
+        let first = match upgrade.hello(&ticket).await {
+            Ok(stream) => return Ok(stream),
+            Err(e) => e,
+        };
+        if matches!(first, olo_rex_client::RexError::DataRejected(olo_rex_client::DataRejectReason::AlreadyConnected)) {
+            // (Else tried again later: with what the old one left, if its
+            // takeover failed on the way; or when the server may have
+            // heard its end.)
+            let Some(left) = self.stream_left_for(bk, owner) else { return Err(AttachFailed::of("its hello", first)) };
+            match self.end_stream_left(ep, bk, &left).await {
+                Taken::Ended => {}
+                Taken::Refused | Taken::Unsure => return Err(AttachFailed::of("its hello", first)),
+            }
+        } else if beforehand {
+            // (The ticket spent on it or not: both anew.)
+            tracing::debug!("terminal stream {} opened beforehand failed ({first}): opened anew", bk.block_id);
+        } else {
+            return Err(AttachFailed::of("its hello", first));
+        }
+        let (ticket, opened) = tokio::join!(terminal_ticket(ctrl, bk), open_terminal_stream(ep));
+        let ticket = ticket.map_err(|e| AttachFailed::of("its ticket", e))?;
+        let upgrade = opened.map_err(|e| AttachFailed::of("its stream", e))?;
+        upgrade.hello(&ticket).await.map_err(|e| AttachFailed::of("its hello", e))
+    }
+
+    /// The server's hold on this terminal's last stream ended
+    /// ([`StreamLeft`]): that very stream taken over (the server's
+    /// resume, with its token and count), closed, and its end waited for
+    /// (a new stream asked for before the server had it was refused as
+    /// the old one still). Ended only on the server's own word of it, a
+    /// close answering ours; a stream that stops with none (1006, never
+    /// sent), an error, a time-out: unsure, and what it left is kept,
+    /// renewed with the resumed stream's own token, for the next try. A
+    /// token the server refuses as such is forgotten.
+    async fn end_stream_left(&self, ep: &RexEndpoint, bk: &BlockKey, left: &StreamLeft) -> Taken {
+        use olo_rex_client::{DataRejectReason as Reject, RexError};
+        let mut token = left.token;
+        let taken = async {
+            let (raw, header) = match ep.connect_stream().await {
+                Ok(opened) => opened,
+                Err(e) => return (Taken::Unsure, e.to_string()),
+            };
+            let mut held = match TerminalDataStream::connect_resume(raw, &header, &left.token, left.bytes).await {
+                Ok(held) => held,
+                Err(e @ RexError::DataRejected(Reject::InvalidOrExpiredTicket | Reject::StreamUnavailable | Reject::MalformedHandshake | Reject::WrongSubprotocol)) => {
+                    return (Taken::Refused, e.to_string());
+                }
+                Err(e) => return (Taken::Unsure, e.to_string()),
+            };
+            // (Resumed: its own token is the one that takes it now.)
+            token = held.welcome.reconnect_token;
+            self.renew_stream_left(bk, &left.token, held.welcome.reconnect_token, held.bytes_received);
+            held.close().await;
+            loop {
+                match held.next_frame().await {
+                    Ok(TerminalStreamFrame::Bytes(_)) => {}
+                    Ok(TerminalStreamFrame::Closed { code, .. }) if code != 1006 => return (Taken::Ended, String::new()),
+                    Ok(TerminalStreamFrame::Closed { code, reason }) => return (Taken::Unsure, format!("{code} {reason}")),
+                    Err(e) => return (Taken::Unsure, e.to_string()),
+                }
+            }
+        };
+        let (taken, why) = tokio::time::timeout(Duration::from_secs(10), taken).await.unwrap_or_else(|_| (Taken::Unsure, "took too long".into()));
+        match taken {
+            Taken::Ended => {
+                tracing::info!("Rex: {}'s last stream, left {:.1} s ago, was still the server's: taken over and ended", bk.block_id, left.at.elapsed().as_secs_f64());
+                self.forget_stream_left(bk, &token);
+            }
+            Taken::Refused => {
+                tracing::info!("Rex: {}'s last stream can't be taken over ({why}): forgotten", bk.block_id);
+                self.forget_stream_left(bk, &token);
+            }
+            Taken::Unsure => tracing::debug!("Rex: {}'s last stream wasn't taken over yet ({why}): tried again later", bk.block_id),
+        }
+        taken
+    }
+
+    /// What `stream` leaves to be taken over with, should its end not
+    /// reach the server ([`StreamLeft`]), as `owner`'s, by the pane's task
+    /// numbered `task`.
+    fn leave_stream(&self, bk: &BlockKey, owner: &StreamOwner, task: u64, stream: &TerminalDataStream<olo_rex_client::RexStream>) {
+        self.keep_stream_left(bk, StreamLeft { token: stream.welcome.reconnect_token, bytes: stream.bytes_received, at: Instant::now(), owner: owner.clone(), task });
+    }
+
+    /// `left` kept for its pane, unless a later task of the pane's has
+    /// left its own already: that one stays, for the stream it is of may
+    /// be the server's still, and this one's end is known by then.
+    fn keep_stream_left(&self, bk: &BlockKey, left: StreamLeft) {
+        let mut all = self.streams_left.lock().unwrap_or_else(|e| e.into_inner());
+        all.retain(|_, l| l.at.elapsed() < STREAM_LEFT_KEPT);
+        if all.get(bk).is_some_and(|kept| kept.task > left.task) {
+            return;
+        }
+        all.insert(bk.clone(), left);
+    }
+
+    /// What the pane's last stream left, if it is `owner`'s and not too
+    /// old: none of another host instance or client (never sent to
+    /// another server), whose it stays, and none past its time, which is
+    /// forgotten. (Looked up by another, it was forgotten, and its own,
+    /// asking next, had nothing to take its stream over with.)
+    fn stream_left_for(&self, bk: &BlockKey, owner: &StreamOwner) -> Option<StreamLeft> {
+        let mut all = self.streams_left.lock().unwrap_or_else(|e| e.into_inner());
+        let left = all.get(bk)?;
+        if left.at.elapsed() >= STREAM_LEFT_KEPT {
+            all.remove(bk);
+            return None;
+        }
+        (&left.owner == owner).then(|| left.clone())
+    }
+
+    /// What the pane's tasks up to `task` left is forgotten: that task had
+    /// a stream anew, which the server takes only where it holds none of
+    /// the client's for the terminal. A later task's stays.
+    fn forget_stream_left_before(&self, bk: &BlockKey, task: u64) {
+        let mut all = self.streams_left.lock().unwrap_or_else(|e| e.into_inner());
+        if all.get(bk).is_some_and(|kept| kept.task <= task) {
+            all.remove(bk);
+        }
+    }
+
+    /// What the pane's last stream left goes with the token `was` for
+    /// the stream resumed with it (`now`, and as far as it had come).
+    fn renew_stream_left(&self, bk: &BlockKey, was: &[u8; 16], now: [u8; 16], bytes: u64) {
+        if let Some(left) = self.streams_left.lock().unwrap_or_else(|e| e.into_inner()).get_mut(bk).filter(|l| &l.token == was) {
+            (left.token, left.bytes, left.at) = (now, bytes, Instant::now());
+        }
+    }
+
+    /// What the stream of `token` left is forgotten: its end is known
+    /// (only that one's record: a newer one stays).
+    fn forget_stream_left(&self, bk: &BlockKey, token: &[u8; 16]) {
+        let mut all = self.streams_left.lock().unwrap_or_else(|e| e.into_inner());
+        if all.get(bk).is_some_and(|l| &l.token == token) {
+            all.remove(bk);
+        }
+    }
+
+    /// The sessions of `host_key` a window shows ([`RexHub::window_shows`]).
+    fn sessions_shown(&self, host_key: &str) -> HashSet<String> {
+        self.shown_sessions.lock().unwrap_or_else(|e| e.into_inner()).values().filter(|(h, _)| h == host_key).map(|(_, s)| s.clone()).collect()
+    }
+
+    /// What a host's streams left is forgotten: the host is gone, or
+    /// another under its name.
+    fn forget_streams_of(&self, host_key: &str) {
+        self.streams_left.lock().unwrap_or_else(|e| e.into_inner()).retain(|bk, _| bk.host_key != host_key);
+    }
+
+    /// Waits to attach a terminal again, its `failures`-th time in a
+    /// row ([`attach_again_after`]): whether it still is to be once
+    /// the wait is over. Never once the host's connection is another
+    /// or none, or the pane another or let go of (`cancel`).
+    async fn attach_again_later(&self, ctrl: &ControlClient, bk: &BlockKey, br: &Arc<Mutex<BlockRuntime>>, cancel: &mut tokio::sync::oneshot::Receiver<()>, failures: u32) -> bool {
+        if !self.attach_still_wanted(ctrl, bk, br) {
+            return false;
+        }
+        tokio::select! {
+            biased;
+            _ = &mut *cancel => false,
+            _ = ctrl.disconnected() => false,
+            _ = tokio::time::sleep(attach_again_after(failures, bk)) => self.attach_still_wanted(ctrl, bk, br),
+        }
+    }
+
+    /// Asks a pane's host for the size its view wants (`first` on its
+    /// way now), one request at a time, until the host has the last one
+    /// wanted ([`SizeAsked`]); one not given is asked again a little
+    /// later, while the host's connection is this one and the pane this
+    /// one, as a stream is had again ([`attach_again_after`]).
+    fn ask_size(self: &Arc<Self>, key: BlockKey, br: Arc<Mutex<BlockRuntime>>, first: TermSize) {
+        let found = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key.host_key).and_then(|h| h.control.clone());
+        let Some(ctrl) = found else {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            g.size.answered(first, SizeAnswer::Unsure);
+            g.size.asker = false;
+            return;
+        };
+        let inner = self.clone();
+        self.rt_handle.spawn(async move {
+            let wake = br.lock().unwrap_or_else(|e| e.into_inner()).size_wake.clone();
+            let mut asked = first;
+            loop {
+                let (cols, rows, cell_w, cell_h) = asked;
+                let given = ctrl.terminal_resize(&key.session_id, &key.block_id, cols, rows, u16::try_from(cell_w).ok(), u16::try_from(cell_h).ok()).await;
+                let answer = match &given {
+                    Ok(_) => SizeAnswer::Given,
+                    Err(e) if attach_again(e) => SizeAnswer::Unsure,
+                    Err(_) => SizeAnswer::Refused,
+                };
+                if let Err(e) = &given {
+                    tracing::debug!("Rex: {}'s host didn't take its size {cols}×{rows}: {e}", key.block_id);
+                }
+                let step = br.lock().unwrap_or_else(|e| e.into_inner()).size_answered(asked, answer);
+                let wait = match step {
+                    SizeStep::Done => return,
+                    SizeStep::Ask(next) => {
+                        asked = next;
+                        continue;
+                    }
+                    SizeStep::Wait(failures) => attach_again_after(failures, &key),
+                };
+                let still = tokio::select! {
+                    biased;
+                    _ = ctrl.disconnected() => false,
+                    _ = wake.notified() => inner.attach_still_wanted(&ctrl, &key, &br),
+                    _ = tokio::time::sleep(wait) => inner.attach_still_wanted(&ctrl, &key, &br),
+                };
+                let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                match (still && !g.other_size_owner).then(|| g.size.next()).flatten() {
+                    Some(next) => asked = next,
+                    None => {
+                        g.size.asker = false;
+                        return;
+                    }
+                }
+            }
+        });
+    }
+
+    /// Whether a pane's stream is still this task's to have: the host's
+    /// connection is `ctrl`'s, and the pane is `br`.
+    fn attach_still_wanted(&self, ctrl: &ControlClient, bk: &BlockKey, br: &Arc<Mutex<BlockRuntime>>) -> bool {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.hosts.get(&bk.host_key).is_some_and(|h| h.control.as_ref().is_some_and(|c| c.same_connection(ctrl))) && st.blocks.get(bk).is_some_and(|b| Arc::ptr_eq(b, br))
     }
 
     fn set_window_front_pane(&self, window: crate::ui::WinId, pane: Option<BlockKey>) {
@@ -10493,25 +11719,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             st.retain_blocks(|b| b.host_key != host_key || ids.contains(b.session_id.as_str()));
             st.bump_topology();
         }
-        for view in snapshot.views {
+        for (view, seq) in snapshot.views {
             let session_id = view.session_id.clone();
-            let ids: Vec<_> = view
-                .windows
-                .iter()
-                .flat_map(|w| w.all_blocks())
-                .filter(|b| b.creator_name == "com.superlogical.terminal" || b.flavor.starts_with("com.superlogical.terminal"))
-                .map(|b| b.block_id.clone())
-                .collect();
-            self.ingest_session(host_key, ctrl, ep, view, &[]).await;
+            let ids: Vec<_> = view.windows.iter().flat_map(|w| w.all_blocks()).filter(|b| attaches_a_stream(b)).map(|b| b.block_id.clone()).collect();
+            self.ingest_session(host_key, ctrl, ep, view, seq, &[]).await;
             for bid in ids {
                 let sid = &session_id;
                 let key = BlockKey { host_key: host_key.into(), session_id: sid.clone(), block_id: bid.clone() };
                 let block = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned();
                 let Some(block) = block else { continue };
+                let asked = block.lock().unwrap_or_else(|e| e.into_inner()).begin_status();
                 let (status, ports, process, mode) =
                     tokio::try_join!(ctrl.terminal_program_status(sid, &bid), ctrl.terminal_ports(sid, &bid), ctrl.terminal_process(sid, &bid), ctrl.terminal_input_mode(sid, &bid))?;
                 let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
-                b.status_snapshot(Some(status));
+                b.status_answered(asked, Some(status));
                 b.set_ports(ports.seq, ports.payload);
                 b.process_snapshot(process);
                 b.set_password_prompt(asks_for_secret(mode.payload.echo, mode.payload.canonical));
@@ -10534,7 +11755,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     st.bump_topology();
                 }
                 if let Ok(att) = ctrl.session_attach(&s.session_id).await {
-                    self.ingest_session(host_key, ctrl, ep, att.payload.view, &[]).await;
+                    self.ingest_session(host_key, ctrl, ep, att.payload.view, att.seq, &[]).await;
                 }
                 self.ensure_kept_forwards(host_key, ctrl, ep);
             }
@@ -10585,7 +11806,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             ControlEvent::BlockOwnerChanged { session_id, block_id, owner } => {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id, block_id };
                 if let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk) {
-                    block.lock().unwrap_or_else(|e| e.into_inner()).other_size_owner = owner.is_some() && owner.as_deref() != ctrl.client_id();
+                    block.lock().unwrap_or_else(|e| e.into_inner()).owner_said(seq, owner.as_deref(), ctrl.client_id());
                 }
                 (self.notify)(HubNotice::StateChanged);
             }
@@ -10604,7 +11825,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     }
                 }
                 if let Ok(v) = ctrl.session_view(&session_id).await {
-                    self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                    self.ingest_session(host_key, ctrl, ep, v.payload, v.seq, &[]).await;
                 }
             }
             ControlEvent::WindowClosed { session_id, .. }
@@ -10613,12 +11834,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             | ControlEvent::BlockCreated { session_id, .. }
             | ControlEvent::BlockClosed { session_id, .. } => {
                 if let Ok(v) = ctrl.session_view(&session_id).await {
-                    self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                    self.ingest_session(host_key, ctrl, ep, v.payload, v.seq, &[]).await;
                 }
             }
             ControlEvent::EventDropped { session_id: Some(sid), block_id, block_event_name, .. } => {
                 if let Ok(v) = ctrl.session_view(&sid).await {
-                    self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                    self.ingest_session(host_key, ctrl, ep, v.payload, v.seq, &[]).await;
                 }
                 if let Some(bid) = block_id {
                     let bk = BlockKey { host_key: host_key.into(), session_id: sid.clone(), block_id: bid.clone() };
@@ -10626,8 +11847,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     let Some(block) = block else { return };
                     let what = block_event_name.as_deref();
                     if matches!(what, None | Some("program_status_changed" | "program_status_removed")) {
+                        let asked = block.lock().unwrap_or_else(|e| e.into_inner()).begin_status();
                         let result = ctrl.terminal_program_status(&sid, &bid).await.ok();
-                        block.lock().unwrap_or_else(|e| e.into_inner()).status_snapshot(result);
+                        block.lock().unwrap_or_else(|e| e.into_inner()).status_answered(asked, result);
                     }
                     if matches!(what, None | Some("ports_changed"))
                         && let Ok(r) = ctrl.terminal_ports(&sid, &bid).await
@@ -11879,6 +13101,700 @@ mod tests {
         assert_eq!(bytes, [1, 2]);
     }
 
+    /// Open in Tracker opens where the pane's program works now, else
+    /// where its agent was started, else home: on this computer as a
+    /// folder, on a host as `rex://HOST/PATH`.
+    #[test]
+    fn open_in_tracker_goes_to_the_agents_own_folder() {
+        let live = |dirs: &[&str]| dirs.iter().map(|d| (*d).to_owned()).collect::<Vec<_>>();
+        let here = |p: &str| TrackerPlace::Here(PathBuf::from(p));
+        // Where it works now first; a folder gone (" (deleted)") isn't one.
+        assert_eq!(tracker_place(true, "local", &live(&["/home/you/worktrees/agent-a"]), Some("/home/you/src/olo"), Some("/home/you")), here("/home/you/worktrees/agent-a"));
+        assert_eq!(tracker_place(true, "local", &live(&["/var/tmp/x (deleted)", "/home/you/worktrees/b"]), None, Some("/home/you")), here("/home/you/worktrees/b"));
+        // Then where its agent was started: an exited child, or one whose host hasn't said yet.
+        assert_eq!(tracker_place(true, "local", &live(&[]), Some("/home/you/worktrees/agent-a"), Some("/home/you")), here("/home/you/worktrees/agent-a"));
+        assert_eq!(tracker_place(true, "local", &live(&[""]), Some("~/worktrees/b"), Some("/home/you")), here("/home/you/worktrees/b"));
+        // Then home.
+        assert_eq!(tracker_place(true, "local", &live(&[]), None, Some("/home/you")), here("/home/you"));
+        assert_eq!(tracker_place(true, "local", &live(&[]), Some(""), None), here("/"));
+        // A host's: its own path, as Tracker reaches it, spaces and all.
+        assert_eq!(tracker_place(false, "dev-box", &live(&["/srv/work tree"]), Some("/srv/other"), None), TrackerPlace::There("rex://dev-box/srv/work%20tree".into()));
+        assert_eq!(tracker_place(false, "dev-box", &live(&[]), Some("/srv/worktrees/agent-a"), None), TrackerPlace::There("rex://dev-box/srv/worktrees/agent-a".into()));
+        assert_eq!(tracker_place(false, "Dev Box", &live(&[]), None, Some("/home/you")), TrackerPlace::There("rex://Dev%20Box/~".into()));
+    }
+
+    /// A connected host reached over SSH, as Tracker reaches it: the
+    /// tests' own hosts (`HostRuntime::test_connected`) have no endpoint.
+    fn host_over_ssh(key: &str, label: &str, instance: u64, conn: u64) -> HostRuntime {
+        let mut host = HostRuntime::test_connected(key, HashMap::new());
+        host.label = label.into();
+        (host.is_local, host.host_instance_id, host.screens_conn_id) = (false, instance, conn);
+        host.endpoint = Some(RexEndpoint::parse(&format!("ssh://you@{key}"), Arc::new(SshSessionPool::default()), None).unwrap());
+        // (This build's helper there, which serves its files.)
+        (host.helper, host.helper_current) = (HostHelper::Used, Some(true));
+        host
+    }
+
+    fn child_of(host_key: &str, block_id: &str, cwd: &str) -> crate::subagents::NativeSubagent {
+        crate::subagents::NativeSubagent {
+            id: "sa-000001".into(),
+            name: None,
+            host_key: host_key.into(),
+            session_id: "s1".into(),
+            window_id: "w-child".into(),
+            block_id: block_id.into(),
+            parent_window_id: "w-lead".into(),
+            parent_block_id: Some("b-lead".into()),
+            cli: crate::subagents::AgentCli::Claude,
+            model: String::new(),
+            effort: String::new(),
+            title: "child".into(),
+            role: None,
+            cwd: Some(cwd.into()),
+            resume_id: None,
+            cli_session_id: None,
+            transcript_path: None,
+            desktop_policy: crate::subagents::DesktopPolicy::None,
+            stream_mode: false,
+            started_at: 0,
+            exited_at: Some(1),
+            exit_code: Some(0),
+            last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
+            command: Vec::new(),
+            minds: None,
+            minded_by: None,
+            shared_minder: false,
+        }
+    }
+
+    /// The hub's answer for a pane: its live folder, else its child's
+    /// registry folder, else home; and none for a host replaced or
+    /// reconnected since the menu was made, a menu that had no pin (it
+    /// failed closed: Neon R1 #6), or a host Tracker can't reach (not
+    /// over SSH; Olo's helper off there: Astra R1 #16).
+    #[test]
+    fn open_in_tracker_is_for_the_host_the_menu_was_made_for() {
+        let hub = RexHub::test_offline(|_| {});
+        let key = |host: &str, block: &str| BlockKey { host_key: host.into(), session_id: "s1".into(), block_id: block.into() };
+        {
+            let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut local = HostRuntime::test_connected("local", HashMap::new());
+            (local.is_local, local.host_instance_id, local.screens_conn_id) = (true, 11, 0);
+            st.hosts.insert("local".into(), local);
+            st.hosts.insert("dev-box".into(), host_over_ssh("dev-box", "dev-box", 22, 7));
+            let mut web = HostRuntime::test_connected("web-box", HashMap::new());
+            (web.is_local, web.host_instance_id, web.screens_conn_id) = (false, 33, 0);
+            web.endpoint = Some(RexEndpoint::parse("https://web-box", Arc::new(SshSessionPool::default()), None).unwrap());
+            st.hosts.insert("web-box".into(), web);
+            let theme = TerminalTheme::default();
+            let mut lead = BlockRuntime::new(80, 24, &theme);
+            lead.pwd = "/srv/lead".into();
+            st.blocks.insert(key("dev-box", "b-lead"), Arc::new(Mutex::new(lead)));
+            st.blocks.insert(key("dev-box", "b-child"), Arc::new(Mutex::new(BlockRuntime::new(80, 24, &theme))));
+            st.subagents.register(child_of("dev-box", "b-child", "/srv/worktrees/child"));
+        }
+        let pin = hub.tracker_pin("dev-box");
+        assert_eq!(pin, Some((22, 7)));
+        let made_for = HostPin::MustMatch(pin);
+        assert_eq!(hub.tracker_place(&key("dev-box", "b-lead"), made_for), Some(TrackerPlace::There("rex://dev-box/srv/lead".into())), "the lead's live folder");
+        assert_eq!(hub.tracker_place(&key("dev-box", "b-child"), made_for), Some(TrackerPlace::There("rex://dev-box/srv/worktrees/child".into())), "an exited child's worktree");
+        assert_eq!(hub.tracker_place(&key("dev-box", "b-none"), made_for), Some(TrackerPlace::There("rex://dev-box/~".into())), "home");
+        assert!(matches!(hub.tracker_place(&key("local", "b-none"), HostPin::MustMatch(hub.tracker_pin("local"))), Some(TrackerPlace::Here(_))));
+        // A menu that had no pin opens nothing: never as if unpinned.
+        assert_eq!(hub.tracker_place(&key("dev-box", "b-lead"), HostPin::MustMatch(None)), None);
+        // A host reached otherwise than over SSH: Tracker can't, so no pin and nothing.
+        assert_eq!(hub.tracker_pin("web-box"), None);
+        assert_eq!(hub.tracker_place(&key("web-box", "b-none"), HostPin::Any), None);
+        // Olo's helper turned off for the host: the same.
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.helper_hosts.insert("dev-box".into(), "off".into());
+        assert_eq!(hub.tracker_pin("dev-box"), None);
+        assert_eq!(hub.tracker_place(&key("dev-box", "b-lead"), made_for), None);
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.helper_hosts.remove("dev-box");
+        // The host connected again (another connection) or replaced since the menu: nothing.
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut("dev-box").unwrap().screens_conn_id = 8;
+        assert_eq!(hub.tracker_place(&key("dev-box", "b-lead"), made_for), None);
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut("dev-box").unwrap().screens_conn_id = 0;
+        assert_eq!(hub.tracker_pin("dev-box"), None, "disconnected: the menu's item is off");
+    }
+
+    /// A host is named in Tracker's URI, and in the files service's
+    /// answers (by which Tracker names the folder, and asks, from then
+    /// on), by its label where that names it alone; else by its key,
+    /// tagged so (`id:KEY`): two hosts of one label went to whichever the
+    /// files service found first (Astra R1 #3), and one labelled "Local"
+    /// to this computer's folders. The answers named it by its label
+    /// all the same (Astra R2 #1, Neon R2 #2). An untagged name is looked
+    /// up as it always was, its label first: a bookmark made before goes
+    /// where it went (Astra R2 #2: a key looked up first sent one of a
+    /// host whose label is another's key to that other).
+    #[test]
+    fn tracker_names_each_host_unambiguously() {
+        let mut hosts = HashMap::new();
+        for (key, label) in [("h-1", "Build"), ("h-2", "Build"), ("h-3", "Local"), ("h-4", "Alpha"), ("h-5", "h-4"), ("h-6", "build")] {
+            hosts.insert(key.to_owned(), host_over_ssh(key, label, 1, 1));
+        }
+        let named = |key: &str| tracker_authority(&hosts, &hosts[key]);
+        assert_eq!(named("h-1"), "id:h-1", "a label another host has too");
+        assert_eq!(named("h-2"), "id:h-2");
+        assert_eq!(named("h-3"), "id:h-3", "this computer's reserved name");
+        assert_eq!(named("h-4"), "Alpha", "a label of its own");
+        assert_eq!(named("h-5"), "h-4", "its label, though another's key: a label is looked up first");
+        assert_eq!(named("h-6"), "build", "another's label in another case: its own exactly");
+        let names: Vec<(String, String)> = ["h-1", "h-2", "h-3", "h-4", "h-5", "h-6"].iter().map(|k| ((*k).to_owned(), named(k))).collect();
+        assert!(!olo_kit_base::tracker::RexPath::parse(&format!("rex://{}/srv", named("h-3"))).unwrap().is_local(), "not this computer's");
+        let hub = RexHub::test_offline(|_| {});
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts = hosts;
+        // (Each opened, answered, and asked next by the answer's name: the
+        // same host, each time.)
+        for (key, name) in &names {
+            assert_eq!(crate::files_sock::answers_name_for_test(&hub.state, name).as_deref(), Ok(name.as_str()), "the answers name {key} as it was named");
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            assert_eq!(crate::files_sock::find_host_key_for_test(&st, name).as_deref(), Some(key.as_str()), "{name} is {key}");
+        }
+        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(crate::files_sock::find_host_key_for_test(&st, "h-4").as_deref(), Some("h-5"), "a bookmark of h-5 made before: still h-5");
+        assert_eq!(crate::files_sock::find_host_key_for_test(&st, "id:h-4").as_deref(), Some("h-4"));
+        assert_eq!(crate::files_sock::find_host_key_for_test(&st, "Alpha").as_deref(), Some("h-4"));
+        assert_eq!(crate::files_sock::find_host_key_for_test(&st, "h-1").as_deref(), Some("h-1"), "a key no label has, untagged: as before");
+        assert_eq!(crate::files_sock::find_host_key_for_test(&st, "id:nobody"), None, "a key no host has");
+    }
+
+    /// Open in Tracker is offered where the host's files can be served:
+    /// this build's helper there, or one this build carries that keeps
+    /// files, to put there (Astra R2 #18: offered where the files service
+    /// then refused every request).
+    #[test]
+    fn tracker_is_offered_where_files_can_be_served() {
+        use crate::files_sock::files_served_for_test as served;
+        assert!(served(&HostHelper::Used, Some(true), false), "this build's helper there");
+        assert!(served(&HostHelper::None, None, true), "one to put there");
+        assert!(!served(&HostHelper::None, None, false), "neither");
+        assert!(!served(&HostHelper::Ready, Some(false), false), "another build's, and none to put there");
+        let hub = RexHub::test_offline(|_| {});
+        let mut host = host_over_ssh("h-1", "Build", 1, 1);
+        host.helper_current = Some(false);
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.insert("h-1".into(), host);
+        let provides = crate::link::carried() && crate::link::syncs();
+        assert_eq!(hub.tracker_pin("h-1").is_some(), provides, "this build's own word decides, where the helper there isn't current");
+    }
+
+    /// A tab of two panes side by side whose sizes another client holds,
+    /// on a test host whose requests land on `in_tx`'s other end.
+    fn a_tab_held_by_another(zoomed: Option<&str>) -> (Arc<RexHub>, tokio::sync::mpsc::UnboundedReceiver<HostInputOp>) {
+        a_tab_with_a_float_held_by_another(zoomed, None)
+    }
+
+    /// [`a_tab_held_by_another`], with a third pane floating over the
+    /// two (`float`: its layer's state, "normal" or "minimized"), its
+    /// size another client's too.
+    fn a_tab_with_a_float_held_by_another(zoomed: Option<&str>, float: Option<&str>) -> (Arc<RexHub>, tokio::sync::mpsc::UnboundedReceiver<HostInputOp>) {
+        let hub = RexHub::test_offline(|_| {});
+        let pane = |id: &str| BlockInfo {
+            block_id: id.into(),
+            label: "shell".into(),
+            creator_name: "com.superlogical.terminal".into(),
+            flavor: "com.superlogical.terminal.shell".into(),
+            host_id: String::new(),
+            owner: Some("other".into()),
+        };
+        let leaf = |id: &str| olo_rex_client::LayoutNode { rect: [0.0; 4], block_id: Some(id.into()), split: None };
+        let layout = olo_rex_client::LayoutNode {
+            rect: [0.0, 0.0, 1.0, 1.0],
+            block_id: None,
+            split: Some(olo_rex_client::SplitNode {
+                split_id: "sp1".into(),
+                direction: olo_rex_client::SplitDirection::Horizontal,
+                ratio: 0.5,
+                before: Box::new(leaf("b-1")),
+                after: Box::new(leaf("b-2")),
+            }),
+        };
+        let mut layers =
+            vec![olo_rex_client::LayerView { layer_id: "l1".into(), kind: "tiled".into(), bounds: [0.0, 0.0, 1.0, 1.0], state: None, layout: Some(layout), blocks: vec![pane("b-1"), pane("b-2")] }];
+        if let Some(state) = float {
+            layers.push(olo_rex_client::LayerView { layer_id: "l2".into(), kind: "floating".into(), bounds: [0.1, 0.1, 0.5, 0.5], state: Some(state.into()), layout: None, blocks: vec![pane("b-3")] });
+        }
+        let window = olo_rex_client::WindowView { window_id: "w1".into(), label: "w1".into(), focused_block_id: Some("b-1".into()), zoomed_block_id: zoomed.map(str::to_owned), layers };
+        let sess = SessionView { session_id: "s1".into(), label: "work".into(), revision: 1, active_window_id: Some("w1".into()), windows: vec![window] };
+        let (in_tx, in_rx) = tokio::sync::mpsc::unbounded_channel::<HostInputOp>();
+        {
+            let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut host = HostRuntime::test_connected("dev-box", HashMap::from([("s1".into(), sess)]));
+            host.input_tx = Some(in_tx);
+            st.hosts.insert("dev-box".into(), host);
+            for id in ["b-1", "b-2", "b-3"] {
+                let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+                b.other_size_owner = true;
+                st.blocks.insert(BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: id.into() }, Arc::new(Mutex::new(b)));
+            }
+        }
+        (hub, in_rx)
+    }
+
+    /// The panes claimed (`HostInputOp::Own`) as asked, none if nothing was.
+    fn claimed(asked: &mut tokio::sync::mpsc::UnboundedReceiver<HostInputOp>) -> Vec<String> {
+        match asked.try_recv() {
+            Ok(HostInputOp::Own { block_ids, .. }) => block_ids,
+            _ => Vec::new(),
+        }
+    }
+
+    /// Choosing a tab, as bringing its window forward, takes the panes it
+    /// shows, never one it hides (Astra R2 #13, Neon R2 #7): a zoomed
+    /// tab's other splits, chosen, were taken from the desktop that shows
+    /// them; a floating pane put away (only its button shows) was taken
+    /// as its window came forward. One brought back by the choice is
+    /// taken with them.
+    #[test]
+    fn a_tab_chosen_claims_only_the_panes_it_shows() {
+        let (hub, mut asked) = a_tab_held_by_another(Some("b-2"));
+        hub.select("dev-box", "s1", "w1", None);
+        assert_eq!(claimed(&mut asked), ["b-2"], "a zoomed tab chosen: its zoomed pane alone");
+        let (hub, mut asked) = a_tab_with_a_float_held_by_another(None, Some("minimized"));
+        assert!(hub.take_tab_in_front("dev-box", "s1"));
+        assert_eq!(claimed(&mut asked), ["b-1", "b-2"], "brought forward: not the float put away");
+        let (hub, mut asked) = a_tab_with_a_float_held_by_another(None, Some("normal"));
+        hub.select("dev-box", "s1", "w1", None);
+        assert_eq!(claimed(&mut asked), ["b-1", "b-2", "b-3"], "a float shown is shown");
+        let (hub, mut asked) = a_tab_with_a_float_held_by_another(None, Some("minimized"));
+        hub.select("dev-box", "s1", "", Some("b-3"));
+        assert_eq!(claimed(&mut asked), ["b-1", "b-2", "b-3"], "a float brought back by the choice is taken with them");
+    }
+
+    /// A tab taken as its window is dragged is asked for once, however
+    /// many steps the drag has before the host answers (Astra R1 #7,
+    /// Neon R1 #2: each step queued its own claim, a round trip each,
+    /// ahead of what was typed next); asked again once answered and
+    /// still another's.
+    #[test]
+    fn a_tab_is_claimed_once_however_often_asked() {
+        let (hub, mut asked) = a_tab_held_by_another(None);
+        for _ in 0..20 {
+            hub.take_tab_in_front("dev-box", "s1");
+        }
+        match asked.try_recv() {
+            Ok(HostInputOp::Own { block_ids, .. }) => assert_eq!(block_ids, ["b-1", "b-2"]),
+            _ => panic!("one claim of both panes"),
+        }
+        assert!(asked.try_recv().is_err(), "and no other");
+        // (Answered, the pane still another's: asked anew.)
+        for block in hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.values() {
+            block.lock().unwrap_or_else(|e| e.into_inner()).owning = false;
+        }
+        assert!(hub.take_tab_in_front("dev-box", "s1"));
+        assert!(matches!(asked.try_recv(), Ok(HostInputOp::Own { .. })));
+    }
+
+    /// A tab with a pane zoomed shows that pane alone: only it is taken
+    /// as the window comes forward (Astra R1 #6).
+    #[test]
+    fn a_zoomed_tab_claims_the_pane_it_shows() {
+        let (hub, mut asked) = a_tab_held_by_another(Some("b-2"));
+        assert!(hub.take_tab_in_front("dev-box", "s1"));
+        match asked.try_recv() {
+            Ok(HostInputOp::Own { block_ids, .. }) => assert_eq!(block_ids, ["b-2"]),
+            _ => panic!("a claim of the zoomed pane"),
+        }
+    }
+
+    /// Whose a pane's size is, from an older word than the last had, is
+    /// not taken (Astra R1 #15): a view fetched before an owner change
+    /// can't undo it; a newer view mends one missed.
+    #[test]
+    fn an_older_word_of_whose_a_pane_is_is_not_taken() {
+        let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+        b.owner_said(10, Some("other"), Some("me"));
+        assert!(b.other_size_owner);
+        b.owner_said(8, None, Some("me"));
+        assert!(b.other_size_owner, "an older view's word isn't taken");
+        b.owner_said(12, Some("me"), Some("me"));
+        assert!(!b.other_size_owner, "a newer one's is");
+        b.owner_said(0, Some("other"), Some("me"));
+        assert!(b.other_size_owner, "a word of no number (a pane's first) is taken");
+    }
+
+    /// A size asked while the pane became another client's says nothing
+    /// of the host's size: the answer (`{}`, the size kept as a wish)
+    /// isn't taken as given, and the asker stops (Neon R1 #3).
+    #[test]
+    fn a_size_answered_once_the_pane_is_anothers_is_not_taken_as_had() {
+        let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+        let wide = (160, 40, 8, 16);
+        b.size.want(wide);
+        let asked = b.size.next().unwrap();
+        b.size.asker = true;
+        b.owner_said(5, Some("other"), Some("me"));
+        assert_eq!(b.size_answered(asked, SizeAnswer::Given), SizeStep::Done);
+        assert_eq!(b.size.host, None, "not had: kept as a wish there");
+        assert!(!b.size.asker && b.size.asking.is_none());
+        // (Its own again, the size is asked anew.)
+        b.owner_said(6, None, Some("me"));
+        assert!(b.size.needs_ask(wide));
+    }
+
+    /// An asker that failed its last try stops at once (Neon R1 #5: it
+    /// slept up to 37.5 s first, to find nothing to do).
+    #[test]
+    fn an_asker_out_of_tries_stops_at_once() {
+        let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+        b.size.want((120, 30, 8, 16));
+        b.size.asker = true;
+        let mut asked = b.size.next().unwrap();
+        for n in 1..SIZE_TRIES {
+            assert_eq!(b.size_answered(asked, SizeAnswer::Unsure), SizeStep::Wait(n));
+            asked = b.size.next().unwrap();
+        }
+        assert_eq!(b.size_answered(asked, SizeAnswer::Unsure), SizeStep::Done);
+        assert!(!b.size.asker);
+        b.size.want((121, 30, 8, 16));
+        b.size.asker = true;
+        let asked = b.size.next().unwrap();
+        assert_eq!(b.size_answered(asked, SizeAnswer::Refused), SizeStep::Done, "a refusal: no wait either");
+    }
+
+    /// Only the last status request's answer applies (Astra R1 #11): two
+    /// streams had in a row asked twice; the first answer, come after the
+    /// second, replayed what the second kept, and the second, its buffer
+    /// spent, undid a newer change. And nothing is kept when nothing is
+    /// asked.
+    #[test]
+    fn only_the_last_status_request_applies_its_answer() {
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        let change = |v| StatusUpdate::parse("program_status_changed", &v).unwrap();
+        b.status_event(39, change(json!({"id":"","record":{"state":"working"},"reason":"report"})));
+        assert!(b.pending_status.is_none(), "nothing asked: nothing kept");
+        let first = b.begin_status();
+        let second = b.begin_status();
+        b.status_event(42, change(json!({"id":"","record":{"state":"blocked"},"reason":"report"})));
+        b.status_answered(second, Some(olo_rex_client::RpcResult { seq: 41, payload: vec![ProgramStatusRecord { state: "working".into(), ..Default::default() }] }));
+        assert_eq!(b.recompute_activity(), AgentActivity::Blocked, "42 replayed over 41");
+        b.status_answered(first, Some(olo_rex_client::RpcResult { seq: 40, payload: vec![ProgramStatusRecord { state: "working".into(), ..Default::default() }] }));
+        assert_eq!(b.recompute_activity(), AgentActivity::Blocked, "the earlier request's answer, come late, changes nothing");
+        assert!(b.pending_status.is_none());
+    }
+
+    /// What a stream left is offered back to its own host instance and
+    /// client only, and not after its time (Astra R1 #2): never sent to
+    /// another server under the host's name. A takeover's resumed stream
+    /// renews it; only its own token's end forgets it.
+    #[test]
+    fn what_a_stream_left_is_its_owners_alone() {
+        let hub = RexHub::test_offline(|_| {});
+        let inner = &hub.inner;
+        let bk = BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: "b-1".into() };
+        let owner = StreamOwner { host_instance: 7, client: Some("client:a".into()) };
+        let left = |token: u8, owner: &StreamOwner| StreamLeft { token: [token; 16], bytes: 100, at: Instant::now(), owner: owner.clone(), task: 1 };
+        inner.streams_left.lock().unwrap().insert(bk.clone(), left(1, &owner));
+        assert!(inner.stream_left_for(&bk, &StreamOwner { host_instance: 8, ..owner.clone() }).is_none(), "another host instance: none");
+        assert!(inner.stream_left_for(&bk, &owner).is_some(), "and its own still has it (Astra R2 #4: it was forgotten)");
+        assert!(inner.stream_left_for(&bk, &StreamOwner { client: Some("client:b".into()), ..owner.clone() }).is_none(), "another client: none");
+        inner.streams_left.lock().unwrap().insert(bk.clone(), StreamLeft { at: Instant::now() - STREAM_LEFT_KEPT, ..left(1, &owner) });
+        assert!(inner.stream_left_for(&bk, &owner).is_none(), "past its time, looked up");
+        inner.streams_left.lock().unwrap().insert(bk.clone(), left(1, &owner));
+        inner.renew_stream_left(&bk, &[1; 16], [2; 16], 120);
+        let renewed = inner.stream_left_for(&bk, &owner).unwrap();
+        assert_eq!((renewed.token, renewed.bytes), ([2; 16], 120), "the resumed stream's own token");
+        inner.forget_stream_left(&bk, &[1; 16]);
+        assert!(inner.stream_left_for(&bk, &owner).is_some(), "an old token's end doesn't forget the new");
+        inner.forget_stream_left(&bk, &[2; 16]);
+        assert!(inner.stream_left_for(&bk, &owner).is_none());
+        inner.streams_left.lock().unwrap().insert(bk.clone(), left(3, &owner));
+        inner.forget_streams_of("dev-box");
+        assert!(inner.streams_left.lock().unwrap().is_empty(), "a host gone or replaced: all of its");
+    }
+
+    /// A task of a pane's that ends after a later one began (the pane had
+    /// anew after a reconnect, the old task's end signalled, not waited
+    /// for) neither leaves its token over what the later one left nor
+    /// forgets it (Astra R2 #4): the later stream, lost, then had nothing
+    /// to take it over with, and its pane stayed blank until the server
+    /// ended it.
+    #[test]
+    fn a_task_that_ends_late_leaves_the_later_ones_alone() {
+        let hub = RexHub::test_offline(|_| {});
+        let inner = &hub.inner;
+        let bk = BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: "b-1".into() };
+        let owner = StreamOwner { host_instance: 7, client: Some("client:a".into()) };
+        let left = |token: u8, task: u64| StreamLeft { token: [token; 16], bytes: 100, at: Instant::now(), owner: owner.clone(), task };
+        // (The later task, 2, lost its stream; then the old one, 1, ends.)
+        inner.keep_stream_left(&bk, left(2, 2));
+        inner.keep_stream_left(&bk, left(1, 1));
+        assert_eq!(inner.stream_left_for(&bk, &owner).map(|l| l.token), Some([2; 16]), "the later one's stays");
+        // (The old task had a stream anew, as it ended: the later one's isn't its to forget.)
+        inner.forget_stream_left_before(&bk, 1);
+        assert!(inner.stream_left_for(&bk, &owner).is_some());
+        // (The later task's own new stream: its own is forgotten.)
+        inner.forget_stream_left_before(&bk, 2);
+        assert!(inner.stream_left_for(&bk, &owner).is_none());
+        // (A task's own later loss: kept over its earlier one.)
+        inner.keep_stream_left(&bk, left(3, 3));
+        inner.keep_stream_left(&bk, left(4, 3));
+        assert_eq!(inner.stream_left_for(&bk, &owner).map(|l| l.token), Some([4; 16]));
+    }
+
+    /// The sessions the windows show outlast their host's connection
+    /// (Astra R1 #14, Neon R1 #7: they were read from the front panes,
+    /// which a disconnect clears, and a connection made again attached
+    /// in the server's order); and only terminals count for the streams
+    /// opened beforehand.
+    #[test]
+    fn the_sessions_shown_outlast_a_disconnect() {
+        let hub = RexHub::test_offline(|_| {});
+        let win = crate::ui::WinId(1);
+        hub.window_shows(win, "dev-box", Some("s2"));
+        hub.set_window_front_pane(win, None);
+        assert_eq!(hub.inner.sessions_shown("dev-box"), HashSet::from(["s2".to_owned()]));
+        assert!(hub.inner.sessions_shown("other").is_empty());
+        hub.window_shows(win, "dev-box", None);
+        assert!(hub.inner.sessions_shown("dev-box").is_empty(), "a window closed shows nothing");
+        let mut blocks = HashMap::new();
+        for (id, creator) in [("t-1", "com.superlogical.terminal"), ("t-2", "com.superlogical.terminal"), ("w-1", "com.superlogical.web")] {
+            let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+            // (As its session's view had it: `ingest_session`.)
+            b.creator_name = creator.into();
+            b.is_terminal = attaches_a_stream(&BlockInfo { block_id: id.into(), label: String::new(), creator_name: creator.into(), flavor: String::new(), host_id: String::new(), owner: None });
+            blocks.insert(BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: id.into() }, Arc::new(Mutex::new(b)));
+        }
+        assert_eq!(terminals_of(&blocks, "dev-box"), 2);
+    }
+
+    /// A size its host didn't take isn't taken as given: it is asked
+    /// again (it was taken as given the moment it was asked, and a view
+    /// already that size asked nothing more).
+    #[test]
+    fn a_size_not_taken_is_asked_again() {
+        let mut s = SizeAsked::default();
+        let big = (269, 70, 6, 15);
+        s.want(big);
+        assert_eq!(s.next(), Some(big));
+        assert_eq!(s.next(), None, "one on its way at a time");
+        assert!(s.answered(big, SizeAnswer::Unsure), "a failure of the size wanted now");
+        assert_eq!(s.next(), Some(big), "not known to be given: asked again");
+        assert!(!s.answered(big, SizeAnswer::Given));
+        assert_eq!(s.next(), None, "given: nothing more to ask");
+        // (Never more than so many times in a row, until the view's size changes.)
+        let mut s = SizeAsked::default();
+        s.want(big);
+        for _ in 0..SIZE_TRIES {
+            let asked = s.next().expect("asked while tries are left");
+            s.answered(asked, SizeAnswer::Unsure);
+        }
+        assert_eq!(s.next(), None, "left after {SIZE_TRIES} failures in a row");
+        s.want((270, 70, 6, 15));
+        assert_eq!(s.next(), Some((270, 70, 6, 15)), "a new size is asked anew");
+    }
+
+    /// Sizes wanted while one is on its way: the last is asked when its
+    /// answer comes, and none between (as a window is dragged larger).
+    #[test]
+    fn the_last_size_wanted_is_asked_last() {
+        let mut s = SizeAsked::default();
+        s.want((100, 30, 8, 16));
+        let first = s.next().unwrap();
+        for cols in 101..120 {
+            s.want((cols, 30, 8, 16));
+            assert_eq!(s.next(), None);
+        }
+        s.answered(first, SizeAnswer::Given);
+        assert_eq!(s.next(), Some((119, 30, 8, 16)));
+        s.answered((119, 30, 8, 16), SizeAnswer::Given);
+        assert_eq!(s.next(), None);
+    }
+
+    /// The host's own word of its size (its stream's resize, another
+    /// client's view having it) is what it has: the view's size is asked
+    /// again where they differ.
+    #[test]
+    fn the_hosts_word_of_its_size_is_what_it_has() {
+        let mut b = BlockRuntime::new(60, 12, &TerminalTheme::default());
+        b.size.want((163, 43, 6, 15));
+        let asked = b.size.next().unwrap();
+        b.size.answered(asked, SizeAnswer::Given);
+        assert!(b.inline(InlineApc::Resize { cols: 80, rows: 24, cell_width_px: 8, cell_height_px: 16, owner: None }, Some("here")).is_none());
+        assert_eq!(b.size.next(), Some((163, 43, 6, 15)), "the host went back to 80×24: this view's size is asked again");
+    }
+
+    /// An answer that didn't come leaves the host's size unknown (Astra
+    /// R1 #4): 100 had, 150 asked and given there, the view dragged back
+    /// to 100 meanwhile, the answer to 150 lost. It was taken as the host
+    /// still at 100, and nothing more was asked: the terminal stayed 150.
+    #[test]
+    fn a_lost_answer_leaves_the_hosts_size_unknown() {
+        let mut s = SizeAsked::default();
+        let (narrow, wide) = ((100, 30, 8, 16), (150, 30, 8, 16));
+        s.want(narrow);
+        let asked = s.next().unwrap();
+        s.answered(asked, SizeAnswer::Given);
+        s.want(wide);
+        let asked = s.next().unwrap();
+        s.want(narrow);
+        assert!(!s.answered(asked, SizeAnswer::Unsure), "150 is wanted no longer: no failure of 100's");
+        assert_eq!(s.next(), Some(narrow), "the host's size unknown: 100 asked again");
+    }
+
+    /// A refusal of a size wanted no longer isn't the new size's (Astra
+    /// R1 #4: a 400 for a superseded size left the new one never asked).
+    #[test]
+    fn a_refusal_counts_against_the_size_refused() {
+        let mut s = SizeAsked::default();
+        s.want((100, 30, 8, 16));
+        let asked = s.next().unwrap();
+        s.want((120, 30, 8, 16));
+        assert!(!s.answered(asked, SizeAnswer::Refused));
+        assert_eq!(s.next(), Some((120, 30, 8, 16)));
+        assert!(s.answered((120, 30, 8, 16), SizeAnswer::Refused), "refused itself");
+        assert_eq!(s.next(), None, "a size refused as such isn't asked again");
+    }
+
+    /// The host's word of its size while an ask was on its way is what
+    /// it has, not the answer that comes after it (Neon R1 #3): 160 asked,
+    /// the host then at 80 (another client's view, its stream said so),
+    /// the answer to 160 come last. It was taken as 160, and the view,
+    /// 160 too, asked nothing.
+    #[test]
+    fn the_hosts_word_during_an_ask_outlasts_its_answer() {
+        let mut b = BlockRuntime::new(60, 12, &TerminalTheme::default());
+        let wide = (160, 40, 8, 16);
+        b.size.want(wide);
+        let asked = b.size.next().unwrap();
+        b.inline(InlineApc::Resize { cols: 80, rows: 24, cell_width_px: 8, cell_height_px: 16, owner: None }, Some("here"));
+        b.size.answered(asked, SizeAnswer::Given);
+        assert_eq!(b.size.next(), Some(wide), "80×24 is what the host has: 160×40 asked again");
+    }
+
+    /// A new stream's screen is the host's size now: what was known of
+    /// it is forgotten (Neon R1 #4: a pane had again after its PTY was
+    /// resized elsewhere kept the old size as had, and asked nothing).
+    #[test]
+    fn a_new_streams_screen_forgets_the_hosts_size() {
+        let mut b = BlockRuntime::new(60, 12, &TerminalTheme::default());
+        let size = (163, 43, 6, 15);
+        b.size.want(size);
+        let asked = b.size.next().unwrap();
+        b.size.answered(asked, SizeAnswer::Given);
+        assert!(!b.size.needs_ask(size));
+        let restored = GhosttyTerminal::new(90, 20).unwrap();
+        b.restore_terminal(restored).unwrap();
+        assert!(b.size.needs_ask(size), "the view hands its size on again");
+        assert_eq!(b.size.next(), Some(size));
+    }
+
+    /// A new stream's screen tries its size anew, and an answer on its
+    /// way to an ask of before it says nothing of the host's size now
+    /// (Astra R2 #14): with its tries spent by the last stream's host,
+    /// the pane kept its old size until its window's size next changed;
+    /// and a late "given" set back the size the new screen had forgotten.
+    #[test]
+    fn a_new_screen_tries_its_size_anew() {
+        let mut b = BlockRuntime::new(60, 12, &TerminalTheme::default());
+        let size = (150, 40, 6, 15);
+        b.size.want(size);
+        for _ in 0..SIZE_TRIES {
+            let asked = b.size.next().unwrap();
+            b.size.answered(asked, SizeAnswer::Unsure);
+        }
+        assert!(!b.size.needs_ask(size), "its tries spent");
+        b.restore_terminal(GhosttyTerminal::new(80, 24).unwrap()).unwrap();
+        assert!(b.size.needs_ask(size), "tried anew on the new screen");
+        // (An ask on its way as the new screen comes: its answer isn't the host's size.)
+        let asked = b.size.next().unwrap();
+        b.restore_terminal(GhosttyTerminal::new(80, 24).unwrap()).unwrap();
+        b.size.answered(asked, SizeAnswer::Given);
+        assert!(b.size.needs_ask(size), "asked again after it: the host's size isn't known");
+    }
+
+    /// A size wanted while its ask is on its way doesn't wake the asker
+    /// (Neon R2 #6): the wake was kept, and the asker's next wait after
+    /// a failure was skipped, asking again at once. One waiting is woken.
+    #[test]
+    fn a_size_wanted_while_one_is_asked_keeps_no_wake() {
+        let (hub, _asked) = a_tab_held_by_another(None);
+        let key = BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: "b-1".into() };
+        let br = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks[&key].clone();
+        let wake = {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            g.other_size_owner = false;
+            g.size.want((100, 30, 8, 16));
+            g.size.asker = true;
+            g.size.asking = g.size.next();
+            g.size_wake.clone()
+        };
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        let woken = |wake: &Arc<tokio::sync::Notify>| rt.block_on(async { tokio::time::timeout(Duration::from_millis(20), wake.notified()).await.is_ok() });
+        for cols in 101..=120 {
+            hub.resize_block(&key, cols, 30, 8, 16);
+        }
+        assert!(!woken(&wake), "no wake kept while an ask is on its way");
+        // (Answered, failed, waiting to ask again: a new size wakes it.)
+        br.lock().unwrap_or_else(|e| e.into_inner()).size.asking = None;
+        hub.resize_block(&key, 121, 30, 8, 16);
+        assert!(woken(&wake), "one waiting is woken");
+    }
+
+    /// A pane's stream's word of whose its size is, unnumbered, doesn't
+    /// undo the host's numbered word (Astra R2 #11): a resize sent before
+    /// another desktop took the pane, read after the owner change, gave
+    /// it back to this client, which then sent a size the host kept as a
+    /// wish, and skipped a claim it needed.
+    #[test]
+    fn a_streams_word_of_the_owner_is_not_taken_over_the_hosts() {
+        let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+        b.inline(InlineApc::Resize { cols: 90, rows: 20, cell_width_px: 8, cell_height_px: 16, owner: Some("other".into()) }, Some("me"));
+        assert!(b.other_size_owner, "before any numbered word: the stream's");
+        b.owner_said(12, Some("other"), Some("me"));
+        b.inline(InlineApc::Resize { cols: 100, rows: 30, cell_width_px: 8, cell_height_px: 16, owner: Some("me".into()) }, Some("me"));
+        assert!(b.other_size_owner, "the host's numbered word stands");
+        assert_eq!(b.terminal.size(), (100, 30), "its size taken all the same");
+        // (A claim answered at 10, after the owner change at 12: not taken.)
+        b.owner_said(10, Some("me"), Some("me"));
+        assert!(b.other_size_owner);
+        b.owner_said(14, Some("me"), Some("me"));
+        assert!(!b.other_size_owner, "a later claim's answer is");
+    }
+
+    /// The streams opened beforehand are counted by the terminals there,
+    /// as each was had: by the word that has a stream had for it (Astra
+    /// R2 #17), not by a creator's name.
+    #[test]
+    fn terminals_are_counted_as_their_streams_are_had() {
+        let block = |creator: &str, flavor: &str| BlockInfo { block_id: "b".into(), label: String::new(), creator_name: creator.into(), flavor: flavor.into(), host_id: String::new(), owner: None };
+        assert!(attaches_a_stream(&block("", "com.superlogical.terminal.shell")), "a terminal's flavor, no creator");
+        assert!(attaches_a_stream(&block("com.superlogical.terminal", "")));
+        assert!(!attaches_a_stream(&block("com.superlogical.terminal-notes", "notes")), "a creator whose name only begins so");
+        let mut blocks = HashMap::new();
+        for (id, terminal) in [("a", true), ("b", true), ("c", false)] {
+            let mut b = BlockRuntime::new(80, 24, &TerminalTheme::default());
+            (b.creator_name, b.is_terminal) = (String::new(), terminal);
+            blocks.insert(BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: id.into() }, Arc::new(Mutex::new(b)));
+        }
+        assert_eq!(terminals_of(&blocks, "dev-box"), 2);
+    }
+
+    /// The view hands its size on where the host isn't known to have
+    /// it, though the grid here is that size already (Astra R1 #5: the
+    /// canvas compared only with its own grid and left a queued size).
+    #[test]
+    fn the_view_hands_on_a_size_its_grid_has() {
+        let mut s = SizeAsked::default();
+        let size = (100, 30, 8, 16);
+        assert!(s.needs_ask(size), "never wanted");
+        s.want(size);
+        let asked = s.next().unwrap();
+        s.asker = true;
+        assert!(!s.needs_ask(size), "being asked");
+        s.answered(asked, SizeAnswer::Unsure);
+        s.asker = false;
+        assert!(s.needs_ask(size), "the host may not have it, and nobody asks");
+        let asked = s.next().unwrap();
+        s.answered(asked, SizeAnswer::Given);
+        assert!(!s.needs_ask(size), "had");
+    }
+
     #[test]
     fn an_inline_resize_and_theme_apply_to_the_stream_in_order() {
         let mut b = BlockRuntime::new(60, 12, &TerminalTheme::default());
@@ -12122,9 +14038,11 @@ mod tests {
     fn status_reports_update_one_record_and_removals_reveal_the_next() {
         let mut b = BlockRuntime::new(40, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
         let change = |v| StatusUpdate::parse("program_status_changed", &v).unwrap();
+        // (Its status asked for: events come while the answer is on its way.)
+        let asked = b.begin_status();
         b.status_event(3, change(json!({"id":"","record":{"state":"working"},"reason":"report"})));
         b.status_event(4, change(json!({"id":"job","record":{"state":"blocked"},"reason":"report"})));
-        b.status_snapshot(Some(olo_rex_client::RpcResult { seq: 2, payload: vec![] }));
+        b.status_answered(asked, Some(olo_rex_client::RpcResult { seq: 2, payload: vec![] }));
         assert_eq!(b.program_statuses.len(), 2);
         assert_eq!(b.recompute_activity(), AgentActivity::Blocked);
         b.status_event(5, change(json!({"id":"","record":{"state":"done"},"reason":"report"})));
@@ -13105,6 +15023,9 @@ mod tests {
             askpass: None,
             notify,
             spares: Mutex::new(HashMap::new()),
+            stream_gen: std::sync::atomic::AtomicU64::new(0),
+            streams_left: Mutex::new(HashMap::new()),
+            shown_sessions: Mutex::new(HashMap::new()),
             agent_socks: Mutex::new(HashMap::new()),
             bridge_calls: Default::default(),
             run_jobs: crate::bridge_run::RunJobs::new(),
