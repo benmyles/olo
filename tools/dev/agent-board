@@ -7,8 +7,8 @@ redraw on update or terminal resize, clean exit on SIGTERM/SIGHUP). Agents
 initialize it once with a plain-English 1-2 paragraph goal + initial standup
 and todo list, then call `update` supplying ONLY the fields that changed.
 
-  agent-board init [--open] [--file PATH] --title TITLE --goal TEXT [...]
-  agent-board update [--open] [--file PATH] [--status S] [--phase P]
+  agent-board init [--open | --no-open] [--if-missing] [--file PATH] --title TITLE --goal TEXT [...]
+  agent-board update [--open | --no-open] [--file PATH] [--status S] [--phase P]
                      [--progress 0..100] [--goal TEXT]
                      [--did TEXT ...] [--now TEXT] [--next TEXT ...]
                      [--add-todo TEXT ...] [--start-todo MATCH ...]
@@ -19,18 +19,25 @@ and todo list, then call `update` supplying ONLY the fields that changed.
   agent-board show PATH
   agent-board preview [--file PATH] [--width 64] [--height 0]
   agent-board path
+
+When invoked inside a Rex pane (`$REX_BLOCK` set), `init` and `update`
+automatically ensure the right-hand Standup split pane is open for the caller's
+own board (pass `--no-open` to opt out, or `--open` to require non-zero failure
+on split error).
 """
 import argparse
 import contextlib
 import ctypes
 import errno
 import fcntl
+import hashlib
 import json
 import math
 import os
 import re
 import secrets
 import select
+import shlex
 import shutil
 import signal
 import stat
@@ -87,6 +94,16 @@ WATCH_MASK = IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELET
 MAX_REX_OUTPUT_BYTES = 256 * 1024
 
 STATUS_META = {
+    "starting": ("◐ STARTING", BG_YELLOW, B_YELLOW, [
+        "  .──.  ",
+        "  │◐◐│  ",
+        "  '──'  ",
+    ]),
+    "idle": ("○ IDLE", BG_BLUE, B_BLUE, [
+        "  .──.  ",
+        "  │○○│  ",
+        "  '──'  ",
+    ]),
     "working": ("● WORKING", BG_CYAN, B_CYAN, [
         "   /\\   ",
         "  /◉◉\\  ",
@@ -175,11 +192,251 @@ def _raw_caller_marker():
     return os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER")
 
 
+def _is_minder_caller():
+    return bool(os.environ.get("OLO_MINDER")) and not bool(os.environ.get("OLO_SUBAGENT"))
+
+
 def _caller_identity():
     who = _raw_caller_marker()
     if who and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", who):
         return who
     return None
+
+
+def _qa_root():
+    raw = os.environ.get("OLO_QA_DIR") or "/var/tmp/olo-qa"
+    p = os.path.abspath(raw)
+    if os.path.islink(p):
+        return None
+    rp = os.path.realpath(p)
+    var_tmp = os.path.realpath("/var/tmp")
+    if not rp.startswith(var_tmp + os.sep) or _inside(rp, REPO_ROOT):
+        return None
+    return rp
+
+
+def block_board_subdir(block_id):
+    """Collision-free directory name under `qa_root` keyed by immutable Rex
+    `block_id` so `ensure-boards` and ad-hoc Rex children resolve one shared
+    path without cross-lead display-name collisions."""
+    h = hashlib.sha256(str(block_id).encode("utf-8")).hexdigest()[:16]
+    return f"blk-{h}"
+
+
+def pane_label_for_path(path):
+    """Path-specific Standup pane label so unrecorded-pane matching never
+    adopts a pane displaying a different board file in the same Rex window."""
+    h = hashlib.sha256(os.path.realpath(path).encode("utf-8")).hexdigest()[:8]
+    return f"Standup [{h}]"
+
+
+def _minder_board_roots():
+    var_tmp = os.path.realpath("/var/tmp")
+    roots = []
+    for raw in (_agents_home(), os.environ.get("OLO_QA_DIR") or "/var/tmp/olo-qa"):
+        if not raw:
+            continue
+        p = os.path.abspath(raw)
+        if os.path.islink(p):
+            continue
+        rp = os.path.realpath(p)
+        if rp.startswith(var_tmp + os.sep) and not _inside(rp, REPO_ROOT) and rp not in roots:
+            roots.append(rp)
+    return roots
+
+
+class _PaneError(Exception):
+    pass
+
+
+class _LockTimeout(_PaneError):
+    pass
+
+
+def _minder_live_children(deadline=None):
+    """Fail-closed query of this minder's verified live Rex descendants via
+    `olo agent list --fast --json`. Returns `None` on failure or uncertain
+    parent identity, otherwise a list of non-exited child dicts."""
+    olo_bin = shutil.which("olo") or os.path.expanduser("~/.local/bin/olo")
+    if not olo_bin or not os.path.exists(olo_bin):
+        return None
+    rc, stdout, _stderr = _run_rex_bounded(
+        [olo_bin, "agent", "list", "--fast", "--json"],
+        timeout=20, max_bytes=2 * 1024 * 1024, deadline=deadline,
+    )
+    if rc != 0:
+        return None
+    try:
+        said = json.loads(stdout)
+    except ValueError:
+        return None
+    if not isinstance(said, dict) or said.get("parent_certain") is not True:
+        return None
+    subs = said.get("subagents")
+    if not isinstance(subs, list):
+        return None
+    return [s for s in subs if isinstance(s, dict) and s.get("state") != "exited"]
+
+
+def _trusted_receipt_matches_child(root, subdir, child_id, child_block=None):
+    """When targeting `<agents_home>/<subdir>/board.json`, REQUIRE a readable
+    parent-owned `.meta/<subdir>.json` whose `rex_id` (and `block_id` when
+    recorded) matches this live child so one lead's minder can never overwrite
+    another lead's managed folder or an unreceipted/reused-ID directory."""
+    meta_path = os.path.join(root, ".meta", f"{subdir}.json")
+    exists, obj, err = read_regular_json(meta_path, max_bytes=2 * 1024 * 1024)
+    if not exists or err is not None or not isinstance(obj, dict):
+        return False
+    rid = obj.get("rex_id")
+    if not rid or rid != child_id:
+        return False
+    rec_blk = obj.get("block_id")
+    if child_block and rec_blk and rec_blk != child_block:
+        return False
+    return True
+
+
+def _cwd_subdir_of(child_cwd, root):
+    if not child_cwd or not isinstance(child_cwd, str):
+        return None
+    cp = os.path.abspath(child_cwd)
+    if os.path.islink(cp):
+        return None
+    crp = os.path.realpath(cp)
+    if not crp.startswith(root + os.sep):
+        return None
+    rel = os.path.relpath(crp, root)
+    if os.sep in rel or not rel or rel.startswith("."):
+        return None
+    return rel
+
+
+def _child_matches_dir(child, subdir, root):
+    cid = child.get("id") or ""
+    blk = child.get("block_id") or ""
+    cname = child.get("name") or ""
+    if not cid:
+        return False
+    if root == os.path.realpath(_agents_home()):
+        return _trusted_receipt_matches_child(root, subdir, cid, child_block=blk)
+    # Ad-hoc QA root: always allow the immutable block-ID folder.
+    if blk and subdir == block_board_subdir(blk):
+        return True
+    # Legacy QA folder (named by child's cwd subdir, display name, or service ID):
+    # ONLY allow when its board meta is already explicitly bound to THIS child's
+    # exact Rex `block_id` (prevents reused-ID and cross-lead collisions).
+    cwd_sub = _cwd_subdir_of(child.get("cwd"), root)
+    if blk and subdir in {x for x in (cname, cid, cwd_sub) if x}:
+        meta_p = board_meta_path(os.path.join(root, subdir, "board.json"))
+        exists, bm, err = read_regular_json(meta_p, max_bytes=65536)
+        if exists and err is None and isinstance(bm, dict) and bm.get("anchor_block") == blk:
+            return True
+    return False
+
+
+def _minder_own_dir(who):
+    agents_root = os.path.realpath(_agents_home())
+    own_raw = os.path.join(agents_root, who)
+    if os.path.islink(own_raw):
+        sys.exit(f"agent-board: refusing symlink minder directory ({own_raw})")
+    return os.path.realpath(own_raw)
+
+
+def _authorize_mutation(path, explicit_block=None, opening=False, deadline=None):
+    """Validate both board path AND `--block` permission BEFORE creating
+    directories, taking locks, or mutating any bytes on disk."""
+    p = safe_path(path, for_write=True)
+    if os.environ.get("OLO_SUBAGENT"):
+        if explicit_block and explicit_block != os.environ.get("REX_BLOCK"):
+            sys.exit("agent-board: subagents may only split their own $REX_BLOCK")
+        return p
+    if not _is_minder_caller():
+        return p
+    who = _caller_identity()
+    rp = os.path.realpath(p)
+    own_dir = _minder_own_dir(who)
+    if os.path.basename(rp) != "board.json":
+        sys.exit(f"agent-board: minder `{who}` may only write `board.json` files (refused {p})")
+    # Minder's own board under `<agents_home>/<who>/board.json`:
+    if rp == os.path.join(own_dir, "board.json"):
+        if explicit_block and explicit_block != os.environ.get("REX_BLOCK"):
+            sys.exit("agent-board: minder's own board may only target its own $REX_BLOCK")
+        return p
+    # Otherwise, path must be strictly `<allowed_root>/<child_dir>/board.json`
+    # and bound to a verified live child in this minder's own Rex subtree:
+    matched_root = None
+    child_dir = None
+    for root in _minder_board_roots():
+        if rp.startswith(root + os.sep):
+            rel = os.path.relpath(rp, root)
+            parts = rel.split(os.sep)
+            if len(parts) == 2 and parts[0] and not parts[0].startswith(".") and parts[1] == "board.json":
+                matched_root = root
+                child_dir = parts[0]
+                break
+    if not matched_root or not child_dir:
+        sys.exit(f"agent-board: minder `{who}` may only write `<child>/board.json` inside agent/QA folders under /var/tmp (refused {p})")
+    if not explicit_block and opening:
+        sys.exit("agent-board: opening a child's board as a minder requires `--block <child-block-id>`")
+    children = _minder_live_children(deadline=deadline)
+    if children is None:
+        sys.exit("agent-board: could not verify minder subtree via `olo agent list`; refusing child board mutation")
+    if explicit_block:
+        if explicit_block == os.environ.get("REX_BLOCK"):
+            sys.exit("agent-board: refusing to bind a child's board to the minder's own $REX_BLOCK")
+        target_child = next((c for c in children if c.get("block_id") == explicit_block), None)
+        if target_child is None:
+            sys.exit("agent-board: minder may only split its own $REX_BLOCK or a verified live child tab's block")
+        if not _child_matches_dir(target_child, child_dir, matched_root):
+            sys.exit(f"agent-board: board path {p} does not match verified child `{target_child.get('id')}` / `{target_child.get('name')}`")
+        return p
+    # Data-only update without `--block`/`--open`: still require `child_dir`
+    # to uniquely match a verified live child in this minder's subtree.
+    matches = [c for c in children if _child_matches_dir(c, child_dir, matched_root)]
+    if len(matches) != 1:
+        sys.exit(f"agent-board: minder `{who}` may only write a board for a verified live child in its own subtree (refused {p})")
+    return p
+
+
+def _block_binding_path(qr, block_id):
+    return os.path.join(qr, ".by-block", f"{block_board_subdir(block_id)}.json")
+
+
+def _should_auto_open(resolved_path, explicit_file, explicit_block):
+    """Decide whether `init`/`update` without `--open` or `--no-open` should
+    auto-open the right split pane beside `$REX_BLOCK`. Never splits a parent
+    (lead or minder) tab when writing another agent's `--file` without `--block`,
+    while supporting `--desktop screens=...` QA children that retain `REX_SESSION`."""
+    if explicit_block:
+        return True
+    my_block = os.environ.get("REX_BLOCK")
+    if not my_block:
+        return False
+    if os.environ.get("OLO_SUBAGENT"):
+        return True
+    if _is_minder_caller():
+        who = _caller_identity()
+        own_dir = _minder_own_dir(who)
+        return os.path.realpath(resolved_path) == os.path.join(own_dir, "board.json")
+    # Unmarked caller inside Rex:
+    if not explicit_file:
+        return True
+    # Known foreign binding ALWAYS takes precedence over cwd or REX_SESSION heuristics
+    # (so a lead sitting in a child's scratch folder never splits its own tab).
+    exists, bm, err = read_regular_json(board_meta_path(resolved_path), max_bytes=65536)
+    if exists and err is None and isinstance(bm, dict) and bm.get("anchor_block"):
+        return bm.get("anchor_block") == my_block
+    if not os.environ.get("REX_SESSION"):
+        return True
+    rp = os.path.realpath(resolved_path)
+    if rp == os.path.realpath(default_path()):
+        return True
+    try:
+        if os.path.dirname(rp) == os.path.realpath(os.getcwd()):
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def default_path():
@@ -190,6 +447,22 @@ def default_path():
         sys.exit(f"agent-board: invalid caller identity marker ({raw_who!r})")
     if who:
         return os.path.join(home, who, "board.json")
+    blk = os.environ.get("REX_BLOCK")
+    if blk:
+        qr = _qa_root()
+        if not qr:
+            raw_qa = os.environ.get("OLO_QA_DIR") or "/var/tmp/olo-qa"
+            sys.exit(f"agent-board: invalid OLO_QA_DIR ({raw_qa})")
+        # If this Rex block was already bound to an explicit QA board path
+        # (e.g. a legacy named/cwd QA folder), resolve that exact same path.
+        b_ex, b_obj, b_err = read_regular_json(_block_binding_path(qr, blk), max_bytes=65536)
+        if b_ex and b_err is None and isinstance(b_obj, dict) and b_obj.get("anchor_block") == blk:
+            bpath = b_obj.get("path")
+            if isinstance(bpath, str) and not os.path.islink(bpath):
+                rp = os.path.realpath(bpath)
+                if rp.startswith(qr + os.sep) and os.path.basename(rp) == "board.json":
+                    return bpath
+        return os.path.join(qr, block_board_subdir(blk), "board.json")
     return os.path.join(home, "board.json")
 
 
@@ -233,10 +506,12 @@ def _open_verified_parent_dirfd(path, create=False):
 
 def safe_path(path, for_write=False):
     """Allowlist board paths strictly under `/var/tmp` (never `/tmp`, never
-    inside `REPO_ROOT`, never inside `<agents_home>/.meta`). When invoked by
-    a subagent or minder for mutation (`for_write=True`), fail closed on
-    invalid caller markers and confine writes strictly inside that agent's
-    own folder under `<agents_home>/<name>` (without symlink components)."""
+    inside `REPO_ROOT`, never inside `<agents_home>/.meta`, never through
+    symlinks). When invoked for mutation (`for_write=True`), leaf subagents
+    (`OLO_SUBAGENT`) are confined strictly to `<agents_home>/<name>/`; minders
+    (`OLO_MINDER`) are confined to `<root>/<dir>/board.json` inside allowed
+    agent/QA roots and further bound to their live Rex subtree in
+    `_authorize_mutation()`."""
     p = os.path.abspath(path or default_path())
     rp = os.path.realpath(p)
     if os.path.islink(p):
@@ -262,7 +537,7 @@ def safe_path(path, for_write=False):
         who = _caller_identity()
         if raw_who and not who:
             sys.exit(f"agent-board: invalid caller identity marker ({raw_who!r}); refusing mutation")
-        if who:
+        if who and os.environ.get("OLO_SUBAGENT"):
             agents_root = os.path.realpath(_agents_home())
             own_raw = os.path.join(agents_root, who)
             if os.path.islink(own_raw):
@@ -270,25 +545,53 @@ def safe_path(path, for_write=False):
             own_dir = os.path.realpath(own_raw)
             if not rp.startswith(own_dir + os.sep):
                 sys.exit(f"agent-board: subagent `{who}` may only write its own board under {own_dir} (refused {p})")
+        elif who and _is_minder_caller():
+            ok_root = False
+            for root in _minder_board_roots():
+                if rp.startswith(root + os.sep):
+                    rel = os.path.relpath(rp, root)
+                    parts = rel.split(os.sep)
+                    if len(parts) == 2 and parts[0] and not parts[0].startswith(".") and parts[1] == "board.json":
+                        ok_root = True
+                        break
+            if not ok_root:
+                sys.exit(f"agent-board: minder `{who}` may only write `<child>/board.json` inside agent/QA folders under /var/tmp (refused {p})")
     return p
 
 
 @contextlib.contextmanager
-def board_lock(path, timeout=LOCK_TIMEOUT_SECS, suffix=".lock"):
+def board_lock(path, timeout=LOCK_TIMEOUT_SECS, suffix=".lock", nonfatal=False, create=True):
     """Acquire an exclusive lock on `<name><suffix>` inside the verified
     parent directory descriptor without truncating or following symlinks."""
-    dfd = _open_verified_parent_dirfd(path, create=True)
+    try:
+        dfd = _open_verified_parent_dirfd(path, create=create)
+    except FileNotFoundError:
+        msg = f"board directory for {path} does not exist"
+        if nonfatal:
+            raise _PaneError(msg)
+        sys.exit(f"agent-board: {msg}")
+    except OSError as e:
+        msg = f"cannot open parent directory for {path}: {e}"
+        if nonfatal:
+            raise _PaneError(msg)
+        sys.exit(f"agent-board: {msg}")
     lock_name = f"{os.path.basename(path)}{suffix}"
     flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
         try:
             fd = os.open(lock_name, flags, 0o600, dir_fd=dfd)
         except OSError as e:
-            sys.exit(f"agent-board: cannot open lock {path}{suffix}: {e}")
+            msg = f"cannot open lock {path}{suffix}: {e}"
+            if nonfatal:
+                raise _PaneError(msg)
+            sys.exit(f"agent-board: {msg}")
         try:
             st = os.fstat(fd)
             if not stat.S_ISREG(st.st_mode):
-                sys.exit(f"agent-board: lock path {path}{suffix} is not a regular file")
+                msg = f"lock path {path}{suffix} is not a regular file"
+                if nonfatal:
+                    raise _PaneError(msg)
+                sys.exit(f"agent-board: {msg}")
             deadline = time.monotonic() + timeout
             while True:
                 try:
@@ -296,6 +599,8 @@ def board_lock(path, timeout=LOCK_TIMEOUT_SECS, suffix=".lock"):
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
+                        if nonfatal:
+                            raise _LockTimeout(f"timed out after {timeout:.1f}s waiting for pane lock on {path}")
                         sys.exit(f"agent-board: timed out after {timeout:.0f}s waiting for lock on {path}")
                     time.sleep(0.05)
             yield dfd
@@ -462,7 +767,7 @@ def load_board(path, strict=False, dir_fd=None):
     return normalize_board(obj)
 
 
-def save_json_atomic(path, data, dir_fd=None):
+def save_json_atomic(path, data, dir_fd=None, nonfatal=False):
     owned_dfd = None
     if dir_fd is None:
         owned_dfd = _open_verified_parent_dirfd(path, create=True)
@@ -472,12 +777,18 @@ def save_json_atomic(path, data, dir_fd=None):
         try:
             st = os.lstat(name, dir_fd=dir_fd)
             if stat.S_ISLNK(st.st_mode):
-                sys.exit(f"agent-board: refusing to replace symlink ({path})")
+                msg = f"refusing to replace symlink ({path})"
+                if nonfatal:
+                    raise _PaneError(msg)
+                sys.exit(f"agent-board: {msg}")
         except FileNotFoundError:
             pass
         payload = (json.dumps(data, indent=2, allow_nan=False) + "\n").encode("utf-8")
         if len(payload) > MAX_BOARD_BYTES:
-            sys.exit(f"agent-board: serialized board exceeds {MAX_BOARD_BYTES} byte limit")
+            msg = f"serialized board exceeds {MAX_BOARD_BYTES} byte limit"
+            if nonfatal:
+                raise _PaneError(msg)
+            sys.exit(f"agent-board: {msg}")
         tmp_name = f"{name}.tmp.{os.getpid()}.{secrets.token_hex(4)}"
         fd = os.open(tmp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0), 0o600, dir_fd=dir_fd)
         try:
@@ -490,6 +801,10 @@ def save_json_atomic(path, data, dir_fd=None):
             with contextlib.suppress(OSError):
                 os.unlink(tmp_name, dir_fd=dir_fd)
             raise
+    except OSError as e:
+        if nonfatal:
+            raise _PaneError(f"cannot write {path}: {e}")
+        raise
     finally:
         if owned_dfd is not None:
             with contextlib.suppress(OSError):
@@ -951,12 +1266,36 @@ def board_meta_path(path):
     return f"{path}.meta.json"
 
 
-def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES):
-    """Run a Rex CLI command draining stdout/stderr with a hard byte cap and
-    monotonic deadline so a large session listing cannot exhaust memory."""
+def _kill_proc_group(proc):
+    # Check `proc.returncode is None` (NEVER calling `proc.poll()` first) so
+    # that even if the direct leader already exited as a zombie while a
+    # descendant holds stdout/stderr open, its PGID is guaranteed unrecycled
+    # and SIGKILL reaches every process in the group before reaping the leader.
+    if proc.returncode is None:
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        with contextlib.suppress(OSError):
+            proc.kill()
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        proc.wait(timeout=2)
+
+
+def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES, deadline=None):
+    """Run a Rex CLI command draining stdout/stderr with a hard byte cap,
+    shared monotonic deadline, and process-group cleanup so a killed/timed-out
+    subprocess is always reaped before any lock is released."""
     import selectors
+    now = time.monotonic()
+    eff_deadline = now + timeout
+    if deadline is not None:
+        eff_deadline = min(eff_deadline, deadline)
+    if eff_deadline <= now:
+        return None, "", "deadline expired before launching command"
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
     except OSError as e:
         return None, "", str(e)
     sel = selectors.DefaultSelector()
@@ -965,13 +1304,11 @@ def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES):
     out_chunks, err_chunks = [], []
     out_n = err_n = 0
     overflow = False
-    deadline = time.monotonic() + timeout
     try:
         while sel.get_map():
-            rem = deadline - time.monotonic()
+            rem = eff_deadline - time.monotonic()
             if rem <= 0:
-                proc.kill()
-                proc.wait()
+                _kill_proc_group(proc)
                 return None, "", f"timed out after {timeout}s"
             for key, _ in sel.select(min(0.25, rem)):
                 chunk = os.read(key.fd, 65536)
@@ -982,8 +1319,7 @@ def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES):
                 if key.data == "out":
                     if out_n + len(chunk) > max_bytes:
                         overflow = True
-                        proc.kill()
-                        proc.wait()
+                        _kill_proc_group(proc)
                         return None, "", f"rex output exceeded {max_bytes} byte limit"
                     out_chunks.append(chunk)
                     out_n += len(chunk)
@@ -992,12 +1328,13 @@ def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES):
                         take = chunk[:65536 - err_n]
                         err_chunks.append(take)
                         err_n += len(take)
-        rc = proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+        rc = proc.wait(timeout=max(0.1, eff_deadline - time.monotonic()))
     except (OSError, subprocess.SubprocessError) as e:
-        with contextlib.suppress(OSError):
-            proc.kill()
-            proc.wait()
+        _kill_proc_group(proc)
         return None, "", str(e)
+    except BaseException:
+        _kill_proc_group(proc)
+        raise
     finally:
         for key in list(sel.get_map().values()):
             with contextlib.suppress(OSError):
@@ -1008,7 +1345,7 @@ def _run_rex_bounded(cmd, timeout=10, max_bytes=MAX_REX_OUTPUT_BYTES):
     return rc, b"".join(out_chunks).decode("utf-8", "replace"), b"".join(err_chunks).decode("utf-8", "replace")
 
 
-def resolve_rex_target(rex_bin, explicit_block=None):
+def resolve_rex_target(rex_bin, explicit_block=None, deadline=None):
     """Return `(session, block, window_id, err)` for a Rex pane. Inside
     `--desktop none` subagents, `REX_SESSION` is stripped while `REX_BLOCK`
     remains set — discover `session_id` and `window_id` directly from
@@ -1021,7 +1358,7 @@ def resolve_rex_target(rex_bin, explicit_block=None):
     cmd = [rex_bin, "block", "inspect", block, "--json"]
     if session:
         cmd[3:3] = ["-s", session]
-    rc, stdout, stderr = _run_rex_bounded(cmd, timeout=10)
+    rc, stdout, stderr = _run_rex_bounded(cmd, timeout=10, deadline=deadline)
     if rc == 0:
         try:
             said = json.loads(stdout)
@@ -1031,18 +1368,34 @@ def resolve_rex_target(rex_bin, explicit_block=None):
             blk = said.get("block") if isinstance(said.get("block"), dict) else {}
             session = session or said.get("session_id") or blk.get("session_id")
             window_id = blk.get("window_id") or said.get("window_id")
+            if not session or not window_id:
+                return None, block, None, "rex block inspect omitted session_id or window_id"
             return session, block, window_id, None
-        return session, block, None, "malformed rex block inspect JSON"
+        return None, block, None, "malformed rex block inspect JSON"
     err = (stderr or stdout or f"exit {rc}").strip()
-    return session, block, window_id, err
+    return None, block, None, err
 
 
-def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None, path=None):
-    """Query Rex for a live placed Standup pane. Returns `(ok, block_id_or_none)`
-    so a transient Rex query error (`ok=False`) never triggers a duplicate split."""
+def _cmd_has_exact_path(cmd_info, path, real_path):
+    if isinstance(cmd_info, list):
+        return any(str(x) in (path, real_path) for x in cmd_info)
+    if isinstance(cmd_info, str):
+        try:
+            tokens = shlex.split(cmd_info)
+        except ValueError:
+            tokens = cmd_info.split()
+        return any(tok in (path, real_path) for tok in tokens)
+    return False
+
+
+def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None, path=None, deadline=None):
+    """Query Rex for a live placed Standup pane bound specifically to `path`.
+    Returns `(ok, block_id_or_none)` so a transient Rex query error (`ok=False`)
+    never triggers a duplicate split, and an unrecorded pane is only adopted
+    when its label or exact command argument proves it displays this exact board file."""
     rc, stdout, _stderr = _run_rex_bounded(
         [rex_bin, "block", "list", "-s", session, "--short=false", "--json"],
-        timeout=10,
+        timeout=10, deadline=deadline,
     )
     if rc != 0:
         return False, None
@@ -1066,19 +1419,19 @@ def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None, p
             if window_id and b.get("window_id") and b.get("window_id") != window_id:
                 continue
             return True, bid
-    if window_id:
+    if window_id and path:
+        want_label = pane_label_for_path(path)
+        real_path = os.path.realpath(path)
         for b in blocks:
             if not isinstance(b, dict) or b.get("placement") != "placed" or b.get("window_id") != window_id:
                 continue
-            if b.get("label") != "Standup":
-                continue
-            # If the pane exposes its command/args, require matching board path when multiple boards share a window.
-            cmd_info = b.get("command") or b.get("argv") or b.get("cmdline")
-            if path and cmd_info:
-                joined = " ".join(str(x) for x in cmd_info) if isinstance(cmd_info, list) else str(cmd_info)
-                if path not in joined:
-                    continue
-            return True, b.get("block_id")
+            lbl = b.get("label") or ""
+            if lbl == want_label:
+                return True, b.get("block_id")
+            if lbl == "Standup":
+                cmd_info = b.get("command") or b.get("argv") or b.get("cmdline")
+                if cmd_info and _cmd_has_exact_path(cmd_info, path, real_path):
+                    return True, b.get("block_id")
     return True, None
 
 
@@ -1098,71 +1451,138 @@ def extract_split_block_id(stdout):
     return ""
 
 
-def open_pane(path, ratio=38, explicit_block=None, after_save=False):
-    path = safe_path(path, for_write=True)
-    if _raw_caller_marker() and explicit_block and explicit_block != os.environ.get("REX_BLOCK"):
-        sys.exit("agent-board: subagents may only split their own $REX_BLOCK")
+def _record_block_binding_if_legacy_qa(path, block):
+    """When an ad-hoc QA board under `OLO_QA_DIR` uses a non-default subdir
+    (e.g. a legacy named/cwd folder), record `<qa_root>/.by-block/<blk>.json`
+    so plain `agent-board update` inside that child resolves the exact same file."""
+    qr = _qa_root()
+    if not qr:
+        return
+    rp = os.path.realpath(path)
+    if not rp.startswith(qr + os.sep) or os.path.basename(rp) != "board.json":
+        return
+    rel = os.path.relpath(rp, qr)
+    parts = rel.split(os.sep)
+    if len(parts) != 2 or parts[0].startswith(".") or parts[0] == block_board_subdir(block):
+        return
+    bp = _block_binding_path(qr, block)
+    target = {"anchor_block": block, "path": path}
+    ex, cur, err = read_regular_json(bp, max_bytes=65536)
+    if ex and err is None and cur == target:
+        return
+    with contextlib.suppress(OSError, _PaneError):
+        save_json_atomic(bp, target, nonfatal=True)
+
+
+def open_pane(path, ratio=38, explicit_block=None, after_save=False, auto=False, _authorized=False, existing_only=False, deadline=None):
+    if deadline is None:
+        deadline = time.monotonic() + 40.0
+    path = path if _authorized else _authorize_mutation(path, explicit_block=explicit_block, opening=True, deadline=deadline)
+    if existing_only:
+        try:
+            check_dfd = _open_verified_parent_dirfd(path, create=False)
+        except FileNotFoundError:
+            sys.exit(f"agent-board: board directory for {path} does not exist (--existing-only)")
+        except OSError as e:
+            sys.exit(f"agent-board: cannot open board directory for {path} (--existing-only): {e}")
+        try:
+            ex_b, _obj_b, err_b = read_regular_json(path, dir_fd=check_dfd)
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(check_dfd)
+        if not ex_b:
+            sys.exit(f"agent-board: board {path} does not exist (--existing-only)")
+        if err_b is not None:
+            sys.exit(f"agent-board: board {path} is unreadable (--existing-only): {err_b}")
     ratio = max(20, min(65, int(ratio)))
     rex_bin = shutil.which("rex") or "/usr/bin/rex"
-    session, block, window_id, inspect_err = resolve_rex_target(rex_bin, explicit_block=explicit_block)
+    session, block, window_id, inspect_err = resolve_rex_target(rex_bin, explicit_block=explicit_block, deadline=deadline)
     if not block:
-        note = f"board saved at {path}" if after_save else f"board path is {path}"
-        print(f"agent-board: not in a Rex pane; {note}")
+        if not auto:
+            note = f"board saved at {path}" if after_save else f"board path is {path}"
+            print(f"agent-board: not in a Rex pane; {note}")
         return
-    if not session:
-        hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
-        sys.exit(f"agent-board: could not inspect Rex pane {block}: {inspect_err or 'no session returned'}{hint}")
+    blk_flag = f" --block {explicit_block}" if explicit_block else ""
+    hint = f" (board update was already saved; retry with `tools/dev/agent-board open{blk_flag} --file {path}`)" if after_save else ""
+    if not session or not window_id:
+        msg = f"agent-board: could not inspect Rex pane {block}: {inspect_err or 'no session/window returned'}{hint}"
+        if auto:
+            print(f"agent-board: warning: {msg}", file=sys.stderr)
+            return
+        sys.exit(msg)
     meta_p = board_meta_path(path)
     # Use a separate pane lock so a slow `rex split` never times out concurrent `update` calls.
-    with board_lock(path, suffix=".pane.lock") as dfd:
-        exists, bm, _err = read_regular_json(meta_p, max_bytes=65536, dir_fd=dfd)
-        if not exists or not isinstance(bm, dict):
-            bm = {}
-        saved_pane = bm.get("pane_block") if (bm.get("anchor_block") == block and bm.get("path") == path) else None
-        ok_list, existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id, path=path)
-        if not ok_list:
-            hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
-            sys.exit(f"agent-board: could not list Rex panes for {session} (Rex busy); skipping duplicate split{hint}")
-        if existing:
+    # Never recreate a removed parent directory when `existing_only` or `after_save` is set.
+    try:
+        lock_to = 1.0 if auto else min(LOCK_TIMEOUT_SECS, max(0.5, deadline - time.monotonic()))
+        pane_lock = board_lock(path, timeout=lock_to, suffix=".pane.lock", nonfatal=auto, create=not (existing_only or after_save))
+        with pane_lock as dfd:
+            exists, bm, _err = read_regular_json(meta_p, max_bytes=65536, dir_fd=dfd)
+            if not exists or not isinstance(bm, dict):
+                bm = {}
+            saved_pane = bm.get("pane_block") if (bm.get("anchor_block") == block and bm.get("path") == path) else None
+            ok_list, existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id, path=path, deadline=deadline)
+            if not ok_list:
+                msg = f"agent-board: could not list Rex panes for {session} (Rex busy); skipping duplicate split{hint}"
+                if auto:
+                    print(f"agent-board: warning: {msg}", file=sys.stderr)
+                    return
+                sys.exit(msg)
+            if existing:
+                rec_meta = {"anchor_block": block, "pane_block": existing, "session": session, "window_id": window_id, "path": path}
+                if bm != rec_meta:
+                    try:
+                        save_json_atomic(meta_p, rec_meta, dir_fd=dfd, nonfatal=auto)
+                    except (OSError, _PaneError) as e:
+                        print(f"agent-board: warning: could not update {meta_p}: {e}", file=sys.stderr)
+                _record_block_binding_if_legacy_qa(path, block)
+                if not auto:
+                    print(f"agent-board: already open in {existing} ({path})")
+                return
+            if not after_save and not existing_only:
+                with board_lock(path, nonfatal=auto) as data_dfd:
+                    ex_board, _, _ = read_regular_json(path, dir_fd=data_dfd)
+                    if not ex_board:
+                        save_json_atomic(path, default_board_data(), dir_fd=data_dfd, nonfatal=auto)
+            me = os.path.abspath(__file__)
+            rc, stdout, stderr = _run_rex_bounded(
+                [
+                    rex_bin, "split", "-s", session, "-b", block,
+                    "--split=right", f"--ratio={ratio}", "--focus=false",
+                    "--shell=none", "--label", pane_label_for_path(path), "--json",
+                    "--", "/usr/bin/python3", "-I", me, "show", path,
+                ],
+                timeout=30, deadline=deadline,
+            )
+            if rc != 0:
+                msg = f"agent-board: rex split failed: {(stderr or stdout or 'error').strip()}{hint}"
+                if auto:
+                    print(f"agent-board: warning: {msg}", file=sys.stderr)
+                    return
+                sys.exit(msg)
+            pane_id = extract_split_block_id(stdout)
+            if not pane_id and window_id:
+                _ok, found = find_existing_standup_pane(rex_bin, session, window_id=window_id, path=path, deadline=deadline)
+                pane_id = found or ""
             try:
-                save_json_atomic(meta_p, {"anchor_block": block, "pane_block": existing, "session": session, "window_id": window_id, "path": path}, dir_fd=dfd)
-            except OSError as e:
-                print(f"agent-board: warning: could not update {meta_p}: {e}", file=sys.stderr)
-            print(f"agent-board: already open in {existing} ({path})")
-            return
-        with board_lock(path) as data_dfd:
-            ex_board, _, _ = read_regular_json(path, dir_fd=data_dfd)
-            if not ex_board:
-                save_json_atomic(path, default_board_data(), dir_fd=data_dfd)
-        me = os.path.abspath(__file__)
-        rc, stdout, stderr = _run_rex_bounded(
-            [
-                rex_bin, "split", "-s", session, "-b", block,
-                "--split=right", f"--ratio={ratio}", "--focus=false",
-                "--shell=none", "--label", "Standup", "--json",
-                "--", "/usr/bin/python3", "-I", me, "show", path,
-            ],
-            timeout=30,
-        )
-        if rc != 0:
-            hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
-            sys.exit(f"agent-board: rex split failed: {(stderr or stdout or 'error').strip()}{hint}")
-        pane_id = extract_split_block_id(stdout)
-        if not pane_id and window_id:
-            _ok, found = find_existing_standup_pane(rex_bin, session, window_id=window_id, path=path)
-            pane_id = found or ""
-        try:
-            save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "window_id": window_id, "path": path}, dir_fd=dfd)
-        except OSError as e:
-            print(f"agent-board: warning: could not save {meta_p}: {e}", file=sys.stderr)
+                save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "window_id": window_id, "path": path}, dir_fd=dfd, nonfatal=auto)
+            except (OSError, _PaneError) as e:
+                print(f"agent-board: warning: could not save {meta_p}: {e}", file=sys.stderr)
+            _record_block_binding_if_legacy_qa(path, block)
+    except _PaneError as e:
+        print(f"agent-board: warning: {e}{hint}", file=sys.stderr)
+        return
     print(f"agent-board: opened right split pane {pane_id or '(ok)'} watching {path}")
 
 
 def add_common_flags(p):
-    p.add_argument("--file", dest="file", default=None, help="Path to board.json (defaults to /var/tmp/olo-agents/$OLO_SUBAGENT/board.json)")
-    p.add_argument("--open", action="store_true", help="Open the right-hand Rex split pane if not already open")
+    p.add_argument("--file", dest="file", default=None, help="Path to board.json (defaults to /var/tmp/olo-agents/$OLO_SUBAGENT/board.json or block-keyed QA path in Rex)")
+    open_grp = p.add_mutually_exclusive_group()
+    open_grp.add_argument("--open", action="store_true", help="Ensure the right-hand Rex split pane is open (default in Rex; fail non-zero if split fails)")
+    open_grp.add_argument("--no-open", dest="no_open", action="store_true", help="Skip auto-opening the right-hand Rex split pane")
     p.add_argument("--block", default=None, help="Explicit Rex block ID to split beside (defaults to $REX_BLOCK)")
     p.add_argument("--ratio", type=int, default=38, help="Split pane width percentage (20..65, default 38)")
+    p.add_argument("--deadline", type=float, default=40.0, help="Shared monotonic deadline in seconds for Rex operations (default 40)")
     p.add_argument("--title", default=None)
     p.add_argument("--role", default=None)
     p.add_argument("--crate", default=None)
@@ -1265,16 +1685,19 @@ def main():
     parser = argparse.ArgumentParser(prog="agent-board", description="Live standup & goal board in a right-hand Rex split pane")
     sub = parser.add_subparsers(dest="cmd")
 
-    p_init = sub.add_parser("init", help="Initialize board and optionally open right split pane")
+    p_init = sub.add_parser("init", help="Initialize board and auto-open right split pane in Rex (use --no-open to skip)")
     add_common_flags(p_init)
+    p_init.add_argument("--if-missing", dest="if_missing", action="store_true", help="Create starter board atomically only if no board file exists yet (fails closed on existing unreadable/corrupt boards)")
 
-    p_upd = sub.add_parser("update", help="Incrementally update only changed fields")
+    p_upd = sub.add_parser("update", help="Incrementally update only changed fields (auto-opens right split pane in Rex unless --no-open)")
     add_common_flags(p_upd)
 
     p_open = sub.add_parser("open", help="Open right-hand Rex split pane for board")
     p_open.add_argument("--file", default=None)
     p_open.add_argument("--block", default=None)
     p_open.add_argument("--ratio", type=int, default=38)
+    p_open.add_argument("--existing-only", dest="existing_only", action="store_true", help="Refuse if board file/directory does not already exist (never recreate a removed folder)")
+    p_open.add_argument("--deadline", type=float, default=40.0, help="Shared monotonic deadline in seconds for Rex operations (default 40)")
 
     p_show = sub.add_parser("show", help="Live inotify renderer (run inside split pane)")
     p_show.add_argument("path")
@@ -1290,12 +1713,20 @@ def main():
     if not args.cmd:
         parser.print_help()
         return
+    if args.cmd in ("open", "init", "update"):
+        # Handle SIGTERM cleanly from the very start of Rex-invoking commands
+        # (including minder list and block inspect) so detached subprocess groups
+        # are always reaped before exit.
+        def _early_term(_sig, _frame):
+            raise SystemExit("agent-board: terminated")
+        signal.signal(signal.SIGTERM, _early_term)
     if args.cmd == "path":
         print(safe_path(None, for_write=False))
     elif args.cmd == "show":
         show(args.path)
     elif args.cmd == "open":
-        open_pane(args.file, ratio=args.ratio, explicit_block=args.block)
+        dl = time.monotonic() + max(1.0, float(args.deadline))
+        open_pane(args.file, ratio=args.ratio, explicit_block=args.block, existing_only=args.existing_only, deadline=dl)
     elif args.cmd == "preview":
         p = safe_path(args.file, for_write=False)
         rows = args.height if args.height and args.height > 0 else None
@@ -1303,16 +1734,31 @@ def main():
         sys.stdout.write(out if out.endswith("\n") else out + "\n")
     elif args.cmd in ("init", "update"):
         is_init = args.cmd == "init"
-        p = safe_path(args.file, for_write=True)
+        dl = time.monotonic() + max(1.0, float(args.deadline))
+        p = _authorize_mutation(args.file, explicit_block=args.block, opening=args.open, deadline=dl)
+        kept_existing = False
         with board_lock(p) as dfd:
-            raw_doc = load_board_raw(p, strict=not is_init, dir_fd=dfd)
-            existing = (normalize_board(raw_doc) if raw_doc is not None else default_board_data()) if is_init else load_board(p, strict=True, dir_fd=dfd)
-            data = apply_updates(existing, args, is_init=is_init, raw_doc=raw_doc)
-            save_json_atomic(p, data, dir_fd=dfd)
-        if args.open:
-            open_pane(p, ratio=args.ratio, explicit_block=args.block, after_save=True)
+            if is_init and getattr(args, "if_missing", False):
+                exists, raw_doc, err = read_regular_json(p, dir_fd=dfd)
+                if exists:
+                    if err is not None:
+                        sys.exit(f"agent-board: refusing to overwrite existing unreadable/corrupt board under --if-missing ({err}); run plain `init` to reset")
+                    data = normalize_board(raw_doc)
+                    kept_existing = True
+                else:
+                    data = apply_updates(default_board_data(), args, is_init=True, raw_doc=None)
+                    save_json_atomic(p, data, dir_fd=dfd)
+            else:
+                raw_doc = load_board_raw(p, strict=not is_init, dir_fd=dfd)
+                existing = (normalize_board(raw_doc) if raw_doc is not None else default_board_data()) if is_init else load_board(p, strict=True, dir_fd=dfd)
+                data = apply_updates(existing, args, is_init=is_init, raw_doc=raw_doc)
+                save_json_atomic(p, data, dir_fd=dfd)
+        should_open = args.open or (not args.no_open and _should_auto_open(p, args.file, args.block))
+        if should_open:
+            open_pane(p, ratio=args.ratio, explicit_block=args.block, after_save=True, auto=(not args.open), _authorized=True, deadline=dl)
         pct, done, _act, total = compute_progress(data)
-        print(f"agent-board: updated {p} ({data['status']}, {pct}%, {done}/{total} todos)")
+        verb = "kept existing" if kept_existing else "updated"
+        print(f"agent-board: {verb} {p} ({data['status']}, {pct}%, {done}/{total} todos)")
 
 
 if __name__ == "__main__":

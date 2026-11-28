@@ -567,28 +567,35 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
     assert "DOING NOW" in board.ANSI_RE.sub("", short_out), "short height must keep DOING NOW visible"
 
     # Stub `rex` verifying open_pane works with REX_BLOCK-only, parses block_ids[0] without fallback masking,
-    # dedups, rejects subagent --block override, and reports saved on split failure:
+    # dedups via saved pane_id AND path-specific label (never confusing two board files in one window, Astra R2 #8),
+    # rejects subagent --block override, and reports saved on split failure:
     rex_dir = os.path.join(td, "rex-stub")
     os.makedirs(rex_dir)
     split_count_f = os.path.join(td, "split_count.txt")
+    panes_state_f = os.path.join(td, "panes_state.json")
     stub_rex = os.path.join(rex_dir, "rex")
     open(stub_rex, "w").write(
         f"#!/usr/bin/python3\n"
         f"import json, os, sys\n"
         f"cf = {split_count_f!r}\n"
+        f"pf = {panes_state_f!r}\n"
         f"a = sys.argv[1:]\n"
         f"if a[:2] == ['block', 'inspect']:\n"
         f"    print(json.dumps({{'session_id': 'session:s1', 'block': {{'block_id': a[2], 'window_id': 'window:w1'}}}}))\n"
         f"elif a[:2] == ['block', 'list']:\n"
-        f"    n = int(open(cf).read()) if os.path.exists(cf) else 0\n"
-        f"    blocks = [{{'block_id': 'block:standup-1', 'window_id': 'window:w1', 'label': 'Standup', 'placement': 'placed'}}] if n > 0 else []\n"
+        f"    blocks = json.load(open(pf)) if os.path.exists(pf) else []\n"
         f"    print(json.dumps({{'blocks': blocks}}))\n"
         f"elif a[:1] == ['split']:\n"
         f"    if os.environ.get('FAIL_SPLIT') == '1':\n"
         f"        sys.stderr.write('simulated split failure\\n'); sys.exit(1)\n"
         f"    n = (int(open(cf).read()) if os.path.exists(cf) else 0) + 1\n"
         f"    open(cf, 'w').write(str(n))\n"
-        f"    print(json.dumps({{'anchor_id': 'block:sub-1', 'block_ids': ['block:standup-parsed'], 'split_ids': ['split:1']}}))\n"
+        f"    lbl = a[a.index('--label') + 1] if '--label' in a else 'Standup'\n"
+        f"    bid = f'block:standup-parsed-{{n}}'\n"
+        f"    blocks = json.load(open(pf)) if os.path.exists(pf) else []\n"
+        f"    blocks.append({{'block_id': bid, 'window_id': 'window:w1', 'label': lbl, 'placement': 'placed'}})\n"
+        f"    json.dump(blocks, open(pf, 'w'))\n"
+        f"    print(json.dumps({{'anchor_id': 'block:sub-1', 'block_ids': [bid], 'split_ids': ['split:1']}}))\n"
     )
     os.chmod(stub_rex, 0o755)
     sub_env = dict(clean_env)
@@ -599,16 +606,330 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
     bad_blk = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp, "--block", "block:lead-1"], capture_output=True, text=True, env=sub_env)
     assert bad_blk.returncode != 0 and "own $REX_BLOCK" in bad_blk.stderr, bad_blk.stderr
     op1 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, check=True, env=sub_env)
-    assert "block:standup-parsed" in op1.stdout, f"block_ids[0] parser did not return parsed ID: {op1.stdout}"
+    assert "block:standup-parsed-1" in op1.stdout, f"block_ids[0] parser did not return parsed ID: {op1.stdout}"
     op2 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, check=True, env=sub_env)
-    assert "already open in block:standup-1" in op2.stdout and open(split_count_f).read() == "1", (op2.stdout, open(split_count_f).read())
+    assert "already open in block:standup-parsed-1" in op2.stdout and open(split_count_f).read() == "1", (op2.stdout, open(split_count_f).read())
+    # Astra R2 #8 + R3 #17 / Neon R3 #5: two different board files in the SAME window never adopt each other's pane,
+    # an unrecorded plain "Standup" pane with no command args is NEVER falsely adopted, AND a legacy "Standup" pane
+    # displaying `other-board.json.bak` is NEVER adopted via substring match for `other-board.json`:
+    bp_other = os.path.join(td, "builder-x", "other-board.json")
+    blocks_cur = json.load(open(panes_state_f))
+    blocks_cur.append({"block_id": "block:legacy-unmarked", "window_id": "window:w1", "label": "Standup", "placement": "placed"})
+    blocks_cur.append({"block_id": "block:legacy-prefix", "window_id": "window:w1", "label": "Standup", "placement": "placed", "argv": ["/usr/bin/python3", "-I", os.path.join(HERE, "agent-board"), "show", f"{bp_other}.bak"]})
+    json.dump(blocks_cur, open(panes_state_f, "w"))
+    subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--no-open", "--file", bp_other, "--title", "other"], capture_output=True, text=True, check=True, env=sub_env)
+    op_other = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp_other], capture_output=True, text=True, check=True, env=sub_env)
+    assert "block:standup-parsed-2" in op_other.stdout and open(split_count_f).read() == "2", (op_other.stdout, open(split_count_f).read())
+    # Even if board.json.meta.json is deleted, the path-specific label re-discovers bp_other's exact pane (not bp's or legacy's):
+    os.remove(f"{bp_other}.meta.json")
+    op_other2 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp_other], capture_output=True, text=True, check=True, env=sub_env)
+    assert "already open in block:standup-parsed-2" in op_other2.stdout and open(split_count_f).read() == "2", (op_other2.stdout, open(split_count_f).read())
+
+    # Neon R3 #3 / Astra R3 #8: invalid OLO_QA_DIR fails closed in `default_path()` when REX_BLOCK is set:
+    bad_qa_env = dict(clean_env)
+    bad_qa_env["REX_BLOCK"] = "block:unmarked-1"
+    bad_qa_env["OLO_QA_DIR"] = "/tmp/illegal-qa-root"
+    r_bad_qa = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "path"], capture_output=True, text=True, env=bad_qa_env)
+    assert r_bad_qa.returncode != 0 and "invalid OLO_QA_DIR" in r_bad_qa.stderr, r_bad_qa.stderr
+
+    # Neon R3 #4: `open --existing-only` on a non-directory parent exits cleanly with `agent-board:` error (no raw traceback):
+    not_a_dir = os.path.join(td, "not-a-dir-file")
+    open(not_a_dir, "w").write("x")
+    r_notdir = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--existing-only", "--file", os.path.join(not_a_dir, "board.json")], capture_output=True, text=True, env=clean_env)
+    assert r_notdir.returncode != 0 and "agent-board:" in r_notdir.stderr and "Traceback" not in r_notdir.stderr, r_notdir.stderr
+
+    # Neon R3 #2 / Astra R3 #13: `_run_rex_bounded` kills entire process group on timeout even when direct leader exits first while grandchild holds stdout open:
+    gc_pid_f = os.path.join(td, "grandchild.pid")
+    rc_pg, _out_pg, err_pg = board._run_rex_bounded([
+        "/usr/bin/python3", "-c",
+        f"import os, subprocess, sys; p = subprocess.Popen(['/usr/bin/python3', '-c', 'import time; time.sleep(60)']); open({gc_pid_f!r}, 'w').write(str(p.pid)); sys.exit(0)",
+    ], timeout=0.6)
+    assert rc_pg is None and "timed out" in err_pg, (rc_pg, err_pg)
+    gc_pid = int(open(gc_pid_f).read().strip())
+    import time as _t_pg
+    alive = True
+    for _ in range(20):
+        try:
+            os.kill(gc_pid, 0)
+            _t_pg.sleep(0.05)
+        except ProcessLookupError:
+            alive = False
+            break
+    assert not alive, f"grandchild pid {gc_pid} survived _run_rex_bounded timeout"
+
+    # Astra R3 #12: symlink at `board.json.meta.json` downgrades to warning on implicit update (never failing committed update or replacing symlink):
+    bp_sym_meta = os.path.join(td, "builder-x", "sym-meta.json")
+    sym_target = os.path.join(td, "builder-x", "do-not-touch.txt")
+    open(sym_target, "w").write("keep-me\n")
+    os.symlink(sym_target, f"{bp_sym_meta}.meta.json")
+    r_sym_m = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--file", bp_sym_meta, "--now", "committed-with-sym-meta"], capture_output=True, text=True, check=True, env=sub_env)
+    assert "warning:" in r_sym_m.stderr and board.load_board(bp_sym_meta)["now"] == "committed-with-sym-meta" and open(sym_target).read() == "keep-me\n", r_sym_m.stderr
+
+    # Astra R3 #10: rex block inspect failure with REX_SESSION set must NOT split with unknown window_id:
+    bad_insp_dir = os.path.join(td, "rex-bad-inspect")
+    os.makedirs(bad_insp_dir, exist_ok=True)
+    open(os.path.join(bad_insp_dir, "rex"), "w").write("#!/usr/bin/python3\nimport sys\nif sys.argv[1:3] == ['block', 'inspect']:\n    sys.stderr.write('inspect down\\n'); sys.exit(1)\n")
+    os.chmod(os.path.join(bad_insp_dir, "rex"), 0o755)
+    bi_env = dict(sub_env)
+    bi_env["PATH"] = f"{bad_insp_dir}:{clean_env.get('PATH', '')}"
+    bi_env["REX_SESSION"] = "session:s1"
+    r_bi_exp = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, env=bi_env)
+    assert r_bi_exp.returncode != 0 and "could not inspect Rex pane" in r_bi_exp.stderr, r_bi_exp.stderr
+
+    # Astra R2 #18: conflicting --open and --no-open rejected BEFORE any write:
+    bp_conflict = os.path.join(td, "builder-x", "conflict.json")
+    r_conf = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--open", "--no-open", "--file", bp_conflict, "--title", "bad"], capture_output=True, text=True, env=sub_env)
+    assert r_conf.returncode == 2 and not os.path.exists(bp_conflict), (r_conf.returncode, r_conf.stderr)
+
+    # Auto-open by default on `init` / `update` in Rex (even without `--open`), plus `--no-open`,
+    # `--if-missing` atomic preservation & strict corrupt/oversized protection (Astra R2 #2),
+    # `status="starting"` render, and soft-fail on split/lock/inaccessible-pane-lock contention (Astra R2 #11):
+    bp_auto = os.path.join(td, "builder-auto", "board.json")
+    auto_env = dict(sub_env)
+    auto_env["OLO_SUBAGENT"] = "builder-auto"
+    for fpath in (split_count_f, panes_state_f):
+        if os.path.exists(fpath):
+            os.remove(fpath)
+    r_no_open = subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--no-open",
+        "--file", bp_auto, "--title", "ba", "--status", "starting", "--now", "booting",
+    ], capture_output=True, text=True, check=True, env=auto_env)
+    assert not os.path.exists(split_count_f), f"--no-open must not split pane: {r_no_open.stdout}"
+    assert board.load_board(bp_auto)["status"] == "starting"
+    assert "STARTING" in board.ANSI_RE.sub("", board.render(board.load_board(bp_auto), cols=60))
+    # `--if-missing` preserves existing valid board content atomically (Astra #5 / Neon #6):
+    r_keep = subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--if-missing", "--no-open",
+        "--file", bp_auto, "--title", "CLOBBER", "--now", "CLOBBER",
+    ], capture_output=True, text=True, check=True, env=auto_env)
+    assert "kept existing" in r_keep.stdout and board.load_board(bp_auto)["now"] == "booting", r_keep.stdout
+    # Astra R2 #2: `--if-missing` NEVER overwrites corrupt OR oversized (>512 KiB) boards (plain `init` still recovers):
+    bp_corrupt_im = os.path.join(td, "builder-auto", "corrupt-im.json")
+    open(bp_corrupt_im, "w").write("{partial-recoverable")
+    r_im_cor = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--if-missing", "--no-open", "--file", bp_corrupt_im, "--title", "x"], capture_output=True, text=True, env=auto_env)
+    assert r_im_cor.returncode != 0 and open(bp_corrupt_im).read() == "{partial-recoverable", r_im_cor.stderr
+    bp_huge_im = os.path.join(td, "builder-auto", "huge-im.json")
+    open(bp_huge_im, "w").write('{"title":"big","goal":"' + ("a" * (520 * 1024)) + '"}')
+    huge_len = os.path.getsize(bp_huge_im)
+    r_im_huge = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--if-missing", "--no-open", "--file", bp_huge_im, "--title", "x"], capture_output=True, text=True, env=auto_env)
+    assert r_im_huge.returncode != 0 and os.path.getsize(bp_huge_im) == huge_len, r_im_huge.stderr
+    # Plain `init` (without `--if-missing`) still allows deliberate recovery:
+    subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--no-open", "--file", bp_corrupt_im, "--title", "recovered"], capture_output=True, text=True, check=True, env=auto_env)
+    assert board.load_board(bp_corrupt_im)["title"] == "recovered"
+
+    r_auto_upd = subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+        "--file", bp_auto, "--now", "auto-opened on update",
+    ], capture_output=True, text=True, check=True, env=auto_env)
+    assert open(split_count_f).read() == "1" and "opened right split pane" in r_auto_upd.stdout, r_auto_upd.stdout
+    # Second auto-update is idempotent and stays quiet when pane is already open:
+    r_auto_upd2 = subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+        "--file", bp_auto, "--now", "still open",
+    ], capture_output=True, text=True, check=True, env=auto_env)
+    assert open(split_count_f).read() == "1" and "already open" not in r_auto_upd2.stdout, r_auto_upd2.stdout
+    # Auto-open soft-fails on split error, `.pane.lock` contention, AND inaccessible `.pane.lock` (Astra R2 #11)
+    # without losing the committed update; explicit `open` still fails non-zero:
+    soft_env = dict(auto_env)
+    soft_env["FAIL_SPLIT"] = "1"
+    for fpath in (split_count_f, panes_state_f):
+        if os.path.exists(fpath):
+            os.remove(fpath)
+    r_soft = subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+        "--file", bp_auto, "--now", "saved-despite-split-err",
+    ], capture_output=True, text=True, check=True, env=soft_env)
+    assert "warning:" in r_soft.stderr and board.load_board(bp_auto)["now"] == "saved-despite-split-err", r_soft.stderr
+    import fcntl as _fcntl
+    with open(f"{bp_auto}.pane.lock", "r+b") as plf:
+        _fcntl.flock(plf.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        try:
+            r_lock_soft = subprocess.run([
+                "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+                "--file", bp_auto, "--now", "saved-despite-pane-lock",
+            ], capture_output=True, text=True, check=True, env=auto_env)
+            assert "warning:" in r_lock_soft.stderr and board.load_board(bp_auto)["now"] == "saved-despite-pane-lock", r_lock_soft.stderr
+        finally:
+            _fcntl.flock(plf.fileno(), _fcntl.LOCK_UN)
+    # Inaccessible/non-regular `.pane.lock` (a directory): implicit update commits & warns (rc=0); explicit `open` fails non-zero!
+    os.remove(f"{bp_auto}.pane.lock")
+    os.mkdir(f"{bp_auto}.pane.lock")
+    try:
+        r_bad_pl = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+            "--file", bp_auto, "--now", "saved-despite-dir-pane-lock",
+        ], capture_output=True, text=True, check=True, env=auto_env)
+        assert "warning:" in r_bad_pl.stderr and board.load_board(bp_auto)["now"] == "saved-despite-dir-pane-lock", r_bad_pl.stderr
+        r_exp_pl = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp_auto,
+        ], capture_output=True, text=True, env=auto_env)
+        assert r_exp_pl.returncode != 0, "explicit open must fail non-zero on non-regular .pane.lock"
+    finally:
+        os.rmdir(f"{bp_auto}.pane.lock")
+
+    # Top-level lead (`REX_SESSION` set, cwd in REPO_ROOT) writing another agent's `--file` without `--open`/`--block`
+    # must NOT auto-split its own `$REX_BLOCK` (Neon #3), WHILE an unmarked `--desktop screens=...` QA child
+    # (which ALSO retains `REX_SESSION` + `REX_BLOCK`!) DOES auto-open in its own QA folder AND self-heals via anchor_block (Astra R2 #12 / Neon R2 #3):
+    lead_env = dict(clean_env)
+    lead_env["PATH"] = f"{rex_dir}:{clean_env.get('PATH', '')}"
+    lead_env["REX_SESSION"] = "session:lead"
+    lead_env["REX_BLOCK"] = "block:lead-self"
+    lead_other_bp = os.path.join(td, "other-child", "board.json")
+    for fpath in (split_count_f, panes_state_f):
+        if os.path.exists(fpath):
+            os.remove(fpath)
+    subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init",
+        "--file", lead_other_bp, "--title", "oc", "--now", "written-by-lead",
+    ], capture_output=True, text=True, check=True, env=lead_env, cwd=agents.ROOT)
+    assert not os.path.exists(split_count_f), "lead writing explicit --file must not auto-split its own pane"
+    with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-screens-qa-") as scr_qa:
+        scr_dir = os.path.join(scr_qa, "qa-scr")
+        os.makedirs(scr_dir, exist_ok=True)
+        scr_bp = os.path.join(scr_dir, "board.json")
+        scr_env = dict(lead_env)
+        scr_env["REX_BLOCK"] = "block:scr-child"
+        scr_env["OLO_QA_DIR"] = scr_qa
+        # 1) Child running inside its own QA folder with REX_SESSION + REX_BLOCK auto-opens on explicit --file:
+        r_scr1 = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init",
+            "--file", scr_bp, "--title", "qa-scr", "--now", "boot",
+        ], capture_output=True, text=True, check=True, env=scr_env, cwd=scr_dir)
+        assert open(split_count_f).read() == "1" and "opened right split pane" in r_scr1.stdout, r_scr1.stdout
+        # 2) Simulate Standup pane closed; child running from REPO_ROOT still self-heals because anchor_block matches REX_BLOCK:
+        os.remove(panes_state_f)
+        r_scr2 = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+            "--file", scr_bp, "--now", "self-healed",
+        ], capture_output=True, text=True, check=True, env=scr_env, cwd=agents.ROOT)
+        assert open(split_count_f).read() == "2" and "opened right split pane" in r_scr2.stdout, r_scr2.stdout
+        # 3) Astra R3 #11: a lead running inside `scr_dir` updating `scr_bp` (whose anchor_block belongs to `block:scr-child`)
+        # MUST NOT split the lead's own pane even though cwd == dirname(scr_bp):
+        subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+            "--file", scr_bp, "--now", "lead-in-child-dir",
+        ], capture_output=True, text=True, check=True, env=lead_env, cwd=scr_dir)
+        assert open(split_count_f).read() == "2", "known foreign anchor_block must prevent auto-split even when cwd matches"
+
+    # OLO_MINDER strict subtree, receipt, symlink-dir, and `--block`-on-open enforcement
+    # (Astra R1 #1/#3, Astra R2 #1/#6/#7, Neon R1 #2/#3, Neon R2 #1):
+    with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-qa-check-") as qa_dir:
+        stub_olo_path = os.path.join(rex_dir, "olo")
+        open(stub_olo_path, "w").write(
+            "#!/usr/bin/python3\n"
+            "import json, sys\n"
+            "if sys.argv[1:3] == ['agent', 'list']:\n"
+            "    print(json.dumps({'parent_certain': True, 'session_id': 'session:s1', 'subagents': [\n"
+            "        {'id': 'sa-qa1', 'name': 'qa-neon', 'window_id': 'window:w1', 'block_id': 'block:qa-child-1', 'state': 'working'}\n"
+            "    ]}))\n"
+        )
+        os.chmod(stub_olo_path, 0o755)
+        minder_env = dict(clean_env)
+        minder_env["PATH"] = f"{rex_dir}:{clean_env.get('PATH', '')}"
+        minder_env["REX_BLOCK"] = "block:minder-self"
+        minder_env["OLO_MINDER"] = "minder"
+        minder_env["OLO_QA_DIR"] = qa_dir
+        qa_board = os.path.join(qa_dir, board.block_board_subdir("block:qa-child-1"), "board.json")
+        for fpath in (split_count_f, panes_state_f):
+            if os.path.exists(fpath):
+                os.remove(fpath)
+        r_m_ok = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--open",
+            "--block", "block:qa-child-1", "--file", qa_board, "--title", "qa-neon", "--role", "QA Explorer", "--status", "starting",
+        ], capture_output=True, text=True, check=True, env=minder_env)
+        assert open(split_count_f).read() == "1" and os.path.isfile(qa_board), r_m_ok.stdout
+        # Minder updating child board WITHOUT `--block`/`--open` (data-only) succeeds and must NOT split minder's own pane:
+        for fpath in (split_count_f, panes_state_f):
+            if os.path.exists(fpath):
+                os.remove(fpath)
+        subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+            "--file", qa_board, "--now", "minder-note",
+        ], capture_output=True, text=True, check=True, env=minder_env)
+        assert not os.path.exists(split_count_f), "minder data-only update without --block must not split minder pane"
+        # Astra R2 #6 / Neon R2 #1: minder `open`, `init --open`, and `update --open` on a child board WITHOUT `--block`
+        # MUST fail closed (never falling back to minder's own $REX_BLOCK):
+        for bad_args in (
+            ["open", "--file", qa_board],
+            ["init", "--open", "--file", qa_board, "--title", "x"],
+            ["update", "--open", "--file", qa_board, "--now", "x"],
+        ):
+            r_no_blk = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), *bad_args], capture_output=True, text=True, env=minder_env)
+            assert r_no_blk.returncode != 0 and "--block" in r_no_blk.stderr, (bad_args, r_no_blk.stderr)
+        assert not os.path.exists(split_count_f), "refused minder open without --block must not split"
+        # Astra R2 #1: unbound display-name folder `<qa_dir>/qa-neon/board.json` (or one bound to another lead's block)
+        # MUST be refused for minder, AND unreceipted managed folder `<td_agents>/qa-neon/board.json` MUST be refused!
+        other_lead_qa = os.path.join(qa_dir, "qa-neon", "board.json")
+        os.makedirs(os.path.dirname(other_lead_qa), exist_ok=True)
+        open(other_lead_qa, "w").write('{"title":"lead-a"}\n')
+        open(f"{other_lead_qa}.meta.json", "w").write(json.dumps({"anchor_block": "block:other-lead-qa"}))
+        r_m_hijack = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--no-open",
+            "--block", "block:qa-child-1", "--file", other_lead_qa, "--now", "hijack",
+        ], capture_output=True, text=True, env=minder_env)
+        assert r_m_hijack.returncode != 0 and open(other_lead_qa).read() == '{"title":"lead-a"}\n', r_m_hijack.stderr
+        unreceipted_managed = os.path.join(td, "qa-neon", "board.json")
+        os.makedirs(os.path.dirname(unreceipted_managed), exist_ok=True)
+        open(unreceipted_managed, "w").write('{"title":"unreceipted"}\n')
+        r_m_unrec = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--no-open",
+            "--block", "block:qa-child-1", "--file", unreceipted_managed, "--now", "hijack",
+        ], capture_output=True, text=True, env=minder_env)
+        assert r_m_unrec.returncode != 0 and open(unreceipted_managed).read() == '{"title":"unreceipted"}\n', r_m_unrec.stderr
+        # Astra R2 #7: minder's own-board exception refuses a symlink minder directory `<agents_home>/minder -> victim`:
+        victim_alias_dir = os.path.join(td, "alias-victim")
+        os.makedirs(victim_alias_dir, exist_ok=True)
+        victim_alias_bp = os.path.join(victim_alias_dir, "board.json")
+        open(victim_alias_bp, "w").write('{"keep":"victim"}\n')
+        minder_link = os.path.join(td, "minder-sym")
+        os.symlink(victim_alias_dir, minder_link)
+        sym_minder_env = dict(minder_env)
+        sym_minder_env["OLO_MINDER"] = "minder-sym"
+        r_m_sym = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--no-open",
+            "--file", victim_alias_bp, "--now", "hijack",
+        ], capture_output=True, text=True, env=sym_minder_env)
+        assert r_m_sym.returncode != 0 and "symlink minder directory" in r_m_sym.stderr and open(victim_alias_bp).read() == '{"keep":"victim"}\n', r_m_sym.stderr
+        os.unlink(minder_link)
+        # Refused foreign `--block` on `init --open` must NOT create or modify disk bytes or sidecars (Astra #1 / Neon #2):
+        unowned_dir = os.path.join(td, "other-leads-builder")
+        os.makedirs(unowned_dir, exist_ok=True)
+        os.makedirs(os.path.join(td, ".meta"), exist_ok=True)
+        open(os.path.join(td, ".meta", "other-leads-builder.json"), "w").write(json.dumps({"rex_id": "sa-other-lead"}))
+        victim_board = os.path.join(unowned_dir, "board.json")
+        open(victim_board, "w").write('{"keep":"original"}\n')
+        r_m_foreign = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--open",
+            "--block", "block:foreign-tab-99", "--file", victim_board, "--title", "hijack",
+        ], capture_output=True, text=True, env=minder_env)
+        assert r_m_foreign.returncode != 0 and open(victim_board).read() == '{"keep":"original"}\n', (r_m_foreign.stderr, open(victim_board).read())
+        assert not os.path.exists(f"{victim_board}.lock"), "refused init must not create lock sidecar"
+        # Minder cannot clobber non-board filenames (`settings.json`) even inside a live child dir (Neon #2):
+        victim_settings = os.path.join(os.path.dirname(qa_board), "settings.json")
+        open(victim_settings, "w").write('{"safe":true}\n')
+        r_m_nonboard = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--no-open",
+            "--file", victim_settings, "--title", "hijack",
+        ], capture_output=True, text=True, env=minder_env)
+        assert r_m_nonboard.returncode != 0 and open(victim_settings).read() == '{"safe":true}\n', r_m_nonboard.stderr
+        r_m_bad = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "open",
+            "--block", "block:foreign-tab-99", "--file", qa_board,
+        ], capture_output=True, text=True, env=minder_env)
+        assert r_m_bad.returncode != 0 and "verified live child" in r_m_bad.stderr, r_m_bad.stderr
+        r_m_esc = subprocess.run([
+            "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--no-open",
+            "--file", "/var/tmp/olo-board-escape-check/other/board.json", "--title", "x",
+        ], capture_output=True, text=True, env=minder_env)
+        assert r_m_esc.returncode != 0 and "agent/QA folders" in r_m_esc.stderr, r_m_esc.stderr
 
     # Failing split after update --open preserves update and prints standalone open hint:
     fail_env = dict(sub_env)
     fail_env["FAIL_SPLIT"] = "1"
     bp2 = os.path.join(td, "builder-y", "board.json")
     fail_env["OLO_SUBAGENT"] = "builder-y"
-    os.remove(split_count_f)
+    if os.path.exists(split_count_f):
+        os.remove(split_count_f)
     fr = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--open", "--file", bp2, "--title", "by", "--did", "step-1"], capture_output=True, text=True, env=fail_env)
     assert fr.returncode != 0 and "already saved" in fr.stderr and "agent-board open" in fr.stderr and os.path.exists(bp2), fr.stderr
 
@@ -880,12 +1201,14 @@ try:
             orig_live_r = agents.live
             orig_room_r = agents.room
             orig_overlap_r = agents.check_crate_overlap
-            orig_board_r = agents._open_initial_board
+            orig_seed_r = agents._seed_initial_board
+            orig_pane_r = agents._open_initial_board_pane
             try:
                 agents.live = lambda _n: False
                 agents.room = lambda *_a, **_kw: None
                 agents.check_crate_overlap = lambda *_a, **_kw: None
-                agents._open_initial_board = lambda *_a, **_kw: None
+                agents._seed_initial_board = lambda *_a, **_kw: None
+                agents._open_initial_board_pane = lambda *_a, **_kw: False
                 def fail_if_olo_resume(*args, **_kw):
                     if args and args[0] == "resume":
                         raise AssertionError(f"pre-upgrade Claude helper must not replay acceptEdits via olo agent resume: {args}")
@@ -905,7 +1228,8 @@ try:
                 agents.live = orig_live_r
                 agents.room = orig_room_r
                 agents.check_crate_overlap = orig_overlap_r
-                agents._open_initial_board = orig_board_r
+                agents._seed_initial_board = orig_seed_r
+                agents._open_initial_board_pane = orig_pane_r
         # Pre-upgrade Opus kind:look helper also refuses native acceptEdits replay:
         look_dir = os.path.join(td, "pre-opus-look")
         os.makedirs(look_dir, exist_ok=True)
@@ -935,11 +1259,13 @@ try:
         orig_launch_i = agents.launch
         orig_room_i = agents.room
         orig_live_i = agents.live
-        orig_board_i = agents._open_initial_board
+        orig_seed_i = agents._seed_initial_board
+        orig_pane_i = agents._open_initial_board_pane
         try:
             agents.room = lambda *_a, **_kw: None
             agents.live = lambda _n: False
-            agents._open_initial_board = lambda *_a, **_kw: None
+            agents._seed_initial_board = lambda *_a, **_kw: None
+            agents._open_initial_board_pane = lambda *_a, **_kw: False
             def fake_launch_i(name, d, root, dirs, target=None, **_kw):
                 inv_trusted_at_launch.append(agents.trusted_meta(name))
             agents.launch = fake_launch_i
@@ -952,24 +1278,355 @@ try:
             agents.launch = orig_launch_i
             agents.room = orig_room_i
             agents.live = orig_live_i
-            agents._open_initial_board = orig_board_i
+            agents._seed_initial_board = orig_seed_i
+            agents._open_initial_board_pane = orig_pane_i
+
+        # Astra R2 #9 / Neon R2 #5: native `resume()` opens boards for investigators AND minders,
+        # while still skipping verified reviewers:
+        for res_name, res_meta, expect_role in (
+            ("help-res", {"via": "rex", "rex_id": "sa-hres", "work": inv_work, "root": agents.ROOT, "ended": True, "owner_window": "win-lead"}, "Investigator"),
+            ("minder-res", {"via": "rex", "rex_id": "sa-mres", "role": "minder", "cli": "agy", "root": agents.ROOT, "ended": True, "owner_window": "win-lead"}, "Minder"),
+            ("astra-abcdef1234", {"via": "rex", "rex_id": "sa-rres", "kind": "review", "cli": "codex", "root": agents.ROOT, "ended": True, "owner_window": "win-lead"}, None),
+        ):
+            rdir = os.path.join(td, res_name)
+            os.makedirs(rdir, exist_ok=True)
+            agents.save_meta(res_name, res_meta)
+            agents.save_trusted_meta(res_name, res_meta)
+            seeded_roles = []
+            opened_handles = []
+            orig_olo_rn = agents.olo
+            orig_live_rn = agents.live
+            orig_seed_rn = agents._seed_initial_board
+            orig_pane_rn = agents._open_initial_board_pane
+            try:
+                agents.live = lambda _n: False
+                agents.olo = lambda *a, **_kw: subprocess.CompletedProcess(list(a), 0, json.dumps({"id": res_meta["rex_id"], "window_id": "win-new", "block_id": f"block:new-{res_name}", "parent_window_id": "win-lead"}), "")
+                def rec_seed(nm, dd, role, crate="", task_text="", board_file=None, receipt=None):
+                    seeded_roles.append((nm, role))
+                    return (nm, os.path.join(dd, "board.json"), receipt.get("block_id"), receipt.get("rex_id"))
+                agents._seed_initial_board = rec_seed
+                agents._open_initial_board_pane = lambda *h, **_kw: opened_handles.append(h) or True
+                agents.resume(res_name, "continue")
+                if expect_role is None:
+                    assert not seeded_roles and not opened_handles, (res_name, seeded_roles)
+                else:
+                    assert seeded_roles == [(res_name, expect_role)] and len(opened_handles) == 1, (res_name, seeded_roles, opened_handles)
+            finally:
+                agents.olo = orig_olo_rn
+                agents.live = orig_live_rn
+                agents._seed_initial_board = orig_seed_rn
+                agents._open_initial_board_pane = orig_pane_rn
+
+        # Neon R2 #7: session() forwards OLO_QA_DIR to minders (subagent=False) and omits it for subagents (subagent=True),
+        # AND start_minder() archives stale board.json to board.json.before.<stamp>:
+        orig_olo_qa = os.environ.get("OLO_QA_DIR")
+        orig_olo_s = agents.olo
+        orig_sess_s = agents.session
+        try:
+            agents.session = orig_sess3
+            os.environ["OLO_QA_DIR"] = os.path.join(td, "custom-qa")
+            captured_start_args = []
+            def cap_olo(*a, **_kw):
+                if a and a[0] == "list":
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"parent_certain": True, "parent_window_id": "win-lead", "subagents": []}), "")
+                if a and a[0] == "start":
+                    captured_start_args.append(list(a))
+                    return subprocess.CompletedProcess(list(a), 0, json.dumps({"id": "sa-fwd", "window_id": "win-f", "block_id": "block:fwd", "parent_window_id": "win-lead", "cursor": 1}), "")
+                return subprocess.CompletedProcess(list(a), 0, "{}", "")
+            agents.olo = cap_olo
+            agents._SUBTREE_IDS[0] = None
+            os.makedirs(os.path.join(td, "fwd-sub"), exist_ok=True)
+            agents.session("fwd-sub", agents.ROOT, [], ["echo"], native=["agy", "--prompt", "hi"], subagent=True)
+            os.makedirs(os.path.join(td, "fwd-min"), exist_ok=True)
+            agents.session("fwd-min", agents.ROOT, [], ["echo"], native=["agy", "--prompt", "hi"], subagent=False)
+            assert not any("OLO_QA_DIR=" in x for x in captured_start_args[0]), captured_start_args[0]
+            assert any(x == f"OLO_QA_DIR={os.path.abspath(os.path.join(td, 'custom-qa'))}" for x in captured_start_args[1]), captured_start_args[1]
+
+            # start_minder archives existing board.json (isolated from inherited OLO_MINDER/OLO_SUBAGENT, Astra R3 #23)
+            # AND refuses a symlink minder directory before archiving (Astra R3 #2):
+            arch_dir = os.path.join(td, "arch-minder")
+            os.makedirs(arch_dir, exist_ok=True)
+            old_b = os.path.join(arch_dir, "board.json")
+            open(old_b, "w").write('{"title":"stale-minder"}\n')
+            agents.save_trusted_meta("arch-minder", {"role": "minder", "via": "tmux", "root": agents.ROOT, "ended": True})
+            agents.save_meta("arch-minder", {"role": "minder", "via": "tmux", "root": agents.ROOT, "ended": True})
+            orig_lm = agents.launch_minder
+            orig_which = agents.which_clean
+            orig_live_m = agents.live
+            orig_seed_m = agents._seed_initial_board
+            orig_pane_m = agents._open_initial_board_pane
+            saved_role_m = (os.environ.get("OLO_MINDER"), os.environ.get("OLO_SUBAGENT"))
+            try:
+                os.environ.pop("OLO_MINDER", None)
+                os.environ.pop("OLO_SUBAGENT", None)
+                agents.which_clean = lambda _c: "/usr/bin/agy"
+                agents.live = lambda _n: False
+                agents.launch_minder = lambda *_a, **_kw: None
+                agents._seed_initial_board = lambda *_a, **_kw: None
+                agents._open_initial_board_pane = lambda *_a, **_kw: False
+                agents.start_minder(name="arch-minder")
+                archived = [f for f in os.listdir(arch_dir) if f.startswith("board.json.before.")]
+                assert archived and not os.path.exists(old_b), (archived, os.listdir(arch_dir))
+                # Symlink minder folder refused before archiving victim's board.json:
+                sym_target_dir = os.path.join(td, "sym-minder-victim")
+                os.makedirs(sym_target_dir, exist_ok=True)
+                open(os.path.join(sym_target_dir, "board.json"), "w").write('{"keep":true}\n')
+                os.symlink(sym_target_dir, os.path.join(td, "sym-minder"))
+                agents.save_trusted_meta("sym-minder", {"role": "minder", "via": "tmux", "root": agents.ROOT, "ended": True})
+                expect_exit(lambda: agents.start_minder(name="sym-minder"), "refusing unsafe minder directory")
+                assert os.path.isfile(os.path.join(sym_target_dir, "board.json")), "symlink minder start must not archive target board.json"
+                os.unlink(os.path.join(td, "sym-minder"))
+            finally:
+                agents.launch_minder = orig_lm
+                agents.which_clean = orig_which
+                agents.live = orig_live_m
+                agents._seed_initial_board = orig_seed_m
+                agents._open_initial_board_pane = orig_pane_m
+                for k, v in zip(("OLO_MINDER", "OLO_SUBAGENT"), saved_role_m):
+                    if v is not None:
+                        os.environ[k] = v
+                    else:
+                        os.environ.pop(k, None)
+
+            # Astra R3 #4: >64 KiB trusted review receipt still parses cleanly:
+            agents.save_trusted_meta("big-review", {"kind": "review", "rex_id": "sa-big", "about": "x" * 75000})
+            st_big, obj_big = agents.trusted_meta_status("big-review")
+            assert st_big == "ok" and len(obj_big["about"]) == 75000, (st_big, obj_big)
+            agents.delete_trusted_meta("big-review")
+
+            # Astra R3 #9: native resume omitting block_id clears old stale block_id instead of targeting old tab:
+            nob_dir = os.path.join(td, "res-noblock")
+            os.makedirs(nob_dir, exist_ok=True)
+            nob_meta = {"via": "rex", "rex_id": "sa-old-nb", "block_id": "block:stale-old", "work": inv_work, "root": agents.ROOT, "ended": True, "owner_window": "win-lead"}
+            agents.save_meta("res-noblock", nob_meta)
+            agents.save_trusted_meta("res-noblock", nob_meta)
+            orig_live_nb = agents.live
+            orig_olo_nb = agents.olo
+            try:
+                agents.live = lambda _n: False
+                agents.olo = lambda *a, **_kw: subprocess.CompletedProcess(list(a), 0, json.dumps({"id": "sa-new-nb", "window_id": "win-new-nb", "parent_window_id": "win-lead"}), "")
+                import contextlib as _cnb, io as _inb
+                nb_err = _inb.StringIO()
+                with _cnb.redirect_stderr(nb_err):
+                    agents.resume("res-noblock", "go")
+                assert agents.trusted_meta("res-noblock").get("block_id") is None, agents.trusted_meta("res-noblock")
+                assert "without a block_id" in nb_err.getvalue(), nb_err.getvalue()
+            finally:
+                agents.live = orig_live_nb
+                agents.olo = orig_olo_nb
+        finally:
+            agents.olo = orig_olo_s
+            agents.session = orig_sess_s
+            if orig_olo_qa is not None:
+                os.environ["OLO_QA_DIR"] = orig_olo_qa
+            else:
+                os.environ.pop("OLO_QA_DIR", None)
+
         # RULES & HELP_RULES pass the absolute BOARD_BIN path (works in older worktrees), and _open_initial_board auto-opens the pane:
         rendered_rules = agents.RULES.format(root="/var/tmp/wt", crate="crates/pool", package="olo-token-pool", name="pool-agy", dir=bd, approvals="", board=agents.BOARD_BIN)
         assert agents.BOARD_BIN in rendered_rules and "\n    tools/dev/agent-board " not in rendered_rules, rendered_rules
-        rendered_help = agents.HELP_RULES.format(root=agents.ROOT, dir=bd, approvals="", board=agents.BOARD_BIN, name="help-x")
-        assert agents.BOARD_BIN in rendered_help, rendered_help
+        rendered_help = agents.HELP_RULES.format(root=agents.ROOT, dir=bd, approvals="", board=agents.BOARD_BIN, board_file=os.path.join(bd, "board.json"), name="help-x")
+        assert agents.BOARD_BIN in rendered_help and os.path.join(bd, "board.json") in rendered_help, rendered_help
         json.dump({"via": "rex", "block_id": "block:fake-child", "root": agents.ROOT}, open(os.path.join(bd, "meta.json"), "w"))
         board_calls = []
         orig_sub_run = agents.subprocess.run
         try:
             def fake_run(cmd, **kw):
                 board_calls.append(cmd)
+                if "init" in cmd:
+                    bf_arg = next(a.split("=", 1)[1] for a in cmd if a.startswith("--file="))
+                    open(bf_arg, "w").write("{}\n")
                 return subprocess.CompletedProcess(cmd, 0, "ok\n", "")
             agents.subprocess.run = fake_run
-            agents._open_initial_board("b1", bd, "Builder", "crates/pool", "# Add agy support\nImplement agy in Token Pool.")
-            assert board_calls and board_calls[0][1] == agents.BOARD_BIN and "init" in board_calls[0] and "--open" in board_calls[0] and "block:fake-child" in board_calls[0], board_calls
+            agents._open_initial_board("b1", bd, "Builder", "crates/pool", "# --goal\nImplement agy in Token Pool.")
+            assert len(board_calls) == 2 and board_calls[0][1] == agents.BOARD_BIN and "init" in board_calls[0] and "--if-missing" in board_calls[0] and "--no-open" in board_calls[0] and "--block=block:fake-child" in board_calls[0], board_calls
+            assert "open" in board_calls[1] and "--existing-only" in board_calls[1] and "--block=block:fake-child" in board_calls[1], board_calls
         finally:
             agents.subprocess.run = orig_sub_run
+
+        # Astra R2 #16: Rex receipt missing block_id prints explicit warning naming rex_id; tmux skips silently:
+        import contextlib as _ctx, io as _io
+        err_buf = _io.StringIO()
+        with _ctx.redirect_stderr(err_buf):
+            assert agents._seed_initial_board("noblock-rex", bd, "Builder", receipt={"via": "rex", "rex_id": "sa-noblock"}) is None
+        assert "sa-noblock" in err_buf.getvalue() and "without a block_id" in err_buf.getvalue(), err_buf.getvalue()
+        err_tmux = _io.StringIO()
+        with _ctx.redirect_stderr(err_tmux):
+            assert agents._seed_initial_board("tmux-ok", bd, "Builder", receipt={"via": "tmux"}) is None
+        assert err_tmux.getvalue() == "", err_tmux.getvalue()
+
+        # Exercise `_open_initial_board` (unmarked, OLO_MINDER, forgotten-helper no-recreate, corrupt trusted_meta fail-closed) AND
+        # `ensure_boards()` directly against the REAL `agent-board` binary with stubbed `rex` and `olo`
+        # (never contacting the host's real agents service — Astra #14 / Neon #9 + Astra R2 #1..#17 / Neon R2 #1..#7):
+        real_b_dir = os.path.join(td, "real-init-board")
+        os.makedirs(real_b_dir, exist_ok=True)
+        # Note: NO helper-writable meta.json in real_b_dir — ONLY parent-owned .meta/real-init-board.json! (Astra R2 #4 / Neon R2 #2)
+        agents.save_trusted_meta("real-init-board", {"via": "rex", "rex_id": "sa-real1", "block_id": "block:real-child", "root": agents.ROOT})
+        # Also place a FIFO as a bogus helper's meta.json to prove `_managed_receipt_by_rex_id()` NEVER touches or blocks on helper meta.json (Astra R2 #4):
+        fifo_dir = os.path.join(td, "fifo-helper")
+        os.makedirs(fifo_dir, exist_ok=True)
+        os.mkfifo(os.path.join(fifo_dir, "meta.json"))
+        # Visual reviewer (`kind: "look"`) AND verified code reviewer (`kind: "review"`) with parent-owned trusted_meta ONLY (no meta.json):
+        agents.save_trusted_meta("opus-ui", {"via": "rex", "rex_id": "sa-look1", "kind": "look", "root": agents.ROOT})
+        agents.save_trusted_meta("astra-1234567890", {"via": "rex", "rex_id": "sa-rev1", "kind": "review", "root": agents.ROOT})
+        stub_r2 = os.path.join(td, "rex-stub-2")
+        os.makedirs(stub_r2, exist_ok=True)
+        split_log = os.path.join(td, "split_log.txt")
+        panes_r2 = os.path.join(td, "panes_r2.json")
+        # Stateful Rex stub keyed by window and label so second ensure-boards pass proves ZERO duplicate splits (Astra R3 #21):
+        open(os.path.join(stub_r2, "rex"), "w").write(
+            f"#!/usr/bin/python3\nimport json, os, sys\n"
+            f"pf = {panes_r2!r}\n"
+            f"a = sys.argv[1:]\n"
+            f"if a[:2] == ['block', 'inspect']:\n"
+            f"    b = a[2]\n"
+            f"    print(json.dumps({{'session_id': 's1', 'block': {{'block_id': b, 'window_id': 'w-' + b}}}}))\n"
+            f"elif a[:2] == ['block', 'list']:\n"
+            f"    blocks = json.load(open(pf)) if os.path.exists(pf) else []\n"
+            f"    print(json.dumps({{'blocks': blocks}}))\n"
+            f"elif a[:1] == ['split']:\n"
+            f"    b = a[a.index('-b') + 1]\n"
+            f"    lbl = a[a.index('--label') + 1] if '--label' in a else 'Standup'\n"
+            f"    bid = 'block:standup-' + b\n"
+            f"    blocks = json.load(open(pf)) if os.path.exists(pf) else []\n"
+            f"    blocks.append({{'block_id': bid, 'window_id': 'w-' + b, 'label': lbl, 'placement': 'placed'}})\n"
+            f"    json.dump(blocks, open(pf, 'w'))\n"
+            f"    open({split_log!r}, 'a').write(b + '\\n')\n"
+            f"    print(json.dumps({{'block_ids': [bid]}}))\n"
+        )
+        os.chmod(os.path.join(stub_r2, "rex"), 0o755)
+        saved_env_keys = ("PATH", "OLO_AGENTS_DIR", "OLO_QA_DIR", "OLO_MINDER", "OLO_SUBAGENT", "REX_BLOCK", "REX_SESSION")
+        saved_env = {k: os.environ.get(k) for k in saved_env_keys}
+        orig_olo_eb = agents.olo
+        try:
+            with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-eb-qa-") as eb_qa:
+                # Neon R3 #1 / Astra R3 #6: cwd-based legacy QA folder (`calendar-pass`) whose name differs from `qa-cwd`
+                # and is explicitly bound to `block:qa-cwd`:
+                cwd_qa_dir = os.path.join(eb_qa, "calendar-pass")
+                os.makedirs(cwd_qa_dir, exist_ok=True)
+                cwd_qa_bp = os.path.join(cwd_qa_dir, "board.json")
+                open(cwd_qa_bp, "w").write(json.dumps({"title": "qa-cwd", "status": "working", "now": "initial"}) + "\n")
+                open(f"{cwd_qa_bp}.meta.json", "w").write(json.dumps({"anchor_block": "block:qa-cwd", "pane_block": "", "path": cwd_qa_bp}))
+                open(os.path.join(stub_r2, "olo"), "w").write(
+                    "#!/usr/bin/python3\nimport json, sys\n"
+                    "if sys.argv[1:3] == ['agent', 'list']:\n"
+                    f"    print(json.dumps({{'parent_certain': True, 'session_id': 's1', 'subagents': [\n"
+                    f"        {{'id': 'sa-real1', 'name': 'real-init-board', 'window_id': 'w-block:real-child', 'block_id': 'block:real-child', 'state': 'working'}},\n"
+                    f"        {{'id': 'sa-agyqa', 'name': 'agy-qa', 'role': 'qa-explorer', 'title': '--no-open', 'window_id': 'w-agy', 'block_id': 'block:agy-qa', 'state': 'waiting_approval'}},\n"
+                    f"        {{'id': 'sa-idle', 'name': 'idle-qa', 'window_id': 'w-idle', 'block_id': 'block:idle-qa', 'state': 'idle'}},\n"
+                    f"        {{'id': 'sa-cwd', 'name': 'qa-cwd', 'cwd': {cwd_qa_dir!r}, 'window_id': 'w-cwd', 'block_id': 'block:qa-cwd', 'state': 'working'}},\n"
+                    f"        {{'id': 'sa-evil', 'name': '../escape', 'window_id': 'w-evil', 'block_id': 'block:evil', 'state': 'working'}},\n"
+                    f"        {{'id': 'sa-fake-rev', 'name': 'astra-deadbeef00', 'window_id': 'w-frev', 'block_id': 'block:fake-rev', 'state': 'working'}},\n"
+                    f"        {{'id': 'sa-rev1', 'name': 'astra-1234567890', 'window_id': 'w-rev', 'block_id': 'block:rev', 'state': 'working'}},\n"
+                    f"        {{'id': 'sa-look1', 'name': 'opus-ui', 'window_id': 'w-look', 'block_id': 'block:look', 'state': 'working'}},\n"
+                    f"        {{'id': ['bad-id-type'], 'name': 'malformed', 'window_id': 'w-m', 'block_id': 'b-m', 'state': 'working'}},\n"
+                    f"        {{'id': 'sa-nob', 'name': 'broken-child', 'window_id': '', 'block_id': '', 'state': 'working'}}\n"
+                    f"    ]}}))\n"
+                )
+                os.chmod(os.path.join(stub_r2, "olo"), 0o755)
+                os.environ["PATH"] = f"{stub_r2}:{saved_env['PATH'] or ''}"
+                os.environ["OLO_AGENTS_DIR"] = td
+                os.environ["OLO_QA_DIR"] = eb_qa
+                os.environ.pop("OLO_SUBAGENT", None)
+                os.environ.pop("OLO_MINDER", None)
+                os.environ.pop("REX_SESSION", None)
+                os.environ["REX_BLOCK"] = "block:minder-self"
+                assert agents._open_initial_board("real-init-board", real_b_dir, "Builder", "crates/pool", "# --no-open\nImplement agy.") is True
+                assert "block:real-child" in open(split_log).read()
+                assert board.load_board(os.path.join(real_b_dir, "board.json"))["status"] == "starting"
+                # Same under OLO_MINDER with stubbed `olo` (already open -> no duplicate split):
+                os.environ["OLO_MINDER"] = "minder"
+                assert agents._open_initial_board("real-init-board", real_b_dir, "Builder", "crates/pool", "ignored") is True
+                assert open(split_log).read().splitlines() == ["block:real-child"], open(split_log).read()
+                # Astra R2 #5: forgotten helper between seed and pane open NEVER recreates its deleted folder:
+                fg_dir = os.path.join(td, "forgotten-helper")
+                os.makedirs(fg_dir, exist_ok=True)
+                agents.save_trusted_meta("forgotten-helper", {"via": "rex", "rex_id": "sa-real1", "block_id": "block:real-child", "root": agents.ROOT})
+                fg_handle = agents._seed_initial_board("forgotten-helper", fg_dir, "Builder", receipt=agents.trusted_meta("forgotten-helper"))
+                assert fg_handle is not None and os.path.isfile(os.path.join(fg_dir, "board.json"))
+                import shutil as _shutil
+                _shutil.rmtree(fg_dir)
+                agents.delete_trusted_meta("forgotten-helper")
+                assert agents._open_initial_board_pane(*fg_handle) is False
+                assert not os.path.exists(fg_dir), "open_initial_board_pane must NEVER recreate a forgotten helper's folder"
+                # Even calling `agent-board open --existing-only` directly on a removed folder refuses without creating it:
+                r_ex_only = subprocess.run(["/usr/bin/python3", agents.BOARD_BIN, "open", "--existing-only", "--file", os.path.join(fg_dir, "board.json")], capture_output=True, text=True, env=dict(os.environ, OLO_MINDER=""))
+                assert r_ex_only.returncode != 0 and not os.path.exists(fg_dir), r_ex_only.stderr
+                # Corrupt parent metadata fails closed instead of trusting helper-writable meta.json (Astra #12 / Neon #8):
+                cor_dir = os.path.join(td, "corrupt-board-helper")
+                os.makedirs(cor_dir, exist_ok=True)
+                open(os.path.join(cor_dir, "meta.json"), "w").write(json.dumps({"via": "rex", "block_id": "block:real-child"}))
+                open(agents.trusted_meta_path("corrupt-board-helper"), "w").write("{broken")
+                assert agents._open_initial_board("corrupt-board-helper", cor_dir, "Builder") is False
+                # Pre-create another lead's `<eb_qa>/agy-qa/board.json` bound to `block:other-lead` to verify
+                # ensure_boards() NEVER hijacks it (Astra R2 #1 / Neon R2 #4):
+                foreign_qa_dir = os.path.join(eb_qa, "agy-qa")
+                os.makedirs(foreign_qa_dir, exist_ok=True)
+                open(os.path.join(foreign_qa_dir, "board.json"), "w").write('{"title":"other-lead-qa"}\n')
+                open(os.path.join(foreign_qa_dir, "board.json.meta.json"), "w").write(json.dumps({"anchor_block": "block:other-lead"}))
+                # Direct `ensure_boards()` run in a bounded subprocess (so a FIFO regression fails fast instead of hanging, Astra R3 #22):
+                open(split_log, "w").write("")
+                sub_eb = subprocess.run(
+                    ["/usr/bin/python3", os.path.join(HERE, "agents"), "ensure-boards"],
+                    capture_output=True, text=True, timeout=20, env=dict(os.environ),
+                )
+                assert sub_eb.returncode == 1, f"missing/malformed children must return rc=1, got {sub_eb.returncode}: {sub_eb.stderr}"
+                splits = open(split_log).read().splitlines()
+                # 1) `real-init-board` stayed bound to `td/real-init-board/board.json` (already open -> NOT re-split!) with ZERO orphan under eb_qa:
+                assert "block:real-child" not in splits, f"already-open real-init-board must not be re-split: {splits}"
+                assert not os.path.exists(os.path.join(eb_qa, "sa-real1")) and not os.path.exists(os.path.join(eb_qa, board.block_board_subdir("block:real-child"))), os.listdir(eb_qa)
+                # 2) `agy-qa` (title `--no-open`, state `waiting_approval`) got its own block-keyed board with status="blocked",
+                #    `idle-qa` (state `idle`) got status="idle" (Astra R3 #19), leaving other-lead's `eb_qa/agy-qa/board.json` untouched:
+                agy_qa_bp = os.path.join(eb_qa, board.block_board_subdir("block:agy-qa"), "board.json")
+                idle_qa_bp = os.path.join(eb_qa, board.block_board_subdir("block:idle-qa"), "board.json")
+                assert "block:agy-qa" in splits and os.path.isfile(agy_qa_bp), splits
+                assert board.load_board(agy_qa_bp)["status"] == "blocked", board.load_board(agy_qa_bp)
+                assert board.load_board(agy_qa_bp)["goal"] == "--no-open", board.load_board(agy_qa_bp)
+                assert "block:idle-qa" in splits and board.load_board(idle_qa_bp)["status"] == "idle", board.load_board(idle_qa_bp)
+                assert json.load(open(os.path.join(foreign_qa_dir, "board.json")))["title"] == "other-lead-qa"
+                # 3) Neon R3 #1 / Astra R3 #6: `qa-cwd` (cwd `calendar-pass` != name `qa-cwd`) passed OLO_MINDER auth, opened pane,
+                #    AND plain `agent-board update` (no `--file`) from `qa-cwd`'s tab updates `calendar-pass/board.json`!
+                assert "block:qa-cwd" in splits, f"cwd-based legacy QA child must succeed under OLO_MINDER: {splits}\n{sub_eb.stderr}"
+                cwd_child_env = dict(os.environ)
+                cwd_child_env.pop("OLO_MINDER", None)
+                cwd_child_env.pop("OLO_SUBAGENT", None)
+                cwd_child_env["REX_BLOCK"] = "block:qa-cwd"
+                subprocess.run(["/usr/bin/python3", agents.BOARD_BIN, "update", "--no-open", "--now", "legacy-cwd-aligned"], capture_output=True, text=True, check=True, env=cwd_child_env, cwd=agents.ROOT)
+                assert board.load_board(cwd_qa_bp)["now"] == "legacy-cwd-aligned", board.load_board(cwd_qa_bp)
+                # 4) Astra R2 #3: ad-hoc child running plain `agent-board update --now ...` (NO `--file`!) writes the EXACT SAME file ensure-boards opened!
+                raw_qa_env = dict(os.environ)
+                raw_qa_env.pop("OLO_MINDER", None)
+                raw_qa_env.pop("OLO_SUBAGENT", None)
+                raw_qa_env["REX_BLOCK"] = "block:agy-qa"
+                subprocess.run(["/usr/bin/python3", agents.BOARD_BIN, "update", "--no-open", "--now", "raw-child-live-update"], capture_output=True, text=True, check=True, env=raw_qa_env, cwd=agents.ROOT)
+                assert board.load_board(agy_qa_bp)["now"] == "raw-child-live-update", board.load_board(agy_qa_bp)
+                # 5) Second `ensure-boards` pass produces ZERO duplicate splits (Astra R3 #21)!
+                open(split_log, "w").write("")
+                sub_eb2 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agents"), "ensure-boards"], capture_output=True, text=True, timeout=20, env=dict(os.environ))
+                assert sub_eb2.returncode == 1 and open(split_log).read() == "", f"second ensure-boards must not duplicate splits: {open(split_log).read()!r}"
+                # 6) `../escape` got safe block-keyed path under `eb_qa`:
+                assert "block:evil" in splits and os.path.isfile(os.path.join(eb_qa, board.block_board_subdir("block:evil"), "board.json")), splits
+                # 7) Astra R2 #14: receiptless `astra-deadbeef00` was NOT exempt, while trusted `astra-1234567890` (review) and `opus-ui` (look) WERE exempt!
+                assert "block:fake-rev" in splits, f"receiptless astra-deadbeef00 must NOT be exempt: {splits}"
+                assert "block:rev" not in splits, f"receipted code reviewer must be exempt: {splits}"
+                assert "block:look" not in splits, f"receipted visual reviewer must be exempt: {splits}"
+                # 8) Astra R2 #13 + R3 #16: missing/non-list `subagents` fails closed; invalid row fails without aborting; `_run_bounded` enforces `max_bytes`:
+                agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, json.dumps({"parent_certain": True}), "")
+                expect_exit(lambda: agents.ensure_boards(), "missing subagents list")
+                agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 0, json.dumps({"parent_certain": True, "subagents": ["bad-row"]}), "")
+                assert agents.ensure_boards() == 1
+                rb_over = agents._run_bounded(["/usr/bin/python3", "-c", "print('x' * 5000)"], timeout=5, max_bytes=1024)
+                assert rb_over.returncode != 0 and "exceeded" in rb_over.stderr, rb_over
+                # Failed `olo agent list` inside a Rex pane exits non-zero (never prints 'not in Rex', Astra #10):
+                agents.olo = lambda *a, **kw: subprocess.CompletedProcess(list(a), 1, "", "service down")
+                expect_exit(lambda: agents.ensure_boards(), "failed")
+        finally:
+            agents.olo = orig_olo_eb
+            for k, v in saved_env.items():
+                if v is not None:
+                    os.environ[k] = v
+                else:
+                    os.environ.pop(k, None)
 finally:
     agents.HOME = orig_home3
     agents.olo = orig_olo3

@@ -82,9 +82,12 @@ tools/dev/opus-look [--about "…"] [--no-wait] PICTURE.png…
 # Collect a finished --no-wait review or look
 tools/dev/agents collect NAME
 
-# Subagent right-pane standup board (pre-allowed for minders, builders & investigators)
-tools/dev/agent-board init --open --title NAME --role Builder --crate CRATE --goal "…" --now "…" --todo "…"
+# Subagent right-pane standup board (pre-allowed; auto-opens right split pane in Rex by default)
+tools/dev/agent-board init --title NAME --role Builder --crate CRATE --goal "…" --now "…" --todo "…"
 tools/dev/agent-board update --did "…" --now "…" --check-todo "…" --start-todo "…" --status testing
+# Audit & auto-open any missing right-pane Standup board across all live board-owning children
+# (builders, minders, investigators, QA explorers; verified reviewers exempt; required after ad-hoc `olo agent start`, passing `--env OLO_QA_DIR=...` when using a custom QA root)
+tools/dev/agents ensure-boards
 ```
 
 ## Multi-Lead Isolation

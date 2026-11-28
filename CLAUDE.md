@@ -338,16 +338,22 @@ are universal and non-negotiable:
   screenshots from the right pane progress board for me please they're
   too intrusive").
 - **A live standup board beside every subagent (`tools/dev/agent-board`).**
-  (Ben, 2026-11-27: every builder, investigator, and minder gets a Rex
-  split pane to its right automatically opened by `tools/dev/agents` on
+  (Ben, 2026-11-27 & 2026-11-28: every builder, investigator, QA
+  explorer, and minder MUST have a Rex split pane to its right showing
+  its live progress board. `tools/dev/agents` auto-opens it on
   `start`/`resume`/`investigate`/`minder start` using the absolute
-  `tools/dev/agent-board` path so it works in every worktree, and keeps
-  it up to date incrementally via `agent-board update …`, supplying only
-  what changed.) The board displays a plain-English 1–2 paragraph
-  version of the agent's goal/brief, a standup (Recently Did, Doing Now,
-  Up Next), a color progress bar with ASCII status art, and its todo
-  checklist — driven by `inotify` (0% CPU at rest) and pre-allowed in
-  `tools/dev/agents` so subagents update it unasked.
+  `tools/dev/agent-board` path; `agent-board init` and `update` also
+  auto-open (and self-heal) the right split pane by default whenever run
+  inside Rex (`--no-open` opts out); `OLO_MINDER` may open boards for
+  verified live child tabs in its subtree under `/var/tmp/olo-agents/`
+  and `/var/tmp/olo-qa/`; and `tools/dev/agents ensure-boards` audits and
+  opens any missing right-pane Standup board across all live children —
+  run it right after launching any custom/ad-hoc `olo agent start`
+  helper such as QA explorers.) The board displays a plain-English 1–2
+  paragraph version of the agent's goal/brief, a standup (Recently Did,
+  Doing Now, Up Next), a color progress bar with ASCII status art, and
+  its todo checklist — driven by `inotify` (0% CPU at rest) and
+  pre-allowed in `tools/dev/agents` so subagents update it unasked.
 - **Agent hierarchy through `olo agent`: Lead ▸ Minder (`agy` Neon 4
   `xhigh`) ▸ Builders & Reviewers.** (Ben, 2026-11-26, 2026-11-27 &
   2026-11-28: all helpers are native Rex subagents via `olo agent` —

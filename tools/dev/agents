@@ -59,6 +59,8 @@ authorize additional review rounds.
                                      bring a stopped worker back with its
                                      conversation (under the caller's tab)
   agents tidy                        end stale/exited helpers of THIS subtree
+  agents ensure-boards               audit live children and open any missing
+                                     right-hand Standup split pane
   agents forget NAME                 remove a stopped one's folder
   agents attach NAME                 how the person can watch it live
   agents allowed                     what goes ahead unasked, what is refused
@@ -71,6 +73,7 @@ import os
 import re
 import selectors
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -293,21 +296,49 @@ def trusted_meta_path(name):
     return os.path.join(HOME, ".meta", f"{name}.json")
 
 
-def trusted_meta_status(name):
-    """Return `(state, data)` where state is `'ok'`, `'missing'`, or `'corrupt'`
-    so unreadable/corrupt parent records fail closed instead of falling back
-    to helper-writable `meta.json`."""
-    p = trusted_meta_path(name)
+def _read_regular_json(path, max_bytes=65536):
+    """Read and parse a regular, non-symlink JSON file with O_NONBLOCK and a
+    hard byte cap so a FIFO or oversized file can never hang or exhaust memory.
+    Returns `(state, obj)` where state is `'ok'`, `'missing'`, or `'corrupt'`."""
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
-        with open(p, "r") as f:
-            obj = json.load(f)
+        fd = os.open(path, flags)
     except FileNotFoundError:
         return "missing", None
-    except (OSError, ValueError):
+    except OSError:
+        return "corrupt", None
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            return "corrupt", None
+        chunks, total = [], 0
+        while True:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                return "corrupt", None
+            chunks.append(chunk)
+    except OSError:
+        return "corrupt", None
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+    try:
+        obj = json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
         return "corrupt", None
     if not isinstance(obj, dict):
         return "corrupt", None
     return "ok", obj
+
+
+def trusted_meta_status(name):
+    """Return `(state, data)` where state is `'ok'`, `'missing'`, or `'corrupt'`
+    so unreadable/corrupt parent records fail closed instead of falling back
+    to helper-writable `meta.json`."""
+    return _read_regular_json(trusted_meta_path(name), max_bytes=2 * 1024 * 1024)
 
 
 def trusted_meta(name):
@@ -413,13 +444,24 @@ def is_ours(name, allow_trimmed=False):
 
 
 @contextlib.contextmanager
-def agents_lock():
+def agents_lock(timeout=None):
     """Serialize helper admission and scratch folder lifecycle across
     concurrent leads/minders sharing HOME, refreshing subtree cache on entry."""
     os.makedirs(HOME, exist_ok=True)
     f = _open_lock(os.path.join(HOME, ".agents.lock"))
     try:
-        fcntl.flock(f, fcntl.LOCK_EX)
+        if timeout is None:
+            fcntl.flock(f, fcntl.LOCK_EX)
+        else:
+            dl = time.monotonic() + float(timeout)
+            while True:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= dl:
+                        sys.exit(f"agents: timed out after {timeout:.0f}s waiting for {HOME}/.agents.lock")
+                    time.sleep(0.05)
         _SUBTREE_IDS[0] = None
         yield
     finally:
@@ -444,12 +486,85 @@ def check_collision(name):
     sys.exit(f"agents: `{name}` belongs to {who} ({d}): choose another name or set OLO_AGENTS_DIR")
 
 
-def olo(*args, check=False, timeout=180):
-    """`olo agent ARGS…`, asked of the host's agents service."""
+def _kill_bounded_proc(proc):
+    if proc.returncode is None:
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        with contextlib.suppress(OSError):
+            proc.kill()
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        proc.wait(timeout=2)
+
+
+def _run_bounded(cmd, timeout=20, max_bytes=2 * 1024 * 1024):
+    """Run a command in its own process group, draining stdout/stderr with a
+    hard byte cap and monotonic deadline so large listings or stuck descendants
+    cannot exhaust memory or outlive timeout/cancellation."""
     try:
-        r = subprocess.run([OLO, "agent", *args], capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+    except OSError as e:
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+    sel = selectors.DefaultSelector()
+    sel.register(proc.stdout, selectors.EVENT_READ, "out")
+    sel.register(proc.stderr, selectors.EVENT_READ, "err")
+    out_chunks, err_chunks = [], []
+    out_n = err_n = 0
+    deadline = time.monotonic() + timeout
+    try:
+        while sel.get_map():
+            rem = deadline - time.monotonic()
+            if rem <= 0:
+                _kill_bounded_proc(proc)
+                return subprocess.CompletedProcess(cmd, 1, "", f"timed out after {timeout}s")
+            for key, _ in sel.select(rem):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    sel.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                if key.data == "out":
+                    if out_n + len(chunk) > max_bytes:
+                        _kill_bounded_proc(proc)
+                        return subprocess.CompletedProcess(cmd, 1, "", f"output exceeded {max_bytes} byte limit")
+                    out_chunks.append(chunk)
+                    out_n += len(chunk)
+                else:
+                    if err_n < 65536:
+                        take = chunk[:65536 - err_n]
+                        err_chunks.append(take)
+                        err_n += len(take)
+        rc = proc.wait(timeout=max(0.1, deadline - time.monotonic()))
     except (OSError, subprocess.SubprocessError) as e:
-        r = subprocess.CompletedProcess([OLO, "agent", *args], 1, "", str(e))
+        _kill_bounded_proc(proc)
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+    except BaseException:
+        _kill_bounded_proc(proc)
+        raise
+    finally:
+        for key in list(sel.get_map().values()):
+            with contextlib.suppress(OSError):
+                key.fileobj.close()
+        sel.close()
+    return subprocess.CompletedProcess(
+        cmd, rc,
+        b"".join(out_chunks).decode("utf-8", "replace"),
+        b"".join(err_chunks).decode("utf-8", "replace"),
+    )
+
+
+def olo(*args, check=False, timeout=180, max_bytes=None):
+    """`olo agent ARGS…`, asked of the host's agents service."""
+    cmd = [OLO, "agent", *args]
+    if max_bytes is not None:
+        r = _run_bounded(cmd, timeout=timeout, max_bytes=max_bytes)
+    else:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as e:
+            r = subprocess.CompletedProcess(cmd, 1, "", str(e))
     if check and r.returncode:
         sys.exit(f"agents: olo agent {' '.join(args[:2])}: {(r.stderr or r.stdout).strip()}")
     return r
@@ -968,7 +1083,7 @@ you look into.)
 - You are the helper: don't start another (tools/dev/agy-help, the
   olo-debug-help skill), nor any other agent or subagent of your own.
 - Live standup board (MANDATORY — your right-hand Rex pane is ALREADY opened
-  for `{dir}/board.json`; keep it current from your very first turn using the
+  for `{board_file}`; keep it current from your very first turn using the
   absolute binary `{board}`, which runs unasked in every worktree):
   run `{board} init --open --title "{name}" --role "Investigator" --goal "1-2 plain-English paragraphs of the bug you are root-causing" --now "Gathering initial evidence" --todo "[>] Reproduce / inspect code" --todo "[ ] Write answer.md"`
   and call `{board} update --did "…" --now "…" --check-todo "…"`
@@ -1184,9 +1299,9 @@ def session(name, cwd, env, program, native=None, subagent=True, extra_meta=None
     if not any(e.startswith("PATH=") for e in env):
         env.append(f"PATH={clean_path()}")
     # Forward custom OLO_AGENTS_DIR to every board-owning child (and
-    # OLO_REVIEWS_DIR to minders) as absolute paths so isolated trials never
-    # touch live state or resolve differently under a child's `--cwd`.
-    forward_keys = ("OLO_AGENTS_DIR",) if subagent else ("OLO_AGENTS_DIR", "OLO_REVIEWS_DIR")
+    # OLO_REVIEWS_DIR / OLO_QA_DIR to minders) as absolute paths so isolated
+    # trials never touch live state or resolve differently under a child's `--cwd`.
+    forward_keys = ("OLO_AGENTS_DIR",) if subagent else ("OLO_AGENTS_DIR", "OLO_REVIEWS_DIR", "OLO_QA_DIR")
     for k in forward_keys:
         if os.environ.get(k) and not any(e.startswith(f"{k}=") for e in env):
             env.append(f"{k}={os.path.abspath(os.environ[k])}")
@@ -1470,36 +1585,375 @@ def _brief_goal_summary(task_text, fallback):
     return summary or fallback
 
 
-def _open_initial_board(name, d, role, crate="", task_text="", board_file=None):
-    """Auto-open a live right-hand Standup board split pane beside a newly
-    started/resumed Rex tab so no builder, investigator, or minder ever runs
-    without a visible progress board (even in worktrees on older commits)."""
-    m = meta(name) or {}
+def _block_board_subdir(block_id):
+    """Collision-free QA directory name keyed by immutable Rex `block_id`,
+    matching `tools/dev/agent-board:block_board_subdir` so `ensure-boards` and
+    ad-hoc Rex children resolve the exact same default board file."""
+    return f"blk-{hashlib.sha256(str(block_id).encode('utf-8')).hexdigest()[:16]}"
+
+
+def _seed_initial_board(name, d, role, crate="", task_text="", board_file=None, receipt=None):
+    """Seed the initial `board.json` atomically (`init --if-missing --no-open`)
+    while the caller holds `agents_lock()` and the receipt is current. Returns
+    `(name, bf, block_id, expected_rex_id)` for `_open_initial_board_pane()` to
+    run AFTER releasing `agents_lock()`, or `None` if skipped/failed."""
+    if receipt is not None:
+        m = receipt
+    else:
+        st, obj = trusted_meta_status(name)
+        if st == "corrupt":
+            print(f"agents: warning: corrupt parent metadata for {name}; refusing to auto-open board", file=sys.stderr)
+            return None
+        m = obj if st == "ok" else (meta(name) or {})
+    if m.get("via") != "rex":
+        return None
+    rid = m.get("rex_id") or name
     block_id = m.get("block_id")
-    if m.get("via") != "rex" or not block_id or not os.path.isfile(BOARD_BIN):
-        return
+    if not block_id:
+        print(f"agents: warning: child `{name}` (id={rid}) started via Rex without a block_id; Standup board not opened (repair with `tools/dev/agents ensure-boards`)", file=sys.stderr)
+        return None
+    if not os.path.isfile(BOARD_BIN):
+        print(f"agents: warning: child `{name}` (id={rid}) started via Rex, but `{BOARD_BIN}` is missing; Standup board not opened", file=sys.stderr)
+        return None
     bf = board_file or os.path.join(d, "board.json")
+    fallback = f"{role} `{name}`" + (f" working on {crate}" if crate else "")
+    goal = _brief_goal_summary(task_text, fallback)
+    cmd = [
+        "/usr/bin/python3", BOARD_BIN, "init", "--if-missing", "--no-open",
+        f"--block={block_id}", f"--file={bf}",
+        f"--title={name}", f"--role={role}", f"--crate={crate or ''}",
+        f"--goal={goal}",
+        "--status=starting",
+        "--now=Starting — reading brief and setting up plan",
+        "--todo=[>] Read brief and update board plan",
+    ]
     try:
-        if os.path.isfile(bf):
-            cmd = ["/usr/bin/python3", BOARD_BIN, "open", "--block", block_id, "--file", bf]
-        else:
-            fallback = f"{role} `{name}`" + (f" working on {crate}" if crate else "")
-            goal = _brief_goal_summary(task_text, fallback)
-            cmd = [
-                "/usr/bin/python3", BOARD_BIN, "init", "--open",
-                "--block", block_id, "--file", bf,
-                "--title", name, "--role", role, "--crate", crate or "",
-                "--goal", goal,
-                "--status", "starting",
-                "--now", "Starting — reading brief and setting up plan",
-                "--todo", "[>] Read brief and update board plan",
-            ]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
         if r.returncode != 0:
             msg = (r.stderr or r.stdout).strip()
-            print(f"agents: warning: could not auto-open board for {name}: {msg}", file=sys.stderr)
+            print(f"agents: warning: child `{name}` (id={rid}) could not seed initial board: {msg}", file=sys.stderr)
+            return None
     except (OSError, subprocess.SubprocessError) as e:
-        print(f"agents: warning: could not auto-open board for {name}: {e}", file=sys.stderr)
+        print(f"agents: warning: child `{name}` (id={rid}) could not seed initial board: {e}", file=sys.stderr)
+        return None
+    return (name, bf, block_id, m.get("rex_id"))
+
+
+def _open_initial_board_pane(name, bf, block_id, expected_rex_id=None, check_receipt=True):
+    """Open the right-hand Standup split pane for an already-seeded board
+    OUTSIDE `agents_lock()`. Uses `open --existing-only` and re-verifies the
+    current receipt before each attempt so a forgotten or replaced helper can
+    never have its folder recreated or its new board split against an old block."""
+    cmd = [
+        "/usr/bin/python3", BOARD_BIN, "open", "--existing-only", "--deadline=40",
+        f"--block={block_id}", f"--file={bf}",
+    ]
+    last_msg = ""
+    for attempt in range(2):
+        if check_receipt:
+            st, cur = trusted_meta_status(name)
+            if st != "ok" or not isinstance(cur, dict):
+                return False
+            if expected_rex_id and cur.get("rex_id") != expected_rex_id:
+                return False
+            if cur.get("block_id") != block_id:
+                return False
+        if not os.path.isfile(bf):
+            return False
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if r.returncode == 0:
+                return True
+            last_msg = (r.stderr or r.stdout).strip()
+        except (OSError, subprocess.SubprocessError) as e:
+            last_msg = str(e)
+        if attempt == 0:
+            time.sleep(0.5)
+    rid_s = f" (id={expected_rex_id})" if expected_rex_id else ""
+    print(f"agents: warning: could not auto-open board for {name}{rid_s}: {last_msg}", file=sys.stderr)
+    return False
+
+
+def _open_initial_board(name, d, role, crate="", task_text="", board_file=None, receipt=None):
+    """Convenience wrapper that seeds the initial board (`--if-missing --no-open`)
+    and opens its right-hand Standup split pane (`open --existing-only`)."""
+    seeded = _seed_initial_board(name, d, role, crate=crate, task_text=task_text, board_file=board_file, receipt=receipt)
+    if seeded is None:
+        return False
+    st, _ = trusted_meta_status(name)
+    return _open_initial_board_pane(*seeded, check_receipt=(st == "ok"))
+
+
+_SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+
+
+def _managed_receipt_by_rex_id():
+    """Index parent-owned `HOME/.meta/*.json` receipts (atomically replaced)
+    using bounded non-blocking regular-file reads without touching helper-writable
+    `meta.json`. Returns `(by_id_block, by_id_unblocked, conflicted_ids)` so
+    reused service IDs or conflicting receipts never misbind a live child."""
+    by_id_block = {}
+    by_id_unblocked = {}
+    conflicted = set()
+    meta_dir = os.path.join(HOME, ".meta")
+    with agents_lock(timeout=15):
+        try:
+            entries = list(os.scandir(meta_dir))
+        except FileNotFoundError:
+            return by_id_block, by_id_unblocked, conflicted
+        except OSError as e:
+            sys.exit(f"agents: ensure-boards: cannot scan {meta_dir}: {e}")
+        for ent in entries:
+            if not ent.name.endswith(".json") or not ent.is_file(follow_symlinks=False):
+                continue
+            stem = ent.name[:-5]
+            if not NAMED.fullmatch(stem):
+                continue
+            st, obj = trusted_meta_status(stem)
+            if st != "ok" or not isinstance(obj, dict):
+                continue
+            rid = obj.get("rex_id")
+            if not isinstance(rid, str) or not rid:
+                continue
+            blk = obj.get("block_id") if isinstance(obj.get("block_id"), str) and obj.get("block_id") else None
+            if blk:
+                k = (rid, blk)
+                if k in by_id_block:
+                    conflicted.add(k)
+                else:
+                    by_id_block[k] = (stem, obj)
+            else:
+                if rid in by_id_unblocked:
+                    conflicted.add((rid, None))
+                else:
+                    by_id_unblocked[rid] = (stem, obj)
+    return by_id_block, by_id_unblocked, conflicted
+
+
+def _lookup_managed_receipt(cid, blk, index):
+    by_id_block, by_id_unblocked, conflicted = index
+    if blk and (cid, blk) in conflicted:
+        return None, None, "conflicting parent receipts for service/block ID"
+    if blk and (cid, blk) in by_id_block:
+        return (*by_id_block[(cid, blk)], None)
+    # Legacy receipt saved without block_id: accept only if unambiguous and no
+    # other block-bound receipt exists for a conflicting generation.
+    if (cid, None) in conflicted:
+        return None, None, "conflicting legacy parent receipts for service ID"
+    if cid in by_id_unblocked:
+        return (*by_id_unblocked[cid], None)
+    return None, None, None
+
+
+def _is_exempt_reviewer(name, receipt):
+    """Exempt ONLY verified code/visual reviewers backed by a trusted
+    parent-owned launcher receipt — never an ad-hoc worker whose display name
+    happens to match a reviewer prefix/pattern."""
+    if isinstance(receipt, dict):
+        return receipt.get("kind") in ("review", "look") or bool(receipt.get("review_of") or receipt.get("pictures"))
+    return False
+
+
+def _resolve_qa_root():
+    raw = os.environ.get("OLO_QA_DIR") or "/var/tmp/olo-qa"
+    p = os.path.abspath(raw)
+    rp = os.path.realpath(p)
+    var_tmp = os.path.realpath("/var/tmp")
+    root_rp = os.path.realpath(ROOT)
+    if os.path.islink(p) or not rp.startswith(var_tmp + os.sep) or rp == root_rp or rp.startswith(root_rp + os.sep):
+        sys.exit(f"agents: ensure-boards: invalid OLO_QA_DIR ({raw})")
+    return rp
+
+
+def _board_path_for_child(child, managed_name, qa_root):
+    """Choose a collision-safe, allowlisted `board.json` path for a live child
+    keyed by verified parent receipt (managed) or immutable Rex block ID
+    (ad-hoc), accepting a legacy named/cwd path under `qa_root` ONLY when its
+    `board.json.meta.json` is already explicitly bound to THIS child's block."""
+    cid = child.get("id") or ""
+    name = child.get("name") or ""
+    blk = child.get("block_id") or ""
+    if managed_name:
+        return os.path.join(HOME, managed_name, "board.json")
+    # Ad-hoc child: reuse an existing QA board ONLY if its `.meta.json` is
+    # already explicitly bound to THIS child's `block_id` (prevents cross-lead
+    # display-name hijacking and stale-board collisions).
+    legacy_dirs = []
+    cwd = child.get("cwd") or ""
+    if isinstance(cwd, str) and cwd:
+        cp = os.path.abspath(cwd)
+        if not os.path.islink(cp):
+            crp = os.path.realpath(cp)
+            if crp.startswith(qa_root + os.sep):
+                rel = os.path.relpath(crp, qa_root)
+                if os.sep not in rel and rel and not rel.startswith("."):
+                    legacy_dirs.append(rel)
+    for cand_dir in (name, cid):
+        if isinstance(cand_dir, str) and cand_dir and _SAFE_ID_RE.fullmatch(cand_dir) and cand_dir not in legacy_dirs:
+            legacy_dirs.append(cand_dir)
+    for subdir in legacy_dirs:
+        dpath = os.path.join(qa_root, subdir)
+        cand = os.path.join(dpath, "board.json")
+        if os.path.islink(dpath) or os.path.islink(cand):
+            continue
+        st, bm = _read_regular_json(f"{cand}.meta.json", max_bytes=65536)
+        if st == "ok" and isinstance(bm, dict) and blk and bm.get("anchor_block") == blk:
+            return cand
+    # Default ad-hoc path keyed by immutable Rex `block_id` — matches
+    # `tools/dev/agent-board:default_path()` inside unmarked Rex children!
+    return os.path.join(qa_root, _block_board_subdir(blk), "board.json")
+
+
+def _starter_status_for_state(child_state):
+    st = str(child_state or "").lower()
+    if st in ("waiting_approval", "waiting_question", "blocked", "error"):
+        return "blocked", f"Waiting ({st.replace('_', ' ')}) — awaiting first board update"
+    if st == "done":
+        return "done", "Done — awaiting next instruction"
+    if st == "idle":
+        return "idle", "Idle at prompt — awaiting next instruction"
+    if st == "working":
+        return "working", "Working — awaiting first board update"
+    return "starting", "Awaiting first board update"
+
+
+def ensure_boards():
+    """Audit every live Rex child in this tab's subtree (builders, minders,
+    investigators, QA explorers — excluding verified short-lived reviewers)
+    and auto-open/verify its right-hand Standup split pane."""
+    refuse_nested()
+    if not os.environ.get("REX_BLOCK"):
+        print("agents: not in a Rex pane; skipping ensure-boards")
+        return 0
+    r = olo("list", "--fast", "--json", check=False, timeout=20, max_bytes=2 * 1024 * 1024)
+    if r.returncode != 0:
+        sys.exit(f"agents: ensure-boards: `olo agent list` failed: {(r.stderr or r.stdout).strip()}")
+    try:
+        said = json.loads(r.stdout)
+    except ValueError as e:
+        sys.exit(f"agents: ensure-boards: malformed `olo agent list` JSON: {e}")
+    if not isinstance(said, dict) or said.get("parent_certain") is not True:
+        sys.exit("agents: ensure-boards: parent identity uncertain; refusing to split unknown tabs")
+    raw_subs = said.get("subagents")
+    if not isinstance(raw_subs, list):
+        sys.exit("agents: ensure-boards: `olo agent list` missing subagents list")
+    subs, failed = [], []
+    for row in raw_subs:
+        if not isinstance(row, dict):
+            failed.append(("(invalid row)", f"malformed subagent entry in `olo agent list`: {row!r}"))
+            continue
+        raw_state = row.get("state")
+        if raw_state is not None and not isinstance(raw_state, str):
+            failed.append(("(invalid row)", f"malformed state field in `olo agent list`: {raw_state!r}"))
+            continue
+        if raw_state != "exited":
+            subs.append(row)
+    if not subs and not failed:
+        print("agents: ensure-boards: no live children")
+        return 0
+    receipt_index = _managed_receipt_by_rex_id()
+    qa_root = _resolve_qa_root()
+    opened, verified, exempt = [], [], []
+    for s in subs:
+        cid = s.get("id")
+        raw_name = s.get("name")
+        wid = s.get("window_id")
+        blk = s.get("block_id")
+        raw_role = s.get("role")
+        raw_title = s.get("title")
+        raw_cwd = s.get("cwd")
+        if not isinstance(cid, str) or not cid:
+            failed.append(("(invalid row)", f"missing or non-string child id: {cid!r}"))
+            continue
+        if raw_name is not None and not isinstance(raw_name, str):
+            failed.append((cid, f"non-string child name: {raw_name!r}"))
+            continue
+        name = raw_name or cid
+        if any(v is not None and not isinstance(v, str) for v in (wid, blk, raw_role, raw_title, raw_cwd)):
+            failed.append((name, "non-string metadata field in `olo agent list` row"))
+            continue
+        mname, receipt, rec_err = _lookup_managed_receipt(cid, blk or "", receipt_index)
+        if rec_err:
+            failed.append((name, rec_err))
+            continue
+        if _is_exempt_reviewer(name, receipt):
+            exempt.append(name)
+            continue
+        if not blk or not wid:
+            failed.append((name, "missing live Rex id/window_id/block_id"))
+            continue
+        role = (raw_role or "Agent").replace("-", " ").title()
+        goal = raw_title or f"{role} `{name}`"
+        b_status, b_now = _starter_status_for_state(s.get("state"))
+        if mname:
+            # Managed child: revalidate receipt and seed under `agents_lock` so an
+            # audit racing with `forget()` NEVER recreates a forgotten directory,
+            # then open via `open --existing-only` outside the lock.
+            bf = os.path.join(HOME, mname, "board.json")
+            with agents_lock(timeout=15):
+                st_cur, cur = trusted_meta_status(mname)
+                if st_cur != "ok" or not isinstance(cur, dict) or cur.get("rex_id") != cid:
+                    continue  # Helper was forgotten or replaced since listing.
+                if cur.get("block_id") and cur.get("block_id") != blk:
+                    continue
+                if not os.path.isdir(folder(mname)) or os.path.islink(folder(mname)):
+                    continue
+                seed_cmd = [
+                    "/usr/bin/python3", BOARD_BIN, "init", "--if-missing", "--no-open",
+                    f"--block={blk}", f"--file={bf}",
+                    f"--title={name}", f"--role={role}",
+                    f"--goal={goal}", f"--status={b_status}", f"--now={b_now}",
+                ]
+                try:
+                    seed_res = subprocess.run(seed_cmd, capture_output=True, text=True, timeout=20)
+                except (OSError, subprocess.SubprocessError) as e:
+                    failed.append((name, str(e)))
+                    continue
+                if seed_res.returncode != 0:
+                    failed.append((name, (seed_res.stderr or seed_res.stdout).strip()))
+                    continue
+            cmd = [
+                "/usr/bin/python3", BOARD_BIN, "open", "--existing-only", "--deadline=40",
+                f"--block={blk}", f"--file={bf}",
+            ]
+        else:
+            bf = _board_path_for_child(s, None, qa_root)
+            cmd = [
+                "/usr/bin/python3", BOARD_BIN, "init", "--if-missing", "--open", "--deadline=40",
+                f"--block={blk}", f"--file={bf}",
+                f"--title={name}", f"--role={role}",
+                f"--goal={goal}",
+                f"--status={b_status}",
+                f"--now={b_now}",
+            ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as e:
+            failed.append((name, str(e)))
+            continue
+        if res.returncode == 0:
+            if "opened right split pane" in res.stdout:
+                opened.append(name)
+            else:
+                verified.append(name)
+        else:
+            failed.append((name, (res.stderr or res.stdout).strip()))
+    if opened:
+        print(f"agents: ensure-boards: opened missing Standup pane(s) for {', '.join(opened)}")
+    if failed:
+        for n, msg in failed:
+            print(f"agents: ensure-boards: failed for {n}: {msg}", file=sys.stderr)
+        return 1
+    parts = []
+    if verified:
+        parts.append(f"{len(verified)} verified")
+    if opened:
+        parts.append(f"{len(opened)} opened")
+    if exempt:
+        parts.append(f"{len(exempt)} reviewer(s) exempt")
+    summary = ", ".join(parts) or "0 checked"
+    print(f"agents: ensure-boards: ok ({summary})")
+    return 0
 
 
 def start_minder(brief=None, name="minder"):
@@ -1516,13 +1970,28 @@ def start_minder(brief=None, name="minder"):
         if is_ours(name) and live(name):
             sys.exit(f"agents: minder `{name}` is already running (use `tools/dev/agents say {name} …` or `stop {name}`)")
         d = folder(name)
-        os.makedirs(d, exist_ok=True)
-        # Archive previous assignment state so a fresh minder never inherits old review counts.
-        stamp = int(time.time())
-        for stale in ("state.json", "report.md"):
-            p = os.path.join(d, stale)
-            if os.path.isfile(p):
-                os.replace(p, f"{p}.before.{stamp}")
+        os.makedirs(HOME, exist_ok=True)
+        try:
+            os.mkdir(d, 0o755)
+        except FileExistsError:
+            pass
+        # Open minder scratch directory with O_DIRECTORY | O_NOFOLLOW before
+        # archiving stale state so a symlink alias can never redirect renames.
+        try:
+            dfd = os.open(d, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+        except OSError as e:
+            sys.exit(f"agents: refusing unsafe minder directory {d}: {e}")
+        try:
+            stamp = int(time.time())
+            for stale in ("state.json", "report.md", "board.json"):
+                try:
+                    st = os.lstat(stale, dir_fd=dfd)
+                    if stat.S_ISREG(st.st_mode):
+                        os.replace(stale, f"{stale}.before.{stamp}", src_dir_fd=dfd, dst_dir_fd=dfd)
+                except FileNotFoundError:
+                    pass
+        finally:
+            os.close(dfd)
         guide = open(MINDER_GUIDE).read().strip() if os.path.exists(MINDER_GUIDE) else ""
         rules = open(MINDER_RULES).read().strip() if os.path.exists(MINDER_RULES) else ""
         task = open(brief).read().strip() if brief else ""
@@ -1533,7 +2002,10 @@ def start_minder(brief=None, name="minder"):
         save_meta(name, m0)
         save_trusted_meta(name, m0)
         launch_minder(name, d, ROOT)
-        _open_initial_board(name, d, "Minder", "", task)
+        receipt = trusted_meta(name)
+        board_handle = _seed_initial_board(name, d, "Minder", "", task, receipt=receipt)
+    if board_handle is not None:
+        _open_initial_board_pane(*board_handle)
     m = meta(name) or {}
     print(f"agents: minder `{name}` started ({MINDER_MODEL}, effort {MINDER_EFFORT}, id={m.get('rex_id', name)}); folder {d}")
     if m.get("via") == "rex":
@@ -1577,7 +2049,10 @@ def start(name, crate, brief, tree=None):
         save_meta(name, rec)
         save_trusted_meta(name, rec)
         launch_claude_builder(name, d, repo, [], os.path.join(d, "target"))
-        _open_initial_board(name, d, "Builder", crate, task)
+        receipt = trusted_meta(name)
+        board_handle = _seed_initial_board(name, d, "Builder", crate, task, receipt=receipt)
+    if board_handle is not None:
+        _open_initial_board_pane(*board_handle)
     print(f"agents: {name} started on {crate} ({package}) in {repo}; its folder is {d}")
     print(f"agents: now wait on `olo agent watch --all` or `tools/dev/agents watch` to hear from it")
 
@@ -1600,6 +2075,7 @@ def investigate(brief, where, wait=True):
         sys.exit(f"agents: no folder {work}")
     # (Its name: the folder's, so the same brief finds the same helper.)
     name = ("help-" + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
+    board_handle = None
     with agents_lock():
         check_collision(name)
         m = meta(name)
@@ -1612,15 +2088,19 @@ def investigate(brief, where, wait=True):
             for old in ("answer.md",):
                 if os.path.exists(os.path.join(work, old)):
                     os.replace(os.path.join(work, old), os.path.join(work, old + ".before"))
-            open(os.path.join(d, "brief.md"), "w").write(HELP_RULES.format(root=ROOT, dir=work, approvals=APPROVALS, board=BOARD_BIN, name=name) + open(brief).read().strip() + "\n")
+            brief_txt = open(brief).read().strip()
+            board_file = os.path.join(d, "board.json")
+            open(os.path.join(d, "brief.md"), "w").write(HELP_RULES.format(root=ROOT, dir=work, approvals=APPROVALS, board=BOARD_BIN, board_file=board_file, name=name) + brief_txt + "\n")
             rec = {"work": work, "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(work, "answer.md")}
             save_meta(name, rec)
             save_trusted_meta(name, rec)
             launch(name, d, ROOT, [work], os.path.join(work, "target"))
-            _open_initial_board(name, d, "Investigator", "", open(brief).read().strip(), board_file=os.path.join(work, "board.json"))
+            board_handle = _seed_initial_board(name, d, "Investigator", "", brief_txt, board_file=board_file, receipt=trusted_meta(name))
             print(f"agents: {name} started on {brief}; its answer will be {work}/answer.md, its notes {work}/notes.md", flush=True)
         else:
             print(f"agents: {name} is on it already" + ("; waiting for it" if wait else ""), flush=True)
+    if board_handle is not None:
+        _open_initial_board_pane(*board_handle)
     if not wait:
         print(f"agents: wait for {name} with `tools/dev/agents watch --only help-` (its questions, and DONE with {work}/answer.md)", flush=True)
         sys.exit(0)
@@ -3050,18 +3530,31 @@ def resume(name, text, result=None, session=None):
                 m["done"] = os.path.abspath(result)
             save_meta(name, m)
             save_trusted_meta(name, m)
-            _open_initial_board(name, d, "Builder", m.get("crate") or "", text)
-            print(f"agents: {name} is back, by its conversation's own id, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
-            return
-        _SUBTREE_IDS[0] = None
-        m.update({"rex_id": said["id"], "window": said.get("window_id"), "block_id": said.get("block_id") or m.get("block_id"), "owner_window": said.get("parent_window_id") or m.get("owner_window"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "worktree": repo, "seen": "", "seen_state": "", "said_at": told_at})
-        m.pop("ended", None)
-        if result:
-            m["done"] = os.path.abspath(result)
-        save_meta(name, m)
-        save_trusted_meta(name, m)
-        if m.get("crate"):
-            _open_initial_board(name, folder(name), "Builder", m.get("crate") or "", text)
+            resume_board = _seed_initial_board(name, d, "Builder", m.get("crate") or "", text, receipt=dict(m))
+            early_msg = f"agents: {name} is back, by its conversation's own id, and told; now wait on `tools/dev/agents watch` or `olo agent watch`"
+        else:
+            _SUBTREE_IDS[0] = None
+            t_st, t_orig = trusted_meta_status(name)
+            trusted_reviewer = (t_st == "ok" and _is_exempt_reviewer(name, t_orig))
+            # Clear any stale previous tab's block_id when the service omits it
+            # so a native resume never targets an old tab or suppresses repair warnings.
+            m.update({"rex_id": said["id"], "window": said.get("window_id"), "block_id": said.get("block_id"), "owner_window": said.get("parent_window_id") or m.get("owner_window"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "worktree": repo, "seen": "", "seen_state": "", "said_at": told_at})
+            m.pop("ended", None)
+            if result:
+                m["done"] = os.path.abspath(result)
+            save_meta(name, m)
+            save_trusted_meta(name, m)
+            if not trusted_reviewer:
+                role = "Minder" if m.get("role") == "minder" else ("Builder" if m.get("crate") else "Investigator")
+                resume_board = _seed_initial_board(name, folder(name), role, m.get("crate") or "", text, receipt=dict(m))
+            else:
+                resume_board = None
+            early_msg = None
+    if resume_board is not None:
+        _open_initial_board_pane(*resume_board)
+    if early_msg:
+        print(early_msg)
+        return
     print(f"agents: {name} is back with its conversation, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
 
 
@@ -3215,6 +3708,8 @@ def main():
             print(f"tmux -L {SOCKET} attach -r -t {rest[0]}")
     elif cmd == "allowed":
         allowed()
+    elif cmd == "ensure-boards":
+        sys.exit(ensure_boards())
     elif cmd == "tidy":
         print("agents: tidied (what was ended is said above; `agents list` shows what runs)")
     else:
