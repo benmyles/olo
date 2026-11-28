@@ -970,6 +970,9 @@ Along the Top
 Already saved as “{}”.
 「{}」として保存済みです。
 
+Also for subagents watched by a minder
+マインダーが見守るサブエージェントにも通知する
+
 Also from the Deskbar: click the cup.
 Deskbarのカップをクリックしても操作できます。
 
@@ -2295,6 +2298,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 すべてのアップデートを選択
+
+Choose how these alerts look and sound in Notifications.
+これらの通知の見た目とサウンドは「通知」で設定できます。
 
 Choose how they look and sound in Notifications.
 見た目とサウンドは「通知」で設定できます。

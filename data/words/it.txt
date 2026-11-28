@@ -974,6 +974,9 @@ Lungo il bordo superiore
 Already saved as “{}”.
 Già salvata come “{}”.
 
+Also for subagents watched by a minder
+Anche per i sotto-agenti seguiti da un minder
+
 Also from the Deskbar: click the cup.
 Puoi anche fare clic sulla tazza nella Deskbar.
 
@@ -2304,6 +2307,9 @@ Scegli un widget da modificare o aggiungine uno.
 
 Choose every update
 Scegli tutti gli aggiornamenti
+
+Choose how these alerts look and sound in Notifications.
+Scegli aspetto e suoni di questi avvisi in Notifiche.
 
 Choose how they look and sound in Notifications.
 Scegli aspetto e suoni in Notifiche.

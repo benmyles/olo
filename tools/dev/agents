@@ -1333,7 +1333,7 @@ def launch_minder(name, d, cwd):
     add = [a for x in folders[1:] for a in ("--add-dir", x)]
     first = f"Read {d}/brief.md (your minder rules, review pipeline, and current instructions) and begin minding."
     agy = ["agy", "--model", MINDER_MODEL, "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
-    session(name, cwd, [], agy, native=["agy", "--model", MINDER_MODEL, "--effort", MINDER_EFFORT, "--no-auto",
+    session(name, cwd, [], agy, native=["agy", "--role", "tab-minder", "--model", MINDER_MODEL, "--effort", MINDER_EFFORT, "--no-auto",
                                         "--settings", os.path.join(d, "settings.json"), *add, "--trust", "--prompt", first],
             subagent=False)
 

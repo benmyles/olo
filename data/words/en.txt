@@ -339,6 +339,7 @@ Also copy your folders in /var/tmp (you have none)
 Also copy your folders in /var/tmp ({} folders, {})
 Also copy your {} folders in /var/tmp ({})
 Also copy ~/.cache (rebuilt as it’s used)
+Also for subagents watched by a minder
 Also from the Deskbar: click the cup.
 Also leave out:
 Also used by
@@ -785,6 +786,7 @@ Choose a setting, then play the original or its sound: switching goes on from th
 Choose a to-do to see its details.
 Choose a widget to change it, or add one.
 Choose every update
+Choose how these alerts look and sound in Notifications.
 Choose how they look and sound in Notifications.
 Choose what to scan:
 Choose:

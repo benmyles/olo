@@ -162,6 +162,9 @@ pub struct BlockRuntime {
     guess_wanted: bool,
     /// When its last chunk of output came.
     last_output: Instant,
+    /// When this pane was first seen by Rex (for bounded ownership resolution
+    /// of newly started minded subagents).
+    created_at: Instant,
     /// What its agent is doing as Keep It Going and Auto Approve see it
     /// (the person's choice of them is `help`, by the pane's key), and
     /// the timer for the next thing either waits for, and the one that
@@ -179,6 +182,12 @@ pub struct BlockRuntime {
     /// agent no longer asks.
     unread_asked: bool,
     pub unread_cleared_at: Option<Instant>,
+    /// Monotonic counter incremented whenever activity changes or a new
+    /// `Blocked` status record replaces a prior one, so minder-detach
+    /// reconciliation only delivers an approval that is still open and unseen.
+    blocked_gen: u64,
+    /// `blocked_gen` that was already notified or observed in the front pane.
+    delivered_blocked_gen: Option<u64>,
     pub muted: bool,
     pub last_bell: Option<Instant>,
     pub data_connected: bool,
@@ -302,6 +311,7 @@ impl BlockRuntime {
             agent_activity: AgentActivity::Idle,
             guess_wanted: false,
             last_output: Instant::now(),
+            created_at: Instant::now(),
             watch: Watch::new(Instant::now()),
             mouse: None,
             mouse_held: None,
@@ -310,6 +320,8 @@ impl BlockRuntime {
             unread: false,
             unread_asked: false,
             unread_cleared_at: None,
+            blocked_gen: 0,
+            delivered_blocked_gen: None,
             muted: false,
             last_bell: None,
             data_connected: false,
@@ -525,10 +537,24 @@ impl BlockRuntime {
             self.ports = ports;
         }
     }
+    fn blocked_record(&self) -> Option<&ProgramStatusRecord> {
+        AgentActivity::from_records(&self.program_statuses).and_then(|(act, rec)| (act == AgentActivity::Blocked).then_some(rec))
+    }
+
+    fn current_blocked_notice(&self) -> Option<(u64, String)> {
+        if self.agent_activity != AgentActivity::Blocked || self.muted || self.delivered_blocked_gen == Some(self.blocked_gen) {
+            return None;
+        }
+        let record = self.blocked_record()?;
+        let body = record.msg.clone().or_else(|| record.title.clone()).unwrap_or_else(|| self.title.clone());
+        Some((self.blocked_gen, body))
+    }
+
     fn status_snapshot(&mut self, snapshot: Option<olo_rex_client::RpcResult<Vec<ProgramStatusRecord>>>) {
         if snapshot.as_ref().is_some_and(|r| r.seq < self.snapshot_seq) {
             return;
         }
+        let prev_blocked = self.blocked_record().cloned();
         let pending = self.pending_status.take().unwrap_or_default();
         if let Some(snapshot) = snapshot {
             self.snapshot_seq = snapshot.seq;
@@ -539,7 +565,10 @@ impl BlockRuntime {
                 }
             }
         }
-        self.recompute_activity();
+        let now = self.recompute_activity();
+        if now == AgentActivity::Blocked && prev_blocked.as_ref() != self.blocked_record() {
+            self.blocked_gen = self.blocked_gen.wrapping_add(1);
+        }
     }
 
     /// What the pane is called (its head, its name to agents): see
@@ -599,6 +628,9 @@ impl BlockRuntime {
     /// red dot? and it doesn't go away when i am on it either"). A
     /// failure, or a bell, is news until it is seen, as before.
     fn activity_went(&mut self, was: AgentActivity, now: AgentActivity) {
+        if was != now {
+            self.blocked_gen = self.blocked_gen.wrapping_add(1);
+        }
         if was == AgentActivity::Blocked && now != AgentActivity::Blocked && self.unread && self.unread_asked {
             self.unread = false;
             self.unread_asked = false;
@@ -2185,6 +2217,14 @@ pub struct HubState {
     pub subagents: crate::subagents::SubagentRegistry,
     /// The hosts whose service has said its children since they connected.
     pub agents_told: HashSet<String>,
+    /// Monotonic generation per host for `follow_agents` so superseded
+    /// followers can never overwrite or clear a newer follower's confirmation.
+    agents_follow_gen: HashMap<String, u64>,
+    /// Hosts with a fresh follower generation awaiting its first `Frame::Snapshot`
+    /// (bounded by `NEW_PANE_OWNERSHIP_GRACE`).
+    agents_snapshot_pending: HashMap<String, Instant>,
+    /// Latest live state reported by the host's agents follower per `(host_key, agent_id)`.
+    agent_states: HashMap<(String, String), olo_rex_link::agents::SubagentLiveState>,
     /// Controlling Rex pane for each desktop Agent Screen (from `NAME.owner.json`
     /// and bridged `olo.screen` calls), keyed by screen name.
     pub desktop_screen_owners: HashMap<String, olo_rex_link::screen_wire::ScreenOwner>,
@@ -2192,6 +2232,36 @@ pub struct HubState {
     /// remote host's `olo-rex-link screen follow`, keyed by host key.
     pub host_screens: HashMap<String, crate::screens_sock::LiveHostScreens>,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
+    /// Active front pane per focused Rex workspace window (so held notices are
+    /// discarded if the user views the pane during the ownership hold).
+    visible_panes: HashMap<crate::ui::WinId, BlockKey>,
+    /// Candidate notices for newly seen panes (or panes on a host awaiting its
+    /// initial follower snapshot) whose subagent ownership is unresolved.
+    /// Stored as a per-pane list so an inline APC or bridge notice never
+    /// overwrites a held `Blocked` approval.
+    held_pane_notices: HashMap<BlockKey, Vec<HeldPaneNotice>>,
+    held_notice_seq: u64,
+    #[cfg(test)]
+    test_now: Option<Instant>,
+}
+
+/// How long to hold a candidate notice for a brand-new pane (or a fresh
+/// follower awaiting its initial snapshot) while waiting for ownership.
+const NEW_PANE_OWNERSHIP_GRACE: Duration = Duration::from_millis(750);
+
+#[derive(Clone, Debug)]
+struct PendingPaneNotice {
+    title: String,
+    body: String,
+    kind: olo_kit::notify::NoteKind,
+}
+
+struct HeldPaneNotice {
+    notice: PendingPaneNotice,
+    activity: Option<AgentActivity>,
+    blocked_gen: Option<u64>,
+    seq: u64,
+    timer: Option<tokio::task::AbortHandle>,
 }
 
 impl HostRuntime {
@@ -2251,6 +2321,81 @@ impl HostRuntime {
 }
 
 impl HubState {
+    fn now(&self) -> Instant {
+        #[cfg(test)]
+        if let Some(t) = self.test_now {
+            return t;
+        }
+        Instant::now()
+    }
+
+    fn is_pane_visible(&self, bk: &BlockKey) -> bool {
+        self.visible_panes.values().any(|front| front == bk)
+    }
+
+    /// Strict same-host, same-session block lookup (preferring a live entry and
+    /// falling back only to an exited entry in the SAME session — never across
+    /// sessions).
+    fn subagent_for_block(&self, bk: &BlockKey) -> Option<&crate::subagents::NativeSubagent> {
+        let same = |e: &&crate::subagents::NativeSubagent| e.host_key == bk.host_key && e.session_id == bk.session_id && e.block_id == bk.block_id;
+        self.subagents.entries.iter().rev().find(|e| same(e) && e.exited_at.is_none()).or_else(|| self.subagents.entries.iter().rev().find(same))
+    }
+
+    /// Whether `bk` belongs to a subagent currently watched by a positively
+    /// identified, live minder on a host with a confirmed agents follower
+    /// (`agents_told`):
+    /// - explicitly assigned via `minded_by` to a present, live minder in the
+    ///   same host and session, or
+    /// - watched by a live legacy 1:1 minder (`minds == Some(sub.id)`) in the
+    ///   same host and session, or
+    /// - nested under a live, non-errored launcher-managed tab minder
+    ///   (`role == "tab-minder"`, or unroled strict `minder[[-_ ]DIGITS]`
+    ///   label) in the same host and session.
+    ///
+    /// Service-managed shared minders only watch their explicitly assigned
+    /// agents, not unassigned grandchildren. Independent sibling split panes in
+    /// a minded worker's tab are not matched (`subagent_for_block` only).
+    /// Top-level lead tabs, unminded subagents, minder tabs themselves, and
+    /// blocks on hosts without a confirmed agents follower return `false`.
+    pub(crate) fn is_minded_subagent(&self, bk: &BlockKey) -> bool {
+        if !self.agents_told.contains(&bk.host_key) {
+            return false;
+        }
+        let Some(sub) = self.subagent_for_block(bk) else {
+            return false;
+        };
+        if sub.is_minder() || entry_is_tab_minder(sub) {
+            return false;
+        }
+        if let Some(mid) = sub.minded_by.as_deref().filter(|s| !s.is_empty())
+            && self.subagents.entries.iter().rev().find(|e| e.host_key == bk.host_key && e.session_id == sub.session_id && e.id == mid).is_some_and(|m| m.exited_at.is_none())
+        {
+            return true;
+        }
+        if self.subagents.entries.iter().any(|e| e.host_key == bk.host_key && e.session_id == sub.session_id && e.exited_at.is_none() && e.minds.as_deref() == Some(sub.id.as_str())) {
+            return true;
+        }
+        self.subagents.ancestor_windows(&bk.host_key, &sub.session_id, &sub.window_id).iter().filter_map(|wid| self.subagents.by_window(&bk.host_key, &sub.session_id, wid)).any(|anc| {
+            entry_is_tab_minder(anc)
+                && !matches!(
+                    self.agent_states.get(&(bk.host_key.clone(), anc.id.clone())).copied(),
+                    Some(olo_rex_link::agents::SubagentLiveState::Error | olo_rex_link::agents::SubagentLiveState::Exited)
+                )
+        })
+    }
+
+    fn has_subagent_record(&self, bk: &BlockKey) -> bool {
+        self.subagent_for_block(bk).is_some()
+    }
+
+    /// Whether desktop notifications for `bk` are allowed by the minded-subagent rule.
+    /// Matches Preferences ▸ Rex ▸ Notifications where the minded-subagent option is
+    /// disabled whenever all three agent notification toggles are off.
+    pub(crate) fn allows_pane_notice(&self, bk: &BlockKey) -> bool {
+        let n = self.settings.notices;
+        (n.minded_subagents && (n.blocked || n.done || n.failed)) || !self.is_minded_subagent(bk)
+    }
+
     #[cfg(test)]
     pub(crate) fn test_empty() -> Self {
         Self {
@@ -2272,9 +2417,16 @@ impl HubState {
             local_bin_dir: None,
             subagents: crate::subagents::SubagentRegistry::default(),
             agents_told: HashSet::new(),
+            agents_follow_gen: HashMap::new(),
+            agents_snapshot_pending: HashMap::new(),
+            agent_states: HashMap::new(),
             desktop_screen_owners: HashMap::new(),
             host_screens: HashMap::new(),
             quick_look_cache: HashMap::new(),
+            visible_panes: HashMap::new(),
+            held_pane_notices: HashMap::new(),
+            held_notice_seq: 0,
+            test_now: None,
         }
     }
 
@@ -2473,6 +2625,18 @@ impl HubState {
     }
 
     fn retain_blocks(&mut self, keep: impl Fn(&BlockKey) -> bool) {
+        self.held_pane_notices.retain(|k, list| {
+            if keep(k) {
+                true
+            } else {
+                for h in list {
+                    if let Some(t) = h.timer.take() {
+                        t.abort();
+                    }
+                }
+                false
+            }
+        });
         self.blocks.retain(|k, b| {
             if keep(k) {
                 return true;
@@ -2516,8 +2680,9 @@ struct RexHubInner {
     /// time into a folder: the runner's, and an agent's `olo sync wait`),
     /// by its host and its path there.
     keeping: Mutex<HashMap<(String, String), (Option<tokio::task::AbortHandle>, Arc<tokio::sync::Mutex<()>>)>>,
-    /// Each connected host's agents service being followed (`follow_agents`).
-    agents_following: Mutex<HashMap<String, tokio::task::AbortHandle>>,
+    /// Each connected host's agents service being followed (`follow_agents`),
+    /// tagged with its monotonic follower generation.
+    agents_following: Mutex<HashMap<String, (u64, tokio::task::AbortHandle)>>,
     /// Olo being put on a host for its screens (`change_host`, of
     /// `HostThing::Screens`), by the host: stopped by `cancel_screens`.
     screens_putting: Mutex<HashMap<String, tokio::task::AbortHandle>>,
@@ -2990,6 +3155,76 @@ fn wanted_back(conn: &HostConnState) -> bool {
     matches!(conn, HostConnState::Reconnecting { .. } | HostConnState::Error(_))
 }
 
+/// Matches strict launcher minder names (`minder`, `minder-2`, `Minder 2`, `minder2`)
+/// without false-matching descriptive worker names like `minder-fix` or `Minder notifications`.
+fn is_minder_label(s: &str) -> bool {
+    let t = s.trim();
+    let Some(rest) = t.get(..6).filter(|p| p.eq_ignore_ascii_case("minder")).map(|_| &t[6..]) else {
+        return false;
+    };
+    if rest.is_empty() {
+        return true;
+    }
+    let digits = rest.strip_prefix(['-', '_', ' ']).unwrap_or(rest);
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// True only for a launcher-managed tab minder (`tools/dev/agents minder start`)
+/// that watches its entire descendant subtree. Service-managed minders
+/// (`is_minder()`) return `false` because they only watch explicitly assigned
+/// agents. Any explicit non-empty `role` is authoritative (only `"tab-minder"`
+/// qualifies); name/title label matching applies only when `role` is absent.
+fn entry_is_tab_minder(e: &crate::subagents::NativeSubagent) -> bool {
+    if e.is_minder() {
+        return false;
+    }
+    if let Some(role) = e.role.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+        return role.eq_ignore_ascii_case("tab-minder");
+    }
+    e.name.as_deref().is_some_and(is_minder_label) || is_minder_label(&e.title)
+}
+
+fn apply_program_status(g: &mut BlockRuntime, seq: u64, change: StatusUpdate, rules: crate::settings::Notices) -> Option<(AgentActivity, u64, &'static str, String, olo_kit::notify::NoteKind)> {
+    let previous = AgentActivity::from_records(&g.program_statuses).map(|(_, r)| r.clone());
+    let prev_blocked = g.blocked_record().cloned();
+    g.status_event(seq, change);
+    let now = g.recompute_activity();
+    if now == AgentActivity::Blocked && prev_blocked.as_ref() != g.blocked_record() {
+        g.blocked_gen = g.blocked_gen.wrapping_add(1);
+    }
+    // Whether the person is told (the desktop's settings say),
+    // and whether the pane is marked unread: one that waits or
+    // failed is, one that finished isn't.
+    let rule = match now {
+        AgentActivity::Blocked => Some((rules.blocked, true, "Agent blocked", olo_kit::notify::NoteKind::Important)),
+        AgentActivity::Error => Some((rules.failed, true, "Agent failed", olo_kit::notify::NoteKind::Error)),
+        AgentActivity::Done => Some((rules.done, false, "Agent finished", olo_kit::notify::NoteKind::Information)),
+        _ => None,
+    };
+    let mut activity_note = None;
+    if let Some((tell, unread, title, kind)) = rule
+        && let Some((_, record)) = AgentActivity::from_records(&g.program_statuses)
+        && previous.as_ref() != Some(record)
+    {
+        if !g.muted {
+            if tell {
+                let body = record.msg.clone().or_else(|| record.title.clone()).unwrap_or_else(|| g.title.clone());
+                activity_note = Some((now, g.blocked_gen, title, body, kind));
+            } else if now == AgentActivity::Blocked {
+                // Disabled when this approval arrived: mark handled so detaching
+                // later never replays it retroactively.
+                g.delivered_blocked_gen = Some(g.blocked_gen);
+            }
+            if unread {
+                g.marked_unread(Some(now));
+            }
+        } else if now == AgentActivity::Blocked {
+            g.delivered_blocked_gen = Some(g.blocked_gen);
+        }
+    }
+    activity_note
+}
+
 /// (See [`RexHub::minder_and_its_agents`].)
 pub(crate) fn minder_and_its_agents(entries: &[crate::subagents::NativeSubagent], host_key: &str, session_id: &str, minder_window_id: &str) -> Vec<String> {
     let here = |e: &&crate::subagents::NativeSubagent| e.host_key == host_key && e.session_id == session_id && e.exited_at.is_none();
@@ -3196,9 +3431,17 @@ impl RexHub {
             local_bin_dir,
             subagents: crate::subagents::SubagentRegistry::default(),
             agents_told: HashSet::new(),
+            agents_follow_gen: HashMap::new(),
+            agents_snapshot_pending: HashMap::new(),
+            agent_states: HashMap::new(),
             desktop_screen_owners: HashMap::new(),
             host_screens: HashMap::new(),
             quick_look_cache: HashMap::new(),
+            visible_panes: HashMap::new(),
+            held_pane_notices: HashMap::new(),
+            held_notice_seq: 0,
+            #[cfg(test)]
+            test_now: None,
         }));
 
         let demo_mode = std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1");
@@ -4386,6 +4629,7 @@ impl RexHub {
             st.retain_blocks(|k| k.host_key != host_key);
             (endpoint, inst_id, prev_conn_id, state_seq, is_ssh)
         };
+        self.inner.invalidate_agents_follower(host_key, false);
         {
             let mut let_go = LET_GO.lock().unwrap_or_else(|e| e.into_inner());
             if !let_go.iter().any(|k| k == host_key) {
@@ -4445,6 +4689,7 @@ impl RexHub {
             st.settings.save();
             inst_id
         };
+        self.inner.invalidate_agents_follower(&key, false);
         if let Some(inst_id) = removed_inst_id {
             self.inner.screens_service.host_removed(&key, inst_id);
         }
@@ -4459,6 +4704,17 @@ impl RexHub {
             });
         }
         (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// Records which pane is currently shown in front in workspace `window`,
+    /// discarding any held notices for that pane and marking its open `Blocked`
+    /// approval as seen so a later minder detach does not alert on it.
+    pub fn set_window_front_pane(&self, window: crate::ui::WinId, pane: Option<BlockKey>) {
+        self.inner.set_window_front_pane(window, pane);
+    }
+
+    pub fn hide_window_front_pane(&self, window: crate::ui::WinId) {
+        self.inner.set_window_front_pane(window, None);
     }
 
     /// Whether what is typed is drawn ahead of a slow host's echo, in
@@ -9011,6 +9267,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         st.retain_blocks(|k| k.host_key != host_key);
                         label
                     };
+                    self.invalidate_agents_follower(&host_key, false);
                     if !is_local_host && is_ssh_host {
                         self.screens_service.host_state_changed(
                             &host_key,
@@ -9738,7 +9995,32 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         });
     }
 
-    fn handle_inline_apc(&self, bk: &BlockKey, apc: InlineApc) {
+    fn set_window_front_pane(&self, window: crate::ui::WinId, pane: Option<BlockKey>) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        match pane {
+            Some(bk) => {
+                if let Some(held_list) = st.held_pane_notices.remove(&bk) {
+                    for mut h in held_list {
+                        if let Some(t) = h.timer.take() {
+                            t.abort();
+                        }
+                    }
+                }
+                if let Some(br) = st.blocks.get(&bk) {
+                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                    if g.agent_activity == AgentActivity::Blocked {
+                        g.delivered_blocked_gen = Some(g.blocked_gen);
+                    }
+                }
+                st.visible_panes.insert(window, bk);
+            }
+            None => {
+                st.visible_panes.remove(&window);
+            }
+        }
+    }
+
+    fn handle_inline_apc(self: &Arc<Self>, bk: &BlockKey, apc: InlineApc) {
         let (title, body) = match apc {
             InlineApc::ChildExited { exit_code } => ("Process exited".to_owned(), format!("Exit code {exit_code}")),
             InlineApc::Unknown(val) => {
@@ -9747,46 +10029,330 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
             _ => return,
         };
-        self.pane_attention(bk, &title, body, olo_kit::notify::NoteKind::Information);
+        self.dispatch_pane_notice(bk, title, body, olo_kit::notify::NoteKind::Information, None, None);
     }
 
-    fn pane_attention(&self, bk: &BlockKey, title: &str, body: String, kind: olo_kit::notify::NoteKind) {
-        let session = {
-            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let Some(view) = st.hosts.get(&bk.host_key).and_then(|h| h.sessions.get(&bk.session_id)) else { return };
-            view.label.clone()
+    /// Evaluates visibility and minded-subagent suppression once at notice
+    /// dispatch. For a freshly created pane on a host with a live agents
+    /// follower whose ownership row has not yet arrived, or on a host awaiting
+    /// its initial follower snapshot, holds the candidate notice briefly until
+    /// `agents_frame_for_gen` resolves it or `NEW_PANE_OWNERSHIP_GRACE` elapses.
+    fn dispatch_pane_notice(self: &Arc<Self>, bk: &BlockKey, title: String, body: String, kind: olo_kit::notify::NoteKind, activity: Option<AgentActivity>, blocked_gen: Option<u64>) {
+        let to_emit = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if st.is_pane_visible(bk) {
+                if let Some(held_list) = st.held_pane_notices.remove(bk) {
+                    for mut h in held_list {
+                        if let Some(t) = h.timer.take() {
+                            t.abort();
+                        }
+                    }
+                }
+                if activity == Some(AgentActivity::Blocked)
+                    && let Some(br) = st.blocks.get(bk)
+                {
+                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                    if g.agent_activity == AgentActivity::Blocked && blocked_gen.is_none_or(|bg| bg == g.blocked_gen) {
+                        g.delivered_blocked_gen = Some(g.blocked_gen);
+                    }
+                }
+                return;
+            }
+            let n = st.settings.notices;
+            let suppress_active = !(n.minded_subagents && (n.blocked || n.done || n.failed));
+            if suppress_active {
+                if st.is_minded_subagent(bk) {
+                    if let Some(held_list) = st.held_pane_notices.remove(bk) {
+                        for mut h in held_list {
+                            if let Some(t) = h.timer.take() {
+                                t.abort();
+                            }
+                        }
+                    }
+                    // For `Blocked`, leave `delivered_blocked_gen` unset so
+                    // `reconcile_locked` can deliver it live if the minder
+                    // detaches while this approval is still open.
+                    return;
+                }
+                let now = st.now();
+                let wait = if let Some(&since) = st.agents_snapshot_pending.get(&bk.host_key) {
+                    NEW_PANE_OWNERSHIP_GRACE.checked_sub(now.saturating_duration_since(since)).filter(|d| !d.is_zero())
+                } else if st.agents_told.contains(&bk.host_key) && !st.has_subagent_record(bk) {
+                    st.blocks
+                        .get(bk)
+                        .and_then(|br| {
+                            let created = br.lock().unwrap_or_else(|e| e.into_inner()).created_at;
+                            NEW_PANE_OWNERSHIP_GRACE.checked_sub(now.saturating_duration_since(created))
+                        })
+                        .filter(|d| !d.is_zero())
+                } else {
+                    None
+                };
+                if let Some(wait) = wait {
+                    st.held_notice_seq = st.held_notice_seq.wrapping_add(1);
+                    let seq = st.held_notice_seq;
+                    let inner = Arc::clone(self);
+                    let bk_owned = bk.clone();
+                    let timer = self
+                        .rt_handle
+                        .spawn(async move {
+                            tokio::time::sleep(wait).await;
+                            inner.flush_held_pane_notice(&bk_owned, Some(seq));
+                        })
+                        .abort_handle();
+                    let list = st.held_pane_notices.entry(bk.clone()).or_default();
+                    if activity == Some(AgentActivity::Blocked) {
+                        // Replace any earlier held `Blocked` without touching
+                        // held inline APC or bridge notices.
+                        list.retain_mut(|h| {
+                            if h.activity == Some(AgentActivity::Blocked) {
+                                if let Some(t) = h.timer.take() {
+                                    t.abort();
+                                }
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    } else if list.len() >= 32
+                        && let Some(pos) = list.iter().position(|h| h.activity != Some(AgentActivity::Blocked))
+                    {
+                        let mut dropped = list.remove(pos);
+                        if let Some(t) = dropped.timer.take() {
+                            t.abort();
+                        }
+                    }
+                    list.push(HeldPaneNotice { notice: PendingPaneNotice { title, body, kind }, activity, blocked_gen, seq, timer: Some(timer) });
+                    return;
+                }
+            }
+            let mut to_emit = Vec::new();
+            if let Some(prev_held) = st.held_pane_notices.remove(bk) {
+                for mut h in prev_held {
+                    if let Some(t) = h.timer.take() {
+                        t.abort();
+                    }
+                    if activity == Some(AgentActivity::Blocked) && h.activity == Some(AgentActivity::Blocked) {
+                        continue;
+                    }
+                    if let Some(notice) = Self::finish_held_notice(&mut st, bk, h) {
+                        to_emit.push(notice);
+                    }
+                }
+            }
+            let mut emit_current = true;
+            if activity == Some(AgentActivity::Blocked)
+                && let Some(br) = st.blocks.get(bk)
+            {
+                let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                if g.muted || g.agent_activity != AgentActivity::Blocked || blocked_gen.is_some_and(|bg| bg != g.blocked_gen) || g.delivered_blocked_gen == Some(g.blocked_gen) {
+                    emit_current = false;
+                } else {
+                    g.delivered_blocked_gen = Some(g.blocked_gen);
+                }
+            }
+            if emit_current && let Some(session) = st.hosts.get(&bk.host_key).and_then(|h| h.sessions.get(&bk.session_id)).map(|v| v.label.clone()) {
+                to_emit.push(HubNotice::Attention { target: Target::Pane(bk.clone()), title: format!("{session} · {title}"), body, kind });
+            }
+            to_emit
         };
-        (self.notify)(HubNotice::Attention { target: Target::Pane(bk.clone()), title: format!("{session} · {title}"), body, kind });
+        for notice in to_emit {
+            (self.notify)(notice);
+        }
+    }
+
+    fn finish_held_notice(st: &mut HubState, bk: &BlockKey, held: HeldPaneNotice) -> Option<HubNotice> {
+        if st.is_pane_visible(bk) {
+            if held.activity == Some(AgentActivity::Blocked)
+                && let Some(br) = st.blocks.get(bk)
+            {
+                let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                if g.agent_activity == AgentActivity::Blocked && held.blocked_gen.is_none_or(|bg| bg == g.blocked_gen) {
+                    g.delivered_blocked_gen = Some(g.blocked_gen);
+                }
+            }
+            return None;
+        }
+        if let Some(act) = held.activity {
+            let rule_on = match act {
+                AgentActivity::Blocked => st.settings.notices.blocked,
+                AgentActivity::Error => st.settings.notices.failed,
+                AgentActivity::Done => st.settings.notices.done,
+                _ => false,
+            };
+            if !rule_on {
+                return None;
+            }
+            let still_valid = st.blocks.get(bk).is_some_and(|br| {
+                let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                if g.muted {
+                    return false;
+                }
+                if act == AgentActivity::Blocked {
+                    g.agent_activity == AgentActivity::Blocked
+                        && g.blocked_record().is_some()
+                        && held.blocked_gen.is_none_or(|bg| bg == g.blocked_gen)
+                        && g.delivered_blocked_gen != Some(g.blocked_gen)
+                } else {
+                    true
+                }
+            });
+            if !still_valid {
+                return None;
+            }
+        }
+        if !st.allows_pane_notice(bk) {
+            return None;
+        }
+        let session = st.hosts.get(&bk.host_key).and_then(|h| h.sessions.get(&bk.session_id)).map(|v| v.label.clone())?;
+        if held.activity == Some(AgentActivity::Blocked)
+            && let Some(br) = st.blocks.get(bk)
+        {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            g.delivered_blocked_gen = Some(g.blocked_gen);
+        }
+        Some(HubNotice::Attention { target: Target::Pane(bk.clone()), title: format!("{session} · {}", held.notice.title), body: held.notice.body, kind: held.notice.kind })
+    }
+
+    fn flush_held_pane_notice(&self, bk: &BlockKey, expected_seq: Option<u64>) {
+        let to_emit = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut out = Vec::new();
+            match expected_seq {
+                Some(exp) => {
+                    let removed = if let Some(list) = st.held_pane_notices.get_mut(bk) {
+                        let item = list.iter().position(|h| h.seq == exp).map(|pos| list.remove(pos));
+                        if list.is_empty() {
+                            st.held_pane_notices.remove(bk);
+                        }
+                        item
+                    } else {
+                        None
+                    };
+                    if let Some(mut held) = removed {
+                        if let Some(t) = held.timer.take() {
+                            t.abort();
+                        }
+                        if let Some(notice) = Self::finish_held_notice(&mut st, bk, held) {
+                            out.push(notice);
+                        }
+                    }
+                }
+                None => {
+                    if let Some(list) = st.held_pane_notices.remove(bk) {
+                        for mut held in list {
+                            if let Some(t) = held.timer.take() {
+                                t.abort();
+                            }
+                            if let Some(notice) = Self::finish_held_notice(&mut st, bk, held) {
+                                out.push(notice);
+                            }
+                        }
+                    }
+                }
+            }
+            out
+        };
+        for notice in to_emit {
+            (self.notify)(notice);
+        }
+    }
+
+    /// Reconciles held notices and open `Blocked` approvals after a host's
+    /// subagent ownership or live minder state changes, or its follower ends.
+    fn reconcile_locked(st: &mut HubState, host_key: &str, was_minded: &HashSet<BlockKey>, follower_dropped: bool, snapshot_arrived: bool) -> Vec<HubNotice> {
+        let mut to_emit = Vec::new();
+        if !st.held_pane_notices.is_empty() {
+            let now = st.now();
+            let ready: Vec<BlockKey> = st
+                .held_pane_notices
+                .keys()
+                .filter(|bk| {
+                    bk.host_key == host_key
+                        && (follower_dropped
+                            || st.has_subagent_record(bk)
+                            || (snapshot_arrived
+                                && st.blocks.get(*bk).is_none_or(|br| now.saturating_duration_since(br.lock().unwrap_or_else(|e| e.into_inner()).created_at) >= NEW_PANE_OWNERSHIP_GRACE)))
+                })
+                .cloned()
+                .collect();
+            for bk in ready {
+                let Some(list) = st.held_pane_notices.remove(&bk) else { continue };
+                for mut held in list {
+                    if let Some(t) = held.timer.take() {
+                        t.abort();
+                    }
+                    if let Some(notice) = Self::finish_held_notice(st, &bk, held) {
+                        to_emit.push(notice);
+                    }
+                }
+            }
+        }
+        if st.settings.notices.blocked {
+            for bk in was_minded {
+                if bk.host_key != host_key || st.is_minded_subagent(bk) {
+                    continue;
+                }
+                if st.is_pane_visible(bk) {
+                    if let Some(br) = st.blocks.get(bk) {
+                        let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                        if g.agent_activity == AgentActivity::Blocked {
+                            g.delivered_blocked_gen = Some(g.blocked_gen);
+                        }
+                    }
+                    continue;
+                }
+                let Some(session) = st.hosts.get(&bk.host_key).and_then(|h| h.sessions.get(&bk.session_id)).map(|v| v.label.clone()) else {
+                    continue;
+                };
+                let Some(br) = st.blocks.get(bk).cloned() else { continue };
+                let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                let Some((bgen, body)) = g.current_blocked_notice() else { continue };
+                g.delivered_blocked_gen = Some(bgen);
+                drop(g);
+                to_emit.push(HubNotice::Attention { target: Target::Pane(bk.clone()), title: format!("{session} · Agent blocked"), body, kind: olo_kit::notify::NoteKind::Important });
+            }
+        }
+        to_emit
     }
 
     /// Legacy bridge callers may only identify their host. An explicit pane belongs
     /// to its originating host and session, even if another pane now has focus.
-    fn bridge_notice(&self, host_key: &str, session_id: Option<&str>, block_id: Option<&str>, payload: &Value) {
+    fn bridge_notice(self: &Arc<Self>, host_key: &str, session_id: Option<&str>, block_id: Option<&str>, payload: &Value) {
         let session_id = session_id.or_else(|| payload.get("session_id").and_then(Value::as_str));
         let block_id = block_id.or_else(|| payload.get("block_id").and_then(Value::as_str));
-        let notice = {
+        let title = payload.get("title").and_then(Value::as_str).unwrap_or("Rex");
+        let body = payload.get("body").and_then(Value::as_str).unwrap_or_default();
+        let pane_or_notice = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(host) = st.hosts.get(host_key) else { return };
-            let (target, label) = match (session_id, block_id) {
+            match (session_id, block_id) {
                 (sid, Some(bid)) => {
                     let session = match sid {
                         Some(id) => host.sessions.get(id).filter(|s| s.find_block(bid).is_some()),
                         None => host.sessions.values().find(|s| s.find_block(bid).is_some()),
                     };
                     let Some(s) = session else { return };
-                    (Target::Pane(BlockKey { host_key: host_key.into(), session_id: s.session_id.clone(), block_id: bid.into() }), &s.label)
+                    Err(BlockKey { host_key: host_key.into(), session_id: s.session_id.clone(), block_id: bid.into() })
                 }
                 (Some(sid), None) => {
                     let Some(s) = host.session_summaries.iter().find(|s| s.session_id == sid) else { return };
-                    (Target::Session { host_key: host_key.into(), session_id: sid.into() }, &s.label)
+                    Ok(HubNotice::Attention {
+                        target: Target::Session { host_key: host_key.into(), session_id: sid.into() },
+                        title: format!("{} · {title}", s.label),
+                        body: body.to_owned(),
+                        kind: olo_kit::notify::NoteKind::Important,
+                    })
                 }
-                (None, None) => (Target::Host(host_key.into()), &host.label),
-            };
-            let title = payload.get("title").and_then(Value::as_str).unwrap_or("Rex");
-            let body = payload.get("body").and_then(Value::as_str).unwrap_or_default().to_owned();
-            HubNotice::Attention { target, title: format!("{label} · {title}"), body, kind: olo_kit::notify::NoteKind::Important }
+                (None, None) => {
+                    Ok(HubNotice::Attention { target: Target::Host(host_key.into()), title: format!("{} · {title}", host.label), body: body.to_owned(), kind: olo_kit::notify::NoteKind::Important })
+                }
+            }
         };
-        (self.notify)(notice);
+        match pane_or_notice {
+            Ok(notice) => (self.notify)(notice),
+            Err(bk) => self.dispatch_pane_notice(&bk, title.to_owned(), body.to_owned(), olo_kit::notify::NoteKind::Important, None, None),
+        }
     }
 
     /// Re-read the resources that can change between two numbered envelopes.
@@ -10011,9 +10577,10 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     return;
                 }
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: block_id.clone() };
+                let is_status = matches!(name.as_str(), "program_status_changed" | "program_status_removed");
                 let (br_opt, rules) = {
                     let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                    (st.blocks.get(&bk).cloned(), st.settings.notices)
+                    (st.blocks.get(&bk).cloned(), if is_status { st.settings.notices } else { crate::settings::Notices::default() })
                 };
                 if let Some(br) = br_opt {
                     let mut activity_note = None;
@@ -10052,31 +10619,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             }
                             "program_status_changed" | "program_status_removed" => {
                                 if let Some(change) = StatusUpdate::parse(&name, &payload) {
-                                    let previous = AgentActivity::from_records(&g.program_statuses).map(|(_, r)| r.clone());
-                                    g.status_event(seq, change);
-                                    let now = g.recompute_activity();
-                                    // Whether the person is told (the desktop's settings say),
-                                    // and whether the pane is marked unread: one that waits or
-                                    // failed is, one that finished isn't.
-                                    let rule = match now {
-                                        AgentActivity::Blocked => Some((rules.blocked, true, "Agent blocked", olo_kit::notify::NoteKind::Important)),
-                                        AgentActivity::Error => Some((rules.failed, true, "Agent failed", olo_kit::notify::NoteKind::Error)),
-                                        AgentActivity::Done => Some((rules.done, false, "Agent finished", olo_kit::notify::NoteKind::Information)),
-                                        _ => None,
-                                    };
-                                    if !g.muted
-                                        && let Some((tell, unread, title, kind)) = rule
-                                        && let Some((_, record)) = AgentActivity::from_records(&g.program_statuses)
-                                        && previous.as_ref() != Some(record)
-                                    {
-                                        if tell {
-                                            let body = record.msg.clone().or_else(|| record.title.clone()).unwrap_or_else(|| g.title.clone());
-                                            activity_note = Some((title, body, kind));
-                                        }
-                                        if unread {
-                                            g.marked_unread(Some(now));
-                                        }
-                                    }
+                                    activity_note = apply_program_status(&mut g, seq, change, rules);
                                 }
                             }
                             "ports_changed" => {
@@ -10103,8 +10646,8 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             _ => {}
                         }
                     }
-                    if let Some((title, body, kind)) = activity_note {
-                        self.pane_attention(&bk, title, body, kind);
+                    if let Some((activity, blocked_gen, title, body, kind)) = activity_note {
+                        self.dispatch_pane_notice(&bk, title.to_owned(), body, kind, Some(activity), Some(blocked_gen));
                     }
                     // (What the agent is doing may have changed: Keep It
                     // Going's and Auto Approve's look.)
@@ -10565,6 +11108,38 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| matches!(h.conn_state, HostConnState::Connected))
     }
 
+    /// Aborts any active agents follower for `host_key`, bumps its per-host
+    /// generation so superseded frames/teardowns are ignored, and clears
+    /// `agents_told`, `agents_snapshot_pending`, and cached `agent_states`.
+    fn invalidate_agents_follower(&self, host_key: &str, await_snapshot: bool) -> u64 {
+        let (epoch, old_handle, to_emit) = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let old_handle = self.agents_following.lock().unwrap_or_else(|e| e.into_inner()).remove(host_key).map(|(_, h)| h);
+            let was_minded: HashSet<BlockKey> = st.blocks.keys().filter(|bk| bk.host_key == host_key && st.is_minded_subagent(bk)).cloned().collect();
+            let entry = st.agents_follow_gen.entry(host_key.to_owned()).or_insert(0);
+            *entry = entry.wrapping_add(1);
+            let epoch = *entry;
+            st.agents_told.remove(host_key);
+            st.agent_states.retain(|(hk, _), _| hk != host_key);
+            if await_snapshot {
+                let now = st.now();
+                st.agents_snapshot_pending.insert(host_key.to_owned(), now);
+                (epoch, old_handle, Vec::new())
+            } else {
+                st.agents_snapshot_pending.remove(host_key);
+                let to_emit = Self::reconcile_locked(&mut st, host_key, &was_minded, true, false);
+                (epoch, old_handle, to_emit)
+            }
+        };
+        if let Some(old) = old_handle {
+            old.abort();
+        }
+        for notice in to_emit {
+            (self.notify)(notice);
+        }
+        epoch
+    }
+
     /// Follows a host's agents service for as long as the host is
     /// connected (`olo-rex-link agent follow` there): everything it
     /// knows at once, then each change, a line each. What it says is
@@ -10573,6 +11148,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
     /// to see them. A service that goes away (its host's Rex server
     /// restarted, a new build taking over) is followed again.
     fn follow_agents(self: &Arc<Self>, host_key: &str) {
+        let epoch = self.invalidate_agents_follower(host_key, true);
         let (inner, hk) = (self.clone(), host_key.to_owned());
         let task = tokio::spawn(async move {
             let mut wait = Duration::from_secs(1);
@@ -10580,9 +11156,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 inner.hand_over_kept_children(&hk).await;
                 let said = {
                     let (inner, hk) = (inner.clone(), hk.clone());
-                    crate::activity_watch::follow_host_link(&inner.state.clone(), &hk.clone(), &["agent", "follow"], move |line| inner.agents_frame(&hk, line)).await
+                    crate::activity_watch::follow_host_link(&inner.state.clone(), &hk.clone(), &["agent", "follow"], move |line| inner.agents_frame_for_gen(&hk, epoch, line)).await
                 };
-                inner.state.lock().unwrap_or_else(|e| e.into_inner()).agents_told.remove(&hk);
+                if !inner.agents_follower_ended(&hk, epoch) {
+                    break;
+                }
                 if !inner.host_connected(&hk) {
                     break;
                 }
@@ -10590,34 +11168,91 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 // never said anything, as on a host that can't have the helper.)
                 wait = if said { Duration::from_secs(1) } else { (wait * 2).min(Duration::from_secs(60)) };
                 tokio::time::sleep(wait).await;
+                if said {
+                    let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if st.agents_follow_gen.get(&hk).copied() == Some(epoch) {
+                        let now = st.now();
+                        st.agents_snapshot_pending.insert(hk.clone(), now);
+                    }
+                }
             }
         });
-        if let Some(old) = self.agents_following.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key.to_owned(), task.abort_handle()) {
+        let handle = task.abort_handle();
+        let abort_handle = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if st.agents_follow_gen.get(host_key).copied() == Some(epoch) {
+                self.agents_following.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key.to_owned(), (epoch, handle)).map(|(_, old)| old)
+            } else {
+                Some(handle)
+            }
+        };
+        if let Some(old) = abort_handle {
             old.abort();
         }
     }
 
-    /// One thing a host's agents service said (`olo_rex_link::agents::wire::Frame`).
-    fn agents_frame(&self, host_key: &str, line: &str) {
+    /// Called when a follower stream ends for `(host_key, epoch)`. Ignores
+    /// superseded generations so an old follower can never strip a newer
+    /// follower's `agents_told`. Returns `true` if `epoch` is still current.
+    fn agents_follower_ended(&self, host_key: &str, epoch: u64) -> bool {
+        let (current, to_emit) = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if st.agents_follow_gen.get(host_key).copied() != Some(epoch) {
+                return false;
+            }
+            let was_minded: HashSet<BlockKey> = st.blocks.keys().filter(|bk| bk.host_key == host_key && st.is_minded_subagent(bk)).cloned().collect();
+            st.agents_told.remove(host_key);
+            st.agents_snapshot_pending.remove(host_key);
+            let to_emit = Self::reconcile_locked(&mut st, host_key, &was_minded, true, false);
+            (true, to_emit)
+        };
+        for notice in to_emit {
+            (self.notify)(notice);
+        }
+        current
+    }
+
+    /// One thing a host's agents service said (`olo_rex_link::agents::wire::Frame`),
+    /// ignored if `epoch` has been superseded by a newer follower.
+    fn agents_frame_for_gen(&self, host_key: &str, epoch: u64, line: &str) {
         use olo_rex_link::agents::wire::Frame;
         let Ok(frame) = serde_json::from_str::<Frame>(line) else { return };
-        {
+        let to_emit = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if st.agents_follow_gen.get(host_key).copied() != Some(epoch) {
+                return;
+            }
+            let was_minded: HashSet<BlockKey> = st.blocks.keys().filter(|bk| bk.host_key == host_key && st.is_minded_subagent(bk)).cloned().collect();
+            let snapshot_arrived = matches!(frame, Frame::Snapshot { .. });
             match frame {
                 Frame::Snapshot { agents, .. } => {
                     st.subagents.entries.retain(|e| e.host_key != host_key);
-                    st.subagents.entries.extend(agents.into_iter().map(|a| crate::subagents::NativeSubagent { host_key: host_key.to_owned(), ..a.entry }));
+                    st.agent_states.retain(|(hk, _), _| hk != host_key);
+                    for a in agents {
+                        st.agent_states.insert((host_key.to_owned(), a.entry.id.clone()), a.state);
+                        st.subagents.entries.push(crate::subagents::NativeSubagent { host_key: host_key.to_owned(), ..a.entry });
+                    }
+                    st.agents_snapshot_pending.remove(host_key);
                     st.agents_told.insert(host_key.to_owned());
                 }
                 Frame::Agent { agent } => {
+                    let state = agent.state;
                     let entry = crate::subagents::NativeSubagent { host_key: host_key.to_owned(), ..agent.entry };
+                    st.agent_states.insert((host_key.to_owned(), entry.id.clone()), state);
                     match st.subagents.entries.iter_mut().find(|e| e.host_key == host_key && e.id == entry.id) {
                         Some(old) => *old = entry,
                         None => st.subagents.entries.push(entry),
                     }
                 }
-                Frame::Gone { id } => st.subagents.entries.retain(|e| !(e.host_key == host_key && e.id == id)),
+                Frame::Gone { id } => {
+                    st.subagents.entries.retain(|e| !(e.host_key == host_key && e.id == id));
+                    st.agent_states.remove(&(host_key.to_owned(), id));
+                }
             }
+            Self::reconcile_locked(&mut st, host_key, &was_minded, false, snapshot_arrived)
+        };
+        for notice in to_emit {
+            (self.notify)(notice);
         }
         self.screens_service.refresh_owner_labels(Some(host_key));
         (self.notify)(HubNotice::StateChanged);
@@ -12302,6 +12937,643 @@ mod tests {
             .expect("scratch Rex cmd-t test timed out")
         });
         res.expect("live new tab placement & cwd test failed");
+    }
+
+    fn test_inner_with_state(state: Arc<Mutex<HubState>>, rt: &tokio::runtime::Runtime) -> (Arc<RexHubInner>, Arc<Mutex<Vec<HubNotice>>>) {
+        let notices: Arc<Mutex<Vec<HubNotice>>> = Arc::new(Mutex::new(Vec::new()));
+        let notices_cb = notices.clone();
+        let notify: Arc<dyn Fn(HubNotice) + Send + Sync> = Arc::new(move |n| {
+            notices_cb.lock().unwrap().push(n);
+        });
+        let ui_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let opener = Arc::new(crate::screens_sock::HubScreenOpener::new(state.clone(), notify.clone(), ui_ready.clone()));
+        let state_res = state.clone();
+        let resolver = Arc::new(move |hk: &str, pane: &olo_rex_link::screen_wire::OwnerPane| crate::screens_sock::resolve_controlled_by_in_hub(&state_res, hk, pane));
+        let screens_service = crate::screens_sock::ScreensService::new(PathBuf::new(), PathBuf::new(), 0, opener, resolver, None, None);
+        let inner = Arc::new(RexHubInner {
+            state,
+            ssh_pool: Arc::new(SshSessionPool::default()),
+            askpass: None,
+            notify,
+            spares: Mutex::new(HashMap::new()),
+            agent_socks: Mutex::new(HashMap::new()),
+            bridge_calls: Default::default(),
+            run_jobs: crate::bridge_run::RunJobs::new(),
+            run_approvals: crate::bridge_run::RunApprovals::new(|| {}, || {}),
+            keeping: Mutex::new(HashMap::new()),
+            agents_following: Mutex::new(HashMap::new()),
+            screens_putting: Mutex::new(HashMap::new()),
+            screens_service,
+            rt_handle: rt.handle().clone(),
+            ui_ready,
+            demo_mode: true,
+            desktop_screens_watch: Mutex::new(None),
+        });
+        (inner, notices)
+    }
+
+    fn attention_events(notices: &Arc<Mutex<Vec<HubNotice>>>) -> Vec<(Target, String, String)> {
+        notices
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|n| match n {
+                HubNotice::Attention { target, title, body, .. } => Some((target.clone(), title.clone(), body.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn attention_titles(notices: &Arc<Mutex<Vec<HubNotice>>>) -> Vec<(Target, String)> {
+        attention_events(notices).into_iter().map(|(t, title, _)| (t, title)).collect()
+    }
+
+    fn mk_test_subagent(id: &str, parent_win: &str, minded_by: Option<&str>, shared_minder: bool, minds: Option<&str>, role: Option<&str>, name: Option<&str>) -> crate::subagents::NativeSubagent {
+        crate::subagents::NativeSubagent {
+            id: id.to_owned(),
+            name: name.map(str::to_owned),
+            host_key: "local".into(),
+            session_id: "s1".into(),
+            window_id: format!("win-{id}"),
+            block_id: format!("blk-{id}"),
+            parent_window_id: parent_win.to_owned(),
+            parent_block_id: None,
+            cli: crate::subagents::AgentCli::Agy,
+            model: "m".into(),
+            effort: "high".into(),
+            title: name.unwrap_or(id).to_owned(),
+            role: role.map(str::to_owned),
+            cwd: None,
+            resume_id: None,
+            cli_session_id: None,
+            transcript_path: None,
+            desktop_policy: crate::subagents::DesktopPolicy::None,
+            stream_mode: false,
+            started_at: 1,
+            exited_at: None,
+            exit_code: None,
+            last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
+            command: Vec::new(),
+            minds: minds.map(str::to_owned),
+            minded_by: minded_by.map(str::to_owned),
+            shared_minder,
+        }
+    }
+
+    #[test]
+    fn minded_subagent_notifications_suppressed_by_default_and_configurable() {
+        let bk = |block_id: &str| BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: block_id.into() };
+        let mut st = HubState::test_empty();
+        st.agents_told.insert("local".into());
+
+        // Service-managed shared minder under lead, with assigned worker and unassigned grandchild.
+        st.subagents.register(mk_test_subagent("m-shared", "win-lead", None, true, None, Some("minder"), Some("shared")));
+        st.subagents.register(mk_test_subagent("b-shared", "win-m-shared", Some("m-shared"), false, None, None, Some("builder-1")));
+        st.subagents.register(mk_test_subagent("g-shared", "win-b-shared", None, false, None, None, Some("grandchild")));
+        // Launcher-managed tab minder (`tools/dev/agents minder start`): strict default name AND custom `--name supervisor --role tab-minder`.
+        st.subagents.register(mk_test_subagent("m-agy", "win-lead", None, false, None, None, Some("minder")));
+        st.subagents.register(mk_test_subagent("b-agy", "win-m-agy", None, false, None, None, Some("builder-2")));
+        st.subagents.register(mk_test_subagent("m-agy-2", "win-lead", None, false, None, None, Some("minder-2")));
+        st.subagents.register(mk_test_subagent("b-agy-2", "win-m-agy-2", None, false, None, None, Some("builder-2b")));
+        st.subagents.register(mk_test_subagent("m-super", "win-lead", None, false, None, Some("tab-minder"), Some("supervisor")));
+        st.subagents.register(mk_test_subagent("b-super", "win-m-super", None, false, None, None, Some("builder-super")));
+        // Explicit non-minder role (`--role reviewer`) overrides a title of "Minder" (Astra #4).
+        let mut reviewer = mk_test_subagent("b-reviewer", "win-lead", None, false, None, Some("reviewer"), Some("review"));
+        reviewer.title = "Minder".into();
+        st.subagents.register(reviewer);
+        st.subagents.register(mk_test_subagent("b-under-reviewer", "win-b-reviewer", None, false, None, None, Some("helper-rev")));
+        // Nested minder under a tab minder: the nested minder's own failure MUST still notify.
+        st.subagents.register(mk_test_subagent("m-nested", "win-b-super", None, true, None, Some("minder"), Some("nested-shared")));
+        // Legacy 1:1 minder (`minds: Some("b-legacy")`).
+        st.subagents.register(mk_test_subagent("b-legacy", "win-lead", None, false, None, None, Some("legacy-worker")));
+        st.subagents.register(mk_test_subagent("m-legacy", "win-b-legacy", None, false, Some("b-legacy"), Some("minder"), Some("m-legacy")));
+        // Exited minder + dangling/pruned minder ID: neither may suppress.
+        let mut dead_minder = mk_test_subagent("m-dead", "win-lead", None, true, None, Some("minder"), Some("minder-old"));
+        dead_minder.exited_at = Some(10);
+        st.subagents.register(dead_minder);
+        st.subagents.register(mk_test_subagent("b-orphaned", "win-m-dead", Some("m-dead"), false, None, None, Some("orphaned")));
+        st.subagents.register(mk_test_subagent("b-dangling", "win-lead", Some("m-pruned-gone"), false, None, None, Some("dangling")));
+        // Descriptive worker names/titles starting with or containing "minder" must NOT be mistaken for minders.
+        st.subagents.register(mk_test_subagent("b-fix", "win-lead", None, false, None, None, Some("fix-minder")));
+        st.subagents.register(mk_test_subagent("b-under-fix", "win-b-fix", None, false, None, None, Some("helper-1")));
+        st.subagents.register(mk_test_subagent("b-prefix", "win-lead", None, false, None, None, Some("minder-fix")));
+        st.subagents.register(mk_test_subagent("b-under-prefix", "win-b-prefix", None, false, None, None, Some("helper-2")));
+        let mut titled_worker = mk_test_subagent("b-titled", "win-lead", None, false, None, None, Some("notes"));
+        titled_worker.title = "Minder notifications".into();
+        st.subagents.register(titled_worker);
+        st.subagents.register(mk_test_subagent("b-under-titled", "win-b-titled", None, false, None, None, Some("helper-3")));
+
+        // Positive cases: genuinely watched by a live minder.
+        for id in ["blk-b-shared", "blk-b-agy", "blk-b-agy-2", "blk-b-super", "blk-b-legacy"] {
+            assert!(st.is_minded_subagent(&bk(id)), "{id} should be minded");
+            assert!(!st.allows_pane_notice(&bk(id)), "{id} should be suppressed by default");
+        }
+        // Negative cases: lead, unassigned shared-minder grandchild, explicit non-minder role with "Minder" title,
+        // minders (including nested), exited/dangling minders, descriptive "minder-*" builders.
+        for id in [
+            "blk-lead",
+            "blk-g-shared",
+            "blk-b-reviewer",
+            "blk-b-under-reviewer",
+            "blk-m-shared",
+            "blk-m-agy",
+            "blk-m-super",
+            "blk-m-nested",
+            "blk-m-legacy",
+            "blk-b-orphaned",
+            "blk-b-dangling",
+            "blk-b-fix",
+            "blk-b-under-fix",
+            "blk-b-prefix",
+            "blk-b-under-prefix",
+            "blk-b-titled",
+            "blk-b-under-titled",
+        ] {
+            assert!(!st.is_minded_subagent(&bk(id)), "{id} must NOT be suppressed");
+            assert!(st.allows_pane_notice(&bk(id)), "{id} should notify by default");
+        }
+
+        // Strict label checks.
+        assert!(is_minder_label("minder") && is_minder_label("Minder 2") && is_minder_label("minder-2") && is_minder_label("minder2"));
+        assert!(!is_minder_label("minder-fix") && !is_minder_label("minder-notes") && !is_minder_label("Minder notifications"));
+
+        // Same `block_id` in another session (`s2`) MUST NOT match `s1`'s minded worker (Astra #7 / Neon #3).
+        let other_session_bk = BlockKey { host_key: "local".into(), session_id: "s2".into(), block_id: "blk-b-shared".into() };
+        assert!(!st.has_subagent_record(&other_session_bk));
+        assert!(!st.is_minded_subagent(&other_session_bk));
+        assert!(st.allows_pane_notice(&other_session_bk));
+
+        // Independent agent in a sibling split pane of a minded worker's tab MUST still notify.
+        let mk_block = |id: &str| BlockInfo {
+            block_id: id.to_owned(),
+            label: id.to_owned(),
+            creator_name: "com.superlogical.terminal".into(),
+            flavor: "com.superlogical.terminal".into(),
+            host_id: "local".into(),
+            owner: None,
+        };
+        let split_session = SessionView {
+            revision: 1,
+            session_id: "s1".into(),
+            label: "work".into(),
+            windows: vec![olo_rex_client::WindowView {
+                window_id: "win-b-shared".into(),
+                label: "builder-1".into(),
+                focused_block_id: Some("blk-b-shared".into()),
+                zoomed_block_id: None,
+                layers: vec![olo_rex_client::LayerView {
+                    layer_id: "layer-1".into(),
+                    kind: "tiled".into(),
+                    bounds: [0.0, 0.0, 1.0, 1.0],
+                    state: Some("normal".into()),
+                    layout: None,
+                    blocks: vec![mk_block("blk-b-shared"), mk_block("blk-b-shared-split")],
+                }],
+            }],
+            active_window_id: Some("win-b-shared".into()),
+        };
+        st.hosts.insert("local".into(), HostRuntime::test_connected("local", HashMap::from([("s1".into(), split_session)])));
+        assert!(!st.is_minded_subagent(&bk("blk-b-shared-split")), "independent sibling split pane must not inherit minded suppression");
+
+        // Disconnected agents follower (`!agents_told`): cached rows are unconfirmed and must NOT suppress.
+        st.agents_told.remove("local");
+        assert!(!st.is_minded_subagent(&bk("blk-b-shared")));
+        assert!(st.allows_pane_notice(&bk("blk-b-shared")));
+        st.agents_told.insert("local".into());
+
+        // All-three-off consistency: `minded_subagents = true` with `blocked = done = failed = false` must NOT allow minded notices while UI checkbox is disabled.
+        st.settings.notices = crate::settings::Notices { blocked: false, done: false, failed: false, minded_subagents: true };
+        assert!(!st.allows_pane_notice(&bk("blk-b-shared")));
+        // Enabling any trigger + `minded_subagents = true` allows minded notices.
+        st.settings.notices.blocked = true;
+        assert!(st.allows_pane_notice(&bk("blk-b-shared")));
+    }
+
+    #[test]
+    fn minded_subagent_dispatch_detach_race_apc_and_bridge_end_to_end() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        let bk = |block_id: &str| BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: block_id.into() };
+        let mk_block = |id: &str| BlockInfo {
+            block_id: id.to_owned(),
+            label: id.to_owned(),
+            creator_name: "com.superlogical.terminal".into(),
+            flavor: "com.superlogical.terminal".into(),
+            host_id: "local".into(),
+            owner: None,
+        };
+        let session = SessionView {
+            revision: 1,
+            session_id: "s1".into(),
+            label: "work".into(),
+            windows: vec![olo_rex_client::WindowView {
+                window_id: "win-1".into(),
+                label: "work".into(),
+                focused_block_id: Some("blk-lead".into()),
+                zoomed_block_id: None,
+                layers: vec![olo_rex_client::LayerView {
+                    layer_id: "layer-1".into(),
+                    kind: "tiled".into(),
+                    bounds: [0.0, 0.0, 1.0, 1.0],
+                    state: Some("normal".into()),
+                    layout: None,
+                    blocks: vec![mk_block("blk-lead"), mk_block("blk-b1"), mk_block("blk-fresh-minded"), mk_block("blk-fresh-unminded"), mk_block("blk-fresh-lead")],
+                }],
+            }],
+            active_window_id: Some("win-1".into()),
+        };
+        let mut host = HostRuntime::test_connected("local", HashMap::from([("s1".into(), session)]));
+        host.session_summaries.push(SessionSummary { session_id: "s1".into(), label: "work".into() });
+
+        let mut st = HubState::test_empty();
+        st.agents_told.insert("local".into());
+        st.agents_follow_gen.insert("local".into(), 1);
+        st.hosts.insert("local".into(), host);
+        st.subagents.register(mk_test_subagent("m1", "win-lead", None, true, None, Some("minder"), Some("shared")));
+        st.subagents.register(mk_test_subagent("b1", "win-m1", Some("m1"), false, None, None, Some("worker")));
+
+        // Established blocks (older than NEW_PANE_OWNERSHIP_GRACE) vs brand-new blocks.
+        let old_time = Instant::now() - Duration::from_secs(5);
+        for id in ["blk-lead", "blk-b1"] {
+            let mut br = BlockRuntime::new(80, 24, &TerminalTheme::default());
+            br.created_at = old_time;
+            st.blocks.insert(bk(id), Arc::new(Mutex::new(br)));
+        }
+        for id in ["blk-fresh-minded", "blk-fresh-unminded", "blk-fresh-lead"] {
+            st.blocks.insert(bk(id), Arc::new(Mutex::new(BlockRuntime::new(80, 24, &TerminalTheme::default()))));
+        }
+
+        let state = Arc::new(Mutex::new(st));
+        let (inner, notices) = test_inner_with_state(state.clone(), &rt);
+        let status = |state: &str, msg: &str| StatusUpdate::parse("program_status_changed", &json!({ "id": "agy", "record": { "state": state, "msg": msg } })).unwrap();
+        let agent_frame = |entry: crate::subagents::NativeSubagent| {
+            serde_json::to_string(&olo_rex_link::agents::wire::Frame::Agent {
+                agent: Box::new(olo_rex_link::agents::wire::AgentView { entry, state: olo_rex_link::agents::SubagentLiveState::Working, summary: None }),
+            })
+            .unwrap()
+        };
+
+        // 1. Minded worker blocks -> suppressed, unread/activity updated, `delivered_blocked_gen` left unset.
+        let b1_br = state.lock().unwrap().blocks.get(&bk("blk-b1")).unwrap().clone();
+        let cand = {
+            let rules = state.lock().unwrap().settings.notices;
+            let mut g = b1_br.lock().unwrap();
+            let c = apply_program_status(&mut g, 1, status("blocked", "approve rm?"), rules);
+            assert!(g.unread && g.agent_activity == AgentActivity::Blocked);
+            c.unwrap()
+        };
+        inner.dispatch_pane_notice(&bk("blk-b1"), cand.2.to_owned(), cand.3, cand.4, Some(cand.0), Some(cand.1));
+        assert!(attention_titles(&notices).is_empty(), "minded worker approval must be suppressed");
+
+        // 2. Minder detaches while the approval is STILL open (`Frame::Agent` with `minded_by: None`) -> pending approval delivered ONCE!
+        let frame = agent_frame(mk_test_subagent("b1", "win-lead", None, false, None, None, Some("worker")));
+        inner.agents_frame_for_gen("local", 1, &frame);
+        assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("blk-b1")), "work · Agent blocked".to_owned(), "approve rm?".to_owned())]);
+        notices.lock().unwrap().clear();
+        // A second ownership frame must NOT re-deliver the same approval.
+        inner.agents_frame_for_gen("local", 1, &frame);
+        assert!(attention_titles(&notices).is_empty());
+
+        // Re-attach minder to b1 for APC & bridge tests.
+        inner.agents_frame_for_gen("local", 1, &agent_frame(mk_test_subagent("b1", "win-m1", Some("m1"), false, None, None, Some("worker"))));
+
+        // 3. `handle_inline_apc` (ChildExited & Unknown) suppressed for minded worker, delivered for lead, and still suppressed when all-three-off + minded_subagents=true.
+        inner.handle_inline_apc(&bk("blk-b1"), InlineApc::ChildExited { exit_code: 0 });
+        inner.handle_inline_apc(&bk("blk-b1"), InlineApc::Unknown(json!({ "title": "Done", "body": "ok" })));
+        assert!(attention_titles(&notices).is_empty(), "minded APC notices suppressed by default");
+        state.lock().unwrap().settings.notices = crate::settings::Notices { blocked: false, done: false, failed: false, minded_subagents: true };
+        inner.handle_inline_apc(&bk("blk-b1"), InlineApc::ChildExited { exit_code: 1 });
+        assert!(attention_titles(&notices).is_empty(), "all-three-off with minded_subagents=true still suppresses minded APC notices");
+        state.lock().unwrap().settings.notices = crate::settings::Notices { blocked: true, done: false, failed: false, minded_subagents: true };
+        inner.handle_inline_apc(&bk("blk-b1"), InlineApc::ChildExited { exit_code: 0 });
+        assert_eq!(attention_titles(&notices), vec![(Target::Pane(bk("blk-b1")), "work · Process exited".to_owned())]);
+        notices.lock().unwrap().clear();
+        state.lock().unwrap().settings.notices = crate::settings::Notices::default();
+
+        // 4. `bridge_notice`: pane-targeted respects minded suppression; session-only and host-only keep existing scope.
+        inner.bridge_notice("local", Some("s1"), Some("blk-b1"), &json!({ "title": "Ping", "body": "hi" }));
+        assert!(attention_titles(&notices).is_empty(), "pane-targeted bridge_notice suppressed for minded subagent");
+        inner.bridge_notice("local", Some("s1"), None, &json!({ "title": "Session", "body": "hi" }));
+        inner.bridge_notice("local", None, None, &json!({ "title": "Host", "body": "hi" }));
+        assert_eq!(
+            attention_titles(&notices),
+            vec![(Target::Session { host_key: "local".into(), session_id: "s1".into() }, "work · Session".to_owned()), (Target::Host("local".into()), "local · Host".to_owned())]
+        );
+        notices.lock().unwrap().clear();
+        state.lock().unwrap().settings.notices.minded_subagents = true;
+        inner.bridge_notice("local", Some("s1"), Some("blk-b1"), &json!({ "title": "Ping", "body": "hi" }));
+        assert_eq!(attention_titles(&notices), vec![(Target::Pane(bk("blk-b1")), "work · Ping".to_owned())]);
+        notices.lock().unwrap().clear();
+        state.lock().unwrap().settings.notices.minded_subagents = false;
+
+        // 5. Newly started pane race (status BEFORE Frame::Agent):
+        //    (a) Minded worker + titled inline APC during hold: APC must NOT erase the held approval;
+        //        when Frame::Agent confirms minded both are suppressed; if minder then detaches while
+        //        still blocked, the approval is still delivered once (Astra #1)!
+        let _guard = rt.enter();
+        {
+            let (br, rules) = {
+                let st = state.lock().unwrap();
+                (st.blocks.get(&bk("blk-fresh-minded")).unwrap().clone(), st.settings.notices)
+            };
+            let c = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "early ask"), rules).unwrap();
+            inner.dispatch_pane_notice(&bk("blk-fresh-minded"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+        }
+        inner.handle_inline_apc(&bk("blk-fresh-minded"), InlineApc::Unknown(json!({ "title": "Progress", "body": "still thinking" })));
+        assert!(attention_titles(&notices).is_empty(), "newly seen pane held awaiting ownership");
+        inner.agents_frame_for_gen("local", 1, &agent_frame(mk_test_subagent("fresh-minded", "win-m1", Some("m1"), false, None, None, Some("fresh-minded"))));
+        assert!(attention_titles(&notices).is_empty(), "held notices suppressed once Frame::Agent confirms minded");
+        // Now minder detaches while `early ask` is still open -> approval MUST be delivered once!
+        inner.agents_frame_for_gen("local", 1, &agent_frame(mk_test_subagent("fresh-minded", "win-lead", None, false, None, None, Some("fresh-minded"))));
+        assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("blk-fresh-minded")), "work · Agent blocked".to_owned(), "early ask".to_owned())]);
+        notices.lock().unwrap().clear();
+
+        //    (b) Unminded worker: held while unresolved + APC during hold -> BOTH delivered when Frame::Agent confirms unminded!
+        {
+            let (br, rules) = {
+                let st = state.lock().unwrap();
+                (st.blocks.get(&bk("blk-fresh-unminded")).unwrap().clone(), st.settings.notices)
+            };
+            let c = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "unminded ask"), rules).unwrap();
+            inner.dispatch_pane_notice(&bk("blk-fresh-unminded"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+        }
+        inner.handle_inline_apc(&bk("blk-fresh-unminded"), InlineApc::Unknown(json!({ "title": "Note", "body": "extra" })));
+        assert!(attention_titles(&notices).is_empty());
+        inner.agents_frame_for_gen("local", 1, &agent_frame(mk_test_subagent("fresh-unminded", "win-lead", None, false, None, None, Some("fresh-unminded"))));
+        assert_eq!(
+            attention_events(&notices),
+            vec![
+                (Target::Pane(bk("blk-fresh-unminded")), "work · Agent blocked".to_owned(), "unminded ask".to_owned()),
+                (Target::Pane(bk("blk-fresh-unminded")), "work · Note".to_owned(), "extra".to_owned()),
+            ]
+        );
+        notices.lock().unwrap().clear();
+
+        //    (c) Established lead pane (older than grace): emitted immediately without holding.
+        inner.dispatch_pane_notice(&bk("blk-lead"), "Agent failed".into(), "boom".into(), olo_kit::notify::NoteKind::Error, Some(AgentActivity::Error), None);
+        assert_eq!(attention_titles(&notices), vec![(Target::Pane(bk("blk-lead")), "work · Agent failed".to_owned())]);
+    }
+
+    #[test]
+    fn minded_subagent_stale_blocked_snapshot_visibility_follower_and_timer_regressions() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        let bk = |sid: &str, bid: &str| BlockKey { host_key: "local".into(), session_id: sid.into(), block_id: bid.into() };
+        let mk_block = |id: &str| BlockInfo {
+            block_id: id.to_owned(),
+            label: id.to_owned(),
+            creator_name: "com.superlogical.terminal".into(),
+            flavor: "com.superlogical.terminal".into(),
+            host_id: "local".into(),
+            owner: None,
+        };
+        let mk_session = |sid: &str, label: &str, bids: &[&str]| SessionView {
+            revision: 1,
+            session_id: sid.into(),
+            label: label.into(),
+            windows: vec![olo_rex_client::WindowView {
+                window_id: format!("win-{sid}"),
+                label: label.into(),
+                focused_block_id: bids.first().map(|s| (*s).to_owned()),
+                zoomed_block_id: None,
+                layers: vec![olo_rex_client::LayerView {
+                    layer_id: "layer-1".into(),
+                    kind: "tiled".into(),
+                    bounds: [0.0, 0.0, 1.0, 1.0],
+                    state: Some("normal".into()),
+                    layout: None,
+                    blocks: bids.iter().map(|b| mk_block(b)).collect(),
+                }],
+            }],
+            active_window_id: Some(format!("win-{sid}")),
+        };
+        let s1 = mk_session("s1", "work", &["blk-w1", "blk-w2", "blk-w3", "blk-w4", "blk-tabw", "blk-vis", "blk-timer", "blk-same"]);
+        let s2 = mk_session("s2", "other", &["blk-same"]);
+        let mut host = HostRuntime::test_connected("local", HashMap::from([("s1".into(), s1), ("s2".into(), s2)]));
+        host.session_summaries.push(SessionSummary { session_id: "s1".into(), label: "work".into() });
+        host.session_summaries.push(SessionSummary { session_id: "s2".into(), label: "other".into() });
+
+        let base = Instant::now();
+        let old = base - Duration::from_secs(5);
+        let mut st = HubState::test_empty();
+        st.test_now = Some(base);
+        st.agents_told.insert("local".into());
+        st.agents_follow_gen.insert("local".into(), 2);
+        st.hosts.insert("local".into(), host);
+        st.subagents.register(mk_test_subagent("m1", "win-lead", None, true, None, Some("minder"), Some("shared")));
+        st.subagents.register(mk_test_subagent("m-tab", "win-lead", None, false, None, Some("tab-minder"), Some("supervisor")));
+        for id in ["w1", "w2", "w3", "w4"] {
+            st.subagents.register(mk_test_subagent(id, "win-m1", Some("m1"), false, None, None, Some(id)));
+        }
+        st.subagents.register(mk_test_subagent("tabw", "win-m-tab", None, false, None, None, Some("tabw")));
+        let mut same_in_s1 = mk_test_subagent("same", "win-m1", Some("m1"), false, None, None, Some("same"));
+        same_in_s1.block_id = "blk-same".into();
+        st.subagents.register(same_in_s1);
+
+        for bid in ["blk-w1", "blk-w2", "blk-w3", "blk-w4", "blk-tabw", "blk-same"] {
+            let mut br = BlockRuntime::new(80, 24, &TerminalTheme::default());
+            br.created_at = old;
+            st.blocks.insert(bk("s1", bid), Arc::new(Mutex::new(br)));
+        }
+        for (sid, bid) in [("s1", "blk-vis"), ("s1", "blk-timer"), ("s2", "blk-same")] {
+            let mut br = BlockRuntime::new(80, 24, &TerminalTheme::default());
+            // Remaining ownership grace = 40 ms so the real spawned tokio timer runs fast and deterministically.
+            br.created_at = base - Duration::from_millis(710);
+            st.blocks.insert(bk(sid, bid), Arc::new(Mutex::new(br)));
+        }
+
+        let state = Arc::new(Mutex::new(st));
+        let (inner, notices) = test_inner_with_state(state.clone(), &rt);
+        let status = |state: &str, msg: &str| StatusUpdate::parse("program_status_changed", &json!({ "id": "agy", "record": { "state": state, "msg": msg } })).unwrap();
+        let clear_status = || StatusUpdate::parse("program_status_removed", &json!({ "ids": ["agy"] })).unwrap();
+        let frame_with_state = |entry: crate::subagents::NativeSubagent, live: olo_rex_link::agents::SubagentLiveState| {
+            serde_json::to_string(&olo_rex_link::agents::wire::Frame::Agent { agent: Box::new(olo_rex_link::agents::wire::AgentView { entry, state: live, summary: None }) }).unwrap()
+        };
+        let detach_frame = |id: &str| frame_with_state(mk_test_subagent(id, "win-lead", None, false, None, None, Some(id)), olo_rex_link::agents::SubagentLiveState::Working);
+
+        // Astra #2a: Blocked("Approve A?") -> Working -> screen-guessed Blocked (no record) -> detach MUST NOT replay "Approve A?".
+        {
+            let (br, rules) = {
+                let st = state.lock().unwrap();
+                (st.blocks.get(&bk("s1", "blk-w1")).unwrap().clone(), st.settings.notices)
+            };
+            let c = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "Approve A?"), rules).unwrap();
+            inner.dispatch_pane_notice(&bk("s1", "blk-w1"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+            let mut g = br.lock().unwrap();
+            apply_program_status(&mut g, 2, clear_status(), rules);
+            assert_ne!(g.agent_activity, AgentActivity::Blocked);
+            // Simulate a screen-guessed Blocked with no program_status record.
+            g.agent_activity = AgentActivity::Blocked;
+        }
+        inner.agents_frame_for_gen("local", 2, &detach_frame("w1"));
+        assert!(attention_events(&notices).is_empty(), "screen-guessed Blocked without record must not replay stale Approve A?");
+
+        // Astra #2b / Neon #1: Blocked("Approve A?") -> Working -> Blocked("Allow deploy?" while notify_blocked=false)
+        // -> re-enable notify_blocked + detach MUST NOT replay "Allow deploy?" or "Approve A?".
+        {
+            let br = state.lock().unwrap().blocks.get(&bk("s1", "blk-w2")).unwrap().clone();
+            let rules_on = state.lock().unwrap().settings.notices;
+            let c = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "Approve A?"), rules_on).unwrap();
+            inner.dispatch_pane_notice(&bk("s1", "blk-w2"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+            apply_program_status(&mut br.lock().unwrap(), 2, status("working", "running"), rules_on);
+            state.lock().unwrap().settings.notices.blocked = false;
+            let rules_off = state.lock().unwrap().settings.notices;
+            assert!(apply_program_status(&mut br.lock().unwrap(), 3, status("blocked", "Allow deploy?"), rules_off).is_none());
+            state.lock().unwrap().settings.notices.blocked = true;
+        }
+        inner.agents_frame_for_gen("local", 2, &detach_frame("w2"));
+        assert!(attention_events(&notices).is_empty(), "approval that arrived while notify_blocked=false must never replay on detach");
+
+        // Astra #2c: status_snapshot replacing "Approve A?" with "Approve B?" before detach delivers "Approve B?".
+        {
+            let (br, rules) = {
+                let st = state.lock().unwrap();
+                (st.blocks.get(&bk("s1", "blk-w3")).unwrap().clone(), st.settings.notices)
+            };
+            let c = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "Approve A?"), rules).unwrap();
+            inner.dispatch_pane_notice(&bk("s1", "blk-w3"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+            let rec_b: ProgramStatusRecord = serde_json::from_value(json!({ "id": "agy", "state": "blocked", "msg": "Approve B?" })).unwrap();
+            br.lock().unwrap().status_snapshot(Some(olo_rex_client::RpcResult { seq: 5, payload: vec![rec_b] }));
+        }
+        inner.agents_frame_for_gen("local", 2, &detach_frame("w3"));
+        assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("s1", "blk-w3")), "work · Agent blocked".to_owned(), "Approve B?".to_owned())]);
+        notices.lock().unwrap().clear();
+
+        // Astra #2d: reload/attach status_snapshot restoring "Approve A?" on minded worker -> detach delivers "Approve A?".
+        {
+            let br = state.lock().unwrap().blocks.get(&bk("s1", "blk-w4")).unwrap().clone();
+            let rec_a: ProgramStatusRecord = serde_json::from_value(json!({ "id": "agy", "state": "blocked", "msg": "Approve A?" })).unwrap();
+            br.lock().unwrap().status_snapshot(Some(olo_rex_client::RpcResult { seq: 1, payload: vec![rec_a] }));
+        }
+        inner.agents_frame_for_gen("local", 2, &detach_frame("w4"));
+        assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("s1", "blk-w4")), "work · Agent blocked".to_owned(), "Approve A?".to_owned())]);
+        notices.lock().unwrap().clear();
+
+        // Astra #6: Tab minder transitioning to SubagentLiveState::Error releases standing approval AND stops suppressing new ones.
+        {
+            let (br, rules) = {
+                let st = state.lock().unwrap();
+                (st.blocks.get(&bk("s1", "blk-tabw")).unwrap().clone(), st.settings.notices)
+            };
+            let c = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "tab approval 1"), rules).unwrap();
+            inner.dispatch_pane_notice(&bk("s1", "blk-tabw"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+            assert!(attention_events(&notices).is_empty(), "live tab minder suppresses worker");
+        }
+        let err_minder = frame_with_state(mk_test_subagent("m-tab", "win-lead", None, false, None, Some("tab-minder"), Some("supervisor")), olo_rex_link::agents::SubagentLiveState::Error);
+        inner.agents_frame_for_gen("local", 2, &err_minder);
+        assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("s1", "blk-tabw")), "work · Agent blocked".to_owned(), "tab approval 1".to_owned())]);
+        notices.lock().unwrap().clear();
+        {
+            let (br, rules) = {
+                let st = state.lock().unwrap();
+                (st.blocks.get(&bk("s1", "blk-tabw")).unwrap().clone(), st.settings.notices)
+            };
+            let c = apply_program_status(&mut br.lock().unwrap(), 2, status("blocked", "tab approval 2"), rules).unwrap();
+            inner.dispatch_pane_notice(&bk("s1", "blk-tabw"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+        }
+        assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("s1", "blk-tabw")), "work · Agent blocked".to_owned(), "tab approval 2".to_owned())]);
+        notices.lock().unwrap().clear();
+
+        // Astra #5 / Neon #2: Superseded follower (gen 1) cannot strip or mutate gen 2's `agents_told`.
+        assert!(!inner.agents_follower_ended("local", 1), "stale follower gen must be ignored");
+        assert!(state.lock().unwrap().agents_told.contains("local"));
+        inner.agents_frame_for_gen("local", 1, &detach_frame("same"));
+        assert!(state.lock().unwrap().is_minded_subagent(&bk("s1", "blk-same")), "stale follower frame must be ignored");
+
+        // Astra #7 / Neon #3: Same block_id in session s2 is NOT satisfied by s1's subagent row, and holds then notifies.
+        rt.block_on(async {
+            // Astra #8: Pane visible at event time is discarded; pane viewed during hold discards held notice even after switching away.
+            let win = crate::ui::WinId(1);
+            inner.set_window_front_pane(win, Some(bk("s1", "blk-vis")));
+            inner.dispatch_pane_notice(&bk("s1", "blk-vis"), "Agent finished".into(), "done".into(), olo_kit::notify::NoteKind::Information, Some(AgentActivity::Done), None);
+            assert!(attention_events(&notices).is_empty(), "visible pane notice discarded immediately");
+            inner.set_window_front_pane(win, None);
+            // Now send while NOT visible (held for 40 ms), view pane mid-hold, then switch away before timer fires.
+            inner.dispatch_pane_notice(&bk("s1", "blk-vis"), "Agent finished".into(), "done 2".into(), olo_kit::notify::NoteKind::Information, Some(AgentActivity::Done), None);
+            assert!(state.lock().unwrap().held_pane_notices.contains_key(&bk("s1", "blk-vis")));
+            inner.set_window_front_pane(win, Some(bk("s1", "blk-vis")));
+            assert!(!state.lock().unwrap().held_pane_notices.contains_key(&bk("s1", "blk-vis")), "viewing pane clears held notices");
+            inner.set_window_front_pane(win, None);
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            assert!(attention_events(&notices).is_empty(), "cleared held notice must stay discarded after switching away");
+
+            // Astra #9 + #7: Drive the REAL spawned fallback timer callback through its deadline without manual flush,
+            // and verify a superseded timer seq cannot flush a newer held notice.
+            {
+                let (br, rules) = {
+                    let st = state.lock().unwrap();
+                    (st.blocks.get(&bk("s1", "blk-timer")).unwrap().clone(), st.settings.notices)
+                };
+                let c1 = apply_program_status(&mut br.lock().unwrap(), 1, status("blocked", "ask 1"), rules).unwrap();
+                inner.dispatch_pane_notice(&bk("s1", "blk-timer"), c1.2.to_owned(), c1.3, c1.4, Some(c1.0), Some(c1.1));
+            }
+            let seq1 = state.lock().unwrap().held_pane_notices.get(&bk("s1", "blk-timer")).unwrap()[0].seq;
+            {
+                let (br, rules) = {
+                    let st = state.lock().unwrap();
+                    (st.blocks.get(&bk("s1", "blk-timer")).unwrap().clone(), st.settings.notices)
+                };
+                let c2 = apply_program_status(&mut br.lock().unwrap(), 2, status("blocked", "ask 2"), rules).unwrap();
+                inner.dispatch_pane_notice(&bk("s1", "blk-timer"), c2.2.to_owned(), c2.3, c2.4, Some(c2.0), Some(c2.1));
+            }
+            // Stale seq1 callback must NOT flush seq2!
+            inner.flush_held_pane_notice(&bk("s1", "blk-timer"), Some(seq1));
+            assert!(attention_events(&notices).is_empty(), "stale timer seq must not flush newer held notice");
+            // Also dispatch on s2/blk-same (fresh pane, NOT matched by s1/blk-same!).
+            inner.dispatch_pane_notice(&bk("s2", "blk-same"), "Agent finished".into(), "s2 done".into(), olo_kit::notify::NoteKind::Information, Some(AgentActivity::Done), None);
+            assert!(attention_events(&notices).is_empty(), "held notices must remain held immediately after dispatch");
+
+            // Wait for the real spawned timers (~40 ms) to fire on the runtime.
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while attention_events(&notices).len() < 2 && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let got = attention_events(&notices);
+            assert_eq!(got.len(), 2, "real spawned timers must flush both held notices at deadline");
+            assert!(got.contains(&(Target::Pane(bk("s1", "blk-timer")), "work · Agent blocked".to_owned(), "ask 2".to_owned())));
+            assert!(got.contains(&(Target::Pane(bk("s2", "blk-same")), "other · Agent finished".to_owned(), "s2 done".to_owned())));
+            notices.lock().unwrap().clear();
+
+            // Astra #5 / Neon #2: Fresh follower awaiting initial Frame::Snapshot holds minded worker's notice,
+            // then suppresses it once Frame::Snapshot arrives (or releases immediately on follower end).
+            let gen3 = inner.invalidate_agents_follower("local", true);
+            assert!(state.lock().unwrap().agents_snapshot_pending.contains_key("local"));
+            {
+                let (br, rules) = {
+                    let st = state.lock().unwrap();
+                    (st.blocks.get(&bk("s1", "blk-same")).unwrap().clone(), st.settings.notices)
+                };
+                let c = apply_program_status(&mut br.lock().unwrap(), 10, status("blocked", "during reconnect"), rules).unwrap();
+                inner.dispatch_pane_notice(&bk("s1", "blk-same"), c.2.to_owned(), c.3, c.4, Some(c.0), Some(c.1));
+            }
+            assert!(attention_events(&notices).is_empty(), "notice held while initial Frame::Snapshot pending");
+            let mut same_entry = mk_test_subagent("same", "win-m1", Some("m1"), false, None, None, Some("same"));
+            same_entry.block_id = "blk-same".into();
+            let snap = serde_json::to_string(&olo_rex_link::agents::wire::Frame::Snapshot {
+                proto: 1,
+                cursor: 1,
+                agents: vec![
+                    olo_rex_link::agents::wire::AgentView {
+                        entry: mk_test_subagent("m1", "win-lead", None, true, None, Some("minder"), Some("shared")),
+                        state: olo_rex_link::agents::SubagentLiveState::Working,
+                        summary: None,
+                    },
+                    olo_rex_link::agents::wire::AgentView { entry: same_entry, state: olo_rex_link::agents::SubagentLiveState::WaitingApproval, summary: None },
+                ],
+            })
+            .unwrap();
+            inner.agents_frame_for_gen("local", gen3, &snap);
+            assert!(!state.lock().unwrap().agents_snapshot_pending.contains_key("local"));
+            assert!(state.lock().unwrap().agents_told.contains("local"));
+            assert!(attention_events(&notices).is_empty(), "Frame::Snapshot suppresses minded worker held during reconnect");
+
+            // Follower ends (current gen3) -> releases open approval immediately!
+            assert!(inner.agents_follower_ended("local", gen3));
+            assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("s1", "blk-same")), "work · Agent blocked".to_owned(), "during reconnect".to_owned())]);
+        });
     }
 }
 

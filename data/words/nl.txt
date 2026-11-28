@@ -974,6 +974,9 @@ Langs de bovenkant
 Already saved as “{}”.
 Al bewaard als ‘{}’.
 
+Also for subagents watched by a minder
+Ook voor subagenten onder toezicht van een minder
+
 Also from the Deskbar: click the cup.
 Ook via de Deskbar: klik op het kopje.
 
@@ -2304,6 +2307,9 @@ Kies een widget om die te wijzigen of voeg er een toe.
 
 Choose every update
 Kies alle updates
+
+Choose how these alerts look and sound in Notifications.
+Stel uiterlijk en geluid van deze meldingen in bij Meldingen.
 
 Choose how they look and sound in Notifications.
 Stel uiterlijk en geluid in bij Meldingen.

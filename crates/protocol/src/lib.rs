@@ -1876,6 +1876,7 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
+    #[serde(default = "RexSettings::deserialized_omitted")]
     pub rex: RexSettings,
     /// Screen recordings (Screenshot ▸ Record).
     pub screen_recording: ScreenRecordingSettings,
@@ -2065,6 +2066,22 @@ impl Default for PasswordsSecurity {
     }
 }
 
+/// Internal deserialization marker: `true` only when a newly added field was
+/// omitted from incoming JSON, so `app_server::set_settings` can preserve the
+/// server's current value when an older client sends `SetSettings` without
+/// knowing about the field. Transparent to `PartialEq`, `Eq`, and `Default`.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OmittedFlag(pub bool);
+
+impl PartialEq for OmittedFlag {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for OmittedFlag {}
+
 /// Rex's settings (Preferences ▸ Rex): what Rex tells the person
 /// about, the hosts it knows besides this computer, and what the
 /// sessions of each may do on this computer. Rex follows them live.
@@ -2077,7 +2094,7 @@ impl Default for PasswordsSecurity {
 /// state of this computer's Rex server (reachable over Tailscale or
 /// not): that is the server's, shown and changed in Rex.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(from = "RexSettingsWire")]
 pub struct RexSettings {
     /// Tell the person (an Olo notification) when an agent in a pane
     /// that isn't in front is waiting for them.
@@ -2086,6 +2103,14 @@ pub struct RexSettings {
     pub notify_done: bool,
     /// … when one has failed.
     pub notify_failed: bool,
+    /// … including subagents watched by a minder (off by default so only
+    /// lead and unminded agents notify).
+    #[serde(default)]
+    pub notify_minded_subagents: bool,
+    /// Set to `true` only when incoming JSON omitted `notify_minded_subagents`.
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub notify_minded_subagents_omitted: OmittedFlag,
     /// What the sessions of this computer's own Rex server may do here.
     pub local: RexGrants,
     /// The hosts Rex knows besides this computer, in the order shown.
@@ -2110,6 +2135,69 @@ pub struct RexSettings {
     pub typing_helper: bool,
     /// What Keep It Going types to a coding agent that has stopped.
     pub keep_going_says: String,
+}
+
+#[derive(Deserialize)]
+#[serde(default)]
+struct RexSettingsWire {
+    notify_blocked: bool,
+    notify_done: bool,
+    notify_failed: bool,
+    notify_minded_subagents: Option<bool>,
+    local: RexGrants,
+    hosts: Vec<RexHost>,
+    repos: Vec<RexRepo>,
+    kept: Vec<RexKept>,
+    kept_forwards: Vec<RexKeptForward>,
+    carry_choices: Vec<RexCarryRemembered>,
+    sessions_days: u32,
+    show_typing_at_once: bool,
+    typing_helper: bool,
+    keep_going_says: String,
+}
+
+impl Default for RexSettingsWire {
+    fn default() -> Self {
+        let d = RexSettings::default();
+        Self {
+            notify_blocked: d.notify_blocked,
+            notify_done: d.notify_done,
+            notify_failed: d.notify_failed,
+            notify_minded_subagents: None,
+            local: d.local,
+            hosts: d.hosts,
+            repos: d.repos,
+            kept: d.kept,
+            kept_forwards: d.kept_forwards,
+            carry_choices: d.carry_choices,
+            sessions_days: d.sessions_days,
+            show_typing_at_once: d.show_typing_at_once,
+            typing_helper: d.typing_helper,
+            keep_going_says: d.keep_going_says,
+        }
+    }
+}
+
+impl From<RexSettingsWire> for RexSettings {
+    fn from(w: RexSettingsWire) -> Self {
+        Self {
+            notify_blocked: w.notify_blocked,
+            notify_done: w.notify_done,
+            notify_failed: w.notify_failed,
+            notify_minded_subagents: w.notify_minded_subagents.unwrap_or(false),
+            notify_minded_subagents_omitted: OmittedFlag(w.notify_minded_subagents.is_none()),
+            local: w.local,
+            hosts: w.hosts,
+            repos: w.repos,
+            kept: w.kept,
+            kept_forwards: w.kept_forwards,
+            carry_choices: w.carry_choices,
+            sessions_days: w.sessions_days,
+            show_typing_at_once: w.show_typing_at_once,
+            typing_helper: w.typing_helper,
+            keep_going_says: w.keep_going_says,
+        }
+    }
 }
 
 /// What Rex's Keep It Going says unless the person says otherwise.
@@ -2220,6 +2308,8 @@ impl Default for RexSettings {
             notify_blocked: true,
             notify_done: true,
             notify_failed: true,
+            notify_minded_subagents: false,
+            notify_minded_subagents_omitted: OmittedFlag(false),
             local: RexGrants::all(),
             hosts: Vec::new(),
             sessions_days: 7,
@@ -2235,6 +2325,9 @@ impl Default for RexSettings {
 }
 
 impl RexSettings {
+    fn deserialized_omitted() -> Self {
+        Self { notify_minded_subagents_omitted: OmittedFlag(true), ..Self::default() }
+    }
     /// What the sessions of host `id` may do here ("" or "local": this
     /// computer's own server). A host Rex doesn't know may do nothing.
     pub fn grants(&self, id: &str) -> RexGrants {
@@ -3717,6 +3810,7 @@ mod tests {
         let none: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(none.rex, RexSettings::default());
         assert!(none.rex.notify_blocked && none.rex.notify_done && none.rex.notify_failed);
+        assert!(!none.rex.notify_minded_subagents);
         assert_eq!(none.rex.grants("local"), RexGrants::all());
         assert_eq!(none.rex.grants(""), RexGrants::all());
         assert!(!none.rex.grants("somewhere").any());
@@ -3731,13 +3825,19 @@ mod tests {
         });
         s.rex.hosts.push(RexHost { id: "h2".into(), label: "Elsewhere".into(), endpoint: "https://elsewhere.example".into(), ..Default::default() });
         s.rex.notify_done = false;
+        s.rex.notify_minded_subagents = true;
         let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.rex, s.rex);
+        assert!(back.rex.notify_minded_subagents);
         assert!(back.rex.grants("h1").open_links && !back.rex.grants("h1").clipboard);
         assert!(!back.rex.grants("h2").any());
         // A file that names only some of it keeps the rest at its defaults.
         let part: Settings = serde_json::from_str(r#"{"rex":{"notify_failed":false,"hosts":[{"id":"x","endpoint":"ssh://x"}]}}"#).unwrap();
-        assert!(part.rex.notify_blocked && !part.rex.notify_failed);
+        assert!(part.rex.notify_blocked && !part.rex.notify_failed && !part.rex.notify_minded_subagents);
+        assert!(part.rex.notify_minded_subagents_omitted.0);
+        let explicit_false: Settings = serde_json::from_str(r#"{"rex":{"notify_minded_subagents":false}}"#).unwrap();
+        assert!(!explicit_false.rex.notify_minded_subagents && !explicit_false.rex.notify_minded_subagents_omitted.0);
+        assert!(none.rex.notify_minded_subagents_omitted.0 && !back.rex.notify_minded_subagents_omitted.0);
         assert_eq!(part.rex.hosts[0].label, "");
         assert!(!part.rex.hosts[0].grants.any() && !part.rex.hosts[0].connect_at_start);
     }

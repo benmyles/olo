@@ -403,7 +403,7 @@ impl Panel {
             // window sets (the repositories, how far back sessions go).
             Panel::Rex => {
                 let (r, f) = (&mut settings.rex, &from.rex);
-                (r.notify_blocked, r.notify_done, r.notify_failed) = (f.notify_blocked, f.notify_done, f.notify_failed);
+                (r.notify_blocked, r.notify_done, r.notify_failed, r.notify_minded_subagents) = (f.notify_blocked, f.notify_done, f.notify_failed, f.notify_minded_subagents);
                 (r.show_typing_at_once, r.typing_helper) = (f.show_typing_at_once, f.typing_helper);
                 r.keep_going_says.clone_from(&f.keep_going_says);
                 if !to_defaults {
@@ -630,16 +630,24 @@ mod tests {
         s.rex.repos.push(olo_protocol::RexRepo { url: "u".into(), ..Default::default() });
         s.rex.sessions_days = 30;
         s.rex.notify_done = false;
+        s.rex.notify_minded_subagents = true;
         s.rex.keep_going_says = "Go on.".into();
         let mut d = s.clone();
         Panel::Rex.reset(&mut d, &Settings::default(), true);
         assert_eq!((d.rex.hosts.len(), d.rex.repos.len(), d.rex.sessions_days), (1, 1, 30));
-        assert!(d.rex.notify_done);
+        assert!(d.rex.notify_done && !d.rex.notify_minded_subagents);
         assert_eq!(d.rex.keep_going_says, olo_protocol::REX_KEEP_GOING_SAYS);
         let mut r = s.clone();
         Panel::Rex.reset(&mut r, &Settings::default(), false);
         assert!(r.rex.hosts.is_empty());
+        assert!(!r.rex.notify_minded_subagents);
         assert_eq!((r.rex.repos.len(), r.rex.sessions_days), (1, 30));
+        // Revert to a non-default opened state restores `notify_minded_subagents = true`.
+        let mut opened = Settings::default();
+        opened.rex.notify_minded_subagents = true;
+        let mut reverted = Settings::default();
+        Panel::Rex.reset(&mut reverted, &opened, false);
+        assert!(reverted.rex.notify_minded_subagents);
     }
 
     /// Deskbar's menu and our panels agree on arguments, names and icons.

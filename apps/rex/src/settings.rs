@@ -60,11 +60,12 @@ pub struct Notices {
     pub blocked: bool,
     pub done: bool,
     pub failed: bool,
+    pub minded_subagents: bool,
 }
 
 impl Default for Notices {
     fn default() -> Self {
-        Self { blocked: true, done: true, failed: true }
+        Self { blocked: true, done: true, failed: true, minded_subagents: false }
     }
 }
 

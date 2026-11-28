@@ -1082,16 +1082,9 @@ something nobody here has is in "Blocked", with what it waits for.
   - "Require a checked PID and evidence of a common PID namespace, or obtain the verified foreground cwd from Rex" (cross-PID-namespace pathless trust when Rex runs in a different PID namespace from `agentd`, Astra Add'l #2).
   - "Drain admitted mutations to a safe point on every shutdown reason, or persist enough of each in-flight operation to finish or roll it back" (persistent in-flight start journal beyond the 65 s `SIGTERM` drain budget, Astra #12).
   - Lead-deferred architectural items from Round 2 (A19/A20/A33): move `events.jsonl` journal I/O off the single-thread Tokio runtime, add durable journal write-failure escalation, and bound/backoff repeated startup-save recovery loops.
-- **Rex: suppress notifications for minded subagents by default, configurable in Rex Settings**
-  (Ben, 2026-11-27: "make it so that by default rex doesn't notify me if
-  a subagent that has a minder is waiting on an approval etc. (by
-  default only notify me if lead agents need an approval). however, make
-  this configurable in rex settings"). Applies to any subagent watched
-  by a minder (whether via `--minder` / `minded_by` or nested under a
-  minder tab in the `Lead ▸ minder ▸ subagents` hierarchy), so by
-  default only top-level/lead agents (and escalations to the lead) raise
-  desktop notifications, with a Rex Settings toggle/option to notify for
-  all agents if desired.
+- **Rex minded-subagent notifications non-critical follow-ups (Round 2 reviews `astra-51c1ceff75`, `opus-look`, `agy-look`, 2026-11-28; reviewers' words):**
+  - *Shared-minder escalation forwarding (Astra R2 #3):* "A shared minder escalates a worker's still-open approval. The service writes a distinct escalation event and wakes watchers. Its follower protocol carries only Snapshot, Agent and Gone. Rex therefore receives no escalation to display, and the worker's original approval stays suppressed. … Forward the escalation once, with its event cursor and lead target, through the existing follower connection." (Requires `crates/rex-link` follower wire-protocol extension.)
+  - *Pre-existing Preferences / kit visual polish (Opus R2 #2–#6, Neon-look R2 #2–#3):* (1) Disabled `CheckBox` contrast in dark mode and 1× light mode ("Draw the disabled checkbox frame in the disabled-text colour … In dark, move the disabled-text role one more step toward the panel colour so it's clearly below the secondary-text role, as it already is in light"; Neon-look: "Match the disabled checkbox text contrast to the window's disabled button text (`Use Default`, `Defaults`, `Revert`)"). (2) Two different reset idioms in neighbouring boxes (`Use Default` button in `Keep It Going` vs. frame `Reset` link in `Notifications`; aligning `Reset`'s right ink edge by ~1 pt). (3) Narrow editable `TextField` draws a trailing `…` ellipsis instead of clipping at the inner right padding (`rex-narrow-*-2x.png`). (4) Narrow `General` tab pane right gutter slightly wider than left gutter (`rex-narrow-*-2x.png`).
 - **`tools/dev/agents` non-critical hardening remainders (Round 2 code reviews `astra-36ecf4e49a` & `agyrev-89352811d0`, 2026-11-27; reviewers' words):**
   - "Require a certain parent before every native launch and bind the launch to that verified window. A failed service probe inside Rex should report the failure instead of silently selecting the shared tmux server."
   - "Give each tmux lead a stable identity and socket namespace, pass that identity to its minder, and filter management by it. Exclude the minder itself from its child watch."

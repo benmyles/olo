@@ -970,6 +970,9 @@ Along the Top
 Already saved as “{}”.
 이미 ‘{}’(으)로 저장되어 있습니다.
 
+Also for subagents watched by a minder
+마인더가 지켜보는 하위 에이전트도 포함
+
 Also from the Deskbar: click the cup.
 Deskbar의 컵을 클릭해도 됩니다.
 
@@ -2295,6 +2298,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 모든 업데이트 선택
+
+Choose how these alerts look and sound in Notifications.
+이 알림의 표시 방식과 소리는 알림에서 설정하세요.
 
 Choose how they look and sound in Notifications.
 표시 방식과 소리는 알림에서 설정하세요.

@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Rex Preferences: Minded Subagent Notifications (Dark)
+
+*05:38* — Opted-in minded subagent notifications state in dark mode with Reset link and symmetric BBox inset
+
+![Rex Preferences: Minded Subagent Notifications (Dark)](2026-11-28/053838-rex-preferences-minded-subagent-notifications-da.png)
+
+### Rex Preferences: Minded Subagent Notifications (Light)
+
+*05:38* — Added Also for subagents watched by a minder opt-in checkbox (off by default) and matched symmetric Notifications BBox bottom inset
+
+![Rex Preferences: Minded Subagent Notifications (Light)](2026-11-28/053838-rex-preferences-minded-subagent-notifications-li.png)
+
 ### Token Pool: Activity chart & Recent Requests with Antigravity (dark)
 
 *04:47* — Unified Activity chart and width-adaptive Recent Requests table across Claude Code, Codex, and Antigravity.

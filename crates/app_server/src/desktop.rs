@@ -484,6 +484,17 @@ fn keep_brightness(settings: &mut Settings, current: &Settings) {
     }
 }
 
+/// Preserve `rex.notify_minded_subagents` when an incoming `SetSettings`
+/// payload (e.g. from a preceding Deskbar build) omitted the field, while
+/// honoring an explicit `false` (including Preferences' Defaults) and
+/// defaulting first-load to `false`.
+fn keep_omitted_rex_settings(settings: &mut Settings, current: &Settings) {
+    if settings.rex.notify_minded_subagents_omitted.0 {
+        settings.rex.notify_minded_subagents = current.rex.notify_minded_subagents;
+        settings.rex.notify_minded_subagents_omitted.0 = false;
+    }
+}
+
 /// `output` is set to mirror another.
 fn entry_mirrors(display: &olo_protocol::DisplaySettings, output: &Output) -> bool {
     display.config(&display_key(output), &output.name()).is_some_and(|c| c.mirror.as_ref().is_some_and(|m| !m.is_empty()))
@@ -2363,6 +2374,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Windowing modes and Main and Stack's places are kept as they are
         // chosen, not from a client's copy (which may be older).
         let own = self.rescue.as_ref().map_or(&self.settings, |r| &r.real);
+        keep_omitted_rex_settings(&mut settings, own);
         settings.tiling.modes = own.tiling.modes.clone();
         settings.tiling.main_places = own.tiling.main_places.clone();
         settings.tiling.layouts = own.tiling.layouts.clone();
@@ -2624,5 +2636,44 @@ mod settings_tests {
         s.keyboard.terminal_apps = ["tabula.terminal", "olo.terminal", "foot"].map(String::from).to_vec();
         adopt_old_app_ids(&mut s);
         assert_eq!(s.keyboard.terminal_apps, ["olo.terminal", "foot"]);
+    }
+
+    #[test]
+    fn omitted_notify_minded_subagents_preserved_on_set_settings() {
+        // First-load from a settings file without the field defaults to false.
+        let loaded: Settings = serde_json::from_str("{}").unwrap();
+        assert!(!loaded.rex.notify_minded_subagents);
+
+        // Server currently has the opt-in enabled.
+        let mut current = Settings::default();
+        current.rex.notify_minded_subagents = true;
+
+        // Older client (e.g. preceding Deskbar) sends SetSettings without the new field:
+        // server preserves `true`.
+        let mut from_old_wire = serde_json::to_value(&current).unwrap();
+        from_old_wire["rex"].as_object_mut().unwrap().remove("notify_minded_subagents");
+        let olo_protocol::Request::SetSettings { settings: mut incoming_old } = serde_json::from_value(serde_json::json!({ "type": "set_settings", "settings": from_old_wire })).unwrap() else {
+            panic!("expected SetSettings");
+        };
+        assert!(incoming_old.rex.notify_minded_subagents_omitted.0);
+        keep_omitted_rex_settings(&mut incoming_old, &current);
+        assert!(incoming_old.rex.notify_minded_subagents);
+        assert!(!incoming_old.rex.notify_minded_subagents_omitted.0);
+
+        // Newer client explicitly sets `notify_minded_subagents: false`: honored.
+        let mut explicit_false_wire = serde_json::to_value(&current).unwrap();
+        explicit_false_wire["rex"]["notify_minded_subagents"] = serde_json::json!(false);
+        let olo_protocol::Request::SetSettings { settings: mut incoming_false } = serde_json::from_value(serde_json::json!({ "type": "set_settings", "settings": explicit_false_wire })).unwrap()
+        else {
+            panic!("expected SetSettings");
+        };
+        assert!(!incoming_false.rex.notify_minded_subagents_omitted.0);
+        keep_omitted_rex_settings(&mut incoming_false, &current);
+        assert!(!incoming_false.rex.notify_minded_subagents);
+
+        // In-process Defaults (`Settings::default()`) is also an explicit false.
+        let mut defaults = Settings::default();
+        keep_omitted_rex_settings(&mut defaults, &current);
+        assert!(!defaults.rex.notify_minded_subagents);
     }
 }

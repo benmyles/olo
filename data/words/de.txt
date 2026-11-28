@@ -974,6 +974,9 @@ Oben entlang
 Already saved as “{}”.
 Bereits gespeichert als „{}“.
 
+Also for subagents watched by a minder
+Auch für Unteragenten, die von einem Minder überwacht werden
+
 Also from the Deskbar: click the cup.
 Auch aus der Deskbar: Klicken Sie auf die Tasse.
 
@@ -2304,6 +2307,9 @@ Wählen Sie ein Widget, um es zu ändern, oder fügen Sie eines hinzu.
 
 Choose every update
 Alle Aktualisierungen auswählen
+
+Choose how these alerts look and sound in Notifications.
+Stellen Sie Aussehen und Ton dieser Hinweise unter Mitteilungen ein.
 
 Choose how they look and sound in Notifications.
 Stellen Sie Aussehen und Ton unter Mitteilungen ein.

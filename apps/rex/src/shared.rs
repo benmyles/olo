@@ -139,7 +139,7 @@ pub fn apply(rex: &RexSettings, s: &mut Settings) -> Changes {
     for h in &rex.hosts {
         s.host_policies.insert(h.id.clone(), policy(h.grants));
     }
-    s.notices = Notices { blocked: rex.notify_blocked, done: rex.notify_done, failed: rex.notify_failed };
+    s.notices = Notices { blocked: rex.notify_blocked, done: rex.notify_done, failed: rex.notify_failed, minded_subagents: rex.notify_minded_subagents };
     changes.any = before != s.clone_followed();
     changes
 }
@@ -299,7 +299,11 @@ mod tests {
         assert!(s.policy_for_host("a", false).allow_passwords_op && !s.policy_for_host("a", false).allow_open_url);
         assert!(!s.policy_for_host("b", false).allow_passwords_op && !s.policy_for_host("nobody", false).allow_open_url);
         assert!(s.policy_for_host("local", true).allow_remote_control);
-        assert!(!s.notices.done && s.notices.blocked && s.notices.failed);
+        assert!(!s.notices.done && s.notices.blocked && s.notices.failed && !s.notices.minded_subagents);
+        assert_eq!(apply(&rex, &mut s), Changes::default());
+        rex.notify_minded_subagents = true;
+        assert!(apply(&rex, &mut s).any);
+        assert!(s.notices.minded_subagents);
         assert_eq!(apply(&rex, &mut s), Changes::default());
         rex.hosts[0].label = "Alpha".into();
         rex.hosts[1].endpoint = "ssh://b2".into();

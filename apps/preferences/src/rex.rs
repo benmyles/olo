@@ -189,19 +189,33 @@ fn keep_going(ui: &mut Ui) {
 fn notifications(ui: &mut Ui) {
     ui.bbox("Notifications", |ui| {
         ui.add(StringView::new("Tell me when an agent whose pane isn’t in front:").wrap(true));
-        let checks = ui.collect(|ui| {
+        let triggers = ui.collect(|ui| {
             ui.check("Is waiting for me", ui.s.rex.notify_blocked, |s, v| s.rex.notify_blocked = v);
             ui.check("Has finished", ui.s.rex.notify_done, |s, v| s.rex.notify_done = v);
             ui.check("Has failed", ui.s.rex.notify_failed, |s, v| s.rex.notify_failed = v);
         });
-        ui.add(div().flex().flex_row().flex_wrap().items_center().gap_x(px(2.0 * m::STACK)).gap_y(px(m::TIGHT)).children(checks));
+        let any_notice = ui.s.rex.notify_blocked || ui.s.rex.notify_done || ui.s.rex.notify_failed;
+        let minded = ui.collect(|ui| {
+            ui.enabled_if(any_notice, |ui| {
+                ui.check("Also for subagents watched by a minder", ui.s.rex.notify_minded_subagents, |s, v| s.rex.notify_minded_subagents = v);
+            });
+        });
+        // Keep the baseline-to-baseline pitch from the event row to "Also…"
+        // equal to the intro-to-event pitch (27 pt) so it continues the same
+        // thought rather than sitting 3 pt looser (Opus's look, 2026-11-28).
+        ui.add(
+            div().flex().flex_col().gap(px(m::STACK - 3.0)).child(div().flex().flex_row().flex_wrap().items_center().gap_x(px(2.0 * m::STACK)).gap_y(px(m::TIGHT)).children(triggers)).children(minded),
+        );
+        // Distinct separation above the footer even when wrapped in narrow
+        // layouts; `BBox` itself supplies the matching bottom inset.
         ui.add(
             div()
+                .mt(px(4.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(m::SPACING))
-                .child(div().flex_1().min_w_0().child(StringView::new("Choose how they look and sound in Notifications.").dim(true).wrap(true)))
+                .child(div().flex_1().min_w_0().child(StringView::new("Choose how these alerts look and sound in Notifications.").dim(true).wrap(true)))
                 .child(Button::new("Open Notifications").on_click(|_, _| prefs().open("notifications"))),
         );
     });

@@ -252,6 +252,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "rex", tab: "General", group: "Notifications", name: "Is waiting for me", role: "CheckBox" },
     Setting { panel: "rex", tab: "General", group: "Notifications", name: "Has finished", role: "CheckBox" },
     Setting { panel: "rex", tab: "General", group: "Notifications", name: "Has failed", role: "CheckBox" },
+    Setting { panel: "rex", tab: "General", group: "Notifications", name: "Also for subagents watched by a minder", role: "CheckBox" },
     Setting { panel: "rex", tab: "General", group: "Notifications", name: "Open Notifications", role: "Button" },
     Setting { panel: "rex", tab: "General", group: "Keep It Going", name: "Keep It Going says", role: "TextInput" },
     Setting { panel: "rex", tab: "General", group: "Typing on Hosts", name: "Show typing immediately", role: "CheckBox" },

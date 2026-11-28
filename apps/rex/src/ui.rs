@@ -3598,6 +3598,7 @@ impl RexWindow {
                     }
                 }
             }
+            hub.set_window_front_pane(self.id, pane.clone());
             let front = match pane {
                 Some(p) => Target::Pane(p),
                 None if content_visible && let Some((host, session)) = &sess_info => Target::Session { host_key: host.clone(), session_id: session.session_id.clone() },
@@ -6852,6 +6853,9 @@ impl View for RexWindow {
         self.window_active = active;
         if !active {
             app().attention.hide(self.id);
+            if let Some(hub) = HUB.get() {
+                hub.hide_window_front_pane(self.id);
+            }
         }
         cx.invalidate();
     }
@@ -6939,6 +6943,9 @@ impl Drop for RexWindow {
         }
         self.cancel_preview();
         app().attention.hide(self.id);
+        if let Some(hub) = HUB.get() {
+            hub.hide_window_front_pane(self.id);
+        }
         wins().map.remove(&self.id);
         if self.role == WinRole::Workspace && !wins().map.values().any(|s| s.role == WinRole::Workspace) {
             crate::activity_watch::stop_all();

@@ -5566,5 +5566,17 @@
   "title": "Token Pool: Activity chart & Recent Requests with Antigravity (dark)",
   "caption": "Unified Activity chart and width-adaptive Recent Requests table across Claude Code, Codex, and Antigravity.",
   "image": "2026-11-28/044728-token-pool-activity-chart-recent-requests-with-a.png"
+ },
+ {
+  "time": "2026-11-28T05:38:38",
+  "title": "Rex Preferences: Minded Subagent Notifications (Light)",
+  "caption": "Added Also for subagents watched by a minder opt-in checkbox (off by default) and matched symmetric Notifications BBox bottom inset",
+  "image": "2026-11-28/053838-rex-preferences-minded-subagent-notifications-li.png"
+ },
+ {
+  "time": "2026-11-28T05:38:38",
+  "title": "Rex Preferences: Minded Subagent Notifications (Dark)",
+  "caption": "Opted-in minded subagent notifications state in dark mode with Reset link and symmetric BBox inset",
+  "image": "2026-11-28/053838-rex-preferences-minded-subagent-notifications-da.png"
  }
 ]

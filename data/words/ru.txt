@@ -982,6 +982,9 @@ Along the Top
 Already saved as “{}”.
 Уже сохранён как «{}».
 
+Also for subagents watched by a minder
+Также для субагентов под присмотром миндера
+
 Also from the Deskbar: click the cup.
 Можно также нажать на чашку в Deskbar.
 
@@ -2322,6 +2325,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 Выбрать все обновления
+
+Choose how these alerts look and sound in Notifications.
+Вид и звук этих оповещений настраиваются в разделе «Уведомления».
 
 Choose how they look and sound in Notifications.
 Вид и звук уведомлений настраиваются в разделе «Уведомления».

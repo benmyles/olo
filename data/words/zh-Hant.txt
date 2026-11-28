@@ -970,6 +970,9 @@ Along the Top
 Already saved as “{}”.
 已儲存為「{}」。
 
+Also for subagents watched by a minder
+也包含由監管器看管的子代理
+
 Also from the Deskbar: click the cup.
 也可以點按 Deskbar 上的杯子。
 
@@ -2295,6 +2298,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 選取所有更新項目
+
+Choose how these alerts look and sound in Notifications.
+可在「通知」中選擇這些提醒的外觀與提示音。
 
 Choose how they look and sound in Notifications.
 可在「通知」中選擇外觀與提示音。

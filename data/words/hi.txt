@@ -974,6 +974,9 @@ Along the Top
 Already saved as “{}”.
 पहले से “{}” के रूप में सहेजी गई है।
 
+Also for subagents watched by a minder
+माइंडर की निगरानी वाले सब-एजेंटों के लिए भी
+
 Also from the Deskbar: click the cup.
 Deskbar में कप पर क्लिक करके भी खोल सकते हैं।
 
@@ -2304,6 +2307,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 सभी अपडेट चुनें
+
+Choose how these alerts look and sound in Notifications.
+ये सूचनाएँ कैसी दिखें और उनकी आवाज़ कैसी हो, यह सूचनाएँ में चुनें।
 
 Choose how they look and sound in Notifications.
 वे कैसे दिखें और उनकी आवाज़ कैसी हो, यह सूचनाएँ में चुनें।
