@@ -786,16 +786,24 @@ try:
         # launch() defaults to BUILDER_MODEL (high), while explicit model=MODEL stays xhigh:
         seen_launch = []
         def fake_session(name, cwd, env, cmd, native=None, subagent=True):
-            seen_launch.append((name, list(cmd), list(native or [])))
+            seen_launch.append((name, list(env), list(cmd), list(native or [])))
         agents.session = fake_session
         bd = os.path.join(td, "b1")
         os.makedirs(bd, exist_ok=True)
         agents.launch("b1", bd, agents.ROOT, [])
         agents.launch("rev1", bd, bd, [], commands="read", model=agents.MODEL)
-        assert "--model" in seen_launch[0][2] and seen_launch[0][2][seen_launch[0][2].index("--model") + 1] == "gemini-4-neon-high", seen_launch[0]
-        assert "--effort" in seen_launch[0][2] and seen_launch[0][2][seen_launch[0][2].index("--effort") + 1] == "high", seen_launch[0]
-        assert "--model" in seen_launch[1][2] and seen_launch[1][2][seen_launch[1][2].index("--model") + 1] == "gemini-4-neon-xhigh", seen_launch[1]
-        assert "--effort" in seen_launch[1][2] and seen_launch[1][2][seen_launch[1][2].index("--effort") + 1] == "xhigh", seen_launch[1]
+        agents.launch_opus("opus-x", bd, "brief text")
+        assert "--model" in seen_launch[0][3] and seen_launch[0][3][seen_launch[0][3].index("--model") + 1] == "gemini-4-neon-high", seen_launch[0]
+        assert "--effort" in seen_launch[0][3] and seen_launch[0][3][seen_launch[0][3].index("--effort") + 1] == "high", seen_launch[0]
+        assert "--model" in seen_launch[1][3] and seen_launch[1][3][seen_launch[1][3].index("--model") + 1] == "gemini-4-neon-xhigh", seen_launch[1]
+        assert "--effort" in seen_launch[1][3] and seen_launch[1][3][seen_launch[1][3].index("--effort") + 1] == "xhigh", seen_launch[1]
+        # launch_opus ALWAYS disables Claude auto-memory explicitly (both --settings and env, for tmux and native Rex):
+        opus_env, opus_cmd, opus_native = seen_launch[2][1], seen_launch[2][2], seen_launch[2][3]
+        assert "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1" in opus_env, opus_env
+        for argv in (opus_cmd, opus_native):
+            assert "--settings" in argv, argv
+            cfg = json.loads(argv[argv.index("--settings") + 1])
+            assert cfg.get("autoMemoryEnabled") is False, cfg
         # RULES & HELP_RULES pass the absolute BOARD_BIN path (works in older worktrees), and _open_initial_board auto-opens the pane:
         rendered_rules = agents.RULES.format(root="/var/tmp/wt", crate="crates/pool", package="olo-token-pool", name="pool-agy", dir=bd, approvals="", board=agents.BOARD_BIN)
         assert agents.BOARD_BIN in rendered_rules and "\n    tools/dev/agent-board " not in rendered_rules, rendered_rules

@@ -17,6 +17,7 @@ Your job is to manage all subagents nested under you — builders, investigators
 - **Visual Design Reviewers (ANY change with visual design work — ALL THREE reviewers):**
   - Run **both** `tools/dev/agy-look` (Gemini 4 Neon `xhigh`) AND `tools/dev/opus-look` (Claude Opus 5.5 `xhigh`) on the screenshots, **in addition to** `tools/dev/astra-review` (`xhigh`) and `tools/dev/agy-review` (`xhigh`) on the code.
   - Changes with NO visual design work use ONLY the `astra-review` (Codex Astra 6.2 `xhigh`) and `agy-review` (Agy Neon 4 `xhigh`) reviewers.
+  - **Claude auto-memory always disabled (Ben, 2026-11-28):** Whenever launching any Claude agent directly or via tools, always set `"autoMemoryEnabled": false` (`--settings '{"autoMemoryEnabled":false}'` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`); `tools/dev/opus-look` / `tools/dev/agents::launch_opus` already enforces this.
 
 ## Core Operating Loop
 

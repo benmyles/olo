@@ -1221,14 +1221,22 @@ def session(name, cwd, env, program, native=None, subagent=True):
     save_trusted_meta(name, m)
 
 
+CLAUDE_NO_MEMORY = json.dumps({"autoMemoryEnabled": False}, separators=(",", ":"))
+
+
 def launch_opus(name, cwd, brief):
     """Opus 5.5 at xhigh, for a visual design review: the Claude CLI in a
     child tab here, able to read and write files in `cwd` and to do nothing
-    else."""
+    else. Always disables Claude auto-memory explicitly (`--settings` +
+    `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) because `--restricted` ignores
+    `~/.claude/settings.json` (Ben, 2026-11-28)."""
     first = f"Read {cwd}/brief.md (the rules, then what it is and what changed) and do what it says."
-    session(name, cwd, [], ["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
-                            "--permission-mode", "acceptEdits", "--disable-slash-commands", brief],
-            native=["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--permission-mode", "acceptEdits", "--strict-mcp-config", "--trust", "--prompt", first,
+    env = ["CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"]
+    session(name, cwd, env, ["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--restricted", "--strict-mcp-config",
+                             "--settings", CLAUDE_NO_MEMORY, "--tools", "Read,Write",
+                             "--permission-mode", "acceptEdits", "--disable-slash-commands", brief],
+            native=["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--permission-mode", "acceptEdits",
+                    "--strict-mcp-config", "--settings", CLAUDE_NO_MEMORY, "--trust", "--prompt", first,
                     "--", "--restricted", "--tools", "Read,Write", "--disable-slash-commands"])
 
 

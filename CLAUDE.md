@@ -309,7 +309,14 @@ are universal and non-negotiable:
   tool's quirk) goes in docs/AGENT-NOTES.md, in the same commit as the
   work, and what's there is kept current (corrected or removed when it
   stops being true). Never store memories in an agent's own memory
-  outside the repository.
+  outside the repository. **Always disable Claude auto-memory on every
+  Claude launch** (Ben, 2026-11-28): whenever launching any Claude agent
+  (`claude`, `olo agent start claude`, `tools/dev/opus-look`), always
+  pass `--settings '{"autoMemoryEnabled":false}'` (or include
+  `"autoMemoryEnabled": false` in its `--settings` JSON file) and
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` — especially under `--restricted`,
+  which ignores `~/.claude/settings.json`. (`tools/dev/agents::launch_opus`
+  does this automatically.)
 - **A work list beside you.** At the start of every session, open a
   pane to the right of yours with the list of the work (the
   `olo-worklist` skill: `tools/dev/worklist open`), one short line an

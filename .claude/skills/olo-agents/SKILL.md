@@ -31,6 +31,7 @@ Lead (autonomous coordinator, agy Gemini 4 Neon at xhigh)
   1. **Antigravity Gemini 4 Neon on `xhigh`**: `tools/dev/agy-look` (pixel-level screenshot review) + `tools/dev/agy-review` (code review)
   2. **Codex Astra 6.2 on `xhigh`**: `tools/dev/astra-review` (code review)
   3. **Claude Opus 5.5 on `xhigh`**: `tools/dev/opus-look` (product/visual design review of screenshots)
+- **Claude auto-memory always disabled (Ben, 2026-11-28):** Anytime a Claude agent is launched (`claude`, `olo agent start claude`, `tools/dev/opus-look`), ALWAYS set `"autoMemoryEnabled": false` (`--settings '{"autoMemoryEnabled":false}'` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, or `"autoMemoryEnabled": false` in its settings file — `--restricted` ignores `~/.claude/settings.json`). `tools/dev/agents::launch_opus` enforces this automatically.
 - **Escalation after 2 rounds:** Each builder gets at most 2 review rounds per reviewer by default. If critical outstanding issues remain after 2 rounds, the minder escalates to the lead (`olo agent escalate "..."`) so the lead can decide whether the builder misaligned, whether the design needs rethinking, how to steer it, and whether to authorize additional review rounds.
 
 ## Monitoring the Minder & Active Watches (Mandatory)
