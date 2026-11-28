@@ -24,9 +24,29 @@ pub(crate) struct NotReviewed(pub(crate) bool);
 /// Closer than this, two things count as lined up (a rounding).
 const SAME: f32 = 0.5;
 
-/// Whether what `g` draws is being recorded for a review.
+/// Whether what `g` draws is being recorded for a review: not what
+/// can't be seen (wholly faded: DeskCalc's line kept, with the keyboard,
+/// under why it couldn't be worked out, read as text over text), nor
+/// what decorates what is (`unrecorded`).
 pub(crate) fn recording(g: &Painter) -> bool {
-    g.has_ext()
+    g.has_ext() && g.element_opacity() > 0.0 && !DECORATING.get()
+}
+
+thread_local! {
+    /// Painting what decorates something the review judges
+    /// (`unrecorded`).
+    static DECORATING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `paint`, left out of the review: what decorates something it judges
+/// and isn't anything of its own (a desktop label's halo, its words drawn
+/// again a pixel round them, read as text over text and moved the lines
+/// the review judges; the words and their shadow are judged as ever).
+pub fn unrecorded<R>(g: &mut Painter, paint: impl FnOnce(&mut Painter) -> R) -> R {
+    let was = DECORATING.replace(true);
+    let r = paint(g);
+    DECORATING.set(was);
+    r
 }
 
 thread_local! {

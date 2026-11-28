@@ -339,6 +339,19 @@ impl Arrow {
     }
 }
 
+/// The square where a vertical and a horizontal bar meet: framed as
+/// their buttons are, and raised, so each bar ends at a piece of their
+/// own (BeOS's corner of a scroll view with both). Left blank, the panel's
+/// colour, the two bars' last arrows read as run into each other
+/// (Gemini's look at wide panels at 2×, 2026-11-28).
+fn corner_tile(g: &mut Painter, r: Bounds<Pixels>, p: &olo_theme::Palette) {
+    let bg = p.panel_background;
+    let inner = style::inset(g, r, 1.0);
+    style::fill_rect(g, inner, style::c(bg));
+    style::frame_rect(g, r, style::shade(p, bg, 1.55));
+    style::bevel(g, inner, style::c(p.shine), style::shade(p, bg, 1.18));
+}
+
 fn arrow_button(g: &mut Painter, r: Bounds<Pixels>, dir: Arrow, down: bool, enabled: bool, p: &olo_theme::Palette) {
     let base = p.control_background;
     let bg = p.panel_background;
@@ -610,7 +623,7 @@ impl IntoElement for ScrollView {
                 style::fill_rect(g, inner, style::c(bg));
             }
             if vbar && hbar {
-                style::fill_rect(g, Bounds::from_corners(point(inner.right() - r, inner.bottom() - bt), inner.bottom_right()), style::c(p.panel_background));
+                corner_tile(g, Bounds::from_corners(point(inner.right() - r, inner.bottom() - bt), inner.bottom_right()), &p);
             }
         })
         .paint_key(style::key(&(border, vbar, hbar, background)))

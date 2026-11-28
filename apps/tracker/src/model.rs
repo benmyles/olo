@@ -76,6 +76,14 @@ pub enum SortKey {
 /// first.
 pub type Order = Option<(SortKey, bool)>;
 
+/// The kind an item sorts by in its Kind column: "Broken Link" for a
+/// broken link, as the column says; else its kind, a download's the kind
+/// it will be (its column says "Downloading, 31%": it sorts with the
+/// finished ones of its kind, not by those words).
+fn shown_kind(e: &Entry) -> &'static str {
+    if e.broken { olo_kit::tr!("Broken Link") } else { e.kind.name() }
+}
+
 pub fn sort_entries(entries: &mut [Entry], order: Order) {
     entries.sort_by(|a, b| {
         // Folders first, then the chosen key; names break ties.
@@ -89,7 +97,9 @@ pub fn sort_entries(entries: &mut [Entry], order: Order) {
             SortKey::Name => name(),
             SortKey::Size => a.size.cmp(&b.size).then_with(name),
             SortKey::Modified => a.modified.cmp(&b.modified).then_with(name),
-            SortKey::Kind => a.kind.name().cmp(b.kind.name()).then_with(name),
+            // (A broken link's is "Broken Link", whatever its name says it
+            // was; a download's the kind it will be: `shown_kind`.)
+            SortKey::Kind => shown_kind(a).cmp(shown_kind(b)).then_with(name),
         };
         folders.then(if asc { o } else { o.reverse() })
     });
@@ -556,6 +566,7 @@ mod tests {
             name: name.into(),
             is_dir: dir,
             is_link: false,
+            broken: false,
             size: at,
             modified: Some(UNIX_EPOCH + Duration::from_secs(at)),
             mode: 0o644,
@@ -580,5 +591,21 @@ mod tests {
         assert_eq!(names(&v), ["a2", "A10", "b", "mid.txt", "new.txt", "old.txt"]);
         sort_entries(&mut v, Some((SortKey::Modified, false)));
         assert_eq!(names(&v), ["b", "a2", "A10", "new.txt", "mid.txt", "old.txt"]);
+    }
+
+    /// By Kind, an item sorts by the kind its column shows: a broken
+    /// link's "Broken Link", not the kind its name gives it.
+    #[test]
+    fn kinds_sort_as_shown() {
+        let pdf = Entry { kind: fs::Kind::Pdf, ..item("b.pdf", false, 2) };
+        let broken = Entry { is_link: true, broken: true, ..item("z.txt", false, 3) };
+        // A PDF being downloaded sorts as a PDF, not as its "Downloading".
+        let download = Entry { kind: fs::Kind::Pdf, downloading: Some(Some(100)), ..item("d.pdf.part", false, 5) };
+        let mut v = vec![item("c.txt", false, 1), pdf, broken, item("a.txt", false, 4), download];
+        sort_entries(&mut v, Some((SortKey::Kind, true)));
+        assert_eq!(v.iter().map(Entry::kind_text).collect::<Vec<_>>(), ["Broken Link", "PDF Document", "Downloading, 5%", "Text", "Text"]);
+        assert_eq!(names(&v), ["z.txt", "b.pdf", "d.pdf.part", "a.txt", "c.txt"]);
+        sort_entries(&mut v, Some((SortKey::Kind, false)));
+        assert_eq!(names(&v), ["c.txt", "a.txt", "d.pdf.part", "b.pdf", "z.txt"]);
     }
 }

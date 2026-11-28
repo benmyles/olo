@@ -58,6 +58,10 @@ const EMOJI: f32 = 24.0;
 const HEADER: f32 = 24.0;
 /// Rows of cells the grid shows (fewer on a short screen).
 const ROWS: f32 = 6.0;
+/// More of the well under its rows: the row it cuts at its foot shows
+/// its emoji's eyes, a half row that says there's more (at the rows
+/// alone, only their foreheads: Opus's look, 2026-11-28).
+const PEEK: f32 = 4.0;
 const FIELD_HEIGHT: f32 = 32.0;
 const QUERY_SIZE: f32 = 16.0;
 /// The tabs: one for what was picked lately, and one a group, each a
@@ -66,9 +70,25 @@ const TAB: f32 = 30.0;
 /// The line at the bottom: the selected emoji, what it is, the tones.
 const STATUS: f32 = 44.0;
 const BIG: f32 = 30.0;
+/// The box the big emoji is centred in: as wide as a colour emoji is at
+/// `BIG` (1.25 of its size), so what it is starts a mark's gap after it,
+/// not 4.6 points (the review's crowded: QA, 2026-11-28).
+const BIG_BOX: f32 = 38.0;
 const TONE: f32 = 18.0;
+/// A tone's box (the chosen one's sunken): room round its hand, drawn at
+/// `TONE - 4`, on every side, and whole device pixels at every scale, so
+/// the boxes side by side don't round into each other (at `TONE + 4` the
+/// hand had 2 points either side, and the boxes overlapped at 1.25×).
+const TONE_BOX: f32 = 28.0;
 /// How far down the screen it sits.
 const TOP: f32 = 0.2;
+/// Room on the screen's right for Deskbar and a gap beside it, which the
+/// panel keeps clear of.
+const DESKBAR_ROOM: f32 = m::DESKBAR_WIDTH + 8.0;
+/// The notice that the colour font isn't installed: its width at most
+/// (two lines), and the info icon beside it.
+const NOTICE_W: f32 = 170.0;
+const NOTICE_ICON: f32 = 16.0;
 /// How many lately picked it shows (two rows).
 const RECENT: usize = 2 * COLS;
 /// How long its emoji stay drawn after it's put away.
@@ -104,7 +124,9 @@ impl Line {
 
 /// What the workers send back.
 enum Found {
-    Emoji(Vec<Emoji>),
+    /// The fonts looked at, before the emoji are read (`Drawn::early`).
+    Drawn(data::Drawn),
+    Emoji(Vec<Emoji>, data::Drawn),
     Model(u64, Result<String, String>),
     Answer(u64, String, Result<Vec<ai::Suggestion>, String>),
 }
@@ -129,6 +151,8 @@ struct Asking {
 struct Hub {
     /// Every emoji, once read.
     all: Option<Arc<Vec<Emoji>>>,
+    /// How they can be drawn.
+    drawn: Arc<data::Drawn>,
     recents: Arc<Mutex<Recents>>,
     window: Option<WindowHandle<Picker>>,
     /// Bumped each time it's put away; the kept emoji let go `FORGET`
@@ -145,8 +169,8 @@ impl Hub {
         match self.showing() {
             Some(window) => window.close(),
             None => {
-                let (all, recents) = (self.all.clone(), self.recents.clone());
-                self.window = Some(olo_kit::open_window(overlay(), move |cx| Picker::new(all, recents, cx)));
+                let (all, drawn, recents) = (self.all.clone(), self.drawn.clone(), self.recents.clone());
+                self.window = Some(olo_kit::open_window(overlay(), move |cx| Picker::new(all, drawn, recents, cx)));
             }
         }
     }
@@ -154,8 +178,12 @@ impl Hub {
 
 /// What a picker's window is told.
 enum PickerMsg {
-    /// Every emoji has been read.
-    Loaded(Arc<Vec<Emoji>>),
+    /// Every emoji has been read, and how they can be drawn.
+    Loaded(Arc<Vec<Emoji>>, Arc<data::Drawn>),
+    /// How they can be drawn, known before they're read.
+    Drawn(Arc<data::Drawn>),
+    /// A while since it opened, still reading: say so.
+    Slow,
     Model(u64, Result<String, String>),
     Answer(u64, String, Result<Vec<ai::Suggestion>, String>),
     /// A second of waiting for the model has gone by.
@@ -168,11 +196,76 @@ struct Geometry {
     panel: Bounds<Pixels>,
     field: Bounds<Pixels>,
     tabs: Bounds<Pixels>,
+    /// The grid's well, its sunken frame included.
     grid: Bounds<Pixels>,
+    /// Inside the well's frame: where the cells and headings scroll, as
+    /// wide as a row of cells and as tall as `Picker::view_height`.
+    cells: Bounds<Pixels>,
     status: Bounds<Pixels>,
     /// The search field's magnifying glass.
     glass: Bounds<Pixels>,
     scale: f32,
+}
+
+/// The size to draw an emoji `wide` points across at `EMOJI` in a cell:
+/// `EMOJI`, or less where that runs past the cell's room (a sequence
+/// drawn as two glyphs where no colour font joins them: with no Noto
+/// Color Emoji every emoji shows, and "face in clouds" ran 46 points
+/// across, over the next cell).
+fn emoji_size(wide: f32) -> f32 {
+    fitted(wide, EMOJI, CELL - 2.0 * m::TIGHT)
+}
+
+/// The size to draw what is `wide` points across at `size` so it is no
+/// wider than `room`: `size`, or less.
+fn fitted(wide: f32, size: f32, room: f32) -> f32 {
+    if wide > room { size * room / wide } else { size }
+}
+
+/// How far in from a well's edges its sunken frame's two lines reach at
+/// `scale` (`style::sunken`: a device pixel each, two at 2×).
+fn well_edge(scale: f32) -> f32 {
+    2.0 * style::line_pixels(scale) / scale
+}
+
+/// Where the picker's parts go on a screen `screen` points big at
+/// `scale`: how many rows of cells its grid shows, and the parts. The
+/// well holds a row of cells inside its sunken frame's lines (a row as
+/// wide as the well, the cells ran under them, cut, and the sixth row
+/// under its foot: QA, 2026-11-28), and the field, tabs and status line
+/// are as wide as it, the tabs over the cells' columns.
+fn lay_out(screen: olo_kit::Size<Pixels>, scale: f32) -> (f32, Geometry) {
+    let edge = well_edge(scale);
+    let row_w = COLS as f32 * CELL;
+    let grid_w = row_w + 2.0 * edge;
+    let width = grid_w + 2.0 * m::SPACING;
+    // As many rows as fit, up to six; a fifth of the way down, or higher
+    // if it must.
+    let fixed = m::SPACING + FIELD_HEIGHT + m::TIGHT + TAB + m::TIGHT + m::TIGHT + STATUS + m::TIGHT;
+    let screen_h = f32::from(screen.height);
+    let rows = ((screen_h - 2.0 * m::SPACING - fixed - 2.0 * edge - PEEK) / CELL).floor().clamp(2.0, ROWS);
+    let grid_h = rows * CELL + PEEK + 2.0 * edge;
+    let height = fixed + grid_h;
+    let top = (screen_h * TOP).round().min(screen_h - height - m::SPACING).max(0.0);
+    // (Centred; on a screen too narrow for that beside Deskbar, as far left
+    // as it takes to keep clear of it: it sat over Deskbar's clock at 2×,
+    // 720 points across. Opus's look, 2026-11-28.)
+    let left = (f32::from(screen.width) - width) / 2.0;
+    let left = left.min(f32::from(screen.width) - DESKBAR_ROOM - width).max(0.0);
+    let panel = snapped(scale, Bounds { origin: point(px(left), px(top)), size: size(px(width), px(height)) });
+    let left = panel.left() + px(m::SPACING);
+    let field = Bounds { origin: point(left, panel.top() + px(m::SPACING)), size: size(px(grid_w), px(FIELD_HEIGHT)) };
+    // (Its top on a device pixel, as its frame is drawn, and the cells
+    // from there: a well 86 points down the panel is half a pixel off at
+    // 1.25×. Its size is whole pixels already: rounding its far corner
+    // too came out a pixel short.)
+    let on_pixel = |b: Bounds<Pixels>| Bounds { origin: snapped(scale, b).origin, size: b.size };
+    let tabs = on_pixel(Bounds { origin: point(left + px(edge), field.bottom() + px(m::TIGHT)), size: size(px(row_w), px(TAB)) });
+    let grid = on_pixel(Bounds { origin: point(left, tabs.bottom() + px(m::TIGHT)), size: size(px(grid_w), px(grid_h)) });
+    let cells = Bounds { origin: point(grid.left() + px(edge), grid.top() + px(edge)), size: size(px(row_w), px(rows * CELL + PEEK)) };
+    let status = Bounds { origin: point(left, grid.bottom() + px(m::TIGHT)), size: size(px(grid_w), px(STATUS)) };
+    let glass = snapped_centred(scale, point(field.left() + px(6.0 + 8.0), field.center().y), 16.0, 16.0);
+    (rows, Geometry { panel, field, tabs, grid, cells, status, glass, scale })
 }
 
 /// `b` on whole device pixels (`style::snap`, without a painter).
@@ -195,14 +288,21 @@ impl Geometry {
         style::key((b(self.panel), b(self.grid), self.scale.to_bits()))
     }
 
-    /// The tones' boxes, at the status line's right.
+    /// The tones' boxes, at the status line's right: each edge once, on
+    /// a device pixel, the one between two boxes shared by both (each box
+    /// rounded on its own, two side by side shared a pixel at 120%, a
+    /// press there in both: review, 2026-11-28).
     fn tones(&self) -> [(Bounds<Pixels>, Tone); 6] {
-        let mid = px((f32::from(self.status.center().y) * self.scale).round() / self.scale);
-        let left = self.status.right() - px(6.0 * (TONE + 4.0));
-        let mut n = 0.0;
+        let s = self.scale;
+        let on = |v: f32| px((v * s).round() / s);
+        let mid = f32::from(self.status.center().y);
+        let (top, bottom) = (on(mid - TONE_BOX / 2.0), on(mid + TONE_BOX / 2.0));
+        let left = f32::from(self.status.right()) - 6.0 * TONE_BOX;
+        let edge = |k: usize| on(left + k as f32 * TONE_BOX);
+        let mut k = 0;
         Tone::ALL.map(|t| {
-            let b = snapped_centred(self.scale, point(left + px(n * (TONE + 4.0) + TONE / 2.0 + 2.0), mid), TONE + 4.0, TONE + 4.0);
-            n += 1.0;
+            let b = Bounds::from_corners(point(edge(k), top), point(edge(k + 1), bottom));
+            k += 1;
             (b, t)
         })
     }
@@ -212,13 +312,18 @@ struct Picker {
     query: Child<TextField>,
     query_text: String,
     all: Arc<Vec<Emoji>>,
+    /// How they can be drawn (with the colour font, or not).
+    drawn: Arc<data::Drawn>,
     loaded: bool,
+    /// Still reading a while after it opened: "Loading…" (said only then,
+    /// not flashed for the moment reading takes: Opus's look, 2026-11-28).
+    slow: bool,
     recents: Arc<Mutex<Recents>>,
     tone: Tone,
     lines: Vec<Line>,
     cells: Vec<Cell>,
     /// Where each tab's heading is: (tab's emoji, its name, line).
-    tabs: Vec<(&'static str, &'static str, usize)>,
+    tabs: Vec<(SharedString, &'static str, usize)>,
     /// Bumped as the lines and cells are made again (what the grid's
     /// drawing goes by).
     generation: u64,
@@ -256,7 +361,7 @@ fn ask_keys() -> String {
 }
 
 impl Picker {
-    fn new(all: Option<Arc<Vec<Emoji>>>, recents: Arc<Mutex<Recents>>, cx: &mut Cx<Self>) -> Picker {
+    fn new(all: Option<Arc<Vec<Emoji>>>, drawn: Arc<data::Drawn>, recents: Arc<Mutex<Recents>>, cx: &mut Cx<Self>) -> Picker {
         let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint(format!("Search, or describe it and press {}", ask_keys())));
         cx.subscribe(&query, |p: &mut Picker, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Entered => {
@@ -271,7 +376,9 @@ impl Picker {
             query,
             query_text: String::new(),
             loaded: all.is_some(),
+            slow: false,
             all: all.unwrap_or_default(),
+            drawn,
             recents,
             tone,
             lines: Vec::new(),
@@ -288,7 +395,17 @@ impl Picker {
             geometry: Geometry::default(),
         };
         picker.rebuild();
+        if !picker.loaded {
+            cx.after(Duration::from_millis(300), PickerMsg::Slow);
+        }
         picker
+    }
+
+    /// The tone emoji are shown in: the one chosen, where tones can be
+    /// drawn; else none (the choice kept, for when the colour font is
+    /// back: a hand and a swatch were shown, with nothing to set it back).
+    fn tone(&self) -> Tone {
+        if self.drawn.tones { self.tone } else { Tone(None) }
     }
 
     /// Every emoji drawn ahead, off the UI thread, the likeliest first (what
@@ -297,7 +414,7 @@ impl Picker {
     /// Once a scale and tone; let go ten minutes after the picker is put
     /// away (`Hub`).
     fn warm(&self, cx: &mut Cx<Self>) {
-        let key = (cx.scale_factor().to_bits(), self.tone);
+        let key = (cx.scale_factor().to_bits(), self.tone());
         if !self.loaded {
             return;
         }
@@ -312,18 +429,28 @@ impl Picker {
             warmed.retain(|k| k.0 == key.0);
             warmed.push(key);
         }
-        let tone = self.tone;
+        let tone = self.tone();
         let recent = self.recents.lock().unwrap_or_else(|e| e.into_inner()).most(&self.all, RECENT);
         let texts: Vec<SharedString> = recent.iter().copied().chain((0..self.all.len()).filter(|i| !recent.contains(i))).map(|i| SharedString::from(self.all[i].glyph(tone))).collect();
         let font = style::ui_font(FontWeight::NORMAL);
-        cx.warm_text(&font, px(EMOJI), texts);
+        // (At the size each is drawn at in its cell, `emoji_size`: a colour
+        // emoji is a quarter wider than its size, so it's drawn smaller,
+        // and warmed at `EMOJI` the raster cache held none of them as
+        // drawn: review, 2026-11-28. One measured stands for all: the
+        // colour font draws each a glyph as wide.)
+        let size = emoji_size(f32::from(style::text_width(SharedString::from("😀"), EMOJI, font.clone())));
+        cx.warm_text(&font, px(size), texts);
         // The tabs, the hands and the one shown big.
-        cx.warm_text(&font, px(16.0), GROUPS.iter().map(|g| SharedString::from(g.1)).chain(["🕘".into()]).collect::<Vec<_>>());
-        cx.warm_text(
-            &font,
-            px(TONE - 4.0),
-            Tone::ALL.iter().filter_map(|t| emojis::get("✋").and_then(|h| t.0.map_or(Some(h), |s| h.with_skin_tone(s)))).map(|h| SharedString::from(h.as_str())).collect::<Vec<_>>(),
-        );
+        // (The tabs' icons as they are drawn, the colour font's or plain
+        // ones; the hands only where tones are drawn.)
+        cx.warm_text(&font, px(16.0), self.drawn.icons.iter().flatten().map(|i| SharedString::from(i.clone())).chain([SharedString::from(self.drawn.recent.clone())]).collect::<Vec<_>>());
+        if self.drawn.tones {
+            cx.warm_text(
+                &font,
+                px(TONE - 4.0),
+                Tone::ALL.iter().filter_map(|t| emojis::get("✋").and_then(|h| t.0.map_or(Some(h), |s| h.with_skin_tone(s)))).map(|h| SharedString::from(h.as_str())).collect::<Vec<_>>(),
+            );
+        }
     }
 
     /// Put away: its window closes (the program hears, `Closed`).
@@ -340,7 +467,7 @@ impl Picker {
         let mut lines = Vec::new();
         let mut cells: Vec<Cell> = Vec::new();
         let mut tabs = Vec::new();
-        let tone = self.tone;
+        let tone = self.tone();
         let all = self.all.clone();
         let all = &all[..];
         let recents = self.recents.lock().unwrap_or_else(|e| e.into_inner());
@@ -354,31 +481,36 @@ impl Picker {
         let cell = |i: usize| Cell { text: all[i].glyph(tone).into(), emoji: Some(i), why: None };
         if let Some((what, found)) = &self.suggested {
             lines.push(Line::Header(format!("Suggested for “{what}”").into()));
+            // (Only those that can be drawn here: one not among them, or in
+            // a tone that can't be, was shown as the model wrote it.)
+            let tones = self.drawn.tones;
             let found = found
                 .iter()
-                .map(|s| {
+                .filter_map(|s| {
                     // The model's own tone, else the one chosen.
-                    let i = all.iter().position(|e| e.e.as_str() == s.emoji || e.e.skin_tones().is_some_and(|mut t| t.any(|t| t.as_str() == s.emoji)));
-                    let text = match i {
-                        Some(i) if all[i].e.as_str() == s.emoji => all[i].glyph(tone).into(),
-                        _ => s.emoji.clone().into(),
-                    };
-                    Cell { text, emoji: i, why: Some(s.why.clone().into()) }
+                    let i = all.iter().position(|e| e.e.as_str() == s.emoji || e.e.skin_tones().is_some_and(|mut t| t.any(|t| t.as_str() == s.emoji)))?;
+                    let text = if all[i].e.as_str() == s.emoji || !tones { all[i].glyph(tone).into() } else { s.emoji.clone().into() };
+                    Some(Cell { text, emoji: Some(i), why: Some(s.why.clone().into()) })
                 })
                 .collect();
             row(&mut lines, &mut cells, found);
         }
         if !self.loaded {
-            lines.push(Line::Note("Loading…".into()));
+            // (The tabs from the first frame, as soon as it's known how they
+            // can be drawn; "Loading…" said in the well, if it takes a while:
+            // `paint_grid`.)
+            tabs.extend(GROUPS.iter().zip(&self.drawn.icons).filter_map(|((name, _), icon)| Some((SharedString::from(icon.clone()?), *name, usize::MAX))));
         } else if self.query_text.trim().is_empty() {
             let recent = recents.most(all, RECENT);
             if !recent.is_empty() {
-                tabs.push(("🕘", "Frequently Used", lines.len()));
+                tabs.push((SharedString::from(self.drawn.recent.clone()), "Frequently Used", lines.len()));
                 lines.push(Line::Header("Frequently Used".into()));
                 row(&mut lines, &mut cells, recent.into_iter().map(cell).collect());
             }
-            for (g, (name, icon)) in GROUPS.iter().enumerate() {
-                tabs.push((*icon, *name, lines.len()));
+            // (A group none of whose emoji can be drawn has no tab.)
+            for (g, (name, _)) in GROUPS.iter().enumerate() {
+                let Some(icon) = self.drawn.icons.get(g).cloned().flatten() else { continue };
+                tabs.push((icon.into(), *name, lines.len()));
                 lines.push(Line::Header((*name).into()));
                 row(&mut lines, &mut cells, (0..all.len()).filter(|&i| all[i].group == g).map(cell).collect());
             }
@@ -386,9 +518,9 @@ impl Picker {
             // The tabs stay, to go back to browsing (`go_to` clears the
             // search, then finds where each group's heading is).
             if !recents.most(all, 1).is_empty() {
-                tabs.push(("🕘", "Frequently Used", usize::MAX));
+                tabs.push((SharedString::from(self.drawn.recent.clone()), "Frequently Used", usize::MAX));
             }
-            tabs.extend(GROUPS.iter().map(|(name, icon)| (*icon, *name, usize::MAX)));
+            tabs.extend(GROUPS.iter().zip(&self.drawn.icons).filter_map(|((name, _), icon)| Some((SharedString::from(icon.clone()?), *name, usize::MAX))));
             let found = data::search(all, &self.query_text, &recents);
             let answered = self.suggested.as_ref().is_some_and(|(what, _)| what.trim() == self.query_text.trim());
             if found.is_empty() && !answered {
@@ -433,7 +565,15 @@ impl Picker {
     }
 
     fn view_height(&self) -> f32 {
-        self.rows * CELL
+        self.rows * CELL + PEEK
+    }
+
+    /// Tab `n`'s box: the tabs share the well's width evenly, however
+    /// many (nine, with nothing picked lately, left a cell's gap over the
+    /// last column: Opus's look, 2026-11-28), each edge on a device pixel
+    /// and shared by the tabs either side.
+    fn tab_bounds(&self, n: usize) -> Bounds<Pixels> {
+        tab_box(self.geometry.tabs, self.tabs.len(), n, self.geometry.scale)
     }
 
     fn clamp_scroll(&mut self) {
@@ -602,21 +742,21 @@ impl Picker {
 
     /// The cell at `at` in the grid as it shows, if one is there.
     fn cell_at(&self, at: Point<Pixels>) -> Option<usize> {
-        let grid = self.geometry.grid;
-        if !grid.contains(&at) {
+        let inner = self.geometry.cells;
+        if !inner.contains(&at) {
             return None;
         }
-        let mut y = grid.top() - px(self.scroll);
+        let mut y = inner.top() - px(self.scroll);
         for line in &self.lines {
             let h = px(line.height());
-            if y > grid.bottom() {
+            if y > inner.bottom() {
                 break;
             }
             if let Line::Cells(r) = line
-                && y + h >= grid.top()
+                && y + h >= inner.top()
             {
                 for i in r.clone() {
-                    let b = snapped(self.geometry.scale, Bounds { origin: point(grid.left() + px((i - r.start) as f32 * CELL), y), size: size(px(CELL), px(CELL)) });
+                    let b = snapped(self.geometry.scale, Bounds { origin: point(inner.left() + px((i - r.start) as f32 * CELL), y), size: size(px(CELL), px(CELL)) });
                     if b.contains(&at) {
                         return Some(i);
                     }
@@ -638,13 +778,12 @@ impl Picker {
             return;
         }
         if g.tabs.contains(&e.position) {
-            let n = (f32::from(e.position.x - g.tabs.left()) / CELL) as usize;
-            if n < self.tabs.len() {
+            if let Some(n) = (0..self.tabs.len()).find(|&n| across(self.tab_bounds(n), e.position, n + 1 == self.tabs.len())) {
                 self.go_to(n, cx);
             }
         } else if let Some(i) = self.cell_at(e.position) {
             self.choose(i, cx);
-        } else if let Some((_, tone)) = g.tones().into_iter().find(|(b, _)| b.contains(&e.position)) {
+        } else if let Some((_, tone)) = g.tones().into_iter().enumerate().find(|(k, (b, _))| self.drawn.tones && across(*b, e.position, *k + 1 == Tone::ALL.len())).map(|(_, t)| t) {
             self.set_tone(tone, cx);
         }
     }
@@ -707,17 +846,15 @@ impl Picker {
     fn paint_tabs(&self, g: &mut Painter) {
         let p = theme::palette();
         let font = style::ui_font(FontWeight::NORMAL);
-        let tabs_r = self.geometry.tabs;
         let current = self.current_tab();
-        let at = |n: usize| Bounds { origin: point(tabs_r.left() + px(n as f32 * CELL), tabs_r.top()), size: size(px(CELL), px(TAB)) };
         for (n, (icon, name, _)) in self.tabs.iter().enumerate() {
-            let r = style::snap(g, at(n));
+            let r = self.tab_bounds(n);
             let on = current == Some(n);
             if on {
-                style::fill_rect(g, r, c(p.list_selected_background));
+                pressed(g, r, &p);
             }
             let mid = style::snap_coord(g, r.center().y);
-            style::label(g, r.center().x, mid, Align::Center, *icon, 16.0, font.clone(), c(p.panel_text));
+            style::label(g, r.center().x, mid, Align::Center, icon.clone(), 16.0, font.clone(), c(p.panel_text));
             g.agent(agent::Node { role: "Tab", name: Some((*name).into()), bounds: r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
         }
     }
@@ -728,45 +865,57 @@ impl Picker {
         let font = style::ui_font(FontWeight::NORMAL);
         let bold = style::ui_font(FontWeight::BOLD);
         let dim = style::disabled_text(&p);
-        let grid = self.geometry.grid;
-        let inner = style::inset(g, grid, 1.0);
+        // Inside the well's frame, where the lines scroll: what it cuts
+        // at its top and foot is scrolled out of sight, as a scroll
+        // view's (a group's heading puts the rows half a cell off).
+        let inner = self.geometry.cells;
+        olo_kit::review::scroll_area(g, inner);
+        // Still reading, a while since it opened: said in the middle of the
+        // well (not at its corner as if typed).
+        if !self.loaded {
+            if self.slow {
+                let b = style::label(g, inner.center().x, style::snap_coord(g, inner.center().y), Align::Center, "Loading…", style::PLAIN_SIZE, font.clone(), style::secondary_text(&p));
+                g.agent(agent::Node::label("Loading…", b));
+            }
+            return;
+        }
         let (scroll, selected) = (self.scroll, self.selected);
         g.with_content_mask(Some(olo_kit::ContentMask { bounds: inner }), |g| {
-            let mut y = grid.top() - px(scroll);
+            let mut y = inner.top() - px(scroll);
             for line in &self.lines {
                 let h = px(line.height());
-                if y + h < grid.top() {
+                if y + h < inner.top() {
                     y += h;
                     continue;
                 }
-                if y > grid.bottom() {
+                if y > inner.bottom() {
                     break;
                 }
                 match line {
                     Line::Header(text) => {
                         let mid = style::snap_coord(g, y + h / 2.0);
-                        let b = style::label(g, grid.left() + px(m::SPACING), mid, Align::Left, text.clone(), style::DETAIL_SIZE, bold.clone(), dim);
+                        let b = style::label(g, inner.left() + px(m::SPACING), mid, Align::Left, text.clone(), style::DETAIL_SIZE, bold.clone(), dim);
                         g.agent(agent::Node { role: "Heading", clip: Some(inner), ..agent::Node::label(text.clone(), b) });
                     }
                     Line::Note(text) => {
                         let mid = style::snap_coord(g, y + h / 2.0);
                         let b = style::label_fit(
                             g,
-                            grid.left() + px(m::SPACING),
+                            inner.left() + px(m::SPACING),
                             mid,
                             Align::Left,
                             text.clone(),
                             style::PLAIN_SIZE,
                             font.clone(),
                             c(p.document_text),
-                            grid.size.width - px(2.0 * m::SPACING),
+                            inner.size.width - px(2.0 * m::SPACING),
                         );
                         g.agent(agent::Node { clip: Some(inner), ..agent::Node::label(text.clone(), b) });
                     }
                     Line::Cells(r) => {
                         for i in r.clone() {
                             let col = (i - r.start) as f32;
-                            let b = style::snap(g, Bounds { origin: point(grid.left() + px(col * CELL), y), size: size(px(CELL), px(CELL)) });
+                            let b = style::snap(g, Bounds { origin: point(inner.left() + px(col * CELL), y), size: size(px(CELL), px(CELL)) });
                             // (The cell the pointer comes over is chosen:
                             // only cells' edges matter to it.)
                             g.note_pointer_edge(b.intersect(&inner));
@@ -776,7 +925,12 @@ impl Picker {
                             }
                             let mid = style::snap_coord(g, b.center().y);
                             let cell = &self.cells[i];
-                            style::label(g, b.center().x, mid, Align::Center, cell.text.clone(), EMOJI, font.clone(), c(p.document_text));
+                            // (Centred in a cell of its own, not on a line
+                            // with its neighbours: one drawn smaller to fit
+                            // sits lower.)
+                            olo_kit::review::own_grid(g, b);
+                            let size = emoji_size(f32::from(style::text_width(cell.text.clone(), EMOJI, font.clone())));
+                            style::label(g, b.center().x, mid, Align::Center, cell.text.clone(), size, font.clone(), c(p.document_text));
                             let name = cell.emoji.map_or("Emoji", |e| self.all[e].name());
                             g.agent(agent::Node {
                                 role: "Button",
@@ -805,35 +959,78 @@ impl Picker {
         let status = self.geometry.status;
         let (title, detail, big) = self.status();
         let mid = style::snap_coord(g, status.center().y);
+        // (The big emoji centred in its box on the whole line, not on
+        // either line of what it is beside it; the tones a group of their
+        // own: each judged in itself, as a count's disc is.)
+        // (Flush with the well's edge above, as the tabs and the cells.)
+        let big_box = Bounds { origin: point(status.left(), status.top()), size: size(px(BIG_BOX), status.size.height) };
+        olo_kit::review::container(g, big_box);
         if let Some(big) = &big {
-            style::label(g, status.left() + px(4.0 + BIG / 2.0 + 2.0), mid, Align::Center, big.clone(), BIG, font.clone(), c(p.panel_text));
+            let size = fitted(f32::from(style::text_width(big.clone(), BIG, font.clone())), BIG, BIG_BOX);
+            style::label(g, big_box.center().x, mid, Align::Center, big.clone(), size, font.clone(), c(p.panel_text));
         }
-        // The tones, at the right.
-        let tones_left = status.right() - px(6.0 * (TONE + 4.0));
-        for (n, t) in Tone::ALL.iter().enumerate() {
-            let b = style::snap_centred(g, point(tones_left + px(n as f32 * (TONE + 4.0) + TONE / 2.0 + 2.0), mid), TONE + 4.0, TONE + 4.0);
+        // The tones, at the right (where a press finds them); where a tone
+        // can't be drawn (no colour emoji font: a hand and a swatch), why
+        // some can't be shown, there instead.
+        let tones = self.geometry.tones();
+        let (top_mid, detail_mid) = (mid - px(8.0), mid + px(8.0));
+        // Where tones can't be drawn (no colour font), why some emoji can't
+        // be shown, in the tones' place: two lines at most, at the right,
+        // centred on the big emoji, Olo's info icon before them (on the
+        // shortcode's line it read as the emoji's own: Opus's look,
+        // 2026-11-28). Nothing there until it's known.
+        let right = if self.drawn.tones {
+            tones[0].0.left()
+        } else if self.drawn.known && !self.drawn.colour {
+            let note = olo_kit::words::tr("Colour emoji aren’t installed, so some can’t be shown.");
+            let lines = wrapped(note, style::DETAIL_SIZE, &font, NOTICE_W, 2);
+            let wide = lines.iter().map(|l| f32::from(style::text_width(l.clone(), style::DETAIL_SIZE, font.clone()))).fold(0.0, f32::max);
+            let step = style::DETAIL_SIZE * style::LINE_HEIGHT;
+            let left = status.right() - px(wide);
+            let first = mid - px(step * (lines.len() as f32 - 1.0) / 2.0);
+            let mut shown = Bounds { origin: point(left, first), size: size(px(wide), px(0.0)) };
+            for (k, line) in lines.iter().enumerate() {
+                let b =
+                    style::label_fit(g, left, style::snap_coord(g, first + px(step * k as f32)), Align::Left, line.clone(), style::DETAIL_SIZE, font.clone(), style::secondary_text(&p), px(NOTICE_W));
+                shown = shown.union(&b);
+            }
+            g.agent(agent::Node::label(note, shown));
+            let icon = style::snap_centred(g, point(left - px(m::MARK_GAP + NOTICE_ICON / 2.0), mid), NOTICE_ICON, NOTICE_ICON);
+            icons::paint(g, icon, "info");
+            icon.left()
+        } else {
+            status.right() + px(m::SPACING)
+        };
+        let (title_right, detail_right) = (right, right);
+        if self.drawn.tones {
+            olo_kit::review::container(g, Bounds::from_corners(tones[0].0.origin, tones[tones.len() - 1].0.bottom_right()));
+        }
+        for (b, t) in tones.iter().filter(|_| self.drawn.tones) {
+            let b = *b;
             if *t == self.tone {
-                style::fill_rect(g, b, c(p.document_background));
-                style::sunken(g, b, &p, false);
+                pressed(g, b, &p);
             }
             let hand = emojis::get("✋").and_then(|h| match t.0 {
                 Some(s) => h.with_skin_tone(s),
                 None => Some(h),
             });
-            style::label(g, b.center().x, mid, Align::Center, hand.map_or("✋", |h| h.as_str()), TONE - 4.0, font.clone(), c(p.panel_text));
+            // (No wider than its box's room: with no colour font, a toned
+            // hand is two glyphs, and ran into the next.)
+            let hand = hand.map_or("✋", |h| h.as_str());
+            let size = fitted(f32::from(style::text_width(hand.to_owned(), TONE - 4.0, font.clone())), TONE - 4.0, TONE_BOX - 8.0);
+            style::label(g, b.center().x, mid, Align::Center, hand, size, font.clone(), c(p.panel_text));
             g.agent(agent::Node { role: "RadioButton", name: Some(t.name().into()), bounds: b, enabled: true, clickable: true, checked: Some(*t == self.tone), ..Default::default() });
         }
-        // What it is, between.
-        let x = status.left() + px(4.0 + BIG + 10.0);
-        let room = tones_left - px(m::SPACING) - x;
-        let top_mid = mid - px(8.0);
-        let detail_mid = mid + px(8.0);
+        // What it is, between: a mark's gap after the big emoji's box.
+        let x = status.left() + px(BIG_BOX + m::MARK_GAP);
+        let (room, detail_room) = (title_right - px(m::SPACING) - x, detail_right - px(m::SPACING) - x);
         // (Whole for agents, though cut short on screen.)
         let b = style::label_fit(g, x, top_mid, Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), c(p.panel_text), room);
         if !title.is_empty() {
             g.agent(agent::Node::label(title.clone(), b));
         }
-        let b = style::label_fit(g, x, detail_mid, Align::Left, detail.clone(), style::DETAIL_SIZE, font.clone(), style::disabled_text(&p), room);
+        // (Secondary, not greyed out: it says what the emoji is called.)
+        let b = style::label_fit(g, x, detail_mid, Align::Left, detail.clone(), style::DETAIL_SIZE, font.clone(), style::secondary_text(&p), detail_room);
         if !detail.is_empty() {
             g.agent(agent::Node::label(detail.clone(), b));
         }
@@ -845,11 +1042,23 @@ impl View for Picker {
 
     fn message(&mut self, message: PickerMsg, cx: &mut Cx<Self>) {
         match message {
-            PickerMsg::Loaded(all) => {
+            PickerMsg::Loaded(all, drawn) => {
                 self.all = all;
+                self.drawn = drawn;
                 self.loaded = true;
                 self.rebuild();
                 self.warm(cx);
+            }
+            PickerMsg::Drawn(drawn) => {
+                if !self.loaded {
+                    self.drawn = drawn;
+                    self.rebuild();
+                    cx.invalidate();
+                }
+            }
+            PickerMsg::Slow => {
+                self.slow = !self.loaded;
+                cx.invalidate();
             }
             PickerMsg::Model(n, model) if n == self.asked => match model {
                 Ok(m) => {
@@ -892,26 +1101,10 @@ impl View for Picker {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        let screen = olo_kit::viewport_size();
-        let scale = cx.scale_factor();
-        let grid_w = COLS as f32 * CELL;
-        let width = grid_w + 2.0 * m::SPACING;
-        // As many rows as fit, up to six; a fifth of the way down, or
-        // higher if it must.
-        let fixed = m::SPACING + FIELD_HEIGHT + m::TIGHT + TAB + m::TIGHT + m::TIGHT + STATUS + m::TIGHT;
-        let screen_h = f32::from(screen.height);
-        self.rows = ((screen_h - 2.0 * m::SPACING - fixed) / CELL).floor().clamp(2.0, ROWS);
-        let grid_h = self.view_height();
-        let height = fixed + grid_h;
-        let top = (screen_h * TOP).round().min(screen_h - height - m::SPACING).max(0.0);
-        let panel = snapped(scale, Bounds { origin: point((screen.width - px(width)) / 2.0, px(top)), size: size(px(width), px(height)) });
-        let left = panel.left() + px(m::SPACING);
-        let field = Bounds { origin: point(left, panel.top() + px(m::SPACING)), size: size(px(grid_w), px(FIELD_HEIGHT)) };
-        let tabs_r = Bounds { origin: point(left, field.bottom() + px(m::TIGHT)), size: size(px(grid_w), px(TAB)) };
-        let grid = Bounds { origin: point(left, tabs_r.bottom() + px(m::TIGHT)), size: size(px(grid_w), px(grid_h)) };
-        let status = Bounds { origin: point(left, grid.bottom() + px(m::TIGHT)), size: size(px(grid_w), px(STATUS)) };
-        let glass = snapped_centred(scale, point(field.left() + px(6.0 + 8.0), field.center().y), 16.0, 16.0);
-        self.geometry = Geometry { panel, field, tabs: tabs_r, grid, status, glass, scale };
+        let (rows, geometry) = lay_out(olo_kit::viewport_size(), cx.scale_factor());
+        self.rows = rows;
+        self.geometry = geometry;
+        let Geometry { panel, field, grid, glass, .. } = geometry;
         let geometry_key = self.geometry.key();
         self.warm(cx);
 
@@ -940,13 +1133,16 @@ impl View for Picker {
         // Each part is drawn again only when what it shows changes: the
         // pointer over another cell draws the grid and the status line,
         // not the panel, the tabs or the field.
-        let tab_strip =
-            view_canvas(|p: &Picker, g, _| p.paint_tabs(g)).key_by(move |p: &Picker| style::key((geometry_key, p.current_tab(), p.tabs.iter().map(|t| t.1).collect::<Vec<_>>()))).absolute().inset_0();
-        let grid_paint = view_canvas(|p: &Picker, g, _| p.paint_grid(g)).key_by(move |p: &Picker| style::key((geometry_key, p.generation, p.scroll.to_bits(), p.selected))).absolute().inset_0();
+        let tab_strip = view_canvas(|p: &Picker, g, _| p.paint_tabs(g))
+            .key_by(move |p: &Picker| style::key((geometry_key, p.current_tab(), p.tabs.iter().map(|t| (t.0.clone(), t.1)).collect::<Vec<_>>())))
+            .absolute()
+            .inset_0();
+        let grid_paint =
+            view_canvas(|p: &Picker, g, _| p.paint_grid(g)).key_by(move |p: &Picker| style::key((geometry_key, p.generation, p.scroll.to_bits(), p.selected, p.loaded, p.slow))).absolute().inset_0();
         let status_paint = view_canvas(|p: &Picker, g, _| p.paint_status(g))
             .key_by(move |p: &Picker| {
                 let (title, detail, big) = p.status();
-                style::key((geometry_key, title, detail, big, Tone::ALL.iter().position(|t| *t == p.tone)))
+                style::key((geometry_key, title, detail, big, Tone::ALL.iter().position(|t| *t == p.tone), p.drawn.tones, p.drawn.known, p.drawn.colour))
             })
             .absolute()
             .inset_0();
@@ -969,6 +1165,46 @@ impl View for Picker {
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_scroll_wheel(cx.listener(Self::wheel))
     }
+}
+
+/// Tab `n` of `count` sharing `tabs` evenly at `scale` (`Picker::tab_bounds`).
+fn tab_box(tabs: Bounds<Pixels>, count: usize, n: usize, scale: f32) -> Bounds<Pixels> {
+    let on = |v: f32| px((v * scale).round() / scale);
+    let w = f32::from(tabs.size.width) / count.max(1) as f32;
+    let x = |k: usize| on(f32::from(tabs.left()) + k as f32 * w);
+    Bounds::from_corners(point(x(n), on(f32::from(tabs.top()))), point(x(n + 1), on(f32::from(tabs.bottom()))))
+}
+
+/// Whether `p` is in `b`, its right edge left to the box beside it (the
+/// last's, `last`, its own): two boxes side by side share an edge, and a
+/// press on it went to the first (review, 2026-11-28).
+fn across(b: Bounds<Pixels>, p: Point<Pixels>, last: bool) -> bool {
+    p.x >= b.left() && (p.x < b.right() || last && p.x <= b.right()) && p.y >= b.top() && p.y <= b.bottom()
+}
+
+/// `text` broken into lines `width` points across at `size`, `rows` at
+/// most (the last cut short with "…" when there's more).
+fn wrapped(text: &str, size: f32, font: &olo_kit::Font, width: f32, rows: usize) -> Vec<SharedString> {
+    let mut wrapper = olo_kit::text_system().line_wrapper(font.clone(), px(size));
+    let mut lines = Vec::new();
+    let mut start = 0;
+    while start < text.len() && lines.len() < rows {
+        let rest = &text[start..];
+        let end = if lines.len() + 1 == rows { rest.len() } else { wrapper.wrap_line(&[olo_kit::LineFragment::text(rest)], px(width)).next().map_or(rest.len(), |b| b.ix) };
+        lines.push(SharedString::from(rest[..end].trim().to_owned()));
+        start += end;
+    }
+    lines
+}
+
+/// A toggle that is on (the chosen group's tab, the chosen tone):
+/// pressed into the panel as a held button is, in the panel's colour,
+/// not the field white or the selection's blue, which is the grid's,
+/// where the keys are (Opus's look, 2026-11-28).
+fn pressed(g: &mut Painter, r: Bounds<Pixels>, p: &olo_kit::palette::Palette) {
+    let bg = p.panel_background;
+    style::fill_rect(g, r, style::shade(p, bg, 1.08));
+    style::bevel(g, r, style::shade(p, bg, 1.3), c(p.shine));
 }
 
 /// "grinning face" → "Grinning face".
@@ -997,11 +1233,15 @@ fn main() {
         // The emoji, and which the font draws: off the UI thread, once.
         let proxy = olo_kit::proxy();
         let _ = std::thread::Builder::new().name("emoji-load".into()).spawn(move || {
-            let check = data::font_check();
-            let all = data::load(|cluster| check.as_ref().is_none_or(|draws| draws(cluster)));
-            proxy.send(Found::Emoji(all));
+            // (The colour font as the picker reads it, else as the kit draws
+            // it (a bitmap one), else what the others draw whole.)
+            let (colour, draws) = data::how_drawn(data::font_check(), data::colour_check, data::fallback_check);
+            proxy.send(Found::Drawn(data::Drawn::early(colour, &draws)));
+            let all = data::load(&draws);
+            let drawn = data::Drawn::new(&all, colour, &draws);
+            proxy.send(Found::Emoji(all, drawn));
         });
-        let hub = Rc::new(RefCell::new(Hub { all: None, recents: Arc::new(Mutex::new(Recents::load())), window: None, shown: 0 }));
+        let hub = Rc::new(RefCell::new(Hub { all: None, drawn: Arc::new(data::Drawn::unknown()), recents: Arc::new(Mutex::new(Recents::load())), window: None, shown: 0 }));
         let messages = hub.clone();
         olo_kit::message_handler(app, move |message, app| {
             let mut hub = messages.borrow_mut();
@@ -1044,11 +1284,22 @@ fn main() {
             };
             let Ok(found) = message.downcast::<Found>() else { return };
             match *found {
-                Found::Emoji(all) => {
-                    let all = Arc::new(all);
+                Found::Drawn(drawn) => {
+                    // (Not over what the emoji read brought.)
+                    if hub.all.is_none() {
+                        let drawn = Arc::new(drawn);
+                        hub.drawn = drawn.clone();
+                        if let Some(window) = hub.showing() {
+                            window.messenger().send(PickerMsg::Drawn(drawn));
+                        }
+                    }
+                }
+                Found::Emoji(all, drawn) => {
+                    let (all, drawn) = (Arc::new(all), Arc::new(drawn));
                     hub.all = Some(all.clone());
+                    hub.drawn = drawn.clone();
                     if let Some(window) = hub.showing() {
-                        window.messenger().send(PickerMsg::Loaded(all));
+                        window.messenger().send(PickerMsg::Loaded(all, drawn));
                     }
                 }
                 Found::Model(n, model) => {
@@ -1070,4 +1321,189 @@ fn main() {
             hub.borrow_mut().toggle();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An emoji is drawn at its size unless that runs past its cell's
+    /// room, then smaller, to fit.
+    #[test]
+    fn an_emoji_stays_in_its_cell() {
+        let room = CELL - 2.0 * m::TIGHT;
+        assert_eq!(emoji_size(24.0), EMOJI);
+        assert_eq!(emoji_size(room), EMOJI);
+        // Two glyphs, 46 points at EMOJI: as wide as the room.
+        let size = emoji_size(46.0);
+        assert!(size < EMOJI && (46.0 * size / EMOJI - room).abs() < 0.01, "{size}");
+    }
+
+    /// A colour emoji, a quarter wider than its size (30 points across at
+    /// 24), is drawn at what fits its cell; warmed at that size too, not
+    /// at `EMOJI`, so the drawing ahead is what's drawn.
+    #[test]
+    fn emoji_are_warmed_as_drawn() {
+        let colour = 1.25 * EMOJI;
+        let drawn = emoji_size(colour);
+        assert!((drawn - 22.4).abs() < 0.01, "{drawn}");
+        assert!(colour * drawn / EMOJI <= CELL - 2.0 * m::TIGHT + 0.01);
+    }
+
+    /// The tabs share the well's width evenly, nine or ten: no gap over
+    /// the last column, each edge on a device pixel, shared by the tabs
+    /// either side.
+    #[test]
+    fn the_tabs_fill_the_well() {
+        for scale in [1.0f32, 1.2, 1.25, 1.5, 1.75, 2.0] {
+            let (_, g) = lay_out(size(px(1440.0), px(900.0)), scale);
+            for count in [9, 10, 7] {
+                let tabs: Vec<_> = (0..count).map(|n| tab_box(g.tabs, count, n, scale)).collect();
+                assert!(
+                    (f32::from(tabs[0].left()) - f32::from(g.tabs.left())).abs() < 0.01 && (f32::from(tabs[count - 1].right()) - f32::from(g.tabs.right())).abs() < 0.01,
+                    "at {scale}×, {count}: {tabs:?} in {:?}",
+                    g.tabs
+                );
+                for k in 1..count {
+                    assert_eq!(tabs[k - 1].right(), tabs[k].left(), "at {scale}×, {count}: tabs {} and {k}", k - 1);
+                    let wide = f32::from(tabs[k].size.width) * scale;
+                    assert!((wide - f32::from(g.tabs.size.width) * scale / count as f32).abs() <= 1.0, "at {scale}×, {count}: tab {k} {wide} device pixels");
+                }
+                for v in tabs.iter().flat_map(|t| [t.left(), t.right(), t.top(), t.bottom()]) {
+                    let d = f32::from(v) * scale;
+                    assert!((d - d.round()).abs() < 0.01, "at {scale}×: an edge {d} device pixels in");
+                }
+            }
+        }
+    }
+
+    /// With no colour emoji font, each tab shows a plain symbol of its
+    /// group that can be drawn (not ♿ for Symbols, nor the group's first
+    /// emoji); tones can't be; the lately picked's icon is one that can
+    /// be. With it, all as they are. Not known yet: no tab, tone or notice.
+    #[test]
+    fn without_colour_emoji_the_tabs_show_what_can_be_drawn() {
+        // (One code point drawn whole; sequences, "✈️" and toned hands, not.)
+        let draws = |c: &str| data::visible_codepoints(c) == 1 && c.chars().count() == 1;
+        let all = data::load(draws);
+        let drawn = data::Drawn::new(&all, false, draws);
+        assert!(drawn.known && !drawn.colour && !drawn.tones);
+        for icon in &drawn.icons {
+            let icon = icon.as_deref().expect("every group has one drawn");
+            assert!(draws(icon), "{icon}");
+        }
+        assert_eq!(drawn.icons[7].as_deref(), Some("♻"));
+        assert_ne!(drawn.icons[4].as_deref(), Some("✈️"));
+        assert_eq!(drawn.recent, "🕘");
+        // Early (before the emoji are read): the same plain icons.
+        assert_eq!(data::Drawn::early(false, draws).icons, drawn.icons);
+        assert_eq!(data::Drawn::new(&data::load(|_| true), true, |_| true), data::Drawn::colour());
+    }
+
+    /// A colour font the picker can't read itself (a bitmap one, CBDT, as
+    /// Debian's and Ubuntu's Noto Color Emoji is) is a colour font all the
+    /// same where the kit draws in colour with it: tabs their own, tones,
+    /// no notice (it said colour emoji weren't installed over a grid of
+    /// them, 2026-11-28). The one it reads comes first; with neither, what
+    /// the other fonts draw.
+    #[test]
+    fn a_colour_font_the_kit_draws_is_one() {
+        let none = None::<fn(&str) -> bool>;
+        let (colour, draws) = data::how_drawn(none, || Some(|c: &str| c != "🫩"), || |_: &str| false);
+        assert!(colour && draws("😀") && draws("✋🏽") && !draws("🫩"));
+        let drawn = data::Drawn::new(&data::load(&draws), colour, &draws);
+        assert_eq!(drawn, data::Drawn::colour());
+        let (colour, draws) = data::how_drawn(Some(|_: &str| true), || -> Option<fn(&str) -> bool> { panic!("the kit asked with a font read") }, || |_: &str| false);
+        assert!(colour && draws("🫩"));
+        let (colour, draws) = data::how_drawn(none, || None::<fn(&str) -> bool>, || |c: &str| c == "☺");
+        assert!(!colour && draws("☺") && !draws("😀"));
+        let unknown = data::Drawn::unknown();
+        assert!(!unknown.known && !unknown.tones && unknown.icons.iter().all(Option::is_none));
+    }
+
+    /// A sequence a font draws as one glyph is still more than one thing to
+    /// draw; joiners and variation selectors draw nothing.
+    #[test]
+    fn what_a_cluster_draws() {
+        assert_eq!(data::visible_codepoints("☺️"), 1);
+        assert_eq!(data::visible_codepoints("1️⃣"), 2);
+        assert_eq!(data::visible_codepoints("👨‍👩‍👧"), 3);
+        assert_eq!(data::visible_codepoints("✋🏽"), 2);
+    }
+
+    /// A press on the edge two boxes share is the right-hand one's; the
+    /// last box's right edge is its own.
+    #[test]
+    fn a_press_on_a_shared_edge_is_one_boxs() {
+        let (_, g) = lay_out(size(px(1440.0), px(900.0)), 1.0);
+        let tones = g.tones();
+        let edge = point(tones[1].0.left(), tones[1].0.center().y);
+        let hit: Vec<usize> = (0..tones.len()).filter(|&k| across(tones[k].0, edge, k + 1 == tones.len())).collect();
+        assert_eq!(hit, [1]);
+        let last = tones.len() - 1;
+        assert!(across(tones[last].0, point(tones[last].0.right(), tones[last].0.center().y), true));
+    }
+
+    /// The panel keeps clear of Deskbar, 8 points from it: on 720 × 450
+    /// (2×) it moves left of the middle; on a wide screen it stays there.
+    #[test]
+    fn the_panel_keeps_clear_of_deskbar() {
+        let (_, g) = lay_out(size(px(720.0), px(450.0)), 2.0);
+        assert!(f32::from(g.panel.right()) <= 720.0 - m::DESKBAR_WIDTH - 8.0 + 0.01, "{:?}", g.panel);
+        assert!(g.panel.left() >= px(0.0));
+        let (_, g) = lay_out(size(px(1440.0), px(900.0)), 1.0);
+        assert!((f32::from(g.panel.center().x) - 720.0).abs() <= 1.0, "{:?}", g.panel);
+    }
+
+    /// The tones' boxes sit in the status line side by side, each with
+    /// room either side of its hand (a colour emoji is 1.28 of its size
+    /// across: 3.5 points either side at least, less a device pixel's
+    /// rounding), at every scale.
+    #[test]
+    fn the_tones_have_room() {
+        for scale in [1.0f32, 1.2, 1.25, 1.5, 1.75, 2.0] {
+            let (_, g) = lay_out(size(px(1440.0), px(900.0)), scale);
+            let tones = g.tones();
+            for (i, (b, _)) in tones.iter().enumerate() {
+                assert!(
+                    b.left() >= g.status.left() && b.right() <= g.status.right() + px(0.01) && b.top() >= g.status.top() && b.bottom() <= g.status.bottom(),
+                    "at {scale}×: {b:?} out of {:?}",
+                    g.status
+                );
+                assert!(f32::from(b.size.width) + 1.0 / scale >= (TONE - 4.0) * 1.28 + 2.0 * 3.5, "at {scale}×: a box {:?} wide", b.size.width);
+                if i > 0 {
+                    assert!(tones[i - 1].0.right() <= b.left() + px(0.01), "at {scale}×: tones {} and {i} overlap", i - 1);
+                }
+                for v in [b.left(), b.right(), b.top(), b.bottom()] {
+                    let d = f32::from(v) * scale;
+                    assert!((d - d.round()).abs() < 0.01, "at {scale}×: tone {i}'s edge {d} device pixels in");
+                }
+            }
+        }
+    }
+
+    /// At every scale and on screens small and large, the cells are
+    /// inside the well's sunken frame (none under its lines), a row of
+    /// them exactly across it and its rows exactly down it, the tabs over
+    /// their columns, and every edge on a device pixel.
+    #[test]
+    fn the_cells_are_inside_the_well() {
+        for scale in [1.0f32, 1.25, 1.5, 1.75, 2.0] {
+            for (w, h) in [(1280.0, 800.0), (1440.0, 900.0), (720.0, 450.0), (640.0, 400.0)] {
+                let (rows, g) = lay_out(size(px(w), px(h)), scale);
+                let at = format!("at {scale}× on {w} × {h}");
+                let edge = well_edge(scale);
+                let same = |a: Pixels, b: Pixels| (f32::from(a) - f32::from(b)).abs() < 0.01;
+                assert!(same(g.cells.left(), g.grid.left() + px(edge)) && same(g.cells.right(), g.grid.right() - px(edge)), "{at}: {:?} in {:?}", g.cells, g.grid);
+                assert!(same(g.cells.top(), g.grid.top() + px(edge)) && same(g.cells.bottom(), g.grid.bottom() - px(edge)), "{at}: {:?} in {:?}", g.cells, g.grid);
+                assert_eq!((f32::from(g.cells.size.width), f32::from(g.cells.size.height)), (COLS as f32 * CELL, rows * CELL + PEEK), "{at}");
+                assert!(same(g.tabs.left(), g.cells.left()) && same(g.tabs.size.width, g.cells.size.width), "{at}");
+                assert!(rows >= 2.0 && f32::from(g.panel.bottom()) <= h, "{at}: {rows} rows, the panel to {:?}", g.panel.bottom());
+                for v in [g.grid.left(), g.grid.right(), g.grid.top(), g.grid.bottom(), g.cells.left(), g.cells.right(), g.cells.top(), g.cells.bottom(), g.tabs.left(), g.tabs.top()] {
+                    let d = f32::from(v) * scale;
+                    assert!((d - d.round()).abs() < 0.01, "{at}: an edge {d} device pixels in");
+                }
+            }
+        }
+    }
 }

@@ -305,6 +305,10 @@ pub struct Frame {
 /// content needed as last laid out, and the size last asked for.
 struct Fit {
     design: (f32, f32),
+    /// The narrowest it can be laid out (a fixed one's least width,
+    /// `WindowOptions::min_size`: its columns stacked), its own width if
+    /// it can't be narrower.
+    narrowest: f32,
     /// Its size is its content's, not the person's.
     fixed: bool,
     need: Option<f32>,
@@ -313,8 +317,9 @@ struct Fit {
     /// A resize asked for and not made yet: the size it was then, and
     /// when (nothing is shown until it's another, or `RESIZE_WAIT`).
     resizing: Option<(Size<Pixels>, Instant)>,
-    /// What it shows needs more than the screen has room for: scrolled.
-    scrolls: bool,
+    /// What it shows needs more than the screen has room for: scrolled,
+    /// down and across ([`fitted`]).
+    scrolls: (bool, bool),
     /// What it waits for before it's first shown ([`hold_first_show`]).
     first: Arc<FirstShow>,
 }
@@ -410,23 +415,91 @@ pub fn hold_first_show(cx: &mut WindowCx) -> Option<FirstShowHold> {
 }
 
 /// The size a window that follows what it shows should be (`viewport` now,
-/// its content needing `need`), and whether its content scrolls there.
-fn fitted(design: (f32, f32), fixed: bool, viewport: Size<Pixels>, need: f32, room: f32) -> ((f32, f32), bool) {
+/// its content needing `need`, the screen having `room` across and down:
+/// [`screen_room_across`], [`screen_room`]), and whether its content
+/// scrolls there: down, and across. A fixed window wider than the room
+/// (a panel made for 1280 points on a screen of 720: 1440 × 900 at 2×)
+/// is as wide as the room, its content laid out at its own width and
+/// scrolled across, the bar along its foot counted in its height; it had
+/// run off the screen, its scroll bar and last column out of reach (QA,
+/// 2026-11-28).
+fn fitted(design: (f32, f32), narrowest: f32, fixed: bool, viewport: Size<Pixels>, need: f32, room: (f32, f32)) -> ((f32, f32), (bool, bool)) {
+    let bar = crate::widgets::SCROLL_BAR;
     // (One the person sizes keeps their size when it's enough.)
     let least = if fixed { design.1 } else { f32::from(viewport.height) };
     let need = need.ceil().max(least);
-    let scrolls = need > room + 0.5;
-    let width = if fixed { design.0 } else { f32::from(viewport.width) };
-    let size = if scrolls { (width + if fixed { crate::widgets::SCROLL_BAR } else { 0.0 }, room.floor()) } else { (width, need) };
-    (size, scrolls)
+    // A fixed one that can be laid out narrower (`narrowest`, a panel
+    // whose columns stack) is as wide as the room has for it, down to
+    // that, and scrolled only down: at its own width, scrolled across,
+    // its second column was cut mid-word (Opus's look, 2026-11-28).
+    let width = |down: bool| if fixed { design.0.min(room.0 - if down { bar } else { 0.0 }).max(narrowest.min(design.0)) } else { f32::from(viewport.width) };
+    let mut down = need > room.1 + 0.5;
+    // (The person's size is the person's: only a fixed one is held to
+    // the room across, the bar down its side with it.)
+    let across = fixed && width(down) + if down { bar } else { 0.0 } > room.0 + 0.5;
+    if across {
+        down |= need + bar > room.1 + 0.5;
+    }
+    let w = if across { room.0.floor() } else { width(down) + if down && fixed { bar } else { 0.0 } };
+    let h = if down { room.1.floor() } else { need + if across { bar } else { 0.0 } };
+    ((w, h), (down, across))
+}
+
+/// Whether a window that follows what it shows scrolls down and across
+/// at `now`, the size it's held at (by the compositor: a tile, a zoom,
+/// or less than it asked for, put beside Deskbar), as [`fitted`] has it
+/// in the room it asks within: a fixed one narrower than its own width
+/// is laid out at that and scrolled across, its bar along its foot
+/// taking from the height (held, it had only scrolled down, its right
+/// cut off: review, 2026-11-28).
+fn scrolls_at(design: (f32, f32), narrowest: f32, fixed: bool, now: Size<Pixels>, need: f32) -> (bool, bool) {
+    let bar = crate::widgets::SCROLL_BAR;
+    let (w, h) = (f32::from(now.width), f32::from(now.height));
+    let mut down = need > h + 0.5;
+    let across = fixed && narrowest.min(design.0) + if down { bar } else { 0.0 } > w + 0.5;
+    if across {
+        down |= need + bar > h + 0.5;
+    }
+    (down, across)
 }
 
 /// Room left above a window's tab and around it on a screen.
 const SCREEN_EDGES: f32 = 64.0;
 
+/// Room across a screen that isn't a window's: Deskbar's column, the gap
+/// beside it (app_server's `usable_area`, which windows stop at as on
+/// BeOS) and a window's frame each side.
+const BESIDE_DESKBAR: f32 = crate::metrics::DESKBAR_WIDTH + 4.0 + 2.0 * 5.0;
+
 /// The height of the smallest screen Olo is made for (1280 × 800), in
 /// points.
 pub const SMALLEST_SCREEN_HEIGHT: f32 = 800.0;
+
+/// Its width.
+pub const SMALLEST_SCREEN_WIDTH: f32 = 1280.0;
+
+/// The widest a window may be: the narrowest display's width in points,
+/// less Deskbar's column and a window's frame ([`BESIDE_DESKBAR`]: windows
+/// stop beside Deskbar, and at the room round the window alone a fixed
+/// panel ran under it, its scroll bar out of reach, on a screen of 720
+/// points: reviews, 2026-11-28), never under 320. On the smallest screen
+/// Olo is made for, 1,094: every window made to fit it fits (the widest,
+/// Preferences' Display, is 940).
+pub fn screen_room_across() -> f32 {
+    #[cfg(feature = "lint")]
+    if let Some(room) = crate::lint::room_across_for_tests() {
+        return room;
+    }
+    // (Before any display is known, the smallest screen's.)
+    let narrowest = olo_interface::displays().iter().map(|d| f32::from(d.size.width)).reduce(f32::min).unwrap_or(SMALLEST_SCREEN_WIDTH);
+    room_across(narrowest)
+}
+
+/// [`screen_room_across`] on a display `width` points wide.
+fn room_across(width: f32) -> f32 {
+    let beside = BESIDE_DESKBAR.max(SCREEN_EDGES);
+    width.max(320.0 + beside) - beside
+}
 
 /// The height in points of the display `cx`'s window is on; until it's
 /// been told which (a popup just opened: a submenu, opened from another
@@ -502,9 +575,9 @@ impl Frame {
         let scrolls = if cx.held_state().held() {
             fit.resizing = None;
             fit.asked = None;
-            need > f32::from(now.height) + 0.5
+            scrolls_at(fit.design, fit.narrowest, fit.fixed, now, need)
         } else {
-            let ((w, h), scrolls) = fitted(fit.design, fit.fixed, now, need, screen_room());
+            let ((w, h), mut scrolls) = fitted(fit.design, fit.narrowest, fit.fixed, now, need, (screen_room_across(), screen_room()));
             let off = (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5;
             // (A size asked for and got is forgotten: sized another way
             // after (by its app: Quick Look to its next picture), it's
@@ -524,6 +597,16 @@ impl Frame {
                 fit.resizing = Some((now, Instant::now()));
                 cx.resize_window(size(px(w), px(h)));
                 cx.hold_commit(RESIZE_WAIT);
+                // (Followed again once the wait is up: a resize refused, the
+                // size never changing, sent nothing else to follow, and its
+                // bars stayed as for the size asked for, what it shows out
+                // of reach: review, 2026-11-28.)
+                cx.after(RESIZE_WAIT + Duration::from_millis(2), FrameMessage::HoldLetGo);
+            } else if off && fit.resizing.is_none() {
+                // Given another size than asked, and that's that (fitted
+                // beside Deskbar, onto a smaller display): scrolled as it
+                // is, not as it would be at the size asked for.
+                scrolls = scrolls_at(fit.design, fit.narrowest, fit.fixed, now, need);
             }
             scrolls
         };
@@ -715,12 +798,22 @@ impl Frame {
             // (Scrolled, laid out as tall as the window at least: what
             // fills the window, a picture's or a list's box, keeps the
             // room it had rather than none. Quick Look sized past the
-            // screen's room showed an empty body over a scroll bar.)
-            let content = if fit.scrolls {
-                let tall = cx.viewport_size().height;
-                crate::widgets::ScrollView::new(&self.scroll).border(false).child(div().w_full().min_h(tall).flex().flex_col().child(laid)).into_element()
-            } else {
-                laid
+            // screen's room showed an empty body over a scroll bar.
+            // Across, at its own width.)
+            let content = match fit.scrolls {
+                (false, false) => laid,
+                (down, across) => {
+                    // (Less the bar along its foot, scrolled across: the
+                    // window's whole height left that much past the
+                    // view, scrolled to as nothing, or cut off.)
+                    let tall = (cx.viewport_size().height - px(if across { crate::widgets::SCROLL_BAR } else { 0.0 })).max(px(0.0));
+                    let inside = div().min_h(tall).flex().flex_col().child(laid);
+                    // (Scrolled across: laid out as narrow as it can be.)
+                    let inside = if across { inside.w(px(fit.narrowest.min(fit.design.0))).flex_shrink_0() } else { inside.w_full() };
+                    #[cfg(feature = "lint")]
+                    crate::lint::note_frame_scroll(cx.window_id(), &self.scroll);
+                    crate::widgets::ScrollView::new(&self.scroll).border(false).vertical(down).horizontal(across).child(inside).into_element()
+                }
             };
             return root.flex().flex_col().child(content);
         }
@@ -805,15 +898,28 @@ fn framed<V: View, B: FnOnce(&mut Cx<V>) -> V>(mut options: WindowOptions, build
         options.size = size;
     }
     let designed_height = options.size.1;
+    let designed_width = options.spec().size.0;
+    // (A fixed one's least width, before it's held to the room below.)
+    let narrowest = options.min_size.map_or(designed_width, |m| m.0).min(designed_width);
     // (Not a layer's, a lock screen's or a full screen one's: the screen
     // or the app sizes those.)
     let fit_content = options.fit_content && options.layer.is_none() && options.lock_output.is_none() && !options.fullscreen;
-    // (One that follows what it shows opens no taller than the screen.)
+    // (One that follows what it shows opens no taller than the screen;
+    // a fixed one no wider than its room either, laid out at its own
+    // width and scrolled across (`fitted`): it opened at its own, under
+    // Deskbar, and was sized down only after.)
     if fit_content {
         options.size.1 = options.size.1.min(screen_room());
+        if options.fixed {
+            let room = screen_room_across().floor();
+            options.size.0 = options.size.0.min(room);
+            if let Some(min) = options.min_size.as_mut() {
+                min.0 = min.0.min(room);
+            }
+        }
     }
     let spec = options.spec();
-    let design = (spec.size.0, designed_height);
+    let design = (designed_width, designed_height);
     let (panel, fixed, keep, content_height) = (options.panel, options.fixed, options.keep_size.clone(), options.content_height);
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
     let frame = move |cx: &mut Cx<Frame>| {
@@ -846,7 +952,7 @@ fn framed<V: View, B: FnOnce(&mut Cx<V>) -> V>(mut options: WindowOptions, build
             keep,
             content_height,
             scroll: ScrollHandle::new(),
-            fit: fit_content.then(|| Fit { design, fixed, need: None, asked: None, resizing: None, scrolls: false, first }),
+            fit: fit_content.then(|| Fit { design, narrowest, fixed, need: None, asked: None, resizing: None, scrolls: (false, false), first }),
             lit: None,
         }
     };
@@ -994,4 +1100,91 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     olo_kit_base::instance::close();
     crate::kept::write();
     olo_kit_base::store::flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::widgets::SCROLL_BAR;
+
+    fn now(w: f32, h: f32) -> Size<Pixels> {
+        size(px(w), px(h))
+    }
+
+    /// A window that follows what it shows: as big as it needs where the
+    /// screen has room; past the room down, as tall as the room and
+    /// widened by its bar; past it across (a fixed panel wider than the
+    /// screen), as wide as the room and scrolled across too.
+    #[test]
+    fn a_fitted_window_stays_in_the_screens_room() {
+        // The smallest screen, beside Deskbar: Display (950 × 551) fits,
+        // as it is.
+        let room = (1094.0, 736.0);
+        assert_eq!(fitted((950.0, 400.0), 950.0, true, now(950.0, 400.0), 551.0, room), ((950.0, 551.0), (false, false)));
+        // Too tall: the room's height, the bar beside it.
+        assert_eq!(fitted((950.0, 400.0), 950.0, true, now(950.0, 551.0), 900.0, room), ((950.0 + SCROLL_BAR, 736.0), (true, false)));
+        // 1440 × 900 at 2× (720 × 450): too wide and too tall, both ways.
+        let small = (656.0, 386.0);
+        assert_eq!(fitted((950.0, 400.0), 950.0, true, now(950.0, 551.0), 551.0, small), ((656.0, 386.0), (true, true)));
+        // Too wide only, but the bar across takes it past the room down.
+        assert_eq!(fitted((700.0, 300.0), 700.0, true, now(700.0, 380.0), 380.0, small), ((656.0, 386.0), (true, true)));
+        // Too wide, room down for the bar across: as tall as it needs and the bar.
+        assert_eq!(fitted((700.0, 300.0), 700.0, true, now(700.0, 300.0), 300.0, small), ((656.0, 300.0 + SCROLL_BAR), (false, true)));
+        // Its bar down would take it past the room across.
+        assert_eq!(fitted((1088.0, 400.0), 1088.0, true, now(1088.0, 400.0), 900.0, room), ((1094.0, 736.0), (true, true)));
+        // One the person sizes: their width, never scrolled across.
+        assert_eq!(fitted((950.0, 400.0), 950.0, false, now(900.0, 500.0), 551.0, small), ((900.0, 386.0), (true, false)));
+    }
+
+    /// A fixed window that can be laid out narrower (its columns stacked:
+    /// `narrowest`) is as wide as the room has for it, scrolled only
+    /// down; narrower than that room, it is laid out at its narrowest and
+    /// scrolled across; as wide as its own where there's room.
+    #[test]
+    fn a_window_that_can_narrow_scrolls_only_down() {
+        let small = (534.0, 386.0);
+        // Display (940, its columns stacked at 480): 534 across, its bar
+        // down its side, laid out at 520.
+        assert_eq!(fitted((940.0, 520.0), 480.0, true, now(940.0, 520.0), 900.0, small), ((534.0, 386.0), (true, false)));
+        assert_eq!(fitted((940.0, 300.0), 480.0, true, now(940.0, 300.0), 300.0, small), ((534.0, 300.0), (false, false)));
+        // A room narrower than it can be: at its narrowest, across.
+        assert_eq!(fitted((940.0, 300.0), 480.0, true, now(940.0, 300.0), 300.0, (400.0, 386.0)), ((400.0, 300.0 + SCROLL_BAR), (false, true)));
+        // Room for it: its own width.
+        assert_eq!(fitted((940.0, 520.0), 480.0, true, now(940.0, 520.0), 551.0, (1094.0, 736.0)), ((940.0, 551.0), (false, false)));
+        // Held at a width it can be laid out at: down only.
+        assert_eq!(scrolls_at((940.0, 520.0), 480.0, true, now(534.0, 386.0), 900.0), (true, false));
+    }
+
+    /// The room across is beside Deskbar: on 1440 × 900 at 2× (720
+    /// points), 534, as app_server's `usable_area` leaves a window's
+    /// content there (Deskbar's 172, its gap of 4, the frame's 5 each
+    /// side); on the smallest screen, 1,094, Display's 940 fitting whole.
+    #[test]
+    fn the_room_across_is_beside_deskbar() {
+        assert_eq!(room_across(720.0), 534.0);
+        assert_eq!(room_across(1280.0), 1094.0);
+        assert!(room_across(1280.0) >= 950.0);
+        // Never under 320.
+        assert_eq!(room_across(200.0), 320.0);
+    }
+
+    /// Held at a size (a tile, a zoom, given less than asked): scrolled
+    /// as it is there, across too where a fixed window is narrower than
+    /// its own width, the bar across taking from the height.
+    #[test]
+    fn a_held_window_scrolls_as_it_is() {
+        // Put beside Deskbar on a 720-point screen: across, and down for
+        // the bar along its foot.
+        assert_eq!(scrolls_at((940.0, 520.0), 940.0, true, now(534.0, 386.0), 380.0), (true, true));
+        // Room down for the bar: across only.
+        assert_eq!(scrolls_at((940.0, 300.0), 940.0, true, now(534.0, 386.0), 300.0), (false, true));
+        // As wide as it is: down only, as before.
+        assert_eq!(scrolls_at((520.0, 300.0), 520.0, true, now(534.0, 300.0), 386.0), (true, false));
+        // Its bar down takes it past the width held.
+        assert_eq!(scrolls_at((530.0, 300.0), 530.0, true, now(534.0, 300.0), 386.0), (true, true));
+        // One the person sizes is never scrolled across.
+        assert_eq!(scrolls_at((940.0, 520.0), 940.0, false, now(534.0, 386.0), 380.0), (false, false));
+        // Nothing to scroll.
+        assert_eq!(scrolls_at((520.0, 300.0), 520.0, true, now(534.0, 386.0), 300.0), (false, false));
+    }
 }

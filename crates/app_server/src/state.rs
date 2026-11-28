@@ -138,17 +138,22 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// or back, changes it, and windows arranged in it follow
     /// (`deskbar_drew`).
     pub usable_was: std::collections::HashMap<String, Rectangle<i32, Logical>>,
-    /// What had the keyboard as a menu's popup grab began, for when the
-    /// menu goes (the grab itself remembers only the menu's parent).
-    pub keyboard_before_popup: Option<crate::focus::KeyboardFocusTarget>,
-    /// The program whose menu (a popup that had the keyboard) has just
-    /// gone, until the keyboard is back with its window (`popup_destroyed`
-    /// gives it back a turn later): it may still set the clipboard. A
-    /// Copy chosen from a menu puts the menu away and copies at once: the
-    /// keyboard was the dead popup's then, nobody's program, and the copy
-    /// was refused (Copy in Tracker's right-click menu did nothing, and
-    /// every menu's Copy chosen with the mouse: Ben, 2026-11-17).
-    pub menu_gone: Option<smithay::reexports::wayland_server::backend::ClientId>,
+    /// Each menu's (popup grab's) saved keyboard focus and clipboard
+    /// grace, by the menu (`shell::MenuBook`): what had the keyboard as it
+    /// began, for when it goes (the grab itself remembers only the menu's
+    /// parent); and the program whose menu (a popup that had the keyboard)
+    /// is going, until the keyboard is back with its window
+    /// (`popup_destroyed` gives it back a turn later): it may still set the
+    /// clipboard. A Copy chosen from a menu puts the menu away and copies
+    /// at once: the keyboard was the dead popup's then, nobody's program,
+    /// and the copy was refused (Copy in Tracker's right-click menu did
+    /// nothing, and every menu's Copy chosen with the mouse: Ben,
+    /// 2026-11-17).
+    pub menus: crate::shell::MenuBook<crate::focus::KeyboardFocusTarget, smithay::reexports::wayland_server::backend::ClientId>,
+    /// The popup grab the last menu (or submenu) took, kept so its menus
+    /// can be put away when a window takes the keyboard from them
+    /// (`focus_window`, `put_away_menus`); ended once they have gone.
+    pub popup_grab: Option<smithay::desktop::PopupGrab<AnvilState<BackendData>>>,
     /// Touchpad scrolls gliding on after the fingers lift.
     /// Finger scrolls and glides, sent on the frame clock (`pace.rs`).
     pub pacer: crate::pace::Pacer,
@@ -446,7 +451,7 @@ impl<BackendData: Backend> DataDeviceHandler for AnvilState<BackendData> {
     }
 
     fn selection_without_focus(&mut self, client: &smithay::reexports::wayland_server::Client) -> bool {
-        self.menu_gone.as_ref() == Some(&client.id())
+        self.menus.just_gone(&client.id())
     }
 }
 
@@ -1304,8 +1309,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             space: Space::default(),
             popups: PopupManager::default(),
             usable_was: Default::default(),
-            keyboard_before_popup: None,
-            menu_gone: None,
+            menus: Default::default(),
+            popup_grab: None,
             pacer: Default::default(),
             pinching: false,
             touch_pointer: None,

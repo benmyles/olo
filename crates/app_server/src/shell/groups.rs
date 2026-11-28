@@ -392,6 +392,14 @@ fn ask_again(w: &WindowElement) {
 
 /// The smallest frame `w` can be (its app's minimum, with the tab and
 /// border).
+/// Whether a group may take `w`, wherever it is yet (`groupable`): a
+/// document window, not a dialog, a picture in picture or one of a fixed
+/// size (a panel, which floats).
+fn may_group(w: &WindowElement) -> bool {
+    let WindowSurface::Wayland(t) = w.0.underlying_surface();
+    !w.meta().pip.get() && !is_dialog(t) && resizable(w)
+}
+
 pub(crate) fn least_frame(w: &WindowElement) -> Size<i32, Logical> {
     use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
     let content = w.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
@@ -455,8 +463,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// which may be where it was before a restart (before then it isn't
     /// there yet, and would lead its group off to that place).
     pub fn groupable(&self, w: &WindowElement) -> bool {
-        let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        w.meta().placed.get() && w.decorated() && !w.meta().pip.get() && !is_dialog(t) && resizable(w)
+        w.meta().placed.get() && w.decorated() && may_group(w)
     }
 
     /// `w`'s group as it is about to be: its mates on screen
@@ -469,9 +476,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if !mates.is_empty() {
             return mates;
         }
+        // (Only windows a group takes, as `groupable`: a panel of an app
+        // that groups its windows, floating, is no mate. Rex's Hosts and
+        // Ports was, and its least size held the main window bigger than
+        // every tile it was put in: the tiling lint, 2026-11-28.)
+        if !may_group(w) {
+            return Vec::new();
+        }
         let Some(key) = self.group_key(w) else { return Vec::new() };
         let display = self.display_of(w);
-        self.all_windows().into_iter().filter(|o| o != w && self.shows(o) && !o.meta().minimized.get() && self.display_of(o) == display && self.group_key(o).as_ref() == Some(&key)).collect()
+        self.all_windows()
+            .into_iter()
+            .filter(|o| o != w && may_group(o) && self.shows(o) && !o.meta().minimized.get() && self.display_of(o) == display && self.group_key(o).as_ref() == Some(&key))
+            .collect()
     }
 
     /// The size (of its content) a window coming back from a restart with

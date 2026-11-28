@@ -17,6 +17,12 @@ pub struct Entry {
     pub name: String,
     pub is_dir: bool,
     pub is_link: bool,
+    /// A link whose target is gone (deleted, moved, on a disk that isn't
+    /// there): nothing to measure or open. Its Kind says "Broken Link",
+    /// its Size nothing, and opening it says why it can't be (it showed
+    /// the length of the target's name as its size, and opened an empty
+    /// StyledEdit window: QA, 2026-11-28).
+    pub broken: bool,
     pub size: u64,
     pub modified: Option<SystemTime>,
     pub mode: u32,
@@ -71,15 +77,15 @@ impl Entry {
     /// (`folder::row_key` adds what can change about it, its icon and
     /// mark).
     pub fn look(&self) -> u64 {
-        *self.shown.1.get_or_init(|| olo_kit::style::key((&self.path, self.is_link, self.size, self.modified, self.kind.name(), self.downloading)))
+        *self.shown.1.get_or_init(|| olo_kit::style::key((&self.path, self.is_link, self.broken, self.size, self.modified, self.kind.name(), self.downloading)))
     }
 
     /// Its texts in a list, made the first time they're asked for.
     pub fn shown(&self) -> &ShownTexts {
         self.shown.0.get_or_init(|| {
-            let kind = match self.downloading {
-                None => SharedString::new_static(self.kind.name()),
-                Some(_) => self.kind_text().into(),
+            let kind = match (self.downloading, self.broken) {
+                (None, false) => SharedString::new_static(self.kind.name()),
+                _ => self.kind_text().into(),
             };
             Box::new(ShownTexts { name: self.label().to_owned().into(), size: self.size_text().into(), modified: format_time(self.modified).into(), kind })
         })
@@ -99,23 +105,217 @@ impl Entry {
         Some((self.size as f64 / total as f64).clamp(0.0, 1.0) as f32)
     }
 
-    /// Its Size column: a download's "3.1 of 10 MB".
+    /// Its Size column: a download's "3.1 of 10 MB"; nothing for a
+    /// broken link, which has nothing to measure.
     pub fn size_text(&self) -> String {
-        match (self.is_dir, self.downloading.flatten()) {
+        match (self.is_dir || self.broken, self.downloading.flatten()) {
             (true, _) => "—".into(),
             (false, Some(total)) => olo_kit_base::files::format_progress(self.size, total),
             (false, None) => format_size(self.size),
         }
     }
 
-    /// Its Kind column: "Downloading, 31%" for a download.
+    /// Its Size column's text in `room` points: a download's "3.1 of 10
+    /// MB" where that fits, else what's done so far, "3.1 MB" (its Kind
+    /// says how far along it is), not "3.1 of 1…"; else `shown`'s.
+    pub fn size_text_within(&self, room: f32) -> SharedString {
+        let size = &self.shown().size;
+        let font = olo_kit::style::ui_font(olo_kit::FontWeight::NORMAL);
+        if self.downloading.is_some() && f32::from(olo_kit::style::text_width(size.clone(), olo_kit::style::PLAIN_SIZE, font)) > room {
+            return format_size(self.size).into();
+        }
+        size.clone()
+    }
+
+    /// Its Kind column: "Downloading, 31%" for a download, "Broken Link"
+    /// for a link whose target is gone.
     pub fn kind_text(&self) -> String {
+        if self.broken {
+            return olo_kit::tr!("Broken Link").into();
+        }
         match (self.downloading, self.progress()) {
             (Some(_), Some(p)) => format!("Downloading, {}%", (p * 100.0).floor() as u32),
             (Some(_), None) => "Downloading".into(),
             (None, _) => self.kind.name().into(),
         }
     }
+}
+
+/// Why a link can't be opened, as it is when it's opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkProblem {
+    /// What it points to isn't there.
+    Missing,
+    /// What it points to is a link to something that isn't there.
+    Chain,
+    /// What it points to is where this person may not go.
+    NoPermission,
+    /// It points through links that lead round in a loop.
+    Loop,
+    /// Anything else (a disk that doesn't answer; logged).
+    Unreachable,
+    /// It isn't there itself any more (gone since it was listed).
+    Gone,
+}
+
+/// A link that can't be opened: its label, the folder it is in, why,
+/// and what it points to (`.` and `..` taken out), for an alert.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unopened {
+    pub label: String,
+    pub folder: Option<PathBuf>,
+    pub problem: LinkProblem,
+    pub target: Option<PathBuf>,
+}
+
+/// Why the link at `path` can't be opened, looked at now (not as it was
+/// listed: what it points to may be back, or gone, since), with what it
+/// points to; None where `path` isn't a link or what it points to is
+/// there. It reads the disk: for a worker thread.
+pub fn link_problem(path: &Path) -> Option<(LinkProblem, Option<PathBuf>)> {
+    if !fs::symlink_metadata(path).ok()?.file_type().is_symlink() {
+        return None;
+    }
+    let e = fs::metadata(path).err()?;
+    let problem = match (e.kind(), e.raw_os_error()) {
+        // (A file where the way to it has a folder: as good as missing.)
+        (std::io::ErrorKind::NotFound, _) | (_, Some(libc::ENOTDIR)) => LinkProblem::Missing,
+        (std::io::ErrorKind::PermissionDenied, _) => LinkProblem::NoPermission,
+        (_, Some(libc::ELOOP)) => LinkProblem::Loop,
+        _ => {
+            tracing::info!("link {}: {e}", path.display());
+            LinkProblem::Unreachable
+        }
+    };
+    // What it points to as written, joined to its folder: that is what's
+    // looked at (with its "." and ".." taken out, "missing/../notes.txt"
+    // was taken for the "notes.txt" beside it, which may well be there:
+    // review, 2026-11-28); and shown so where taking them out could change
+    // what it names (`collapses_safely`).
+    let raw = fs::read_link(path).ok().map(|t| path.parent().map_or_else(|| t.clone(), |p| p.join(&t)));
+    // (Where what it points to is there and a link itself, it's that
+    // link's that's missing.)
+    let problem = match &raw {
+        Some(t) if problem == LinkProblem::Missing && fs::symlink_metadata(t).is_ok_and(|m| m.file_type().is_symlink()) => LinkProblem::Chain,
+        _ => problem,
+    };
+    let target = raw.map(|t| if collapses_safely(&t) { lexical(&t) } else { t });
+    Some((problem, target))
+}
+
+/// Whether taking `path`'s ".." out as written names what it names: each
+/// ".." is after a folder that's there and is a folder, not a link (one
+/// that isn't there, or a link to another, makes ".." mean something else
+/// on the disk). It reads the disk: for a worker thread.
+fn collapses_safely(path: &Path) -> bool {
+    use std::path::Component;
+    let mut at = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::ParentDir => {
+                if !fs::symlink_metadata(&at).is_ok_and(|m| m.is_dir()) {
+                    return false;
+                }
+                at.pop();
+            }
+            Component::CurDir => {}
+            c => at.push(c),
+        }
+    }
+    true
+}
+
+/// `path` with its "." and ".." taken out as written, not following any
+/// link on the way (a link to "../Documents/a.txt" points to the
+/// Documents beside its folder, and says so by that name).
+fn lexical(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => match out.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                // ("/.." is "/".)
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => out.push(".."),
+            },
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// `entries` parted, each local one looked at as it is now (not as it
+/// was listed: a file since a link to nothing, a link since gone): those
+/// that can be opened, read again, and those that can't, and why. It reads
+/// the disk: for a worker thread.
+pub fn reachable(entries: Vec<Entry>) -> (Vec<Entry>, Vec<Unopened>) {
+    let (mut fine, mut unopened) = (Vec::new(), Vec::new());
+    for e in entries {
+        if is_remote(&e.path) {
+            fine.push(e);
+            continue;
+        }
+        let unopened_as = |problem, target| Unopened { label: e.label().to_owned(), folder: e.path.parent().map(Path::to_owned), problem, target };
+        match link_problem(&e.path) {
+            Some((problem, target)) => unopened.push(unopened_as(problem, target)),
+            // (Gone itself: not the row it was, opened as if there.)
+            None => match entry(&e.path) {
+                Some(fresh) => fine.push(fresh),
+                None => unopened.push(unopened_as(LinkProblem::Gone, None)),
+            },
+        }
+    }
+    (fine, unopened)
+}
+
+/// What an alert says of links that can't be opened: which, in bold,
+/// and why under it ("“a” can’t be opened." over "The item it points to
+/// is missing: “b”.": both visual reviews, 2026-11-28), with what each
+/// points to by name (and the folder that is in, where that isn't the
+/// link's own); several together, once. None for none.
+pub fn cannot_open_text(unopened: &[Unopened]) -> Option<String> {
+    let (first, rest) = unopened.split_first()?;
+    if rest.is_empty() {
+        let name = first.target.as_ref().and_then(|t| t.file_name()).map(|n| n.to_string_lossy().into_owned());
+        let folder = first.target.as_ref().and_then(|t| t.parent()).filter(|f| Some(*f) != first.folder.as_deref());
+        let what = name.map(|name| match folder {
+            Some(folder) => olo_kit::tr!("“{}” in {}", name, display_path(folder)),
+            None => olo_kit::tr!("“{}”", name),
+        });
+        let why = match (first.problem, what) {
+            // (The name last: a long one, which can't be broken, takes the
+            // next line whole, not "is missing." left alone on it: Gemini's
+            // look, 2026-11-28.)
+            (LinkProblem::Missing, Some(what)) => olo_kit::tr!("The item it points to is missing: {}.", what),
+            (LinkProblem::Missing, None) => olo_kit::tr!("The item it points to is missing.").to_owned(),
+            (LinkProblem::Chain, Some(what)) => olo_kit::tr!("The link it points to, {}, points to an item that’s missing.", what),
+            (LinkProblem::Chain, None) => olo_kit::tr!("The link it points to points to an item that’s missing.").to_owned(),
+            (LinkProblem::NoPermission, Some(what)) => olo_kit::tr!("You don’t have permission to open the item it points to, {}.", what),
+            (LinkProblem::NoPermission, None) => olo_kit::tr!("You don’t have permission to open the item it points to.").to_owned(),
+            (LinkProblem::Loop, _) => olo_kit::tr!("It points through links that lead round in a loop.").to_owned(),
+            (LinkProblem::Unreachable, Some(what)) => olo_kit::tr!("The item it points to, {}, can’t be reached.", what),
+            (LinkProblem::Unreachable, None) => olo_kit::tr!("The item it points to can’t be reached.").to_owned(),
+            (LinkProblem::Gone, _) => olo_kit::tr!("It’s no longer there.").to_owned(),
+        };
+        return Some(format!("{}\n\n{why}", olo_kit::tr!("“{}” can’t be opened.", first.label)));
+    }
+    let which = match rest {
+        [second] => olo_kit::tr!("“{}” and “{}” can’t be opened.", first.label, second.label),
+        _ => olo_kit::tr!("“{}” and {} other links can’t be opened.", first.label, rest.len()),
+    };
+    let all = |p: LinkProblem| unopened.iter().all(|u| u.problem == p);
+    let why = if unopened.iter().all(|u| matches!(u.problem, LinkProblem::Missing | LinkProblem::Chain)) {
+        olo_kit::tr!("The items they point to are missing.")
+    } else if all(LinkProblem::NoPermission) {
+        olo_kit::tr!("You don’t have permission to open the items they point to.")
+    } else {
+        olo_kit::tr!("The items they point to are missing or can’t be reached.")
+    };
+    Some(format!("{which}\n\n{why}"))
 }
 
 pub use olo_kit_base::files::{Kind, format_size, format_time, kind_for};
@@ -202,7 +402,13 @@ pub fn entry(path: &Path) -> Option<Entry> {
     }
     let lmeta = fs::symlink_metadata(path).ok()?;
     let is_link = lmeta.file_type().is_symlink();
-    let meta = if is_link { fs::metadata(path).unwrap_or(lmeta) } else { lmeta };
+    // A link is what it points to; one pointing to nothing is broken,
+    // and has only its own (its size the length of the target's name).
+    let (meta, broken) = match is_link.then(|| fs::metadata(path)) {
+        Some(Ok(target)) => (target, false),
+        Some(Err(_)) => (lmeta, true),
+        None => (lmeta, false),
+    };
     let is_dir = meta.is_dir();
     let mode = meta.permissions().mode();
     // A download being written: where it goes once done, and how big it
@@ -216,12 +422,13 @@ pub fn entry(path: &Path) -> Option<Entry> {
         path: path.to_owned(),
         is_dir,
         is_link,
-        size: if is_dir { 0 } else { meta.size() },
+        broken,
+        size: if is_dir || broken { 0 } else { meta.size() },
         modified: meta.modified().ok(),
         mode,
         // A download is the kind it will be.
         kind: kind_for(downloading.as_ref().map_or(path, |(done, _)| done.as_path()), is_dir, mode),
-        app_icon: if is_dir { None } else { app_icon(path, is_link) },
+        app_icon: if is_dir || broken { None } else { app_icon(path, is_link) },
         downloading: downloading.map(|(_, total)| total),
         shown: Shown::default(),
     })
@@ -301,6 +508,7 @@ pub fn list_counting(dir: &Path, hidden: bool, count: &std::sync::atomic::Atomic
                 name: h.label,
                 is_dir: true,
                 is_link: false,
+                broken: false,
                 size: 0,
                 modified: None,
                 mode: 0o755,
@@ -529,8 +737,12 @@ pub fn pasted_picture(dir: &Path, kind: &str, data: &[u8]) -> std::io::Result<Pa
     Ok(to)
 }
 
-/// The name of the application `open` would use, when it is one of ours.
+/// The name of the application `open` would use, when it is one of ours
+/// (none for a broken link, which nothing opens).
 pub fn opener_name(entry: &Entry) -> Option<String> {
+    if entry.broken {
+        return None;
+    }
     match entry.kind {
         Kind::Folder => Some("Tracker".into()),
         Kind::Executable | Kind::Application => None,
@@ -582,8 +794,76 @@ pub fn open_in_viewer(path: &Path) {
 }
 
 /// Open a file with the right application: ours where we have one,
-/// otherwise the user's default (see `olo_xdg::open`). Programs run.
+/// otherwise the user's default (see `olo_xdg::open`). Programs run. A
+/// link that can't be opened says why instead (`open_files`).
 pub fn open(entry: &Entry) {
+    open_files(std::slice::from_ref(entry), None);
+}
+
+/// Opens files, each as `open` does, the links among them looked at
+/// first as they are now, on a worker thread (`reachable`: reading a
+/// link waits on its disk, and what it points to may have come back, or
+/// gone, since it was listed): those that can't be opened are said in
+/// one alert however many there are (a selection of broken links was a
+/// stack of alerts: review, 2026-11-28), and the rest opened.
+pub fn open_files(entries: &[Entry], from: Option<OpenedFrom>) {
+    let (local, remote): (Vec<&Entry>, Vec<&Entry>) = entries.iter().partition(|e| !is_remote(&e.path));
+    for e in remote {
+        open_now(e);
+    }
+    if local.is_empty() {
+        return;
+    }
+    let local: Vec<Entry> = local.into_iter().cloned().collect();
+    std::thread::spawn(move || {
+        let (fine, unopened) = reachable(local);
+        // A folder now (a link to one that wasn't there when it was
+        // listed): as a folder of the selection goes, in the window it
+        // was opened from where it's the only one, else a window of its
+        // own (it opened a window even for a lone folder in an existing
+        // one: review, 2026-11-28).
+        let folders = from.as_ref().map_or(0, |f| f.folders) + fine.iter().filter(|e| e.is_dir).count();
+        for e in &fine {
+            match (&from, e.is_dir) {
+                (_, false) => open_now(e),
+                (Some(f), true) if folders == 1 => crate::to_hub(crate::ToHub::GoIn { win: f.win, path: e.path.clone() }),
+                (Some(f), true) => crate::to_hub(crate::ToHub::Open { path: e.path.clone(), from: Some(f.path.clone()) }),
+                (None, true) => crate::to_hub(crate::ToHub::Open { path: e.path.clone(), from: None }),
+            }
+        }
+        if let Some(why) = cannot_open_text(&unopened) {
+            cannot_open(why);
+        }
+    });
+}
+
+/// The folder window a selection was opened in (`open_files`): its id
+/// and folder, and how many folders of the selection it opened itself
+/// (as they were listed).
+#[derive(Clone, Debug)]
+pub struct OpenedFrom {
+    pub win: u64,
+    pub path: PathBuf,
+    pub folders: usize,
+}
+
+/// Shows `entry` in Viewer, looked at as it is now, on a worker (a link
+/// to nothing since it was listed is said so, not handed to Viewer).
+pub fn open_in_viewer_checked(entry: &Entry) {
+    let entry = entry.clone();
+    std::thread::spawn(move || {
+        let (fine, unopened) = reachable(vec![entry]);
+        if let Some(why) = cannot_open_text(&unopened) {
+            return cannot_open(why);
+        }
+        if let Some(e) = fine.first() {
+            open_in_viewer(&e.path);
+        }
+    });
+}
+
+/// Opens `entry`, a file, as it is (`open`).
+fn open_now(entry: &Entry) {
     if let Some(rp) = rex_path(&entry.path) {
         let name = entry.name.clone();
         std::thread::spawn(move || match crate::rex::read_to_cache(&rp) {
@@ -609,6 +889,12 @@ pub fn open(entry: &Entry) {
             tracing::warn!("open {}: {e}", path.display());
         }
     });
+}
+
+/// Says why something can't be opened, in a BeOS warning alert (from any
+/// thread: an alert of the program's own).
+pub fn cannot_open(why: String) {
+    let _ = olo_kit::widgets::open_app_alert("Tracker", "warning", &why, &["OK"], |_| {});
 }
 
 /// Whether an archive by this name is one Tracker looks into (not a
@@ -702,6 +988,7 @@ mod tests {
             name: "notes.txt".into(),
             is_dir: false,
             is_link: false,
+            broken: false,
             size: 2048,
             modified: Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
             mode: 0o644,
@@ -740,6 +1027,132 @@ mod tests {
         let odd = dir.join(".crdownload");
         std::fs::write(&odd, b"x").unwrap();
         assert_eq!(entry(&odd).unwrap().downloading, None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A folder of the test's own under /var/tmp, made new (never one
+    /// that was there: another test's, of a process with the same id in
+    /// another namespace, isn't taken or deleted); the test deletes it.
+    pub(crate) fn fresh_test_dir(prefix: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        loop {
+            let dir = PathBuf::from(format!("/var/tmp/{prefix}-{}-{now}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            match std::fs::create_dir(&dir) {
+                Ok(()) => return dir,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => panic!("a test folder: {e}"),
+            }
+        }
+    }
+
+    /// A link is what it points to; one whose target is gone says "Broken
+    /// Link", has no size (not its target's name's length) and can't be
+    /// opened, saying why, as it is when it's opened.
+    #[test]
+    fn broken_links_say_so() {
+        let dir = fresh_test_dir("olo-tracker-links-test");
+        std::fs::create_dir_all(dir.join("inner")).unwrap();
+        let target = dir.join("notes.txt");
+        std::fs::write(&target, b"hello").unwrap();
+        let (good, bad) = (dir.join("good.txt"), dir.join("broken_link.txt"));
+        std::os::unix::fs::symlink(&target, &good).unwrap();
+        std::os::unix::fs::symlink(dir.join("does_not_exist_target.txt"), &bad).unwrap();
+        let e = entry(&good).unwrap();
+        assert!(e.is_link && !e.broken);
+        assert_eq!((e.size, e.kind, e.size_text().as_str(), e.kind_text().as_str()), (5, Kind::Text, "5 bytes", "Text"));
+        assert_eq!(link_problem(&good), None);
+        assert_eq!(link_problem(&target), None, "not a link");
+        let b = entry(&bad).unwrap();
+        assert!(b.is_link && b.broken);
+        assert_eq!((b.size, b.size_text().as_str(), b.kind_text().as_str()), (0, "—", "Broken Link"));
+        assert_eq!((b.shown().size.as_str(), b.shown().kind.as_str()), ("—", "Broken Link"));
+        assert_ne!(b.look(), entry(&good).unwrap().look());
+        assert_eq!(opener_name(&b), None);
+        let why = |paths: &[&Path]| cannot_open_text(&reachable(paths.iter().map(|p| entry(p).unwrap()).collect()).1);
+        assert_eq!(why(&[&bad]).unwrap(), "“broken_link.txt” can’t be opened.\n\nThe item it points to is missing: “does_not_exist_target.txt”.");
+        assert_eq!(why(&[&good]), None);
+        // To another folder, written relative with "." and ".." through
+        // folders that are there: that folder said too, as it is, not as
+        // written.
+        let far = dir.join("inner/far.txt");
+        std::os::unix::fs::symlink("./../inner/../away/./x.txt", &far).unwrap();
+        let (_, unopened) = reachable(vec![entry(&far).unwrap()]);
+        assert_eq!(unopened[0].target.as_deref(), Some(dir.join("away/x.txt").as_path()));
+        let text = cannot_open_text(&unopened).unwrap();
+        assert!(text.ends_with(&format!("missing: “x.txt” in {}.", display_path(&dir.join("away")))), "{text}");
+        // Through a folder that isn't there: ".." after it isn't the
+        // folder it's in, so it's looked at and shown as written; and the
+        // "notes.txt" it would name taken out, there and a file, doesn't
+        // make it a link to a link.
+        let odd = dir.join("odd.txt");
+        std::os::unix::fs::symlink("missing-dir/../notes.txt", &odd).unwrap();
+        let (_, unopened) = reachable(vec![entry(&odd).unwrap()]);
+        assert_eq!(unopened[0].problem, LinkProblem::Missing);
+        assert_eq!(unopened[0].target.as_deref(), Some(dir.join("missing-dir/../notes.txt").as_path()));
+        // Gone itself since it was listed: said so, not opened as the row
+        // it was; a file since a link to nothing: looked at as it is.
+        let gone_link = dir.join("gone_link.txt");
+        std::os::unix::fs::symlink(&target, &gone_link).unwrap();
+        let listed = entry(&gone_link).unwrap();
+        std::fs::remove_file(&gone_link).unwrap();
+        let (fine, unopened) = reachable(vec![listed]);
+        assert!(fine.is_empty() && unopened[0].problem == LinkProblem::Gone, "{unopened:?}");
+        assert!(cannot_open_text(&unopened).unwrap().ends_with("It’s no longer there."));
+        let plain = dir.join("plain.txt");
+        std::fs::write(&plain, b"x").unwrap();
+        let listed = entry(&plain).unwrap();
+        assert!(!listed.is_link);
+        std::fs::remove_file(&plain).unwrap();
+        std::os::unix::fs::symlink(dir.join("nowhere.txt"), &plain).unwrap();
+        let (fine, unopened) = reachable(vec![listed]);
+        assert!(fine.is_empty() && unopened[0].problem == LinkProblem::Missing, "{unopened:?}");
+        // Beside it, by "..": the same folder as the link's, so not said.
+        let near = dir.join("inner/near.txt");
+        std::os::unix::fs::symlink("../inner/gone.txt", &near).unwrap();
+        assert!(why(&[&near]).unwrap().ends_with("is missing: “gone.txt”."));
+        // As it is when opened, not as listed: back since, it opens; gone
+        // since, it says so.
+        let listed = entry(&bad).unwrap();
+        std::fs::write(dir.join("does_not_exist_target.txt"), b"back").unwrap();
+        let (fine, unopened) = reachable(vec![listed]);
+        assert!(unopened.is_empty() && fine.len() == 1 && !fine[0].broken && fine[0].size == 4, "{fine:?}");
+        let listed = entry(&good).unwrap();
+        std::fs::remove_file(&target).unwrap();
+        let (fine, unopened) = reachable(vec![listed]);
+        assert!(fine.is_empty() && unopened[0].problem == LinkProblem::Missing);
+        // A loop of links, and a folder this person may not go into.
+        let looped = dir.join("loop.txt");
+        std::os::unix::fs::symlink("loop.txt", &looped).unwrap();
+        assert_eq!(link_problem(&looped).map(|(p, _)| p), Some(LinkProblem::Loop));
+        // A link to a broken link: what it points to is there, a link to
+        // what isn't.
+        let chain = dir.join("chain.txt");
+        std::os::unix::fs::symlink("inner/near.txt", &chain).unwrap();
+        assert_eq!(
+            why(&[&chain]).unwrap(),
+            "“chain.txt” can’t be opened.\n\nThe link it points to, “near.txt” in inner, points to an item that’s missing.".replace("inner", &display_path(&dir.join("inner")))
+        );
+        let shut = dir.join("shut");
+        std::fs::create_dir(&shut).unwrap();
+        std::fs::write(shut.join("secret.txt"), b"x").unwrap();
+        let barred = dir.join("barred.txt");
+        std::os::unix::fs::symlink(shut.join("secret.txt"), &barred).unwrap();
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // (Root goes anywhere: there it isn't barred.)
+        let barred_problem = link_problem(&barred).map(|(p, _)| p);
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if unsafe { libc::geteuid() } != 0 {
+            assert_eq!(barred_problem, Some(LinkProblem::NoPermission));
+        }
+        // Several: said together, once, and only those (`good`'s target
+        // back).
+        std::fs::write(&target, b"hello").unwrap();
+        let two = why(&[&near, &far]).unwrap();
+        assert_eq!(two, "“near.txt” and “far.txt” can’t be opened.\n\nThe items they point to are missing.");
+        let three = why(&[&near, &far, &looped, &good]).unwrap();
+        assert_eq!(three, "“near.txt” and 2 other links can’t be opened.\n\nThe items they point to are missing or can’t be reached.");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

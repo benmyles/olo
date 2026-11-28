@@ -603,16 +603,20 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => Reply::Error { message: "no display to arrange".into() },
             },
-            Request::Arrange { windows } => match {
-                self.arranging(None);
-                self.arrange(&windows)
-            } {
-                0 => Reply::Error { message: "none of those windows are on the active display".into() },
-                _ => {
-                    self.readopt_active();
-                    Reply::Ok
+            Request::Arrange { windows } => {
+                // (Worked out first: refused, nothing is done for it, Focus
+                // left as it is with its windows; review, 2026-11-28.)
+                let plan = self.plan_arrangement(&windows);
+                match crate::shell::tiling::arrangement_refused(plan.placed.len(), plan.floating) {
+                    Some(why) => Reply::Error { message: why.into() },
+                    None => {
+                        self.arranging(None);
+                        self.arrange(plan);
+                        self.readopt_active();
+                        Reply::Ok
+                    }
                 }
-            },
+            }
             Request::TileApp { app_id } => {
                 self.arranging(None);
                 if self.tile_app(&app_id) {

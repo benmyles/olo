@@ -839,7 +839,7 @@ impl FolderWin {
             (Some(row), Some(r)) => {
                 let e = self.column(k).1[row].clone();
                 let cell = Bounds { origin: point(px(m::CELL_INSET - m::TIGHT), px(m::TIGHT + row as f32 * m::LIST_ROW)), size: size(px(shown - m::CELL_INSET), px(m::LIST_ROW)) };
-                let l = items::layout_item(cell, e.label(), items::Look::Mini, true, e.is_link);
+                let l = items::layout_item(cell, e.label(), items::Look::Mini, e.is_link);
                 Some(r.element(cx, &l, Point::default()))
             }
             _ => None,

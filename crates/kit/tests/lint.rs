@@ -675,6 +675,86 @@ fn ui_lint_a_fitted_window_past_the_screen_keeps_what_fills_it() {
     window.close();
 }
 
+/// A panel's content, 700 points wide (as its window lays it out) and
+/// `height` tall: where it was last drawn, in the window.
+struct Wide {
+    height: f32,
+    drawn: std::rc::Rc<std::cell::Cell<olo_kit::Bounds<olo_kit::Pixels>>>,
+}
+
+impl View for Wide {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        let drawn = self.drawn.clone();
+        div().w_full().h(px(self.height)).child(olo_kit::canvas(move |_, b| drawn.set(b)).size_full())
+    }
+}
+
+/// A fixed panel that follows what it shows, wider than the screen has
+/// room for across (one made for 1280 points on 1440 × 900 at 2×, 720
+/// points across), is as wide as the room, its content laid out at its own
+/// width and scrolled across: it had run off the screen, its scroll bar
+/// and right column out of reach (QA, 2026-11-28: Preferences ▸ Display
+/// after choosing 200%). Scrolled to its end each way, its content ends
+/// at the bars, its far edge in view, no blank past it: laid out as tall
+/// as the window, the bar across not taken off, it scrolled 14 points
+/// further down than it had content for (reviews, 2026-11-28).
+#[test]
+fn ui_lint_a_fitted_window_wider_than_the_screen_scrolls_across() {
+    use olo_kit::{point, widgets::scroll::SCROLL_BAR};
+    struct Room;
+    impl Drop for Room {
+        fn drop(&mut self) {
+            olo_kit::lint::set_room_across_for_tests(None);
+            olo_kit::lint::set_room_for_tests(None);
+        }
+    }
+    let _lint = Lint::new();
+    olo_kit::lint::set_room_across_for_tests(Some(500.0));
+    olo_kit::lint::set_room_for_tests(Some(300.0));
+    let _room = Room;
+    // 290 tall: room down for it, but not for it and the bar across.
+    let window = olo_kit::open_window(WindowOptions { fixed: true, ..WindowOptions::new("Wide", 700.0, 200.0).fits_content() }, |_| Wide { height: 290.0, drawn: Default::default() });
+    // (Until the size it asked for has come and it has drawn at it, as
+    // the Frame follows: a deadline, not two samples alike.)
+    let at = |window: &olo_kit::WindowHandle<Wide>| ask(window, |v, cx| (cx.resize_pending(), f32::from(cx.viewport_size().width), f32::from(cx.viewport_size().height), v.drawn.get()));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let (width, height, content) = loop {
+        let (pending, w, h, content) = at(&window);
+        if !pending && (w - 500.0).abs() < 0.5 && (h - 300.0).abs() < 0.5 && (f32::from(content.size.width) - 700.0).abs() < 0.5 {
+            break (w, h, content);
+        }
+        assert!(std::time::Instant::now() < deadline, "the window never came to 500 × 300 with its content 700 wide: {w} × {h}, {content:?}");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert!(width <= 500.5, "the window is {width} wide, past the room across (500)");
+    assert!(height <= 300.5, "the window is {height} tall, past the room (300)");
+    assert!((f32::from(content.size.height) - 290.0).abs() < 0.5, "its content is {} tall, not its own 290", f32::from(content.size.height));
+    // To the end each way: as far as there's content past the view, its
+    // bottom at the top of the bar across (4 points down, not 14: 10 of
+    // nothing), its right edge at the bar down's left, in view.
+    let wheel = |window: &olo_kit::WindowHandle<Wide>, by: (f32, f32)| {
+        let turned = ask(window, move |_, cx| cx.headless_wheel(point(px(100.0), px(100.0)), point(px(by.0), px(by.1))));
+        turned.recv_timeout(std::time::Duration::from_secs(10)).expect("the wheel turns");
+        ask(window, |_, _| ());
+        ask(window, |_, cx| olo_kit::lint::frame_scroll(cx.window_id())).expect("the Frame scrolls what it shows")
+    };
+    let (_, most) = wheel(&window, (0.0, 0.0));
+    let past = (f32::from(content.size.width) - (width - SCROLL_BAR), f32::from(content.size.height) - (height - SCROLL_BAR));
+    assert!((f32::from(most.height) - past.1).abs() < 0.5, "it scrolls {} down, its content {} past the view", f32::from(most.height), past.1);
+    assert!((f32::from(most.width) - past.0).abs() < 0.5, "it scrolls {} across, its content {} past the view", f32::from(most.width), past.0);
+    let (down, _) = wheel(&window, (0.0, 1000.0));
+    assert_eq!(-f32::from(down.y), past.1, "scrolled to its end down");
+    let (end, _) = wheel(&window, (1000.0, 0.0));
+    assert_eq!((-f32::from(end.x), -f32::from(end.y)), past, "scrolled to its end each way");
+    // And back (a wheel turns one way at a time).
+    wheel(&window, (0.0, -1000.0));
+    let (start, _) = wheel(&window, (-1000.0, 0.0));
+    assert_eq!((f32::from(start.x), f32::from(start.y)), (0.0, 0.0));
+    window.close();
+}
+
 /// Two hundred rows in a scroller that can be hidden (a list on a tab
 /// that isn't chosen), kept by its view; which rows are made.
 struct Hides {

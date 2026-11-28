@@ -53,6 +53,10 @@ const ZOOM_STEPS: [f32; 15] = [0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.5,
 const TILE: usize = 512;
 /// A picture this small (a side) is magnified with its pixels kept.
 const SMALL: usize = 256;
+/// A picture shown this many points across or fewer is small enough to
+/// have a hairline round it (`paint_picture`).
+const TINY: f32 = 128.0;
+
 /// The checkerboard's square, in points.
 const CHECK: f32 = 8.0;
 
@@ -563,7 +567,19 @@ impl ImageView {
         self.shown.set(Some(shown));
         let visible = shown.intersect(&b);
         agent::record(g, agent::Node { role: "Image", name: Some(self.name.clone()), bounds: visible, enabled: true, ..Default::default() });
+        // A small picture (an icon, 16 × 16) floats in the panel with no
+        // edge to say where it ends (a white one on the light panel isn't
+        // seen at all): a hairline round it, just outside it, covering
+        // none of it (Opus's look, 2026-11-28).
+        let tiny = f32::from(shown.size.width).max(f32::from(shown.size.height)) <= TINY;
         g.with_content_mask(Some(ContentMask { bounds: b }), |g| {
+            // (In the view's clip, as the picture is: panned to its edge,
+            // it was drawn outside the view.)
+            if tiny {
+                let w = style::hairline(g);
+                let around = Bounds::from_corners(point(shown.left() - w, shown.top() - w), point(shown.right() + w, shown.bottom() + w));
+                style::frame_rect(g, around, style::shade(&p, p.panel_background, 1.3));
+            }
             self.paint_checker(visible, s, g);
             let [sw, sh] = src.size();
             // Device pixels a source pixel.

@@ -170,6 +170,142 @@ pub fn font_check() -> Option<impl Fn(&str) -> bool> {
     Some(move |cluster: &str| font.glyph(cluster).is_some())
 }
 
+/// How the kit draws `cluster`, shaped as it shapes it (the UI font, its
+/// fallbacks): whole, one glyph of a font that has it (not a missing one's
+/// box), and whether that's a colour one (COLR, CBDT, sbix: the kit tells
+/// them); None if it's more than one glyph or none. It shapes: for a
+/// worker.
+fn kit_shapes() -> impl Fn(&str) -> Option<bool> {
+    let ts = olo_kit::text_system();
+    let font = olo_kit::style::ui_font(olo_kit::FontWeight::NORMAL);
+    move |cluster: &str| {
+        let run = olo_kit::TextRun { len: cluster.len(), font: font.clone(), color: Default::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        let line = ts.layout_line_now(cluster, olo_kit::px(24.0), &[run]);
+        // (What joins or chooses a look draws nothing of its own.)
+        let mut drawn = line.runs.iter().flat_map(|r| r.glyphs.iter().map(move |g| (r.font_id, g))).filter_map(|(font, g)| {
+            let ch = cluster.get(g.index..)?.chars().next()?;
+            (!matches!(ch, '\u{200d}' | '\u{fe0f}' | '\u{fe0e}')).then_some((font, ch, g.is_emoji))
+        });
+        match (drawn.next(), drawn.next()) {
+            (Some((font, ch, colour)), None) if ts.glyph_for_char(font, ch).is_some() => Some(colour),
+            _ => None,
+        }
+    }
+}
+
+/// With no colour emoji font: whether the fonts there are draw `cluster`
+/// whole as the kit draws it, fallbacks and all: one glyph, of a font
+/// that has it (not a missing one's box), not a sequence's parts side by
+/// side (a family as its faces, a flag as two letters, a hand and its
+/// tone's swatch). All were offered, and a third of the grid was boxes
+/// and pairs (Opus's and Gemini's looks, 2026-11-28). It shapes: for a
+/// worker.
+pub fn fallback_check() -> impl Fn(&str) -> bool {
+    let shapes = kit_shapes();
+    // (One thing to draw: a sequence a fallback font draws whole as one
+    // glyph has dropped its marks, a keycap drawn as its digit alone.)
+    move |cluster: &str| visible_codepoints(cluster) == 1 && shapes(cluster).is_some()
+}
+
+/// With a colour font the picker can't read itself (`font_check` reads
+/// COLR; a bitmap one, CBDT, is Debian's and Ubuntu's Noto Color Emoji):
+/// whether the kit draws `cluster` whole, a sequence as one colour glyph,
+/// as it shapes it. None: it draws no emoji in colour (😀 isn't). Taken
+/// for no colour font, the picker said colour emoji weren't installed over
+/// a grid of them, with no tones (2026-11-28). It shapes: for a worker.
+pub fn colour_check() -> Option<impl Fn(&str) -> bool> {
+    let shapes = kit_shapes();
+    (shapes("😀") == Some(true)).then_some(move |cluster: &str| shapes(cluster).is_some_and(|colour| colour || visible_codepoints(cluster) == 1))
+}
+
+/// How the emoji are drawn here: whether in colour, and which are drawn
+/// whole. By the colour font the picker reads (`read`: COLR, the font's
+/// own glyphs), else the one the kit draws in colour (`kit`, asked only
+/// then: a bitmap font), else by the other fonts (`fallback`).
+pub fn how_drawn<A, B, C>(read: Option<A>, kit: impl FnOnce() -> Option<B>, fallback: impl FnOnce() -> C) -> (bool, impl Fn(&str) -> bool)
+where
+    A: Fn(&str) -> bool,
+    B: Fn(&str) -> bool,
+    C: Fn(&str) -> bool,
+{
+    let kit = if read.is_none() { kit() } else { None };
+    let colour = read.is_some() || kit.is_some();
+    let fallback = (!colour).then(fallback);
+    let draws = move |cluster: &str| match (&read, &kit, &fallback) {
+        (Some(draws), _, _) => draws(cluster),
+        (None, Some(draws), _) => draws(cluster),
+        (None, None, Some(draws)) => draws(cluster),
+        (None, None, None) => true,
+    };
+    (colour, draws)
+}
+
+/// The characters of `cluster` that draw something: not the joiner nor a
+/// variation selector (a skin tone does).
+pub fn visible_codepoints(cluster: &str) -> usize {
+    cluster.chars().filter(|c| !matches!(c, '\u{200d}' | '\u{fe0f}' | '\u{fe0e}')).count()
+}
+
+/// Each group's tab icon without the colour font: the first of these the
+/// fonts there draw whole, plain symbols of what the group is (the
+/// group's first that could be drawn was ♿ for Symbols, a blob for Food:
+/// Opus's and Gemini's looks, 2026-11-28).
+const PLAIN_ICONS: [&[&str]; 9] =
+    [&["☺", "☻"], &["✋", "☝", "✌"], &["🐾", "🐈", "🐕"], &["☕", "🍴", "🍎"], &["✈", "⛵", "🚗"], &["⚽", "⚾", "♞"], &["☎", "⌚", "✂"], &["♻", "☯", "♠", "✳"], &["⚑", "⚐"]];
+
+/// How the emoji can be drawn here: with the colour font (`colour`), or
+/// only by what the other fonts have (`fallback_check`). Whether a tone
+/// can be (a toned hand drawn whole), and each tab's icon: its group's
+/// own where that can be drawn, else the group's first that can (None:
+/// none of its can, and it has no tab); the lately picked's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Drawn {
+    /// Whether it's known yet (the fonts looked at): until it is, no tab,
+    /// tone or notice is drawn (it opened with a hand and a missing
+    /// glyph's box for each tone, then jumped: Opus's look, 2026-11-28).
+    pub known: bool,
+    pub colour: bool,
+    pub tones: bool,
+    pub icons: Vec<Option<String>>,
+    pub recent: String,
+}
+
+impl Drawn {
+    /// Not known yet.
+    pub fn unknown() -> Drawn {
+        Drawn { known: false, colour: false, tones: false, icons: vec![None; GROUPS.len()], recent: String::new() }
+    }
+
+    /// As the colour font draws them: every tab its own icon, tones.
+    #[cfg(test)]
+    pub fn colour() -> Drawn {
+        Drawn { known: true, colour: true, tones: true, icons: GROUPS.iter().map(|(_, icon)| Some((*icon).to_owned())).collect(), recent: "🕘".into() }
+    }
+
+    /// As soon as the fonts are looked at, before the emoji are read: the
+    /// tabs whose icons can be drawn (`new` gives the rest theirs).
+    pub fn early(colour: bool, draws: impl Fn(&str) -> bool) -> Drawn {
+        Drawn::new(&[], colour, draws)
+    }
+
+    /// For `all` (those that can be drawn), by what `draws` says can be:
+    /// a tab's icon its group's own with the colour font, else a plain
+    /// one (`PLAIN_ICONS`), else the group's first that can be drawn.
+    pub fn new(all: &[Emoji], colour: bool, draws: impl Fn(&str) -> bool) -> Drawn {
+        let icons = GROUPS
+            .iter()
+            .enumerate()
+            .map(|(g, (_, icon))| {
+                let own = (colour && draws(icon)).then(|| (*icon).to_owned());
+                own.or_else(|| PLAIN_ICONS[g].iter().find(|i| draws(i)).map(|i| (*i).to_owned())).or_else(|| all.iter().find(|e| e.group == g).map(|e| e.e.as_str().to_owned()))
+            })
+            .collect();
+        let tones = emojis::get("✋").and_then(|h| h.with_skin_tone(emojis::SkinTone::Medium)).is_some_and(|h| draws(h.as_str()));
+        let recent = ["🕘", "⏲", "★"].into_iter().find(|i| draws(i)).unwrap_or("★").to_owned();
+        Drawn { known: true, colour, tones, icons, recent }
+    }
+}
+
 /// How well `emoji` answers the query's `words` (all must match
 /// something), or None.
 pub fn score(emoji: &Emoji, words: &[String]) -> Option<i32> {

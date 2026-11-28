@@ -97,6 +97,13 @@ pub enum ToHub {
         path: PathBuf,
         from: Option<PathBuf>,
     },
+    /// A folder, in folder window `win` (it was opened there: a link found
+    /// a folder as it was opened, `fs::open_files`); in a window of its
+    /// own if that one's gone.
+    GoIn {
+        win: u64,
+        path: PathBuf,
+    },
     /// Another window, always: on a folder, shown this way (None: as
     /// Preferences has it).
     NewWindow(PathBuf, Option<ViewMode>),
@@ -360,11 +367,19 @@ pub fn copy_clip(clip: olo_kit_base::clipboard::Clip) {
 /// choose any app).
 pub fn open_with(cmd: &str, entries: &[Entry]) {
     let Some(kind) = folder::open_with_kind(entries) else { return };
-    let paths: Vec<PathBuf> = entries.iter().map(|e| e.path.clone()).collect();
-    if cmd == olo_kit::open_with::OTHER {
-        return olo_kit::open_with::other(kind, paths);
-    }
-    olo_kit::open_with::run(cmd, kind, paths);
+    let (cmd, entries) = (cmd.to_owned(), entries.to_vec());
+    // The links looked at as they are now, on a thread (as Open does): a
+    // link that can't be opened has nothing for the app to open, and is
+    // said, with any others, once; the rest are opened all the same.
+    std::thread::spawn(move || {
+        let (fine, unopened) = fs::reachable(entries);
+        if let Some(why) = fs::cannot_open_text(&unopened) {
+            fs::cannot_open(why);
+        }
+        if !fine.is_empty() {
+            olo_kit::open_with::run(&cmd, kind, fine.into_iter().map(|e| e.path).collect());
+        }
+    });
 }
 
 /// Empty Trash, asked over the window it was chosen in.
@@ -1434,6 +1449,14 @@ impl Hub {
                     f.messenger().send(FolderMsg::CameFrom(from));
                 }
             }
+            ToHub::GoIn { win, path } => match self.folder(win) {
+                Some(f) => {
+                    f.messenger().send(FolderMsg::GoTo(path));
+                }
+                None => {
+                    self.open_folder(&path);
+                }
+            },
             ToHub::NewWindow(path, view) => {
                 self.new_folder_window(path, view.unwrap_or(self.default_view), (560, 380), |_| {});
             }

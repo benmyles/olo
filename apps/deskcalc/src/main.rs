@@ -39,7 +39,50 @@ const WIDTH: f32 = 266.0;
 // (The kit's rhythm: the window's inset round it all, keys `TIGHT` apart.)
 const INSET: f32 = olo_kit::metrics::WINDOW_INSET;
 const GAP: f32 = olo_kit::metrics::TIGHT;
-const DISPLAY_H: f32 = 36.0;
+/// The display: a sunken well of two lines, each right-aligned, each
+/// on its own baseline. The first, small and secondary, says what was
+/// worked out ("12×3 =", or the expression that couldn't be); the
+/// second, large, is the line being typed, or its result, or, in its
+/// place, why it couldn't be worked out. (An error in the corner of one
+/// line, the expression beside it, was the smallest text in the window,
+/// on another baseline, a glyph cut where they met: Opus's look,
+/// 2026-11-28.)
+const DISPLAY_H: f32 = 52.0;
+/// From the display's sides to what's in it.
+const DISPLAY_PAD: f32 = 8.0;
+/// The first line: its size, and its middle from the well's top.
+const WORKED_SIZE: f32 = 12.0;
+const WORKED_MID: f32 = 12.5;
+/// The second line: the field's size, where it starts from the well's
+/// top and how tall it is; an error there, its size.
+const LINE_SIZE: f32 = 20.0;
+const LINE_TOP: f32 = 21.5;
+const LINE_H: f32 = 28.0;
+const ERROR_SIZE: f32 = 15.0;
+
+/// Whether a key moves in the line (to put an expression right): it
+/// puts an error away, showing the line again.
+fn dismisses_error(key: &str) -> bool {
+    matches!(key, "left" | "right" | "home" | "end")
+}
+
+/// `text` as it fits `room` points across at `size` in `font`: whole, or
+/// its end with "…" for the rest, cut between characters, never through
+/// one (the end is what was typed last).
+fn end_fit(text: &str, size: f32, font: &olo_kit::Font, room: f32) -> String {
+    let wide = |t: &str| f32::from(style::text_width(t.to_owned(), size, font.clone()));
+    if wide(text) <= room {
+        return text.to_owned();
+    }
+    // The longest end that fits after "…" (by halves: wider the more is kept).
+    let starts: Vec<usize> = text.char_indices().map(|(i, _)| i).chain([text.len()]).collect();
+    let (mut lo, mut hi) = (0, starts.len() - 1);
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if wide(&format!("…{}", &text[starts[mid]..])) <= room { hi = mid } else { lo = mid + 1 }
+    }
+    format!("…{}", &text[starts[lo]..])
+}
 const KEY_H: f32 = 34.0;
 /// How long a key stays down when its character is typed.
 const FLASH: Duration = Duration::from_millis(120);
@@ -68,11 +111,16 @@ struct Settings {
     angle: Angle,
     expression: String,
     history: Vec<String>,
+    /// What the result `expression` holds was worked out from, while it
+    /// shows it ("12×3", said over it as "12×3 ="); none otherwise, and
+    /// none from settings saved before (taken from the history, it put the
+    /// last success over a failure: review, 2026-11-28).
+    worked: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { keypad: Keypad::Basic, angle: Angle::Radians, expression: String::new(), history: Vec::new() }
+        Settings { keypad: Keypad::Basic, angle: Angle::Radians, expression: String::new(), history: Vec::new(), worked: None }
     }
 }
 
@@ -88,6 +136,9 @@ struct DeskCalc {
     field: Child<TextField>,
     /// Why the last = failed, until the next edit.
     error: Option<String>,
+    /// The expression the result showing was worked out from (said over
+    /// it, "12×3 =").
+    worked: Option<String>,
     /// The display shows a result: a digit starts afresh, an operator
     /// carries on from it.
     shows_result: bool,
@@ -110,19 +161,29 @@ enum Msg {
 impl DeskCalc {
     fn new(cx: &mut Cx<Self>) -> DeskCalc {
         let settings: Settings = olo_kit::store::load(&settings_path()).unwrap_or_default();
-        let size = (DISPLAY_H * 0.5).round();
-        let field = text_field(cx, |f| f.font_size(size).align(olo_kit::widgets::text_field::Align::Right).name("Expression").with_text(settings.expression.clone()));
+        let field = text_field(cx, |f| f.font_size(LINE_SIZE).align(olo_kit::widgets::text_field::Align::Right).name("Expression").with_text(settings.expression.clone()));
         // (The field changes as the expression does.)
         cx.subscribe(&field, Self::field_event);
         // The display always has the keyboard.
         field.focus(cx);
         // What was left showing last time counts as a result.
         let shows_result = !settings.expression.is_empty();
-        DeskCalc { settings, field, error: None, shows_result, recall: None, flash: None }
+        let worked = settings.worked.clone().filter(|_| shows_result);
+        DeskCalc { settings, field, error: None, worked, shows_result, recall: None, flash: None }
     }
 
-    fn store(&self) {
+    fn store(&mut self) {
+        // (What it was worked out from only while the result shows.)
+        self.settings.worked = self.worked.clone().filter(|_| self.shows_result);
         olo_kit::store::save(settings_path(), &self.settings);
+    }
+
+    /// The line edited (by hand, a key, ↑): no longer a result, nor
+    /// worked out from anything; no error.
+    fn edited(&mut self) {
+        self.shows_result = false;
+        self.worked = None;
+        self.error = None;
     }
 
     /// Shows `text` in the display, the caret at its end.
@@ -155,7 +216,14 @@ impl DeskCalc {
                 self.error = None;
             }
             TextFieldEvent::Changed => {
-                self.settings.expression = self.field.read(cx).text().to_owned();
+                let text = self.field.read(cx).text().to_owned();
+                // (Changed by hand, a key deleting say: the error's gone
+                // with what it was said of, and a result edited is one no
+                // longer: "12×3 =" stayed over the 3 left of 36.)
+                if text != self.settings.expression {
+                    self.edited();
+                }
+                self.settings.expression = text;
                 self.recall = None;
             }
             // (Return in the field: as = .)
@@ -181,14 +249,18 @@ impl DeskCalc {
         match expr::eval(&text, self.settings.angle) {
             Ok(v) => {
                 self.settings.history.retain(|h| *h != text);
-                self.settings.history.push(text);
+                self.settings.history.push(text.clone());
                 let over = self.settings.history.len().saturating_sub(HISTORY);
                 self.settings.history.drain(..over);
+                self.worked = Some(text);
                 self.put(expr::format(v), cx);
                 self.shows_result = true;
                 self.error = None;
             }
-            Err(e) => self.error = Some(e),
+            Err(e) => {
+                self.error = Some(e);
+                self.worked = None;
+            }
         }
         self.recall = None;
         self.store();
@@ -357,23 +429,43 @@ impl View for DeskCalc {
         olo_kit::menu::offer(self, cx, |v, cx| vec![v.menu(cx)]);
         let rows = self.settings.keypad.rows();
         let flashing = self.flash.filter(|(_, t)| t.elapsed() < FLASH).map(|(k, _)| k);
-        // The display: a sunken well, the expression right-aligned in it.
+        // The display (`DISPLAY_H`): what was worked out over the line,
+        // and the line, or why it couldn't be worked out in its place (the
+        // field kept, with the keyboard, under it: an edit puts it back).
         let error = self.error.clone();
+        let worked = match (&error, &self.worked) {
+            (Some(_), _) => Some(self.settings.expression.clone()),
+            (None, Some(w)) if self.shows_result => Some(format!("{w} =")),
+            _ => None,
+        };
         let well = canvas({
-            let error = error.clone();
+            let (error, worked) = (error.clone(), worked.clone());
             move |g, b| {
                 let p = theme::palette();
                 style::fill_rect(g, b, style::c(p.document_background));
                 style::sunken(g, b, &p, false);
+                let (font, right, room) = (style::ui_font(FontWeight::NORMAL), b.right() - px(DISPLAY_PAD), b.size.width - px(2.0 * DISPLAY_PAD));
+                if let Some(w) = &worked {
+                    let shown = end_fit(w, WORKED_SIZE, &font, f32::from(room));
+                    let mid = style::snap_coord(g, b.origin.y + px(WORKED_MID));
+                    let r = style::label(g, right, mid, Align::Right, shown, WORKED_SIZE, font.clone(), style::secondary_text(&p));
+                    g.agent(agent::Node::label(w.clone(), r));
+                }
                 if let Some(e) = &error {
-                    let r = style::label(g, b.origin.x + px(6.0), b.origin.y + px(9.0), Align::Left, e.clone(), 10.0, style::ui_font(FontWeight::NORMAL), style::c(p.failure));
+                    let mid = style::snap_coord(g, b.origin.y + px(LINE_TOP + LINE_H / 2.0));
+                    let r = style::label_fit(g, right, mid, Align::Right, e.clone(), ERROR_SIZE, font.clone(), style::c(p.failure), room);
+                    // (Whole for agents, though cut short on screen.)
                     g.agent(agent::Node::label(e.clone(), r));
                 }
             }
         })
-        .paint_key(style::key(&error))
+        .paint_key(style::key((&error, &worked)))
         .absolute()
         .inset_0();
+        let line = div().absolute().left(px(DISPLAY_PAD)).right(px(DISPLAY_PAD)).top(px(LINE_TOP)).h(px(LINE_H)).child(&self.field);
+        // (An error goes as soon as the line is gone back to, to be put
+        // right: a click on the display, an arrow moving in it; the line,
+        // hidden under it, was being edited unseen.)
         let display = div()
             .absolute()
             .left(px(INSET))
@@ -381,7 +473,20 @@ impl View for DeskCalc {
             .right(px(INSET))
             .h(px(DISPLAY_H))
             .child(well)
-            .child(div().absolute().left(px(6.0)).right(px(6.0)).top(px(0.0)).bottom(px(0.0)).child(&self.field));
+            .child(if error.is_some() { line.opacity(0.0) } else { line })
+            .on_mouse_down(
+                olo_kit::MouseButton::Left,
+                cx.listener(|c: &mut DeskCalc, _: &olo_kit::MouseDownEvent, cx| {
+                    if c.error.take().is_some() {
+                        cx.invalidate();
+                    }
+                }),
+            )
+            .capture_key_down(cx.listener(|c: &mut DeskCalc, e: &olo_kit::KeyDownEvent, cx| {
+                if dismisses_error(&e.keystroke.key) && c.error.take().is_some() {
+                    cx.invalidate();
+                }
+            }));
 
         // The keypad fills the rest: rows of keys, each as wide and as
         // tall as the others, `GAP` apart.
@@ -487,4 +592,56 @@ fn main() {
 /// Settings from before the rename (Tabula) carry on.
 fn olo_kit_base_adopt() {
     olo_xdg::legacy::adopt();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What was worked out fits its line: whole, or its end after "…",
+    /// cut between characters, never wider than the room, at every width
+    /// the window can be.
+    #[test]
+    fn what_was_worked_out_shows_its_end() {
+        let font = style::ui_font(FontWeight::NORMAL);
+        let wide = |t: &str| f32::from(style::text_width(t.to_owned(), WORKED_SIZE, font.clone()));
+        assert_eq!(end_fit("12×3 =", WORKED_SIZE, &font, 200.0), "12×3 =");
+        let long = "12345678901234567890123456789012345678901234567890/0";
+        for room in [WIDTH - 2.0 * (INSET + DISPLAY_PAD), 120.0, 40.0] {
+            let shown = end_fit(long, WORKED_SIZE, &font, room);
+            assert!(shown.starts_with('…') && long.ends_with(&shown['…'.len_utf8()..]), "{room}: {shown}");
+            assert!(wide(&shown) <= room, "{room}: “{shown}” {} across", wide(&shown));
+            // As much as fits: one more character wouldn't.
+            let kept = shown.chars().count() - 1;
+            let more = format!("…{}", &long[long.len() - kept - 1..]);
+            assert!(wide(&more) > room, "{room}: “{more}” would fit too");
+        }
+    }
+
+    /// What a result was worked out from is saved with it and only while
+    /// it shows; settings from before have none (not the history's last).
+    #[test]
+    fn what_was_worked_out_is_saved_with_its_result() {
+        let old: Settings = serde_json::from_str(r#"{"expression":"3","history":["12×3"]}"#).unwrap();
+        assert_eq!(old.worked, None);
+        let saved: Settings = serde_json::from_str(r#"{"expression":"36","history":["12×3"],"worked":"12×3"}"#).unwrap();
+        assert_eq!(saved.worked.as_deref(), Some("12×3"));
+        assert!(dismisses_error("left") && dismisses_error("end") && !dismisses_error("5") && !dismisses_error("up"));
+    }
+
+    /// The display's lines are inside its well, its sides' padding kept,
+    /// the first above the second, each tall enough for its text, the
+    /// error the second's size or less.
+    #[test]
+    fn the_display_has_two_lines() {
+        let line = |size: f32| size * style::LINE_HEIGHT;
+        assert!(WORKED_MID - line(WORKED_SIZE) / 2.0 >= 2.0, "the first line under the well's top");
+        assert!(WORKED_MID + line(WORKED_SIZE) / 2.0 <= LINE_TOP + 0.01, "the first line over the second");
+        assert!(LINE_H >= line(LINE_SIZE) && LINE_TOP + LINE_H <= DISPLAY_H - 2.0, "the second line in the well");
+        assert!(ERROR_SIZE < LINE_SIZE && line(ERROR_SIZE) <= LINE_H);
+        assert_eq!(DISPLAY_PAD, 8.0);
+        // "Can’t divide by zero" whole, at the window's own width.
+        let error = f32::from(style::text_width("Can’t divide by zero".to_owned(), ERROR_SIZE, style::ui_font(FontWeight::NORMAL)));
+        assert!(error <= WIDTH - 2.0 * (INSET + DISPLAY_PAD), "{error}");
+    }
 }

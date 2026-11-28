@@ -369,18 +369,39 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // other program, as Deskbar's right after a window's tab menu
         // put away with Escape).
         let gone = surface.wl_surface().clone();
-        // Its program still has the keyboard, as far as setting the
-        // clipboard goes, until it's given back below (`menu_gone`).
-        if self.seat.get_keyboard().is_some_and(|k| k.with_grab(|_, grab| grab.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false)) {
-            self.menu_gone = gone.client().map(|c| c.id());
-        }
         let root = self.popup_root_focus(&PopupKind::Xdg(surface));
+        // The menu it was of: the one up now (its generation, `MenuBook`),
+        // or an older one, whose going changes nothing of a menu begun
+        // since (it gave its program the next menu's clipboard, and took
+        // what the next had saved to give the keyboard back to).
+        let gone_root = root.as_ref().and_then(|r| r.wl_surface().map(|s| s.into_owned()));
+        let generation = self.popup_grab.as_ref().filter(|g| gone_root.is_some() && grab_root(g) == gone_root).map(|_| self.menus.generation());
+        // Its program still has the keyboard, as far as setting the
+        // clipboard goes, until it's given back below.
+        if let Some(g) = generation
+            && self.seat.get_keyboard().is_some_and(|k| k.with_grab(|_, grab| grab.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false))
+            && let Some(client) = gone.client()
+        {
+            self.menus.going(g, client.id());
+        }
         self.handle.insert_idle(move |state| {
-            state.menu_gone = None;
+            if let Some(g) = generation {
+                state.menus.gone(g);
+            }
             state.popups.cleanup();
+            // (The grab kept, ended with its menus, let go: it holds the
+            // surface they were of.)
+            if state.popup_grab.as_ref().is_some_and(|g| g.has_ended()) {
+                state.popup_grab = None;
+            }
             // A parent menu still open keeps its grab (and the keyboard).
             let open = root.as_ref().and_then(|r| r.wl_surface()).is_some_and(|w| smithay::desktop::PopupManager::popups_for_surface(&w).any(|(p, _)| p.alive() && *p.wl_surface() != gone));
-            if let Some(keyboard) = state.seat.get_keyboard()
+            // Only for the menu up now: one begun since (opened as this
+            // went, Deskbar's after a window's) has the keyboard, and what
+            // had it before, as its own.
+            if let Some(g) = generation
+                && g == state.menus.generation()
+                && let Some(keyboard) = state.seat.get_keyboard()
                 && keyboard.is_grabbed()
                 && !open
             {
@@ -391,7 +412,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
                 // the grab's parent); not if its window went with it (the
                 // tab menu's layer: the keyboard stays where its choice put
                 // it).
-                let before = state.keyboard_before_popup.take();
+                let before = state.menus.take_before(g);
                 let start = keyboard.with_grab(|_, grab| grab.start_data().focus.clone()).flatten();
                 let takes = |f: &KeyboardFocusTarget| f.alive() && !matches!(f, KeyboardFocusTarget::LayerSurface(l) if !l.can_receive_keyboard_focus());
                 let back = match &root {
@@ -446,39 +467,265 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     fn grab_inner(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
         let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
-        if let Some(root) = self.popup_root_focus(&kind) {
-            // A window's menu (its tab right-clicked: `window_menu`) asks
-            // as the button may still be down, with no press of its own to
-            // name (the press was app_server's, on the tab); refused, it
-            // showed with no grab, and its clear layer outlived it when put
-            // away with Escape, taking the next click (Deskbar's). It takes
-            // the pointer from that press instead.
-            let window_menu = matches!(&root, crate::focus::KeyboardFocusTarget::LayerSurface(l) if l.namespace() == "window-menu");
-            let ret = self.popups.grab_popup(root, kind, &seat, serial);
+        let Some(root) = self.popup_root_focus(&kind) else { return };
+        // A window's menu (its tab right-clicked: `window_menu`) asks as
+        // the button may still be down, with no press of its own to name
+        // (the press was app_server's, on the tab); refused, it showed with
+        // no grab, and its clear layer outlived it when put away with
+        // Escape, taking the next click (Deskbar's). It takes the pointer
+        // from that press instead.
+        let window_menu = matches!(&root, crate::focus::KeyboardFocusTarget::LayerSurface(l) if l.namespace() == "window-menu");
+        let root_wl = root.wl_surface().map(|s| s.into_owned());
+        // Menus of another surface's still up (a window's menu, which
+        // doesn't wait for theirs to go, over Deskbar's) are put away, and
+        // the keyboard and pointer let go of, before this one is asked for:
+        // Smithay's grab is one for the seat, and asked while theirs was up
+        // it told this menu's program it had broken the protocol, cutting
+        // it off; asked after theirs had just gone, putting theirs away
+        // after emptied this one's (reviews, 2026-11-28). What had the
+        // keyboard before them is kept, for when this menu goes.
+        let submenu = self.popup_grab.as_ref().is_some_and(|g| !g.has_ended() && grab_root(g) == root_wl);
+        let foreign = self.popup_grab.as_ref().is_some_and(|g| replaces(g.has_ended(), grab_root(g).as_ref(), root_wl.as_ref()));
+        if foreign {
+            if let Some(mut older) = self.popup_grab.take() {
+                older.ungrab(PopupUngrabStrategy::All);
+            }
+            self.let_go_of_menu_devices();
+        }
+        // A submenu asks with its menu's grab's serial; a menu with the
+        // press that opened it (or the last grab's, a menu just gone whose
+        // keyboard grab is still there a turn). Both checked before either
+        // device's grab is taken: the pointer refusing it had left the
+        // keyboard the new menu's.
+        let parent = self.popup_grab.as_ref().map(|g| g.serial());
+        let (keyboard, pointer) = (seat.get_keyboard(), seat.get_pointer());
+        let keyboard_ok = keyboard.as_ref().is_none_or(|k| serial_ok(k.is_grabbed(), window_menu, k.has_grab(serial), parent.is_some_and(|p| k.has_grab(p))));
+        let pointer_ok = pointer.as_ref().is_none_or(|p| serial_ok(p.is_grabbed(), window_menu, p.has_grab(serial), parent.is_some_and(|s| p.has_grab(s))));
+        if !(keyboard_ok && pointer_ok) {
+            // (As Smithay's grab ungrabbed would: the popup put away.)
+            if let Some(root_wl) = root_wl.as_ref() {
+                let _ = smithay::desktop::PopupManager::dismiss_popup(root_wl, &kind);
+            }
+            return;
+        }
+        let Ok(grab) = self.popups.grab_popup(root, kind, &seat, serial) else { return };
+        // A menu's first popup (not a submenu): a generation of its own
+        // (`MenuBook`), and what has the keyboard now gets it back when the
+        // menu goes; what a menu put away for it, or one just gone, would
+        // have given it back to, if any.
+        if !submenu {
+            let carried = self.menus.handed_on();
+            let before = carried.or_else(|| keyboard.as_ref().and_then(|k| k.current_focus()));
+            self.menus.begun(before);
+        }
+        if let Some(keyboard) = keyboard {
+            keyboard.set_focus(self, grab.current_grab(), serial);
+            keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+        if let Some(pointer) = pointer {
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+        }
+        // (A submenu's grab holds its menu's too: ended, it puts away the
+        // lot.)
+        self.popup_grab = Some(grab);
+    }
 
-            if let Ok(mut grab) = ret {
-                if let Some(keyboard) = seat.get_keyboard() {
-                    if keyboard.is_grabbed() && !window_menu && !(keyboard.has_grab(serial) || keyboard.has_grab(grab.previous_serial().unwrap_or(serial))) {
-                        grab.ungrab(PopupUngrabStrategy::All);
-                        return;
-                    }
-                    // A menu's first popup (not a submenu): what has the
-                    // keyboard now gets it back when the menu goes.
-                    if !keyboard.with_grab(|_, g| g.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false) {
-                        self.keyboard_before_popup = keyboard.current_focus();
-                    }
-                    keyboard.set_focus(self, grab.current_grab(), serial);
-                    keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
-                }
-                if let Some(pointer) = seat.get_pointer() {
-                    if pointer.is_grabbed() && !window_menu && !(pointer.has_grab(serial) || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial()))) {
-                        grab.ungrab(PopupUngrabStrategy::All);
-                        return;
-                    }
-                    pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
-                }
+    /// The keyboard's and the pointer's popup grabs let go of, menus put
+    /// away: each would otherwise end only on its next event, and until
+    /// then a slow program's menu, gone or going, took the keys, the wheel
+    /// and the clicks meant for what took them.
+    fn let_go_of_menu_devices(&mut self) {
+        if let Some(keyboard) = self.seat.get_keyboard()
+            && keyboard.with_grab(|_, g| g.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false)
+        {
+            keyboard.unset_grab(self);
+        }
+        let pointer = self.pointer.clone();
+        if pointer.with_grab(|_, g| g.is::<PopupPointerGrab<Self>>()).unwrap_or(false) {
+            pointer.unset_grab(self, smithay::utils::SERIAL_COUNTER.next_serial(), InputTime::now());
+        }
+    }
+
+    /// The menus up (the last popup grab's: a menu and its submenus) put
+    /// away, all of them, unless they are `window`'s own: a window taking
+    /// the keyboard (opened, brought forward, switched to) leaves them
+    /// nothing to answer. Left up, Deskbar's menu stayed over the new
+    /// window, holding the pointer, until a click outside it: its
+    /// Applications submenu closed with Escape, then DeskCalc started and
+    /// had the keyboard under it (QA, 2026-11-28). `window`'s own stay
+    /// up, with the keyboard (`Menus::Own`).
+    pub(crate) fn put_away_menus(&mut self, window: &WindowElement) -> Menus {
+        let taking = window.wl_surface().map(|s| s.into_owned());
+        let menus = self.put_away_menus_for(taking.as_ref());
+        if menus == Menus::PutAway {
+            tracing::info!(window = window.id(), app_id = window.app_id(), "a window took the keyboard: the menus up put away");
+        }
+        menus
+    }
+
+    /// The menus up put away unless they're `taking`'s (the surface
+    /// taking the keyboard: a window, or a layer that takes it as it
+    /// shows, the palette or the emoji picker over Deskbar's menu), as
+    /// `put_away_menus`. The pointer and the keyboard are let go of at
+    /// once: each popup grab of theirs ends only on its next event, and
+    /// until then a slow program's menu, gone or going, took the wheel
+    /// and the clicks meant for what's under the pointer (review,
+    /// 2026-11-28).
+    pub(crate) fn put_away_menus_for(&mut self, taking: Option<&WlSurface>) -> Menus {
+        let Some(grab) = self.popup_grab.as_mut() else { return Menus::None };
+        let root = grab_root(grab);
+        let menus = menus_of(grab.has_ended(), root.as_ref(), taking);
+        match menus {
+            // (Ended: the grab let go of, it holds the surface they were of.)
+            Menus::None => {
+                self.popup_grab = None;
+                return menus;
+            }
+            Menus::Own => return menus,
+            Menus::PutAway => {}
+        }
+        grab.ungrab(PopupUngrabStrategy::All);
+        self.popup_grab = None;
+        // (The keyboard is `taking`'s now, not to go back to what had it as
+        // the menus opened.)
+        self.menus.put_away();
+        self.let_go_of_menu_devices();
+        // What's under the pointer has it now, its cursor and its hover.
+        self.repoint_soon();
+        menus
+    }
+}
+
+/// The surface a popup grab's menus belong to (the window or layer they
+/// opened from).
+fn grab_root<BackendData: Backend + 'static>(grab: &smithay::desktop::PopupGrab<AnvilState<BackendData>>) -> Option<WlSurface> {
+    grab.keyboard_grab_start_data().focus.as_ref().and_then(|r| r.wl_surface().map(|s| s.into_owned()))
+}
+
+/// Whose the menus up are as a surface takes the keyboard
+/// (`put_away_menus`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Menus {
+    /// None up: there's no grab, or its menus have gone already.
+    None,
+    /// Another surface's: put away.
+    PutAway,
+    /// Its own: kept up, and the keyboard with them (taken from them, it
+    /// went to the window as the pointer stayed with the menu).
+    Own,
+}
+
+/// Whose the menus of a popup grab are (`root`: the window or layer
+/// they belong to, Deskbar's say; `ended`: they've gone already) as
+/// `taking` takes the keyboard (`put_away_menus`).
+fn menus_of<S: PartialEq>(ended: bool, root: Option<&S>, taking: Option<&S>) -> Menus {
+    match root {
+        _ if ended => Menus::None,
+        None => Menus::None,
+        Some(_) if root == taking => Menus::Own,
+        Some(_) => Menus::PutAway,
+    }
+}
+
+/// Where `frame` goes to be in `area` as far as it can, moved, not made
+/// smaller: its right and bottom edges brought in, then its left and top
+/// (one wider or taller than the area at the area's left or top).
+fn kept_in(frame: smithay::utils::Rectangle<i32, smithay::utils::Logical>, area: smithay::utils::Rectangle<i32, smithay::utils::Logical>) -> smithay::utils::Point<i32, smithay::utils::Logical> {
+    let x = frame.loc.x.min(area.loc.x + area.size.w - frame.size.w).max(area.loc.x);
+    let y = frame.loc.y.min(area.loc.y + area.size.h - frame.size.h).max(area.loc.y);
+    smithay::utils::Point::from((x, y))
+}
+
+/// Whether a menu about to be asked for, of `new` (the surface it is
+/// of), replaces menus up of another surface's (`older`, their grab's
+/// root; `ended`: they've gone already): put away first (`grab_inner`).
+fn replaces<S: PartialEq>(ended: bool, older: Option<&S>, new: Option<&S>) -> bool {
+    !ended && older.is_some() && older != new
+}
+
+/// Whether a device's grab may become a menu's: it has none, or the menu
+/// asks with its grab's serial (`own`: the press that opened it), or its
+/// menu's (`parent`, a submenu's); a window's menu, which app_server
+/// opens on its own press, may always.
+fn serial_ok(grabbed: bool, window_menu: bool, own: bool, parent: bool) -> bool {
+    !grabbed || window_menu || own || parent
+}
+
+/// What app_server keeps of the menus up, each menu a generation (its
+/// submenus its own): what had the keyboard as it began, for when it goes
+/// (`F`); and the program (`C`) whose menu has just gone, which may still
+/// set the clipboard until its going is done (a Copy chosen from a menu
+/// copies as the menu goes). A popup gone late (its program slow to
+/// destroy it) changes these only for its own menu, never for one begun
+/// since: it gave its program the next menu's clipboard, and took what
+/// the next had saved, the keyboard then given back to nothing (reviews,
+/// 2026-11-28).
+#[derive(Debug)]
+pub struct MenuBook<F, C> {
+    generation: u64,
+    before: Option<(u64, F)>,
+    gone: Option<(u64, C)>,
+}
+
+impl<F, C> Default for MenuBook<F, C> {
+    fn default() -> Self {
+        MenuBook { generation: 0, before: None, gone: None }
+    }
+}
+
+impl<F, C: PartialEq> MenuBook<F, C> {
+    /// A menu's first popup took a grab: a generation of its own, `before`
+    /// what had the keyboard as it began.
+    pub fn begun(&mut self, before: Option<F>) -> u64 {
+        self.generation += 1;
+        self.before = before.map(|f| (self.generation, f));
+        self.generation
+    }
+
+    /// The menu up now (or last).
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// The menu up now put away for a window taking the keyboard: nothing
+    /// to give it back to.
+    pub fn put_away(&mut self) {
+        self.before = None;
+    }
+
+    /// What had the keyboard before menu `generation`, taken: none for
+    /// another's.
+    pub fn take_before(&mut self, generation: u64) -> Option<F> {
+        match self.before.take() {
+            Some((g, f)) if g == generation => Some(f),
+            other => {
+                self.before = other;
+                None
             }
         }
+    }
+
+    /// What had the keyboard before the menu up now, handed on to the menu
+    /// that puts it away.
+    pub fn handed_on(&mut self) -> Option<F> {
+        self.before.take().map(|(_, f)| f)
+    }
+
+    /// Menu `generation`, its program `client`'s, is going.
+    pub fn going(&mut self, generation: u64, client: C) {
+        self.gone = Some((generation, client));
+    }
+
+    /// Menu `generation`'s going done (another's left as it is).
+    pub fn gone(&mut self, generation: u64) {
+        if self.gone.as_ref().is_some_and(|(g, _)| *g == generation) {
+            self.gone = None;
+        }
+    }
+
+    /// Whether `client`'s menu is going: it may still set the clipboard.
+    pub fn just_gone(&self, client: &C) -> bool {
+        self.gone.as_ref().is_some_and(|(_, c)| c == client)
     }
 }
 
@@ -833,6 +1080,26 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// window placed there was placed a commit late (a frame of it in its
     /// cascade slot first: Quick Look's flash) or, placed by a size not
     /// known yet, in the wrong place.
+    /// A new window, its first content's size known, moved into the room
+    /// windows have on its display (`usable_area`: beside Deskbar), as far
+    /// as it fits there; moved, never made smaller. Put where the cascade
+    /// puts new windows, 48 points in, a panel made to fit beside Deskbar
+    /// (544 across on a 720-point screen) ran 44 points under it
+    /// (review, 2026-11-28). Not one Focus zooms, tiled or full screen:
+    /// those have their places.
+    fn place_beside_deskbar(&mut self, surface: &WlSurface) {
+        let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
+        if window.meta().fullscreen.get() || self.is_zoomed(&window) || Self::tiled(&window).is_some() {
+            return;
+        }
+        let area = self.window_output(&window).and_then(|o| self.usable_area(&o));
+        let (Some(frame), Some(area)) = (self.space.element_geometry(&window), area) else { return };
+        let at = kept_in(frame, area);
+        if at != frame.loc {
+            self.space.relocate_element(&window, at);
+        }
+    }
+
     pub(crate) fn place_on_content(&mut self, surface: &WlSurface) {
         if surface_initial_mapped(surface) && !self.place_pip(surface) && self.restore_placement(surface) {
             self.place_over_parent(surface);
@@ -840,6 +1107,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.place_under_pointer(surface);
             self.place_on_app_workspace(surface);
             self.place_by_app_pin(surface);
+            self.place_beside_deskbar(surface);
             // New (not one coming back as it was): it glows a moment, if asked.
             let a = &self.settings.appearance;
             if a.glow_new_windows
@@ -859,5 +1127,104 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let seat = self.seat.clone();
             self.move_request_xdg(&toplevel, &seat, serial);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MenuBook, Menus, kept_in, menus_of, replaces, serial_ok};
+
+    /// A new window is moved into the room beside Deskbar, as far as it
+    /// fits: a panel 544 across, put at the cascade's 48 on a 720-point
+    /// screen whose room ends at 544, goes to 0; one that fits stays; one
+    /// wider than the room goes to its left edge, as big as it was.
+    #[test]
+    fn a_new_window_is_kept_beside_deskbar() {
+        use smithay::utils::{Point, Rectangle};
+        let r = |x: i32, y: i32, w: i32, h: i32| Rectangle::<i32, smithay::utils::Logical>::new((x, y).into(), (w, h).into());
+        let area = r(0, 0, 544, 450);
+        assert_eq!(kept_in(r(48, 40, 544, 417), area), Point::from((0, 33)));
+        assert_eq!(kept_in(r(48, 40, 300, 200), area), Point::from((48, 40)));
+        assert_eq!(kept_in(r(48, 40, 700, 200), area), Point::from((0, 40)));
+        assert_eq!(kept_in(r(48, 40, 300, 600), area), Point::from((48, 0)));
+        // A display to the right of another: its own area.
+        assert_eq!(kept_in(r(1500, 60, 544, 417), r(1440, 0, 544, 450)), Point::from((1440, 33)));
+    }
+
+    /// A window taking the keyboard puts away another surface's menus
+    /// (Deskbar's, over a window that just opened), never its own, and
+    /// does nothing once they've gone.
+    #[test]
+    fn a_window_taking_the_keyboard_puts_away_others_menus() {
+        let (deskbar, deskcalc) = ("deskbar", "deskcalc");
+        // Deskbar's menu up, DeskCalc opening: put away.
+        assert_eq!(menus_of(false, Some(&deskbar), Some(&deskcalc)), Menus::PutAway);
+        // A window whose own menu is up taking the keyboard again: kept,
+        // and the keyboard with it (not the window's while the pointer
+        // stays the menu's).
+        assert_eq!(menus_of(false, Some(&deskcalc), Some(&deskcalc)), Menus::Own);
+        // The menus gone already (chosen from, Escape): nothing to do.
+        assert_eq!(menus_of(true, Some(&deskbar), Some(&deskcalc)), Menus::None);
+        assert_eq!(menus_of(true, Some(&deskcalc), Some(&deskcalc)), Menus::None);
+        // No surface to say whose they are: left alone.
+        assert_eq!(menus_of(false, None, Some(&deskcalc)), Menus::None);
+        // A window with no surface (gone): another's menus still go.
+        assert_eq!(menus_of(false, Some(&deskbar), None), Menus::PutAway);
+    }
+
+    /// A menu asked for while another surface's menus are up replaces
+    /// them, put away first; not its own menu's (a submenu), and not ones
+    /// gone already (just destroyed: their handle sees the new menu's).
+    #[test]
+    fn a_menu_replaces_anothers_before_it_is_asked_for() {
+        let (deskbar, window) = ("deskbar", "styled-edit");
+        assert!(replaces(false, Some(&deskbar), Some(&window)));
+        assert!(!replaces(false, Some(&window), Some(&window)));
+        assert!(!replaces(true, Some(&deskbar), Some(&window)));
+        assert!(!replaces(false, None, Some(&window)));
+        // A device's grab: free, the menu's own press, its menu's grab
+        // (a submenu), or the window menu; else refused, before either
+        // device is taken.
+        assert!(serial_ok(false, false, false, false));
+        assert!(serial_ok(true, false, true, false));
+        assert!(serial_ok(true, false, false, true));
+        assert!(serial_ok(true, true, false, false));
+        assert!(!serial_ok(true, false, false, false));
+    }
+
+    /// Two popups' goings queued (each run a turn later): the older's,
+    /// its window gone too, neither takes the next menu's saved keyboard
+    /// focus nor ends its clipboard grace; the next's own does. A menu
+    /// that replaced another hands on what had the keyboard before it.
+    #[test]
+    fn a_menu_gone_late_leaves_the_next_ones_alone() {
+        let mut book: MenuBook<&str, &str> = MenuBook::default();
+        let a = book.begun(Some("terminal"));
+        // A's popup goes (its going queued), its program may copy.
+        book.going(a, "styled-edit");
+        assert!(book.just_gone(&"styled-edit"));
+        // B's menu begins before A's going runs.
+        let b = book.begun(Some("deskcalc"));
+        book.going(b, "deskbar");
+        // A's going runs: B's saved focus and grace stay B's.
+        book.gone(a);
+        assert_eq!(book.take_before(a), None);
+        assert!(book.just_gone(&"deskbar") && !book.just_gone(&"styled-edit"));
+        // B's own.
+        book.gone(b);
+        assert!(!book.just_gone(&"deskbar"));
+        assert_eq!(book.take_before(b), Some("deskcalc"));
+        assert_eq!(book.take_before(b), None);
+        // Replaced while up: the next begins with what had the keyboard
+        // before the first.
+        let c = book.begun(Some("tracker"));
+        let carried = book.handed_on();
+        let d = book.begun(carried);
+        assert_eq!(book.take_before(c), None);
+        assert_eq!(book.take_before(d), Some("tracker"));
+        // Put away for a window: nothing to give back.
+        let e = book.begun(Some("viewer"));
+        book.put_away();
+        assert_eq!(book.take_before(e), None);
     }
 }

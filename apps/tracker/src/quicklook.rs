@@ -382,7 +382,8 @@ impl View for QuickLook {
         // an arrow; rotate left and right are for pictures that can be
         // saved.
         let pw = m::CONTROL_HEIGHT + 4.0;
-        let pop = !self.entry.is_dir && self.opener.as_deref() != Some("Viewer");
+        // (Not for a broken link: there's nothing for Viewer to show.)
+        let pop = !self.entry.is_dir && !self.entry.broken && self.opener.as_deref() != Some("Viewer");
         let rotate = self.editable && self.preview.read(cx).is_image();
         let note = match &self.failed {
             Some(why) => why.clone(),
@@ -437,7 +438,9 @@ impl View for QuickLook {
                 div()
                     .relative()
                     .child(Button::new("").min_width(pw).on_click(cx.listener(|q: &mut QuickLook, _: &ClickEvent, cx| {
-                        fs::open_in_viewer(&q.entry.path);
+                        // (As it is now, on a worker: a link to nothing since
+                        // it was listed said so, not handed to Viewer.)
+                        fs::open_in_viewer_checked(&q.entry);
                         cx.close_window();
                     })))
                     .child(canvas(|g, b| pop_out_glyph(g, b, &theme::palette())).absolute().inset_0()),

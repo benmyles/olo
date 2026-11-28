@@ -196,6 +196,10 @@ fn display_name(o: &OutputInfo) -> String {
 
 /// The panel: its window grows to a display's rows (its brightness, its
 /// panel's notes), scrolling only past the screen's room (`panel::Fit`).
+/// How wide Display's window is at least for the display's box and its
+/// panel's side by side; narrower, one is over the other.
+const TWO_COLUMNS: f32 = 880.0;
+
 pub fn ui(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     panel(ui, outputs, power, server, st);
 }
@@ -267,8 +271,16 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     } else {
         ui.collect(|ui| ui.bbox("Panel", |ui| panel_box(ui, &o, label_w, server)))
     };
-    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().children(items);
-    ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
+    // (Narrower than the two need, beside Deskbar at 2×: the panel's box
+    // under the display's, scrolled only down; side by side, scrolled
+    // across, "Panel" was cut to "Pane": Opus's look, 2026-11-28.)
+    if f32::from(ui.cx.viewport_size().width) < TWO_COLUMNS {
+        let column = |items: Vec<olo_kit::Element>| div().w_full().flex().flex_col().children(items);
+        ui.add(div().w_full().flex().flex_col().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
+    } else {
+        let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().children(items);
+        ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
+    }
     forget_gone(ui, outputs, st);
     graphics(ui, outputs, st);
 }
@@ -302,7 +314,9 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
             x1 = x1.max(o.position.0 as f64 + w);
             y1 = y1.max(o.position.1 as f64 + h);
         }
-        let inner = map.dilate(px(-16.0));
+        // (Inside the well by a spacing, scaled to fit it and centred: a
+        // lone display whole, never cut at the well's edge.)
+        let inner = map.dilate(px(-m::SPACING));
         let k = (f32::from(inner.size.width) as f64 / (x1 - x0)).min(f32::from(inner.size.height) as f64 / (y1 - y0)) as f32;
         let (cw, ch) = ((x1 - x0) as f32 * k, (y1 - y0) as f32 * k);
         let off = point(inner.center().x - px(cw / 2.0), inner.center().y - px(ch / 2.0));

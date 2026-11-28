@@ -32,6 +32,22 @@ use crate::{
 /// The ruler's height, in points.
 pub const HEIGHT: f32 = 26.0;
 
+/// How far a marker (an indent's triangle, a tab's mark) reaches either
+/// side of its place, as drawn and as agents are told.
+const MARK_HALF: f32 = 4.5;
+
+/// The scale's numbers' size.
+const NUMBER_SIZE: f32 = 9.0;
+
+/// Whether a scale's number centred at `x`, `wide` across, keeps clear of
+/// the markers at `marks` (each `MARK_HALF` either side of its place, and
+/// a point more): one they'd stand on isn't drawn, as a ruler's markers
+/// cover its numbers. "14" was drawn over the Right Indent's triangle
+/// in a window 1,078 points wide (QA, 2026-11-28).
+fn clear_of(x: f32, wide: f32, marks: &[f32]) -> bool {
+    marks.iter().all(|&m| (x - m).abs() >= wide / 2.0 + MARK_HALF + 1.0)
+}
+
 /// A paragraph's indents, in points: `left` from the text's left edge,
 /// `first` (the first line's) further in from `left`, `right` from the
 /// text's right edge.
@@ -414,6 +430,9 @@ impl Ruler {
         let n = (self.width / unit * parts as f32).floor() as i32;
         let base = f32::from(paper.bottom());
         let mid = f32::from(paper.center().y);
+        // Where the markers are, the indents' and the tabs': a number they'd
+        // stand on isn't drawn (`clear_of`).
+        let marks: Vec<f32> = [first_x, left_x, right_x].into_iter().chain(shown.tabs.iter().map(|t| x_of(t.x))).collect();
         for k in 1..=n {
             let x = snap(self.origin + k as f32 * unit / parts as f32);
             if k % parts == 0 {
@@ -422,7 +441,11 @@ impl Ruler {
                 if x + 6.0 > f32::from(rect.right()) || x - 6.0 < f32::from(rect.left()) {
                     continue;
                 }
-                style::label(window, px(x), px(mid), style::Align::Center, (k / parts).to_string(), 9.0, style::ui_font(FontWeight::NORMAL), ink);
+                let (number, font) = ((k / parts).to_string(), style::ui_font(FontWeight::NORMAL));
+                if !clear_of(x, f32::from(style::text_width(number.clone(), NUMBER_SIZE, font.clone())), &marks) {
+                    continue;
+                }
+                style::label(window, px(x), px(mid), style::Align::Center, number, NUMBER_SIZE, font, ink);
                 continue;
             }
             let h = if k % (parts / 2) == 0 {
@@ -459,7 +482,7 @@ impl Ruler {
         // Markers: filled in the control's colour, outlined in ink.
         let fill = style::c(p.control_background);
         let edge = style::c(p.control_text);
-        let half = 4.5;
+        let half = MARK_HALF;
         let tri = |window: &mut Painter, ax: f32, ay: f32, down: bool| {
             let (ax, ay) = (snap(ax), snap(ay));
             let by = if down { ay - 6.0 } else { ay + 6.0 };
@@ -563,5 +586,23 @@ mod tests {
         assert_eq!(length(72.0, false), "1 in");
         assert_eq!(length(CM * 3.25, true), "3.25 cm");
         assert_eq!(next_align(TabAlign::Decimal), TabAlign::Left);
+    }
+
+    /// A number a marker stands on, or comes within a point of, isn't
+    /// drawn; one clear of every marker is.
+    #[test]
+    fn numbers_clear_of_the_markers() {
+        // "14", 9.6 points across, at the Right Indent's place (a window
+        // 1,078 points wide), or just beside it.
+        let wide = 9.6;
+        assert!(!clear_of(1008.0, wide, &[20.0, 20.0, 1008.0]));
+        assert!(!clear_of(1008.0, wide, &[20.0, 20.0, 1008.0 + wide / 2.0 + MARK_HALF]));
+        // A point and more further, it shows.
+        assert!(clear_of(1008.0, wide, &[20.0, 20.0, 1008.0 + wide / 2.0 + MARK_HALF + 1.25]));
+        // Under the first line's indent, or a tab's mark, too.
+        assert!(!clear_of(92.0, 4.8, &[92.0, 20.0, 1008.0]));
+        assert!(!clear_of(164.0, 4.8, &[20.0, 20.0, 1008.0, 166.0]));
+        // No markers near: every number shows.
+        assert!((1..=13).all(|i| clear_of(20.0 + 72.0 * i as f32, 9.6, &[20.0, 20.0, 1008.0])));
     }
 }

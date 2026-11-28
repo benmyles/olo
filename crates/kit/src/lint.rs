@@ -40,6 +40,41 @@ pub(crate) fn room_for_tests() -> Option<f32> {
     (bits != 0).then(|| f32::from_bits(bits))
 }
 
+/// The room [`crate::screen_room_across`] says there is, as if the
+/// narrowest screen left `room` points across (None: the screens').
+pub fn set_room_across_for_tests(room: Option<f32>) {
+    ROOM_ACROSS.store(room.map_or(0, f32::to_bits), std::sync::atomic::Ordering::SeqCst);
+}
+
+static ROOM_ACROSS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+pub(crate) fn room_across_for_tests() -> Option<f32> {
+    let bits = ROOM_ACROSS.load(std::sync::atomic::Ordering::SeqCst);
+    (bits != 0).then(|| f32::from_bits(bits))
+}
+
+thread_local! {
+    /// The scroll of each fitted window's Frame on this looper, by its
+    /// window (`frame_scroll`).
+    static FRAME_SCROLLS: std::cell::RefCell<std::collections::HashMap<olo_interface::WindowId, olo_interface::ScrollHandle>> = Default::default();
+}
+
+/// Notes the scroll of window `id`'s Frame, as it lays its content out
+/// in a scroll view (`frame_scroll`).
+pub(crate) fn note_frame_scroll(id: olo_interface::WindowId, scroll: &olo_interface::ScrollHandle) {
+    FRAME_SCROLLS.with_borrow_mut(|m| {
+        m.entry(id).or_insert_with(|| scroll.clone());
+    });
+}
+
+/// Where a fitted window's Frame (one that scrolls what it shows past
+/// the screen's room) is scrolled to, and the furthest it scrolls: for a
+/// test, on the window's looper (scrolling doesn't draw its content
+/// again, so the content can't tell).
+pub fn frame_scroll(id: olo_interface::WindowId) -> Option<(Point<Pixels>, olo_interface::Size<Pixels>)> {
+    FRAME_SCROLLS.with_borrow(|m| m.get(&id).map(|s| (s.offset(), s.max_offset())))
+}
+
 /// The scales every window is checked at.
 pub const SCALES: &[f32] = &[1.0, 1.5, 2.0];
 

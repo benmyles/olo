@@ -35,6 +35,12 @@ pub const SMALL_BUTTON_HEIGHT: f32 = 20.0;
 
 type Handler = Rc<dyn Fn(&ClickEvent, &mut WindowCx)>;
 
+/// How far the default button's ring is drawn outside its bounds, each
+/// side. (A row of buttons lines up by their bounds; a window whose
+/// default button is at its corner keeps this much more room there, so
+/// the ring keeps the window's inset, flush with a field above.)
+pub const DEFAULT_RING: f32 = 3.0;
+
 /// BButton: a bevelled push button. The default one sits in a recessed
 /// ring (drawn outside its bounds, so a row of buttons stays aligned).
 pub struct Button {
@@ -543,6 +549,11 @@ impl IntoElement for LinkButton {
             .focusable()
             .pointing()
             .agent("Button", self.label.clone(), None);
+            // (Not enabled, it's in a greyed label's ink already: faded on
+            // top, twice dimmed, it was the dimmest thing in the dark.)
+            if !self.enabled {
+                c = c.unfaded();
+            }
             if let Some(f) = self.on_click {
                 c = c.on_click(move |event, cx| f(event, cx));
             }
@@ -586,6 +597,13 @@ impl IntoElement for LinkButton {
         .focusable()
         .pointing()
         .agent("Button", self.label.clone(), None);
+        // Not enabled: drawn in a greyed label's ink (`disabled_text`), as
+        // a greyed button's label is, not faded on top of that (twice
+        // dimmed, a disabled Select All was the dimmest thing in a dark
+        // panel: Gemini's look at Backup, 2026-11-28).
+        if !self.enabled {
+            c = c.unfaded();
+        }
         if cut {
             c = c.shrinks().tip(self.label.clone());
         }
@@ -637,7 +655,7 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     let fade = |c: olo_interface::Hsla| if own_dim { c.opacity(olo_interface::DISABLED_OPACITY) } else { c };
     if default {
         // A recessed groove the button sits in.
-        let ring = px(3.0);
+        let ring = px(DEFAULT_RING);
         let outer = style::snap(g, Bounds::from_corners(point(r.left() - ring, r.top() - ring), point(r.right() + ring, r.bottom() + ring)));
         style::fill_rect(g, outer, fade(style::shade(&p, bg, 1.06)));
         style::bevel(g, outer, fade(style::shade(&p, bg, 1.3)), fade(style::c(p.shine)));

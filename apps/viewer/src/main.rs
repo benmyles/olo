@@ -320,6 +320,23 @@ fn is_pdf(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
+/// The least a document's window is (its content): a PDF's wider, for
+/// its tool bar.
+fn least_size(_path: &Path) -> (f32, f32) {
+    // (One for every document a window shows: Go to the next file shows it
+    // in the same window, whose least is fixed as it opens; a picture's
+    // after a PDF's was asked for under the PDF's, and a PDF's toolbar
+    // could be squeezed to a picture's: review, 2026-11-28.)
+    (pdfview::MIN_WIDTH.max(360.0), 220.0)
+}
+
+/// `size` no smaller than `least`: what a window asks to be (as it opens,
+/// to suit its picture) never under the least it says it has. A small
+/// picture's window was 320 across under a least of 360 (QA, 2026-11-28).
+fn at_least(size: (f32, f32), least: (f32, f32)) -> (f32, f32) {
+    (size.0.max(least.0), size.1.max(least.1))
+}
+
 /// When a file was last written and how long it is.
 fn stamp(path: &Path) -> Option<(std::time::SystemTime, u64)> {
     std::fs::metadata(path).ok().map(|m| (m.modified().unwrap_or(std::time::UNIX_EPOCH), m.len()))
@@ -387,9 +404,9 @@ impl Hub {
             return;
         }
         let title = file_name(&path);
-        let min_w = if is_pdf(&path) { pdfview::MIN_WIDTH } else { 360.0 };
-        let (w, h) = shown.size.unwrap_or((720.0, 560.0));
-        let mut options = WindowOptions::new(title, w, h).min_size(min_w, 220.0);
+        let least = least_size(&path);
+        let (w, h) = at_least(shown.size.unwrap_or((720.0, 560.0)), least);
+        let mut options = WindowOptions::new(title, w, h).min_size(least.0, least.1);
         // A look floats over the panel that asked, as Quick Look does:
         // never a tile or a tab.
         if self.shared.look {
@@ -619,6 +636,7 @@ impl Doc {
                 let preview = cx.new_view(|cx| {
                     let mut p = PreviewView::new(item, generation, true, cx);
                     p.start_at_page(page);
+                    p.offer_reveal();
                     p.set_playback_rate(speed, cx);
                     p
                 });
@@ -681,7 +699,8 @@ impl Doc {
         // (A look fits what it shows: no taller than the Frame allows.)
         let tallest = self.shared.look.then(olo_kit::screen_room);
         let (w, h) = prev.read(cx).ideal_size(s, olo_kit::menu::BAR_HEIGHT, tallest);
-        cx.resize_window(size(px(w as f32), px(h as f32)));
+        let (w, h) = at_least((w as f32, h as f32), least_size(&self.path));
+        cx.resize_window(size(px(w), px(h)));
     }
 
     fn pdf_event(&mut self, ev: Event, cx: &mut Cx<Self>) {
@@ -715,6 +734,7 @@ impl Doc {
             let s = screen_of(cx);
             let tallest = self.shared.look.then(olo_kit::screen_room);
             let (w, h) = v.update(cx, |p, _| p.ideal_size(s, olo_kit::menu::BAR_HEIGHT + m::TOOLBAR_HEIGHT + 1.0, tallest));
+            let (w, h) = at_least((w, h), least_size(&self.path));
             cx.resize_window(size(px(w), px(h)));
         }
         let loaded = v.read(cx).loaded();
@@ -1067,6 +1087,53 @@ impl Doc {
             );
         }
         let full_screen = if self.fullscreen { "Exit Full Screen" } else { "Enter Full Screen" };
+        // A picture that can't be shown keeps a picture's menus, what can't
+        // be done greyed out (its menu bar dropped to File and Go, as if
+        // it were another kind of file: Opus's look, 2026-11-28).
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).failed_picture()
+        {
+            menus
+                .push(olo_kit::undo::edit_items_named(Menu::new("Edit"), None, None).separator().item("Copy", "copy").key("c").enabled(false).item("Select All", "select-all").key("a").enabled(false));
+            menus.push(
+                Menu::new("View")
+                    .item("Zoom In", "zoom-in")
+                    .key("=")
+                    .enabled(false)
+                    .item("Zoom Out", "zoom-out")
+                    .key("-")
+                    .enabled(false)
+                    .item("Actual Size", "zoom-100")
+                    .key("0")
+                    .enabled(false)
+                    .item("Zoom to Fit", "zoom-fit")
+                    .key("9")
+                    .enabled(false)
+                    .separator()
+                    .item(full_screen, "fullscreen")
+                    .item("Presentation", "presentation")
+                    .enabled(false),
+            );
+            menus.push(
+                Menu::new("Image")
+                    .item("Rotate Left", "rotate-left")
+                    .key("l")
+                    .enabled(false)
+                    .item("Rotate Right", "rotate-right")
+                    .key("r")
+                    .enabled(false)
+                    .item("Flip Horizontal", "flip-h")
+                    .enabled(false)
+                    .item("Flip Vertical", "flip-v")
+                    .enabled(false)
+                    .separator()
+                    .item("Crop…", "crop")
+                    .key("k")
+                    .enabled(false)
+                    .item("Adjust Size…", "resize")
+                    .enabled(false),
+            );
+        }
         if let Content::Other(prev) = &self.content
             && prev.read(cx).is_image()
         {
@@ -2349,5 +2416,28 @@ mod toolbar_tests {
         assert_eq!(pdf_info_fits(both - 1.0, page, note), (true, false));
         assert_eq!(pdf_info_fits(page, page, note), (true, false));
         assert_eq!(pdf_info_fits(page - 1.0, page, note), (false, false));
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    /// A window never asks to be smaller than its least: a small
+    /// picture's (16 × 16, 320 × 240: 320 across, as the preview fits
+    /// it) is the least across; a PDF's least is its own; a big one keeps
+    /// its size.
+    #[test]
+    fn windows_ask_for_at_least_their_least() {
+        let picture = least_size(Path::new("/f/tiny_16x16.png"));
+        assert_eq!(picture, (pdfview::MIN_WIDTH, 220.0));
+        assert_eq!(at_least((320.0, 297.0), picture), (pdfview::MIN_WIDTH, 297.0));
+        assert_eq!(at_least((320.0, 200.0), picture), (pdfview::MIN_WIDTH, 220.0));
+        // The same least whichever a window shows first or next.
+        assert_eq!(least_size(Path::new("/f/a.png")), least_size(Path::new("/f/b.pdf")));
+        assert_eq!(at_least((720.0, 560.0), picture), (720.0, 560.0));
+        let pdf = least_size(Path::new("/f/sample.PDF"));
+        assert_eq!(pdf, (pdfview::MIN_WIDTH, 220.0));
+        assert_eq!(at_least((360.0, 400.0), pdf), (pdfview::MIN_WIDTH, 400.0));
     }
 }

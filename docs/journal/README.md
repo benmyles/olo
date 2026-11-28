@@ -6,6 +6,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Viewer plain-English error card and DeskCalc polish
+
+*13:52* — Centered BeOS error card for unreadable images and fonts with balanced headroom and off-thread Show in Tracker
+
+![Viewer plain-English error card and DeskCalc polish](2026-11-28/135258-viewer-plain-english-error-card-and-deskcalc-pol.png)
+
+### Tracker separator wrapping, framed thumbnails, and broken links
+
+*13:52* — Separator-aware 2-line icon labels, nearest-neighbour <=32px framed thumbnails, and plain broken-link badges and alerts
+
+![Tracker separator wrapping, framed thumbnails, and broken links](2026-11-28/135257-tracker-separator-wrapping-framed-thumbnails-and.png)
+
+### Emoji Picker CBDT colour detection and Deskbar clearance
+
+*13:52* — Colour emoji detection via kit shaping, full colour tabs and tones, clean 8 pt Deskbar clearance, and plain-symbol fallback
+
+![Emoji Picker CBDT colour detection and Deskbar clearance](2026-11-28/135255-emoji-picker-cbdt-colour-detection-and-deskbar-c.png)
+
+### Preferences single-column wide panels on narrow screens
+
+*13:52* — Display and Backup panels stack to one column with vertical-only scrolling clear of Deskbar at 720x450
+
+![Preferences single-column wide panels on narrow screens](2026-11-28/135253-preferences-single-column-wide-panels-on-narrow-.png)
+
 ### Token Pool narrow footer note row and aligned tooltip
 
 *12:42* — Dedicated 24 pt narrow note row below 600 pt, truncated long account name with 12 pt machine gap, and aligned two-line tooltip

@@ -4591,3 +4591,14 @@ prompts while staying sandboxed to its scratch cwd.
   private `olo-bus` + `olo-secrets` (`OLO_SECRETS_SERVE=1`) keyring.
 - `jato build` populates `target/debug` with the binaries of that invocation:
   build every binary a `tsession` needs in one `jato build -p ...` command.
+
+**Headless `tsession`, `CARGO_TARGET_DIR`, and `HOME` during tests** (2026-11-28):
+- Never run `cargo` or `jato` with `HOME` pointed at a sandbox directory:
+  Cargo, rustup, and Jato derive their caches/toolchains from `HOME` and
+  will download multi-GB toolchains and crates into the sandbox. Override
+  only the specific XDG or app-level env vars read by the code under test.
+- Running `tsession` from a `CARGO_TARGET_DIR` outside the repo draws no
+  icons unless a `data` symlink sits next to that target directory.
+- Preferences' Backup panel lists the session's XDG folders rather than
+  `HOME`'s directly, and Noto Color Emoji lives under
+  `~/.local/share/fonts/olo-screens/` on this host.

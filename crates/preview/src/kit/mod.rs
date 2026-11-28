@@ -179,6 +179,9 @@ pub struct PreviewView {
     /// for: at another width the same page stays at the top.
     pages_row: f32,
     failed: Option<String>,
+    /// What can't be shown offers to be shown in Tracker (Viewer's; not
+    /// Quick Look's, which is in Tracker): `offer_reveal`.
+    reveal: bool,
     cancel: Arc<AtomicBool>,
     started: Instant,
     want: load::Want,
@@ -281,6 +284,7 @@ impl PreviewView {
             generation,
             body: None,
             failed: None,
+            reveal: false,
             cancel: Arc::new(AtomicBool::new(false)),
             started: Instant::now(),
             want: load::Want { max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE } },
@@ -626,6 +630,17 @@ impl PreviewView {
         self.failed.is_none() && matches!(self.body, Some(Body::Image { .. }))
     }
 
+    /// It couldn't be shown (`Update::Failed`): its card says why.
+    pub fn failed(&self) -> bool {
+        self.failed.is_some()
+    }
+
+    /// A picture that couldn't be shown (the loader's choice, not the
+    /// file read again to say: `load::shown_as_picture`).
+    pub fn failed_picture(&self) -> bool {
+        self.failed.is_some() && load::shown_as_picture(&self.item)
+    }
+
     /// Whether the arrow keys are free for the caller (nothing shown
     /// scrolls or has a selection to move).
     pub fn arrows_free(&self) -> bool {
@@ -797,7 +812,7 @@ impl PreviewView {
             ((w * k).round().max(320.0), (h * k).round().max(200.0))
         };
         let (w, h) = match (&self.body, &self.failed) {
-            (_, Some(_)) => (420.0, 220.0),
+            (_, Some(_)) => (420.0, if self.reveal { revealed_height().ceil() } else { 220.0 }),
             (None, None) => (420.0, 260.0),
             (Some(b), _) => match b {
                 // One picture pixel a point, as a 72 dpi picture on a Mac.
@@ -887,29 +902,74 @@ fn note_of(b: &Body) -> String {
 
 /// The icon, name and facts (and why there's no preview, with `error`),
 /// in the middle of `r`; a spinner under them while it loads slowly.
+/// The icon of an item shown by name (one not shown yet, or one that
+/// can't be), its size.
+const CARD_ICON: f32 = 96.0;
+/// The warning badge on it, for one that can't be shown, its size.
+const CARD_BADGE: f32 = 32.0;
+
+/// How tall an item's card is (`card`): its icon, a spacing, its name,
+/// what it can't be shown for (with `error`), and its size and date.
+fn card_height(error: bool) -> f32 {
+    CARD_ICON + m::SPACING + (if error { 3.0 * m::LABEL_ROW + NAME_GAP } else { 2.0 * m::LABEL_ROW })
+}
+
+/// Room between the name and what it can't be shown for (the one's
+/// descenders all but on the other's capitals: Gemini's look, 2026-11-28).
+const NAME_GAP: f32 = 5.0;
+
+/// The room above an item's icon's art in its box at `CARD_ICON` (the
+/// picture's, whose card a window shows with Show in Tracker under it:
+/// 9.5 of its 96 points).
+const CARD_HEADROOM: f32 = 9.5;
+
+/// The room over a window's card, art to its menu bar, and under its
+/// button (`revealed_height`).
+const CARD_ROOM: f32 = 24.0;
+// (Never closer to the foot than a window's inset.)
+const _: () = assert!(CARD_ROOM >= m::WINDOW_INSET);
+
+/// How tall a window showing a picture that can't be shown, its card with
+/// Show in Tracker under it (`reveal`), is under its menu bar: the card,
+/// art to button, with `CARD_ROOM` over and under it (at 220, the art sat
+/// 21 points under the menu bar and the button 11 over the window's foot:
+/// Opus's and Gemini's looks, 2026-11-28).
+fn revealed_height() -> f32 {
+    card_height(true) - CARD_HEADROOM + m::SPACING + m::CONTROL_HEIGHT + 2.0 * CARD_ROOM
+}
+
+/// An item shown by name, centred in `r`: its icon, its name, and its
+/// size and date; one that can't be shown with a warning on its icon and
+/// why, in the error's ink, under its name, over its size (said in the
+/// size's grey, under it, and the group a half row off centre, it read
+/// as a footnote: Opus's look, 2026-11-28).
 fn card(g: &mut Painter, r: Bounds<Pixels>, item: &Item, error: Option<&str>, spinning: bool) {
     let p = theme::palette();
     g.paint_quad(olo_kit::fill(r, style::c(p.panel_background)));
-    let icon = 96.0;
-    let top = f32::from(r.center().y) - (icon + 3.0 * m::LABEL_ROW) / 2.0;
-    let ib = style::snap_centred(g, point(r.center().x, px(top + icon / 2.0)), icon, icon);
+    let top = f32::from(r.center().y) - card_height(error.is_some()) / 2.0;
+    let ib = style::snap_centred(g, point(r.center().x, px(top + CARD_ICON / 2.0)), CARD_ICON, CARD_ICON);
     icons::paint(g, ib, &item.icon);
-    let mut y = px(top + icon + m::SPACING + m::LABEL_ROW / 2.0);
-    let name =
-        style::label_fit(g, r.center().x, y, Align::Center, item.name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), r.size.width - px(2.0 * m::WINDOW_INSET));
+    if error.is_some() {
+        // (At its foot's right, over it, as a badge is.)
+        let badge = style::snap_centred(g, point(ib.right() - px(CARD_BADGE / 2.0 - 4.0), ib.bottom() - px(CARD_BADGE / 2.0 - 2.0)), CARD_BADGE, CARD_BADGE);
+        icons::paint(g, badge, "warning");
+    }
+    let room = r.size.width - px(2.0 * m::WINDOW_INSET);
+    let mut y = style::snap_coord(g, px(top + CARD_ICON + m::SPACING + m::LABEL_ROW / 2.0));
+    let name = style::label_fit(g, r.center().x, y, Align::Center, item.name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), room);
     agent::record(g, agent::Node::label(item.name.clone(), name));
-    y += px(m::LABEL_ROW);
-    let facts = if item.is_dir { files::format_time(item.modified) } else { format!("{} — {}", files::format_size(item.size), files::format_time(item.modified)) };
-    let dim = style::disabled_text(&p);
-    let at = style::label(g, r.center().x, y, Align::Center, facts.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
-    agent::record(g, agent::Node::label(facts, at));
     if let Some(e) = error {
-        y += px(m::LABEL_ROW);
-        let at = style::label_fit(g, r.center().x, y, Align::Center, e.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim, r.size.width - px(2.0 * m::WINDOW_INSET));
+        y += px(m::LABEL_ROW + NAME_GAP);
+        let at = style::label_fit(g, r.center().x, style::snap_coord(g, y), Align::Center, e.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.failure), room);
         agent::record(g, agent::Node::label(e.to_owned(), at));
     }
+    y += px(m::LABEL_ROW);
+    let facts = if item.is_dir { files::format_time(item.modified) } else { format!("{} — {}", files::format_size(item.size), files::format_time(item.modified)) };
+    let dim = style::secondary_text(&p);
+    let at = style::label_fit(g, r.center().x, y, Align::Center, facts.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim, room);
+    agent::record(g, agent::Node::label(facts, at));
     if spinning {
-        style::spinner(g, point(r.center().x, r.bottom() - px(40.0)), 9.0, dim);
+        style::spinner(g, point(r.center().x, r.bottom() - px(40.0)), 9.0, style::disabled_text(&p));
         g.paint_again_within(1.0 / 60.0);
     }
 }
@@ -1026,6 +1086,41 @@ impl View for PreviewView {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         self.active = cx.is_window_active();
         let content: Element = match (&self.failed, &self.body) {
+            (Some(e), _) if self.reveal => {
+                // The card and the button under it, centred together.
+                let (item, e, path) = (self.item.clone(), e.clone(), self.item.path.clone());
+                let card = canvas(move |g, b| card(g, b, &item, Some(&e), false)).w_full().h(px(card_height(true)));
+                // (Asked of Tracker on a worker: a Tracker busy answering
+                // held the window still until it did, up to three seconds.)
+                let show = olo_kit::widgets::Button::new("Show in Tracker").on_click(move |_, _| {
+                    let path = path.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = olo_kit::tracker::open(&path) {
+                            tracing::warn!("showing {} in Tracker: {e}", path.display());
+                            let _ = olo_kit::widgets::open_app_alert(
+                                "Show in Tracker",
+                                "warning",
+                                &olo_kit::tr!("Tracker couldn’t be asked to show “{}”: {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), e),
+                                &["OK"],
+                                |_| {},
+                            );
+                        }
+                    });
+                });
+                // (Centred as they're seen, art to button: the icon's
+                // headroom under the button too.)
+                div()
+                    .size_full()
+                    .bg(style::c(theme::palette().panel_background))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .pb(px(CARD_HEADROOM))
+                    .child(card)
+                    .child(div().mt(px(m::SPACING)).child(show))
+                    .into_any_element()
+            }
             (Some(e), _) => {
                 let (item, e) = (self.item.clone(), e.clone());
                 canvas(move |g, b| card(g, b, &item, Some(&e), false)).size_full().into_any_element()
@@ -1133,6 +1228,13 @@ impl PreviewView {
         let Some(Body::Pages { pages, every: true, .. }) = &self.body else { return None };
         let at = self.page_row().map_or(0, |row| ((-f32::from(self.text_scroll.offset().y) + 0.5) / row).floor().max(0.0) as usize);
         Some((pages.len(), at.min(pages.len().saturating_sub(1))))
+    }
+
+    /// What can't be shown has a Show in Tracker button under it, for
+    /// what's to be done with it there (Viewer: a damaged picture had
+    /// only the menus' way out; Opus's look, 2026-11-28).
+    pub fn offer_reveal(&mut self) {
+        self.reveal = true;
     }
 
     /// Shows page `page` first, if what it loads is a document whose
@@ -2253,5 +2355,22 @@ mod tests {
         // Ten hours and more.
         let (played, left) = time_room(40_000.0, width);
         assert!(played >= 8.0 + 8.0 * 6.6 + 8.0 && left > played - 8.0, "{played} {left}");
+    }
+
+    /// A window showing a picture that can't be shown, its card and Show
+    /// in Tracker under it, is as tall as they need with 24 points over the
+    /// card's art and under the button: centred as they're seen (its
+    /// icon's headroom under the button too), not as boxes. At 220 the art
+    /// was 21 points under the menu bar and the button 11 over the foot.
+    #[test]
+    fn a_card_that_cant_be_shown_has_room_over_and_under() {
+        let h = revealed_height();
+        assert_eq!(h.ceil(), 236.0);
+        // Centred, with the headroom as room under it too: the room over
+        // the box and under the button.
+        let boxes = card_height(true) + m::SPACING + m::CONTROL_HEIGHT;
+        let over = (h - boxes - CARD_HEADROOM) / 2.0;
+        assert_eq!(over + CARD_HEADROOM, CARD_ROOM, "over the art");
+        assert_eq!(h - over - boxes, CARD_ROOM, "under the button");
     }
 }

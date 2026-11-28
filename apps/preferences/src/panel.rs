@@ -245,6 +245,13 @@ impl Panel {
 
     /// Content size (logical), on the 2-point grid (whole device pixels
     /// at 1×, 1.5× and 2×).
+    /// The narrowest its window can be laid out (its boxes one over the
+    /// other), where it can be narrower than its size: on a screen with
+    /// less room, as wide as there is, scrolled only down.
+    pub fn least_width(self) -> Option<f32> {
+        matches!(self, Panel::Display | Panel::Backup).then_some(480.0)
+    }
+
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (1100, 408),

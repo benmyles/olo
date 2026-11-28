@@ -124,13 +124,13 @@ impl Parser<'_> {
             } else if self.eat('/') {
                 let d = self.unary()?;
                 if d == 0.0 {
-                    return Err(olo_kit::words::tr("Division by zero").into());
+                    return Err(olo_kit::words::tr("Can’t divide by zero").into());
                 }
                 v /= d;
             } else if self.eat('%') {
                 let d = self.unary()?;
                 if d == 0.0 {
-                    return Err(olo_kit::words::tr("Division by zero").into());
+                    return Err(olo_kit::words::tr("Can’t divide by zero").into());
                 }
                 v %= d;
             } else if self.starts_factor() {

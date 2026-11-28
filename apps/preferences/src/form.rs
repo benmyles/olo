@@ -241,6 +241,17 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
         self.add(div().flex().flex_row().items_center().gap(px(gap)).children(items));
     }
 
+    /// [`Ui::columns`] as tall as each other (a row stretches what it
+    /// holds unless told otherwise): boxes that grow
+    /// (`growing_bbox`) end level, what grows in them taking what's spare
+    /// (Backup's Export and Import ended 80 points apart: Gemini's look,
+    /// 2026-11-28).
+    pub fn columns_level(&mut self, left: impl FnOnce(&mut Self), right: impl FnOnce(&mut Self)) {
+        let (l, r) = (self.collect(left), self.collect(right));
+        let column = |items: Vec<Element>| div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::SPACING)).children(items);
+        self.add(div().flex().flex_row().gap(px(m::SPACING)).child(column(l)).child(column(r)));
+    }
+
     /// Two columns side by side, `SPACING` apart, each as wide as the
     /// other, their tops lined up: a wide panel's boxes in two stacks
     /// rather than one tall one.

@@ -67,8 +67,8 @@ pub mod widgets;
 pub mod words;
 
 pub use app::{
-    FIRST_SHOW_WAIT, FirstShowHold, Frame, SMALLEST_SCREEN_HEIGHT, WindowOptions, app_id, begin_move, display_height, hold_first_show, message_handler, on_displays_changed, open_or_raise,
-    open_window, open_window_here, proxy, raise, run, screen_room, set_content_height, stay_resident, tab_step,
+    FIRST_SHOW_WAIT, FirstShowHold, Frame, SMALLEST_SCREEN_HEIGHT, SMALLEST_SCREEN_WIDTH, WindowOptions, app_id, begin_move, display_height, hold_first_show, message_handler, on_displays_changed,
+    open_or_raise, open_window, open_window_here, proxy, raise, run, screen_room, screen_room_across, set_content_height, stay_resident, tab_step,
 };
 pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuBar, MenuItem};

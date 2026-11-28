@@ -38,7 +38,7 @@ use olo_kit::{
     instance::{self, Launch},
     metrics as m, px, style, theme,
     widgets::{
-        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, ToolBar, Unsaved, ask_to_save, button_row, heading, open_alert, open_app_alert,
+        Button, CheckBox, SCROLL_BAR, StringView, TextControl, TextField, TextFieldEvent, ToolBar, Unsaved, ask_to_save, button_row, heading, open_alert, open_app_alert,
         ruler::{self, Ruler, RulerEvent},
         text_field,
     },
@@ -2546,7 +2546,15 @@ impl DocView {
     /// [`find_next`](Self::find_next), or (`back`) the match the other
     /// way: Find Previous.
     fn find_step(&mut self, back: bool, cx: &mut Cx<Self>) -> bool {
-        let mut s = self.shared.common().search.clone();
+        let s = self.shared.common().search.clone();
+        self.find_with(&s, back, cx)
+    }
+
+    /// [`find_step`](Self::find_step) as `s` says (a Find window's own
+    /// search, as it was asked: not whatever the windows share by the
+    /// time this document gets to it).
+    fn find_with(&mut self, s: &Search, back: bool, cx: &mut Cx<Self>) -> bool {
+        let mut s = s.clone();
         s.backwards ^= back;
         let sel = self.bytes();
         let from = if s.backwards { sel.start } else { sel.end };
@@ -2558,28 +2566,24 @@ impl DocView {
         found.is_some()
     }
 
-    /// Replace the next match (or all of them), selecting what went in.
-    fn replace(&mut self, cx: &mut Cx<Self>) {
+    /// Replace the match (the selection, if it is one, else the next) or
+    /// every one, as the windows' search says, selecting what went in;
+    /// false if there was none.
+    fn replace(&mut self, cx: &mut Cx<Self>) -> bool {
         let s = self.shared.common().search.clone();
-        if self.read_only || s.find.is_empty() {
-            return;
-        }
+        self.replace_with(&s, cx)
+    }
+
+    /// [`replace`](Self::replace) as `s` says (a Replace window's own
+    /// search, as it was asked: two documents' Replace windows asked at
+    /// once each replaced with what the other had set: review,
+    /// 2026-11-28).
+    fn replace_with(&mut self, s: &Search, cx: &mut Cx<Self>) -> bool {
         let selection = self.bytes();
-        if s.all {
-            let ranges = doc::find_all(self.doc.text(), &s.find, s.case);
-            if let Some(change) = self.doc.replace_all(&ranges, &s.replace, selection.clone()) {
-                let at = selection.start.min(self.doc.text().len());
-                self.changed(change, at..at);
-            }
-            cx.invalidate();
-            return;
-        }
-        // The selection itself if it's a match, else the next one.
-        let from = if s.backwards { selection.end } else { selection.start };
-        let Some(r) = doc::find(self.doc.text(), &s.find, from, s.backwards, s.case, s.wrap) else { return };
-        let change = self.doc.replace(r.clone(), &s.replace, selection);
-        self.changed(change, r.start..r.start + s.replace.len());
+        let Some((change, select)) = replace_in(&mut self.doc, s, selection, self.read_only) else { return false };
+        self.changed(change, select);
         cx.invalidate();
+        true
     }
 
     /// A command from the menus, the tool bars or the text's right-click
@@ -2632,7 +2636,9 @@ impl DocView {
             "find-previous" => {
                 self.find_step(true, cx);
             }
-            "replace-same" => self.replace(cx),
+            "replace-same" => {
+                self.replace(cx);
+            }
             "find-selection" => {
                 self.shared.common().search.find = self.selected_text().to_owned();
                 self.find_next(cx);
@@ -2680,6 +2686,28 @@ impl DocView {
     }
 }
 
+/// Replace as `s` asks in `doc`, `selection` selected: the match (the
+/// selection, if it is one, else the next) or every one (`s.all`). The
+/// change and what to select after it (what went in; for all, where the
+/// selection started), or None where nothing is replaced: no match,
+/// nothing to find, or the document can't be changed (`read_only`).
+fn replace_in(doc: &mut Doc, s: &Search, selection: Range<usize>, read_only: bool) -> Option<(Change, Range<usize>)> {
+    if read_only || s.find.is_empty() {
+        return None;
+    }
+    if s.all {
+        let ranges = doc::find_all(doc.text(), &s.find, s.case);
+        let change = doc.replace_all(&ranges, &s.replace, selection.clone())?;
+        let at = selection.start.min(doc.text().len());
+        return Some((change, at..at));
+    }
+    // The selection itself if it's a match, else the next one.
+    let from = if s.backwards { selection.end } else { selection.start };
+    let r = doc::find(doc.text(), &s.find, from, s.backwards, s.case, s.wrap)?;
+    let change = doc.replace(r.clone(), &s.replace, selection);
+    Some((change, r.start..r.start + s.replace.len()))
+}
+
 /// The Find or Replace window.
 struct FindView {
     shared: Arc<Shared>,
@@ -2688,7 +2716,14 @@ struct FindView {
     find: Child<TextField>,
     with: Child<TextField>,
     s: Search,
+    /// The last search found nothing: said beside the buttons, until
+    /// what's to be found changes.
+    not_found: bool,
 }
+
+/// What the document says of the search a Find or Replace window asked
+/// for: whether it found (or replaced) anything.
+struct Searched(bool);
 
 impl FindView {
     fn new(shared: Arc<Shared>, doc: ViewRef<DocView>, replace: bool, cx: &mut Cx<Self>) -> FindView {
@@ -2701,37 +2736,65 @@ impl FindView {
         });
         find.focus(cx);
         with.update(cx, |f, cx| f.set_text(search.replace.clone(), cx));
-        cx.subscribe(&find, |_: &mut FindView, _: &TextFieldEvent, cx| cx.invalidate());
-        FindView { shared, doc, replace, find, with, s: search }
+        // (What's to be found changed: no longer "Not found".)
+        cx.subscribe(&find, |v: &mut FindView, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Changed | TextFieldEvent::Typed(_)) {
+                v.not_found = false;
+            }
+            cx.invalidate();
+        });
+        FindView { shared, doc, replace, find, with, s: search, not_found: false }
     }
 
+    /// Cancel (`go` false), or the search: the window goes once the
+    /// document has found (or replaced) what's asked; nothing found, it
+    /// stays, saying so (`Searched`). It went at once whatever happened,
+    /// and a search that found nothing left no sign of it (QA,
+    /// 2026-11-28).
     fn done(&mut self, go: bool, cx: &mut Cx<Self>) {
-        if go && !self.find.read(cx).text().is_empty() {
-            self.s.find = self.find.read(cx).text().to_owned();
-            self.s.replace = self.with.read(cx).text().to_owned();
-            self.shared.common().search = self.s.clone();
-            let replace = self.replace;
-            self.doc.update(cx, move |d, cx| {
-                if replace {
-                    d.replace(cx);
-                } else {
-                    d.find_next(cx);
-                }
-                cx.activate_window();
-            });
+        if !go || self.find.read(cx).text().is_empty() {
+            cx.close_window();
+            return;
         }
-        cx.close_window();
+        self.s.find = self.find.read(cx).text().to_owned();
+        self.s.replace = self.with.read(cx).text().to_owned();
+        // (Kept for the menus' Find Again and the next window; the
+        // document searches as this window asked, whatever another
+        // window sets meanwhile.)
+        self.shared.common().search = self.s.clone();
+        let (replace, me, s) = (self.replace, cx.view_ref(), self.s.clone());
+        self.doc.update(cx, move |d, cx| {
+            let found = if replace { d.replace_with(&s, cx) } else { d.find_with(&s, false, cx) };
+            me.send(cx, Searched(found));
+        });
     }
 }
 
 impl View for FindView {
-    type Message = ();
+    type Message = Searched;
+
+    fn message(&mut self, Searched(found): Searched, cx: &mut Cx<Self>) {
+        if found {
+            // Back to the document, where it's selected.
+            self.doc.update(cx, |_, cx| cx.activate_window());
+            cx.close_window();
+            return;
+        }
+        self.not_found = true;
+        // (Its words chosen, to be typed over.)
+        self.find.update(cx, |f, cx| f.select_all_text(cx));
+        self.find.focus(cx);
+        cx.invalidate();
+    }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let divider = if self.replace { 86.0 } else { 40.0 };
         let check = |label: &'static str, on: bool, set: fn(&mut Search, bool)| {
             CheckBox::new(label, on).on_toggle(cx.listener(move |v: &mut FindView, on: &bool, cx| {
                 set(&mut v.s, *on);
+                // (How it searches changed: what the last search came to
+                // no longer says.)
+                v.not_found = false;
                 cx.invalidate();
             }))
         };
@@ -2770,6 +2833,13 @@ impl View for FindView {
             .child(div().flex_1())
             .child(
                 button_row()
+                    // (The default button's ring at the window's inset, as
+                    // the field above ends.)
+                    .pr(px(olo_kit::widgets::DEFAULT_RING))
+                    .pb(px(olo_kit::widgets::DEFAULT_RING))
+                    // What the last search came to, where the row starts
+                    // (the buttons keep to the right).
+                    .child(div().flex_1().min_w_0().children(self.not_found.then(|| StringView::new(olo_kit::words::tr("Not found")).cut(true).color(style::c(theme::palette().failure)))))
                     .child(Button::new("Cancel").on_click(cx.listener(|v: &mut FindView, _: &ClickEvent, cx| v.done(false, cx))))
                     .child(Button::new(label).default(true).enabled(ready).on_click(cx.listener(|v: &mut FindView, _: &ClickEvent, cx| v.done(true, cx)))),
             )
@@ -2888,7 +2958,9 @@ fn guide_words(chunks: &[&[String]]) -> Vec<String> {
 
 const STATUS_H: f32 = SCROLL_BAR + 2.0;
 const FIND_W: f32 = 340.0;
-const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 3.0 * m::MARK_ROW + m::SPACING + m::CONTROL_HEIGHT;
+/// (The default button's ring too, below it: so it is the window's inset
+/// from the bottom and the right edge, flush with the field above.)
+const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 3.0 * m::MARK_ROW + m::SPACING + m::CONTROL_HEIGHT + olo_kit::widgets::DEFAULT_RING;
 const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW;
 /// The Header & Footer window: two headed groups of three fields, a
 /// note, and its buttons.
@@ -2954,6 +3026,38 @@ mod tests {
         assert_eq!(colors, super::COLOR_COMMANDS);
         let headings: Vec<(String, String)> = (1..=6).map(|n| (format!("Heading {n}"), format!("md:heading-{n}"))).collect();
         assert_eq!(headings, super::MD_HEADINGS.map(|(l, c)| (l.to_owned(), c.to_owned())));
+    }
+
+    /// Replace replaces as the search it's given says, in the document
+    /// it's given (two documents' Replace windows, each its own search),
+    /// and says whether it replaced anything: the next match, every one,
+    /// none where there's no match, nothing to find, or the document is
+    /// read-only (left as it was).
+    #[test]
+    fn replace_says_whether_it_replaced() {
+        use super::{Doc, Search, replace_in};
+        let search = |find: &str, with: &str, all: bool| Search { find: find.into(), replace: with.into(), wrap: true, all, ..Search::default() };
+        // Two documents, two searches: each its own.
+        let (mut a, mut b) = (Doc::new("one cat, two cats".into(), None), Doc::new("red fox, red hen".into(), None));
+        let (sa, sb) = (search("cat", "dog", false), search("red", "blue", true));
+        let (_, selected) = replace_in(&mut a, &sa, 0..0, false).unwrap();
+        assert_eq!((a.text(), selected), ("one dog, two cats", 4..7));
+        replace_in(&mut b, &sb, 0..0, false).unwrap();
+        assert_eq!(b.text(), "blue fox, blue hen");
+        // The next one from what's selected (the selection if it's one).
+        replace_in(&mut a, &sa, 4..7, false).unwrap();
+        assert_eq!(a.text(), "one dog, two dogs");
+        // None left: nothing replaced, said so.
+        assert!(replace_in(&mut a, &sa, 0..0, false).is_none());
+        assert!(replace_in(&mut a, &search("cat", "dog", true), 0..0, false).is_none());
+        // Nothing to find, or read-only: nothing, the text as it was.
+        assert!(replace_in(&mut a, &search("", "x", false), 0..0, false).is_none());
+        assert!(replace_in(&mut b, &search("fox", "cat", true), 0..0, true).is_none());
+        assert_eq!((a.text(), b.text()), ("one dog, two dogs", "blue fox, blue hen"));
+        // All, case-sensitive: only those that match.
+        let mut c = Doc::new("Ab ab AB ab".into(), None);
+        let (_, at) = replace_in(&mut c, &Search { case: true, ..search("ab", "x", true) }, 3..5, false).unwrap();
+        assert_eq!((c.text(), at), ("Ab x AB x", 3..3));
     }
 
     #[test]

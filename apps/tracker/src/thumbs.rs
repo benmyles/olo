@@ -41,6 +41,33 @@ type Key = (PathBuf, u32, u32, Option<SystemTime>);
 pub struct Thumb {
     pub image: Arc<RenderImage>,
     pub size: (u32, u32),
+    /// Device pixels a pixel of it takes, drawn (nearest: a tiny picture
+    /// kept as it is, `TINY`); 1 for the rest.
+    pub whole: u32,
+}
+
+/// A picture this many pixels a side or fewer is tiny: kept as it is and
+/// drawn whole times its size, each pixel a square of device pixels (as
+/// near 32 points as that goes: 16 × 16 is 2, 3 and 4 device pixels a
+/// pixel at 1, 1.5 and 2×), sharp; made smooth, it was blurred, then blown
+/// up (Opus's look and a review, 2026-11-28).
+pub const TINY: u32 = 32;
+
+/// The longest side of a thumbnail, in points (the icon box is 48).
+pub const THUMB: f32 = 40.0;
+
+/// How many device pixels a pixel of a tiny picture `w` by `h` takes at
+/// `scale` (`TINY`): 1 for one that isn't tiny.
+pub fn whole_times((w, h): (u32, u32), scale: f32) -> u32 {
+    let longest = w.max(h).max(1);
+    if longest > TINY {
+        return 1;
+    }
+    let points = (TINY / longest).max(1) as f32;
+    // (Never past `THUMB`: 32 × 32 at 1.5× was two device pixels a
+    // pixel, 42.7 points.)
+    let most = (THUMB * scale / longest as f32).floor();
+    (points * scale).round().min(most).max(1.0) as u32
 }
 
 enum Slot {
@@ -233,6 +260,20 @@ fn fitted(img: &image::RgbaImage, px: u32) -> image::RgbaImage {
     image::DynamicImage::ImageRgba8(img.clone()).thumbnail(px, px).to_rgba8()
 }
 
+/// The least a small picture's narrower side may be, in points, for it
+/// to stand for its file: under it, its kind's icon does. A 1200 × 40
+/// strip made 48 points wide is a sliver 1.6 points tall, next to nothing
+/// on a dark ground (QA, 2026-11-28).
+pub const LEAST_SIDE: f32 = 4.0;
+
+/// Whether a small picture `size` device pixels across, drawn `whole`
+/// device pixels a pixel, is big enough to show at `scale`
+/// (`LEAST_SIDE`): judged as drawn (a tiny square one was taken for a
+/// sliver before it was made bigger).
+pub fn shows((w, h): (u32, u32), whole: u32, scale: f32) -> bool {
+    (w.min(h) * whole.max(1)) as f32 / scale.max(0.1) >= LEAST_SIDE
+}
+
 /// The size in device pixels a picture `w` by `h` is drawn at in a box
 /// `px` device pixels a side at `scale`: fitted to the box, its shape
 /// kept; one smaller than the box in points is drawn a point a pixel
@@ -257,7 +298,9 @@ fn make(path: &Path, of: Of, px: u32, scale: f32, at: Option<SystemTime>) -> Opt
             small
         }
     };
-    let (w, h) = drawn((small.width(), small.height()), px, scale);
+    let whole = whole_times((small.width(), small.height()), scale);
+    // (A tiny one as it is: its pixels drawn whole times, at paint.)
+    let (w, h) = if whole > 1 || small.width().max(small.height()) <= TINY { (small.width(), small.height()) } else { drawn((small.width(), small.height()), px, scale) };
     let mut img = if (w, h) == (small.width(), small.height()) {
         small
     } else if w <= small.width() {
@@ -271,7 +314,7 @@ fn make(path: &Path, of: Of, px: u32, scale: f32, at: Option<SystemTime>) -> Opt
     for p in img.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
     }
-    Some(Thumb { image: Arc::new(RenderImage::new([image::Frame::new(img)])), size })
+    Some(Thumb { image: Arc::new(RenderImage::new([image::Frame::new(img)])), size, whole })
 }
 
 /// The file at `path` made small for a box `px` device pixels a side at
@@ -326,6 +369,24 @@ pub fn get(path: &Path, px: u32) -> Option<Arc<RenderImage>> {
 mod tests {
     use super::*;
 
+    /// A picture whose small picture would be too thin to make out shows
+    /// as its kind's icon; others as themselves, at every scale.
+    #[test]
+    fn thin_pictures_show_as_their_kind() {
+        for scale in [1.0f32, 1.25, 1.5, 1.75, 2.0] {
+            let px = (48.0 * scale).round() as u32;
+            // A 1200 × 40 strip: 48 × 1.6 points.
+            assert!(!shows(drawn((1200, 40), px, scale), 1, scale), "at {scale}×");
+            // 16 × 16: tiny, drawn about 32 points.
+            assert!(shows((16, 16), whole_times((16, 16), scale), scale), "at {scale}×");
+            // 3 × 3: tiny, not a sliver as drawn.
+            assert!(shows((3, 3), whole_times((3, 3), scale), scale), "at {scale}×");
+            // A photo, and 1000 × 100 (48 × 4.8 points).
+            assert!(shows(drawn((4032, 3024), px, scale), 1, scale), "at {scale}×");
+            assert!(shows(drawn((1000, 100), px, scale), 1, scale), "at {scale}×");
+        }
+    }
+
     /// The cache's names, as every desktop makes them.
     #[test]
     fn where_a_thumbnail_is_kept() {
@@ -355,12 +416,30 @@ mod tests {
         assert!(kept_at(&file, 96).starts_with(dir.join("cache/thumbnails/normal")));
         // Another date: not that file's as it is now.
         assert!(kept(&file, 96, at.map(|t| t + std::time::Duration::from_secs(5))).is_none());
-        // A small picture is drawn a point a pixel: as big on every
-        // display.
+        // A tiny picture is kept as it is, drawn whole times its size
+        // (nearest: sharp); a small one a point a pixel, smoothly.
         let small = dir.join("small.png");
         image::RgbaImage::from_pixel(20, 10, image::Rgba([9, 9, 9, 255])).save(&small).unwrap();
-        assert_eq!(make(&small, Of::Picture, 48, 1.0, None).map(|t| t.size), Some((20, 10)));
-        assert_eq!(make(&small, Of::Picture, 96, 2.0, None).map(|t| t.size), Some((40, 20)));
+        assert_eq!(make(&small, Of::Picture, 48, 1.0, None).map(|t| (t.size, t.whole)), Some(((20, 10), 1)));
+        assert_eq!(make(&small, Of::Picture, 96, 2.0, None).map(|t| (t.size, t.whole)), Some(((20, 10), 2)));
+        let tiny = dir.join("tiny.png");
+        image::RgbaImage::from_pixel(16, 16, image::Rgba([9, 9, 9, 255])).save(&tiny).unwrap();
+        for (scale, whole) in [(1.0, 2), (1.5, 3), (2.0, 4)] {
+            let t = make(&tiny, Of::Picture, (THUMB * scale) as u32, scale, None).unwrap();
+            assert_eq!((t.size, t.whole), ((16, 16), whole), "at {scale}×");
+            assert_eq!(16.0 * whole as f32 / scale, 32.0, "at {scale}×: 32 points");
+        }
+        // Never past `THUMB` on its long side, whatever its size and the
+        // scale (32 × 32 at 1.5× was 42.7 points).
+        for side in 1..=TINY {
+            for scale in [1.0f32, 1.25, 1.5, 1.75, 2.0] {
+                let k = whole_times((side, side), scale);
+                assert!(k >= 1 && (side * k) as f32 / scale <= THUMB + 0.01, "{side} at {scale}×: {k}");
+            }
+        }
+        let middling = dir.join("middling.png");
+        image::RgbaImage::from_pixel(36, 30, image::Rgba([9, 9, 9, 255])).save(&middling).unwrap();
+        assert_eq!(make(&middling, Of::Picture, 80, 2.0, None).map(|t| (t.size, t.whole)), Some(((72, 60), 1)));
         // The sizes drawn: fitted to the box; small ones a point a pixel.
         assert_eq!(drawn((400, 200), 48, 1.0), (48, 24));
         assert_eq!(drawn((400, 200), 72, 1.5), (72, 36));

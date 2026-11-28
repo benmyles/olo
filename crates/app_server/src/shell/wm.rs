@@ -243,6 +243,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.keep_floating_above();
         self.keep_floating_over_focus();
         self.keep_children_above();
+        // Menus up over another window or a layer (Deskbar's, left open
+        // with Escape from a submenu) go: this window takes the keyboard
+        // from them, and they'd stay up holding the pointer. Its own stay
+        // up, and keep the keyboard: taken from them, it went to the
+        // window while the pointer stayed with the menu (review,
+        // 2026-11-28).
+        if self.put_away_menus(window) == super::xdg::Menus::Own {
+            return;
+        }
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
         // A menu's popup grab may still be live (the menu that opened this

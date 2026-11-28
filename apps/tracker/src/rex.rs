@@ -157,7 +157,7 @@ fn demo_entry(host: &str, dir: &str, name: &str, is_dir: bool, size: u64, age_se
     let path = rp.to_path_buf();
     let kind = kind_for(Path::new(name), is_dir, mode);
     let modified = SystemTime::now().checked_sub(Duration::from_secs(age_secs));
-    Entry { path, name: name.to_owned(), is_dir, is_link: false, size, modified, mode, kind, app_icon: None, downloading: None, shown: Shown::default() }
+    Entry { path, name: name.to_owned(), is_dir, is_link: false, broken: false, size, modified, mode, kind, app_icon: None, downloading: None, shown: Shown::default() }
 }
 
 fn demo_list(rex: &RexPath, hidden: bool) -> Result<ListResult, String> {
@@ -497,7 +497,7 @@ fn entry_from_json(host: &str, parent_dir: &str, v: &Value) -> Option<Entry> {
     let modified = mtime_secs.and_then(|s| if s >= 0 { UNIX_EPOCH.checked_add(Duration::new(s as u64, mtime_nanos)) } else { UNIX_EPOCH.checked_sub(Duration::from_secs(s.unsigned_abs())) });
     let rp = if name == "/" { RexPath::new(host, "/") } else { RexPath::new(host, parent_dir).join(&name) };
     let kind = kind_for(Path::new(&name), is_dir, mode);
-    Some(Entry { path: rp.to_path_buf(), name, is_dir, is_link, size: if is_dir { 0 } else { size }, modified, mode, kind, app_icon: None, downloading: None, shown: Shown::default() })
+    Some(Entry { path: rp.to_path_buf(), name, is_dir, is_link, broken: false, size: if is_dir { 0 } else { size }, modified, mode, kind, app_icon: None, downloading: None, shown: Shown::default() })
 }
 
 fn entry_at_path_from_json(host: &str, full_path: &str, v: &Value) -> Option<Entry> {
@@ -511,7 +511,7 @@ fn entry_at_path_from_json(host: &str, full_path: &str, v: &Value) -> Option<Ent
     let modified = mtime_secs.and_then(|s| if s >= 0 { UNIX_EPOCH.checked_add(Duration::new(s as u64, mtime_nanos)) } else { UNIX_EPOCH.checked_sub(Duration::from_secs(s.unsigned_abs())) });
     let rp = RexPath::new(host, full_path);
     let kind = kind_for(Path::new(&name), is_dir, mode);
-    Some(Entry { path: rp.to_path_buf(), name, is_dir, is_link, size: if is_dir { 0 } else { size }, modified, mode, kind, app_icon: None, downloading: None, shown: Shown::default() })
+    Some(Entry { path: rp.to_path_buf(), name, is_dir, is_link, broken: false, size: if is_dir { 0 } else { size }, modified, mode, kind, app_icon: None, downloading: None, shown: Shown::default() })
 }
 
 pub fn hosts() -> Result<Vec<HostInfo>, String> {
@@ -576,6 +576,7 @@ pub fn stat(rex: &RexPath) -> Result<StatResult, String> {
             name: name.to_owned(),
             is_dir,
             is_link: false,
+            broken: false,
             size: if is_dir { 0 } else { 4096 },
             modified: Some(SystemTime::now()),
             mode: if is_dir { 0o755 } else { 0o644 },
@@ -1386,6 +1387,7 @@ mod tests {
                 name: "link".into(),
                 is_dir,
                 is_link,
+                broken: false,
                 size: 999,
                 modified: None,
                 mode: 0o644,

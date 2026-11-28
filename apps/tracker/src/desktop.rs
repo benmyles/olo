@@ -32,6 +32,41 @@ const DESKBAR_WIDTH: f32 = 172.0;
 const EDGE: f32 = m::SPACING;
 const DRAG_SLOP: f32 = 3.0;
 
+/// Which of the items laid out in `hits` (in the order they're drawn) is
+/// under `p`: the last, drawn over the others (where the grid goes round
+/// between its cells, an icon can be over another; the first under the
+/// pointer opened the one under the one seen: review, 2026-11-28).
+fn top_hit(hits: impl DoubleEndedIterator<Item = Bounds<Pixels>> + ExactSizeIterator, p: Point<Pixels>) -> Option<usize> {
+    let n = hits.len();
+    // (Counted from the end: the index from the start.)
+    hits.rev().position(|b| b.contains(&p)).map(|k| n - 1 - k)
+}
+
+/// The `k`th cell of the desktop's grid on `screen`: columns downward
+/// from the top right, beside the Deskbar, wrapping leftward, each as
+/// tall as the screen (the Trash is in a column of its own, under the
+/// Deskbar: keeping its row free in every column put a 720 × 450
+/// screen's fourth row out of use, and an icon a column past the left
+/// edge with it: review, 2026-11-28). Past the last whole column the
+/// grid goes round again between its cells, half a cell across and down,
+/// so an icon is never put where nothing could reach it (there's no
+/// scrolling the desktop).
+fn grid_slot(k: usize, screen: Bounds<Pixels>) -> Bounds<Pixels> {
+    let fit = |room: f32, step: f32| ((room / step).floor() as usize).max(1);
+    let (rows, cols) = (fit(f32::from(screen.size.height) - 2.0 * EDGE, ICON_CELL.1), fit(f32::from(screen.size.width) - DESKBAR_WIDTH - 2.0 * EDGE, ICON_CELL.0));
+    let (k, rows, half) = if k < rows * cols {
+        (k, rows, (0.0, 0.0))
+    } else {
+        // (One fewer each way, so a cell between stays on the screen; none
+        // fewer where there's only one.)
+        let (r, c) = ((rows - 1).max(1), (cols - 1).max(1));
+        ((k - rows * cols) % (r * c), r, (if cols > 1 { 0.5 } else { 0.0 }, if rows > 1 { 0.5 } else { 0.0 }))
+    };
+    let (col, row) = (k / rows, k % rows);
+    let right = screen.right() - px(DESKBAR_WIDTH + EDGE + (col as f32 + half.0) * ICON_CELL.0);
+    Bounds { origin: point(right - px(ICON_CELL.0), screen.top() + px(EDGE + (row as f32 + half.1) * ICON_CELL.1)), size: size(px(ICON_CELL.0), px(ICON_CELL.1)) }
+}
+
 /// Icons being moved, by [`place_key`], and where each cell was.
 type Dragged = Vec<(String, Point<Pixels>)>;
 
@@ -292,7 +327,7 @@ impl Desktop {
         let (Some(it), Some(l)) = (self.item(i), layouts.get(i)) else { return };
         let p = theme::palette();
         let small = items::small(g, &it.entry);
-        items::paint_item(g, l, it.icon, small.as_ref(), self.selected.contains(&i) || self.drop_on == Some(i), true, label, &p);
+        items::paint_item(g, l, it.icon, small.as_ref(), self.selected.contains(&i) || self.drop_on == Some(i), true, label, it.entry.broken, &p);
         if crate::backups::backed_up(&it.entry.path) {
             items::paint_mark(g, l.icon, &l.name, &p);
         }
@@ -355,13 +390,10 @@ impl Desktop {
         if cells[n - 1].is_none() {
             cells[n - 1] = Some(Bounds { origin: point(screen.right() - px(EDGE) - cell.width, screen.bottom() - px(EDGE) - cell.height), size: cell });
         }
-        let usable = f32::from(screen.size.height) - 2.0 * EDGE - ICON_CELL.1; // keep the Trash's row free
-        let per_col = ((usable / ICON_CELL.1).floor() as usize).max(1);
-        let slot = |k: usize| {
-            let (col, row) = (k / per_col, k % per_col);
-            let right = screen.right() - px(DESKBAR_WIDTH + EDGE + col as f32 * ICON_CELL.0);
-            Bounds { origin: point(right - cell.width, screen.top() + px(EDGE + row as f32 * ICON_CELL.1)), size: cell }
-        };
+        // (What the grid goes round: the icons placed by hand and the
+        // Trash, not the grid's own, which past the last column that
+        // shows are stacked over the first round.)
+        let fixed: Vec<Bounds<Pixels>> = cells.iter().flatten().copied().collect();
         let shrink = |b: Bounds<Pixels>| Bounds { origin: point(b.left() + px(4.0), b.top() + px(4.0)), size: size(b.size.width - px(8.0), b.size.height - px(8.0)) };
         let mut k = 0;
         for i in 0..n - 1 {
@@ -369,11 +401,11 @@ impl Desktop {
                 continue;
             }
             // The next grid slot no placed icon covers (a few thousand
-            // slots at most: past the left edge it gives up and overlaps).
-            while k < 4096 && cells.iter().flatten().any(|c| shrink(*c).intersects(&slot(k))) {
+            // slots at most).
+            while k < 4096 && fixed.iter().any(|c| shrink(*c).intersects(&grid_slot(k, screen))) {
                 k += 1;
             }
-            cells[i] = Some(slot(k));
+            cells[i] = Some(grid_slot(k, screen));
             k += 1;
         }
         cells.into_iter().map(|c| c.unwrap_or_default()).collect()
@@ -463,10 +495,13 @@ impl Desktop {
                 let moved = self.clean_up();
                 to_hub(ToHub::Done(olo_kit::words::tr("Clean Up").into(), undo::Change::Placed(moved)));
             }
+            // (Files together, so links that can't be opened are said once.)
             "open" => {
-                for e in self.selected_entries() {
-                    self.open(&e);
+                let (folders, files): (Vec<Entry>, Vec<Entry>) = self.selected_entries().into_iter().partition(|e| e.is_dir && !e.is_link);
+                for e in &folders {
+                    self.open(e);
                 }
+                fs::open_files(&files, None);
             }
             "new-window" => {
                 if let Some(app) = self.selected_entries().first().and_then(fs::running_app) {
@@ -565,7 +600,7 @@ impl Desktop {
     // ---- input -------------------------------------------------------------
 
     fn hit(&self, p: Point<Pixels>) -> Option<usize> {
-        self.layouts.borrow().iter().position(|l| l.hit().contains(&p))
+        top_hit(self.layouts.borrow().iter().map(|l| l.hit()), p)
     }
 
     fn press(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
@@ -892,7 +927,7 @@ impl View for Desktop {
                     let key = style::key((bits(cells[i]), &it.label, selected, it.entry.is_link, scale));
                     let l = match (self.laid.get(i), old.get(i)) {
                         (Some(k), Some(l)) if *k == key => l.clone(),
-                        _ => items::layout_item(cells[i], &it.label, Look::Icons, selected, it.entry.is_link),
+                        _ => items::layout_item(cells[i], &it.label, Look::Icons, it.entry.is_link),
                     };
                     (key, l)
                 })
@@ -967,6 +1002,7 @@ fn trash_item() -> Item {
         name: "Trash".into(),
         is_dir: true,
         is_link: false,
+        broken: false,
         size: 0,
         modified: None,
         mode: 0o40755,
@@ -976,4 +1012,49 @@ fn trash_item() -> Item {
         shown: Default::default(),
     });
     Item { entry, label: "Trash".into(), icon }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// On the smallest screen the review measured (720 × 450 points) the
+    /// grid has its four rows again, its twentieth slot (the last whole
+    /// one) on the screen; and every slot after it, round after round,
+    /// stays on the screen, clear of the Deskbar's column.
+    #[test]
+    fn the_icon_drawn_over_another_is_the_one_hit() {
+        let at = |x: f32, y: f32| Bounds { origin: point(px(x), px(y)), size: size(px(96.0), px(100.0)) };
+        let screen = Bounds { origin: point(px(0.0), px(0.0)), size: size(px(720.0), px(450.0)) };
+        // Slots 20 and 32 go round onto the same place: the later, drawn
+        // over the earlier, is the one a click there opens.
+        let hits = [at(0.0, 0.0), grid_slot(20, screen), at(400.0, 0.0), grid_slot(32, screen)];
+        assert_eq!(hits[1], hits[3]);
+        assert_eq!(top_hit(hits.iter().copied(), hits[1].center()), Some(3));
+        assert_eq!(top_hit(hits.iter().copied(), point(px(10.0), px(10.0))), Some(0));
+        assert_eq!(top_hit(hits.iter().copied(), point(px(700.0), px(440.0))), None);
+    }
+
+    #[test]
+    fn desktop_slots_stay_on_the_screen() {
+        let screen = Bounds { origin: point(px(0.0), px(0.0)), size: size(px(720.0), px(450.0)) };
+        let on_screen = |b: Bounds<Pixels>| b.left() >= screen.left() && b.top() >= screen.top() && b.right() <= screen.right() - px(DESKBAR_WIDTH) && b.bottom() <= screen.bottom();
+        // Four rows: the fourth slot is the first column's last.
+        assert_eq!(grid_slot(3, screen).left(), grid_slot(0, screen).left());
+        assert_eq!(grid_slot(4, screen).top(), grid_slot(0, screen).top());
+        let last = grid_slot(19, screen);
+        assert!(on_screen(last), "the twentieth slot is at {last:?}");
+        assert_eq!(f32::from(last.left()), 56.0);
+        for k in 0..500 {
+            let b = grid_slot(k, screen);
+            assert!(on_screen(b), "slot {k} is at {b:?}");
+        }
+        // Going round, between the cells, not over them.
+        let (first, again) = (grid_slot(0, screen), grid_slot(20, screen));
+        assert_eq!(again.left(), first.left() - px(ICON_CELL.0 / 2.0));
+        assert_eq!(again.top(), first.top() + px(ICON_CELL.1 / 2.0));
+        // A screen with room for one row and one column.
+        let tiny = Bounds { origin: point(px(0.0), px(0.0)), size: size(px(300.0), px(130.0)) };
+        assert_eq!(grid_slot(7, tiny), grid_slot(0, tiny));
+    }
 }

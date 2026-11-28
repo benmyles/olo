@@ -82,6 +82,9 @@ pub enum FolderMsg {
     Select(Vec<PathBuf>),
     /// Opened from this folder's window: Back goes there.
     CameFrom(PathBuf),
+    /// Goes to a folder in this window (a link opened here found one:
+    /// `fs::open_files`).
+    GoTo(PathBuf),
     /// Something it shows that isn't its own changed (Undo's name, the
     /// places, a backup's marks, a thumbnail): shown again.
     Refresh,
@@ -194,18 +197,22 @@ struct IconGeo {
     cols: usize,
     cell: (f32, f32),
     inset: f32,
+    /// From the left to the first column: the room past the columns
+    /// shared by both sides in the icon view (`inset` and the rest on the
+    /// right, the grid sat off to the left: Gemini's look, 2026-11-28).
+    inset_x: f32,
 }
 
 impl IconGeo {
     /// Item `i`'s cell, in the window.
     fn cell_at(&self, i: usize) -> Bounds<Pixels> {
         let (c, r) = (i % self.cols.max(1), i / self.cols.max(1));
-        Bounds { origin: point(self.origin.x + px(self.inset + c as f32 * self.cell.0), self.origin.y + px(self.inset + r as f32 * self.cell.1)), size: size(px(self.cell.0), px(self.cell.1)) }
+        Bounds { origin: point(self.origin.x + px(self.inset_x + c as f32 * self.cell.0), self.origin.y + px(self.inset + r as f32 * self.cell.1)), size: size(px(self.cell.0), px(self.cell.1)) }
     }
 
     /// The item whose cell `p` is in, of `n`.
     fn index_at(&self, p: Point<Pixels>, n: usize) -> Option<usize> {
-        let (x, y) = (f32::from(p.x - self.origin.x) - self.inset, f32::from(p.y - self.origin.y) - self.inset);
+        let (x, y) = (f32::from(p.x - self.origin.x) - self.inset_x, f32::from(p.y - self.origin.y) - self.inset);
         if x < 0.0 || y < 0.0 || self.cols == 0 {
             return None;
         }
@@ -927,12 +934,12 @@ impl FolderWin {
             let e = &self.entries[i];
             let c = Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top()), size: size(px(cell.0), px(cell.1)) };
             let selected = self.list.selected.contains(&i);
-            let l = items::layout_item(c, e.label(), look, selected, e.is_link);
+            let l = items::layout_item(c, e.label(), look, e.is_link);
             let editing = self.editing.as_ref().is_some_and(|r| r.path == e.path);
             // (A picture's icon is the picture, a video's a frame of it:
             // the big icons; the small ones are their kinds'.)
             let small = if look == Look::Icons { items::small(g, e) } else { None };
-            items::paint_item(g, &l, items::icon_of(e), small.as_ref(), selected || drop_on == Some(i), false, !editing, &p);
+            items::paint_item(g, &l, items::icon_of(e), small.as_ref(), selected || drop_on == Some(i), false, !editing, e.broken, &p);
             if let Some(done) = e.progress() {
                 items::paint_progress(g, l.icon, done, &p);
             }
@@ -965,7 +972,7 @@ impl FolderWin {
     /// Item `i` of the icon view, laid out where it is in the window.
     fn icon_layout(&self, i: usize) -> Option<items::ItemLayout> {
         let e = self.entries.get(i)?;
-        Some(items::layout_item(self.icon_geo().cell_at(i), e.label(), self.icon_look(), self.list.selected.contains(&i), e.is_link))
+        Some(items::layout_item(self.icon_geo().cell_at(i), e.label(), self.icon_look(), e.is_link))
     }
 
     /// The item of the icon view at `p` (on its icon or its label).
@@ -1079,7 +1086,7 @@ impl FolderWin {
         let mut covered = Vec::new();
         for i in range {
             let e = &self.entries[i];
-            if items::layout_item(g.cell_at(i), e.label(), look, false, e.is_link).hit().intersects(&r) {
+            if items::layout_item(g.cell_at(i), e.label(), look, e.is_link).hit().intersects(&r) {
                 covered.push(i);
             }
         }
@@ -1159,17 +1166,24 @@ impl FolderWin {
         // As wide as the view less its bar (the window's width, before
         // it's been laid out).
         let view_w = {
+            // (Measured, the scroll view's own, its bar left out already:
+            // less the bar again, the grid sat off to the left.)
             let w = f32::from(self.scroll.bounds().size.width);
-            if w > 0.0 { w - SCROLL_BAR } else { f32::from(cx.viewport_size().width) - SCROLL_BAR }
+            if w > 0.0 { w } else { f32::from(cx.viewport_size().width) - SCROLL_BAR }
         };
         let cols = (((view_w - 2.0 * inset) / cell.0).floor() as usize).max(1);
         let rows = self.entries.len().div_ceil(cols);
         let height = rows as f32 * cell.1 + 2.0 * inset;
+        // (Icons: the room past the columns shared by both sides, on a
+        // device pixel. Mini icons start at the left, their names after.)
+        let s = cx.scale_factor();
+        let inset_x = if look == Look::Icons { (((view_w - cols as f32 * cell.0) / 2.0).max(inset) * s).floor() / s } else { inset };
         {
             let mut g = self.geo.borrow_mut();
             g.cols = cols;
             g.cell = cell;
             g.inset = inset;
+            g.inset_x = inset_x;
         }
         // A selection made in code (Show in Tracker, a new item, one put
         // back after a reload): into view, with some of what's around it.
@@ -1185,8 +1199,8 @@ impl FolderWin {
         let field = self.editing.as_ref().and_then(|r| {
             let i = self.entries.iter().position(|e| e.path == r.path)?;
             let e = &self.entries[i];
-            let c = Bounds { origin: point(px(inset + (i % cols) as f32 * cell.0), px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
-            let l = items::layout_item(c, e.label(), look, true, e.is_link);
+            let c = Bounds { origin: point(px(inset_x + (i % cols) as f32 * cell.0), px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
+            let l = items::layout_item(c, e.label(), look, e.is_link);
             Some(r.element(cx, &l, Point::default()))
         });
         let ground = theme::palette().document_background;
@@ -1196,12 +1210,17 @@ impl FolderWin {
         // on, a taller window only the rows it uncovers.
         let grid = olo_kit::uniform_rows(rows, px(cell.1), move |near| {
             near.map(|row| {
-                olo_kit::view_canvas::<FolderWin>(move |f, g, b| f.paint_icon_row(g, b, row, look, cols, cell, inset)).key_by::<FolderWin>(move |f| f.icon_row_key(row, look, cols)).id(row).w_full()
+                olo_kit::view_canvas::<FolderWin>(move |f, g, b| f.paint_icon_row(g, b, row, look, cols, cell, inset_x))
+                    .key_by::<FolderWin>(move |f| style::key((f.icon_row_key(row, look, cols), inset_x.to_bits())))
+                    .id(row)
+                    .w_full()
             })
             .collect()
         })
         // (A row is made of `look` and `cols`, and what its key says.)
-        .row_key_by::<FolderWin>(move |f, row| f.icon_row_key(row, look, cols))
+        // (The inset too: kept, a row widened past it painted where its
+        // clicks no longer went.)
+        .row_key_by::<FolderWin>(move |f, row| style::key((f.icon_row_key(row, look, cols), inset_x.to_bits())))
         .absolute()
         .left(px(0.0))
         .top(px(inset));
@@ -1272,7 +1291,7 @@ impl FolderWin {
         if let Some(row) = reveal {
             self.list_model.reveal(cx, row);
         }
-        let cols = [Column::new("Name", 220.0), Column::new("Size", 80.0).right(), Column::new("Modified", 160.0), Column::new("Kind", 120.0)];
+        let cols = list_columns();
         // Names for typing to select, made again only when the items change.
         if self.names.0 != self.stamp {
             self.names = (self.stamp, self.entries.iter().map(|e| SharedString::from(e.name.clone())).collect());
@@ -1289,7 +1308,7 @@ impl FolderWin {
             let cell = self.list_model.cell_bounds(&cols, row, 0);
             let inset = px(m::CELL_INSET - m::TIGHT);
             let name = Bounds { origin: point(inset, px(0.0)), size: size(cell.size.width - inset, cell.size.height) };
-            let l = items::layout_item(name, e.label(), items::Look::Mini, true, e.is_link);
+            let l = items::layout_item(name, e.label(), items::Look::Mini, e.is_link);
             Some((row, r.element_within(cx, &l, Point::default(), Some(cell.size.width - px(1.0)))))
         });
         // What something dragged over it would go into: a folder's row
@@ -1301,7 +1320,7 @@ impl FolderWin {
             let editing = f.editing.as_ref().is_some_and(|r| r.path == e.path);
             match cell.column {
                 0 => name_cell(cell, g, e, !editing),
-                1 => cell.text(g, e.shown().size.clone()),
+                1 => cell.text(g, e.size_text_within(f32::from(cell.bounds.size.width) - 2.0 * m::CELL_INSET)),
                 2 => cell.text(g, e.shown().modified.clone()),
                 _ => cell.text(g, e.shown().kind.clone()),
             }
@@ -1948,16 +1967,22 @@ impl FolderWin {
         match cmd {
             "quick-look" => to_hub(ToHub::QuickLook(self.id)),
             // (One folder: there, in this window. Several: a window each, as
-            // one window can't be in several places; files by their apps.)
+            // one window can't be in several places; files by their apps,
+            // together, so links that can't be opened are said once.)
+            // (Links, to folders too, looked at as they are now on a worker,
+            // which brings a folder one back here: `fs::open_files`.)
             "open" => {
-                let folders = entries.iter().filter(|e| e.is_dir).count();
-                for e in &entries {
-                    if e.is_dir && folders > 1 {
+                let (folders, files): (Vec<&Entry>, Vec<&Entry>) = entries.iter().partition(|e| e.is_dir && !e.is_link);
+                let all_folders = entries.iter().filter(|e| e.is_dir).count();
+                for e in &folders {
+                    if all_folders > 1 {
                         to_hub(ToHub::Open { path: e.path.clone(), from: Some(self.path.clone()) });
                     } else {
                         self.open(e, cx);
                     }
                 }
+                let from = fs::OpenedFrom { win: self.id, path: self.path.clone(), folders: folders.len() };
+                fs::open_files(&files.into_iter().cloned().collect::<Vec<_>>(), Some(from));
             }
             "open-new-window" => {
                 for e in entries.iter().filter(|e| e.is_dir) {
@@ -2265,7 +2290,12 @@ impl FolderWin {
 pub fn name_cell(cell: &mut Cell, g: &mut Painter, e: &Entry, text: bool) {
     let b = cell.bounds;
     let icon = Bounds { origin: point(b.left() + px(m::CELL_INSET), b.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
-    olo_kit::icons::paint(g, icon, items::icon_of(e));
+    if e.broken {
+        olo_kit::icons::paint_faded(g, icon, items::icon_of(e), 0.5);
+        items::paint_broken(g, icon);
+    } else {
+        olo_kit::icons::paint(g, icon, items::icon_of(e));
+    }
     if crate::backups::backed_up(&e.path) {
         items::paint_mark(g, icon, e.label(), &theme::palette());
     }
@@ -2328,6 +2358,7 @@ impl View for FolderWin {
             FolderMsg::Reload(hidden) => self.reload(hidden),
             FolderMsg::Select(paths) => self.select_paths(&paths),
             FolderMsg::CameFrom(from) => self.came_from(from),
+            FolderMsg::GoTo(path) => self.go_to(path, None, cx),
             FolderMsg::Refresh => {}
             FolderMsg::Step(d) => {
                 if let Some(e) = self.step_selection(d) {
@@ -2529,4 +2560,93 @@ pub fn open_with_menu(entries: &[Entry]) -> Option<Menu> {
 /// The kind `entries` all are, for Open With (None: none, or mixed).
 pub fn open_with_kind(entries: &[Entry]) -> Option<String> {
     olo_kit::open_with::kind_of(entries.iter().map(|e| (e.name.as_str(), e.is_dir)))
+}
+
+/// The list view's columns as they first are, together a few points
+/// narrower than a new window's list (560 points less its frame and
+/// scroll bar), so they don't scroll sideways there and Kind, the last,
+/// fills what's left: at 580 together, "PDF Document" was cut off under
+/// the scroll bar (QA, 2026-11-28). Modified holds the widest date
+/// ("Nov 28, 2026, 12:59 PM"), Size the widest size ("1023.9 MB"; a
+/// download's progress where it fits, `Entry::size_text_within`), Kind
+/// in a new window every kind, "Olo Settings Backup" and "Downloading,
+/// 99%" the widest (at 106, a review found them cut;
+/// `list_columns_fit_a_new_window`).
+pub fn list_columns() -> [Column; 4] {
+    [Column::new("Name", 196.0), Column::new("Size", 74.0).right(), Column::new("Modified", 146.0), Column::new("Kind", 122.0)]
+}
+
+#[cfg(test)]
+mod tests {
+    use olo_kit::{FontWeight, metrics as m, style, widgets::scroll::SCROLL_BAR};
+
+    use super::list_columns;
+
+    /// A new window's list (560 points wide, less its sunken frame's
+    /// two lines each side and its scroll bar) holds the columns without
+    /// scrolling sideways, and each column what the formatters give it
+    /// whole: every date and size, every kind (Kind with what's left of
+    /// the window), and a download's progress as it is put to fit
+    /// (`Entry::size_text_within`).
+    #[test]
+    fn list_columns_fit_a_new_window() {
+        use crate::fs::{Entry, Kind, format_size};
+        let cols = list_columns();
+        let view = 560.0 - 2.0 * 2.0 - SCROLL_BAR;
+        let total: f32 = cols.iter().map(|c| c.width).sum();
+        assert!(total + 4.0 <= view, "the columns, {total} together, scroll sideways in a new window's list, {view} wide");
+        let width = |text: &str| f32::from(style::text_width(text.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL)));
+        // (Kind, the last, has what the others leave of the list.)
+        let room = |col: usize| cols[col].width + if col == 3 { view - total } else { 0.0 } - 2.0 * m::CELL_INSET;
+        let fits = |text: &str, col: usize| assert!(width(text) <= room(col), "“{text}” ({:.1} wide) doesn't fit {} ({})", width(text), cols[col].title, cols[col].width);
+        fits("Nov 28, 2026, 12:59 PM", 2);
+        fits("Sep 30, 2026, 10:59 PM", 2);
+        for n in [1, 1023, 1023 * 1024 + 900 * 1024 / 1000, 1023 * 1024 * 1024 + 1000 * 1024, 999 << 40] {
+            fits(&format_size(n), 1);
+        }
+        let kinds = [
+            Kind::Folder,
+            Kind::Text,
+            Kind::Image,
+            Kind::Audio,
+            Kind::Video,
+            Kind::Archive,
+            Kind::Pdf,
+            Kind::Application,
+            Kind::Executable,
+            Kind::Document,
+            Kind::WordDocument,
+            Kind::Spreadsheet,
+            Kind::Presentation,
+            Kind::Font,
+            Kind::SettingsBackup,
+        ];
+        for kind in kinds.iter().map(|k| k.name()).chain(["Broken Link", "Downloading", "Downloading, 99%"]) {
+            fits(kind, 3);
+        }
+        // A download: "3.1 of 10 MB" where the column holds it; in a new
+        // window's, what's done so far, whole.
+        let download = |done: u64, total: u64| Entry {
+            path: "/f/big.iso.part".into(),
+            name: "big.iso.part".into(),
+            is_dir: false,
+            is_link: false,
+            broken: false,
+            size: done,
+            modified: None,
+            mode: 0o644,
+            kind: Kind::Archive,
+            app_icon: None,
+            downloading: Some(Some(total)),
+            shown: Default::default(),
+        };
+        for (done, total) in [(3_250_000, 10_485_760), (1023, 1023), (999 << 20, 1023 << 20), (5 << 30, 9 << 30)] {
+            let e = download(done, total);
+            let shown = e.size_text_within(room(1));
+            assert!(width(&shown) <= room(1), "“{shown}” doesn't fit Size");
+            assert_eq!(e.size_text_within(200.0), e.size_text().as_str());
+        }
+        assert_eq!(download(3_250_000, 10_485_760).size_text_within(room(1)), "3.1 MB");
+        assert_eq!(download(3_250_000, 10_485_760).size_text_within(200.0), "3.1 of 10 MB");
+    }
 }

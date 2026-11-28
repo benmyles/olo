@@ -155,6 +155,12 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
     })
 }
 
+/// The zone list's rows (indices into the shared list of zones) for a
+/// search: the search, the zones, the zone it is now (shown whatever its
+/// name: the old one's stayed, a new one's was missing, as the zone
+/// changed: review, 2026-11-28), and the rows.
+type Filtered = (String, Arc<Vec<String>>, String, Arc<Vec<usize>>);
+
 pub struct State {
     tab: usize,
     /// The first of the month the calendar shows; None follows the date
@@ -167,8 +173,8 @@ pub struct State {
     time: Child<TextField>,
     search: Child<TextField>,
     zones: ListModel,
-    /// The zone list's rows (indices into the shared list) for a search.
-    filtered: Option<(String, Arc<Vec<String>>, Arc<Vec<usize>>)>,
+    /// The zone list's rows (`Filtered`).
+    filtered: Option<Filtered>,
     /// The current zone was selected when the list first showed.
     zone_selected: bool,
     /// A frame is due at the next second (the clock ticks).
@@ -550,6 +556,21 @@ fn parse_time(s: &str) -> Option<Time> {
 
 // ---- Time Zone -----------------------------------------------------------------
 
+/// Whether `zone` is one a person picks by: a region's city ("Europe /
+/// London"), or UTC; not a name kept for old systems' sake (W-SU, WET,
+/// Universal, US / Mountain, Etc / GMT+5), which showed among them, the
+/// same zones again by other names (Opus's look, 2026-11-28).
+fn canonical(zone: &str) -> bool {
+    const REGIONS: [&str; 10] = ["Africa", "America", "Antarctica", "Arctic", "Asia", "Atlantic", "Australia", "Europe", "Indian", "Pacific"];
+    zone == "UTC" || zone.split_once('/').is_some_and(|(region, _)| REGIONS.contains(&region))
+}
+
+/// Rows the zone list shows: an odd number, so the zone brought to its
+/// middle as it opens has whole rows round it (one cut in half under the
+/// header, as the list was as tall as the window left it: Opus's look,
+/// 2026-11-28).
+const ZONE_ROWS: usize = 7;
+
 fn zone_label(z: &str) -> String {
     z.replace('_', " ").replace('/', " / ")
 }
@@ -564,11 +585,13 @@ fn offset_text(tz: &TimeZone, at: Timestamp) -> String {
 fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, zones: &Arc<Vec<String>>, busy: bool) {
     ui.add(TextControl::new(ui.cx, &st.search).label("Search:"));
     let search = st.search.read(ui.cx).text().to_owned();
-    let stale = st.filtered.as_ref().is_none_or(|(q, z, _)| *q != search || !Arc::ptr_eq(z, zones));
+    let stale = st.filtered.as_ref().is_none_or(|(q, z, now, _)| *q != search || !Arc::ptr_eq(z, zones) || now != current);
     if stale {
         let q = search.to_lowercase();
-        let selected = st.filtered.as_ref().and_then(|(_, z, rows)| st.zones.state().single().and_then(|i| rows.get(i)).map(|&r| z[r].clone()));
-        let rows: Vec<usize> = (0..zones.len()).filter(|&i| zone_label(&zones[i]).to_lowercase().contains(&q) || zones[i].to_lowercase().contains(&q)).collect();
+        let selected = st.filtered.as_ref().and_then(|(_, z, _, rows)| st.zones.state().single().and_then(|i| rows.get(i)).map(|&r| z[r].clone()));
+        // (The zone it is now, whatever its name.)
+        let rows: Vec<usize> =
+            (0..zones.len()).filter(|&i| canonical(&zones[i]) || zones[i] == current).filter(|&i| zone_label(&zones[i]).to_lowercase().contains(&q) || zones[i].to_lowercase().contains(&q)).collect();
         let keep = selected.or_else(|| (!st.zone_selected).then(|| current.to_owned()));
         let at = keep.and_then(|k| rows.iter().position(|&r| zones[r] == k));
         {
@@ -584,13 +607,13 @@ fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, 
         if at.is_some() {
             st.zone_selected = true;
         }
-        st.filtered = Some((search.clone(), zones.clone(), Arc::new(rows)));
+        st.filtered = Some((search.clone(), zones.clone(), current.to_owned(), Arc::new(rows)));
     }
-    let Some((_, _, rows)) = &st.filtered else { return };
+    let Some((_, _, _, rows)) = &st.filtered else { return };
     let rows = rows.clone();
     // (All three in the list's width, no scrolling sideways: a long
     // zone's name is cut short.)
-    let columns = vec![Column::new("Time zone", 186.0), Column::new("Offset", 84.0), Column::new("Time", 84.0).right()];
+    let columns = vec![Column::new("Time Zone", 186.0), Column::new("Offset", 84.0), Column::new("Time", 84.0).right()];
     let now = Timestamp::now();
     let (zones2, rows2, clock2) = (zones.clone(), rows.clone(), clock.clone());
     let list = ColumnListView::new(ui.cx, "zones", &st.zones, columns, rows.len(), move |_: &PanelView, cell, g| {
@@ -608,24 +631,31 @@ fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, 
         }
     })
     .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
-    ui.add(div().flex_1().min_h(px(100.0)).child(list));
+    // (Whole rows; on a screen too short for them, fewer, as a list
+    // gives way.)
+    let tall = olo_kit::widgets::list_height(ZONE_ROWS, m::LIST_ROW, true);
+    ui.add(div().h(px(tall)).flex_shrink().min_h(px(olo_kit::widgets::list_height(3, m::LIST_ROW, true))).child(list));
     let chosen = st.zones.state().single().and_then(|i| rows.get(i)).map(|&r| zones[r].clone());
     let can = !busy && chosen.as_deref().is_some_and(|z| z != current);
     let tx = st.link.tx.clone();
+    // What it is now, then the button that changes it, at the right as a
+    // row's action is: before it, the button's words started 4 points
+    // from the list's names over it, as if they almost lined up (QA,
+    // 2026-11-28).
     ui.add(
         div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(m::SPACING))
+            // (The rest of the row, wrapping: a long zone's name beside a
+            // longer button, as German's, ran past the window.)
+            .child(div().flex_1().min_w_0().child(StringView::new(olo_kit::tr!("Now: {}", zone_label(current))).wrap(true)))
             .child(Button::new("Set Time Zone").enabled(can).on_click(move |_, _| {
                 if let Some(z) = &chosen {
                     let _ = tx.send(Request::Zone(z.clone()));
                 }
-            }))
-            // (The rest of the row, wrapping: a long zone's name beside a
-            // longer button, as German's, ran past the window.)
-            .child(div().flex_1().min_w_0().child(StringView::new(olo_kit::tr!("Now: {}", zone_label(current))).wrap(true))),
+            })),
     );
 }
 
@@ -644,6 +674,19 @@ fn clock(ui: &mut Ui, clock: &ClockSettings, now: &Zoned) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The zone list offers a region's cities and UTC, not the names
+    /// kept for old systems, whose zones are there by their own names.
+    #[test]
+    fn zones_are_offered_by_their_own_names() {
+        for z in ["Europe/London", "America/Argentina/ComodRivadavia", "America/Indiana/Petersburg", "Pacific/Port_Moresby", "Antarctica/Troll", "UTC"] {
+            assert!(canonical(z), "{z}");
+        }
+        for z in ["W-SU", "WET", "Universal", "US/Mountain", "Etc/GMT+5", "Canada/Pacific", "Zulu", "SystemV/EST5", "posixrules"] {
+            assert!(!canonical(z), "{z}");
+        }
+        assert_eq!(ZONE_ROWS % 2, 1, "an odd number, a row in the middle");
+    }
 
     #[test]
     fn parses_times() {

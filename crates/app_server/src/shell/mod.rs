@@ -56,6 +56,7 @@ pub mod tiling;
 mod wm;
 pub use wm::live;
 mod xdg;
+pub use xdg::MenuBook;
 
 pub(crate) use self::deco::fill;
 pub use self::element::*;
@@ -345,6 +346,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         if !crate::rescue::shows_layer(&layer) || !(exclusive || rescue) {
             return;
         }
+        // Menus up (Deskbar's) go, as for a window taking the keyboard
+        // (`put_away_menus`): left up, they held the pointer over the
+        // palette or the emoji picker, and took the keyboard back.
+        self.put_away_menus_for(Some(surface));
         let keyboard = self.seat.get_keyboard().unwrap();
         keyboard.set_focus(self, Some(layer.into()), smithay::utils::SERIAL_COUNTER.next_serial());
     }

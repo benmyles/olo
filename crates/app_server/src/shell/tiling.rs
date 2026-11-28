@@ -481,23 +481,27 @@ pub(super) fn inset(area: Rectangle<i32, Logical>, margin: i32) -> Rectangle<i32
 /// The part (x, y, w, h fractions) of `area`, with `gap` between it and
 /// whatever is beside it (edges inside the area give up half each).
 pub fn part(area: Rectangle<i32, Logical>, (x, y, w, h): (f32, f32, f32, f32), gap: i32) -> Rectangle<i32, Logical> {
-    let at = |f: f32, len: i32| (f * len as f32).round() as i32;
-    let (mut l, mut r) = (at(x, area.size.w), at(x + w, area.size.w));
-    let (mut t, mut b) = (at(y, area.size.h), at(y + h, area.size.h));
+    let (l, r) = part_span(x, w, area.size.w, gap);
+    let (t, b) = part_span(y, h, area.size.h, gap);
+    Rectangle::new(area.loc + Point::from((l, t)), Size::from((r - l, b - t)))
+}
+
+/// A part's ends along one side of the area (`from` and `span` fractions of
+/// `len`), each inside the area given way by the gap (half each), never by
+/// more than half of what it spans: a part at the area's edge narrower
+/// than the gap (5% of 400 points under a gap of 48) was put a point tall
+/// outside the area (review, 2026-11-28). A point long at least.
+fn part_span(from: f32, span: f32, len: i32, gap: i32) -> (i32, i32) {
+    let at = |f: f32| (f * len as f32).round() as i32;
+    let (lo, hi) = (at(from), at(from + span));
     let half = gap / 2;
-    if l > 0 {
-        l += gap - half;
+    let (mut before, mut after) = (if lo > 0 { gap - half } else { 0 }, if hi < len { half } else { 0 });
+    let room = ((hi - lo) / 2).max(0);
+    if before + after > room {
+        let total = before + after;
+        (before, after) = (before * room / total, after * room / total);
     }
-    if r < area.size.w {
-        r -= half;
-    }
-    if t > 0 {
-        t += gap - half;
-    }
-    if b < area.size.h {
-        b -= half;
-    }
-    Rectangle::new(area.loc + Point::from((l, t)), Size::from(((r - l).max(1), (b - t).max(1))))
+    (lo + before, (hi - after).max(lo + before + 1))
 }
 
 /// `n` windows in a grid over `area`: as square as the area allows, the
@@ -599,9 +603,73 @@ pub(crate) fn resizable(w: &WindowElement) -> bool {
         with_states(&s, |st| {
             let mut cached = st.cached_state.get::<SurfaceCachedState>();
             let c = cached.current();
-            (c.max_size.w == 0 || c.max_size.w > c.min_size.w) && (c.max_size.h == 0 || c.max_size.h > c.min_size.h)
+            sizes_resizable(c.min_size, c.max_size)
         })
     })
+}
+
+/// Whether a window whose app gives it these least and most sizes can be
+/// sized both ways (a most of 0 is none): not one of a fixed size either
+/// way, as an alert is, or a panel that is as tall as what it shows (a
+/// Preferences panel, `fits_content`).
+pub(crate) fn sizes_resizable(min: Size<i32, Logical>, max: Size<i32, Logical>) -> bool {
+    (max.w == 0 || max.w > min.w) && (max.h == 0 || max.h > min.h)
+}
+
+/// Where an arrangement (`AnvilState::arrange`) puts a window asked into
+/// part `fraction` of `area` (`gap` between tiles): that part, given way
+/// inwards to stay in the area where the window's least frame (`least`:
+/// its app's least size with the tab and border; nothing for none) is
+/// bigger, as a tile is (`give_way`), so it is never laid out at a size
+/// it can't be drawn at. None for a window that doesn't tile (`tiles`
+/// false: it floats, or is of a fixed size), which stays as it is.
+/// An arranger's answer worked out (`plan_arrangement`): the tiling area,
+/// each window to place with its part and frame there, and how many
+/// windows asked for float.
+pub struct ArrangePlan {
+    pub area: Rectangle<i32, Logical>,
+    pub placed: Vec<ArrangedWindow>,
+    pub floating: usize,
+    /// The frames the windows Focus zoomed go back to as it is left, for
+    /// Undo (`unzoomed_frame`).
+    pub own: Vec<(WindowElement, Rectangle<i32, Logical>)>,
+}
+
+/// `window`'s frame in `own` (what leaving Focus gives it back), if any.
+fn own_frame_of<W: PartialEq>(window: &W, own: &[(W, Rectangle<i32, Logical>)]) -> Option<Rectangle<i32, Logical>> {
+    own.iter().find(|(w, _)| w == window).map(|(_, f)| *f)
+}
+
+/// A window an arrangement places: the part it was asked into, and its
+/// frame there.
+pub type ArrangedWindow = (WindowElement, Rectangle<i32, Logical>, Rectangle<i32, Logical>);
+
+/// Why an arrangement placing `placed` windows, `floating` of those asked
+/// for floating, is refused; None if it goes ahead.
+pub fn arrangement_refused(placed: usize, floating: usize) -> Option<&'static str> {
+    match (placed, floating) {
+        (0, 0) => Some("none of those windows are on the active display"),
+        (0, _) => Some("those windows float (an alert, a dialog or a fixed-size panel) or are full screen: they are left as they are"),
+        _ => None,
+    }
+}
+
+/// The least part of an area an arranger may ask for, each way.
+const LEAST_PART: f32 = 0.05;
+
+/// The part of the tiling area a placement asks for, as fractions of it,
+/// kept in it: its origin leaves room for the least part (a twentieth)
+/// before that is taken, so a part asked for at the edge (x 0.99, w
+/// 0.01) stays on the display rather than running 4% past it, for a
+/// window with no least size to give way by (review, 2026-11-28).
+pub fn placement_fraction(p: &olo_protocol::Placement) -> (f32, f32, f32, f32) {
+    let clamp = |v: f32| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+    let (x, y) = (clamp(p.x).min(1.0 - LEAST_PART), clamp(p.y).min(1.0 - LEAST_PART));
+    (x, y, clamp(p.w).min(1.0 - x).max(LEAST_PART), clamp(p.h).min(1.0 - y).max(LEAST_PART))
+}
+
+pub fn arranged_frame(area: Rectangle<i32, Logical>, fraction: (f32, f32, f32, f32), gap: i32, least: Size<i32, Logical>, tiles: bool) -> Option<Rectangle<i32, Logical>> {
+    tiles.then(|| give_way(part(area, fraction, gap), least, area))
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
@@ -2029,30 +2097,94 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Windows of the active display put in parts of its tiling area (an
     /// arranger's answer), as Tile All puts them in cells: undoable, and
-    /// tiled so their edges move together. How many it placed.
-    pub fn arrange(&mut self, placements: &[olo_protocol::Placement]) -> usize {
-        let Some((_, area, windows)) = self.arrangement() else { return 0 };
-        let placed: Vec<(WindowElement, (f32, f32, f32, f32))> = placements
-            .iter()
-            .filter_map(|p| {
-                let w = windows.iter().find(|w| w.meta().id == p.id)?;
-                let clamp = |v: f32| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
-                let (x, y) = (clamp(p.x), clamp(p.y));
-                let (w2, h) = (clamp(p.w).min(1.0 - x).max(0.05), clamp(p.h).min(1.0 - y).max(0.05));
-                Some((w.clone(), (x, y, w2, h)))
-            })
-            .collect();
-        self.remember_arrangement(&windows, "Arrangement");
+    /// tiled so their edges move together. A window that floats (an
+    /// alert, a dialog, a fixed-size panel such as Preferences ▸
+    /// Terminal, one tagged floating or floated by hand: what tiling
+    /// never puts in a tile) is left as it is, and the rest are never
+    /// made smaller than their apps draw them, given way inwards as a
+    /// tile is (`arranged_frame`). (Put in a quarter, Preferences'
+    /// fixed-size panels were laid out at a size they can't be drawn at,
+    /// a field collapsed to nothing and check boxes over the columns
+    /// beside them, and Speed Test's too: QA, 2026-11-28.) How many it
+    /// placed, and how many of those asked for it left floating.
+    pub fn arrange(&mut self, plan: ArrangePlan) -> (usize, usize) {
+        let ArrangePlan { area, placed, floating, own } = plan;
         if placed.is_empty() {
-            return 0;
+            return (0, floating);
         }
-        for (w, f) in &placed {
-            let cell = part(area, *f, self.tile_gap());
-            self.set_frame(w, cell, true);
-            self.set_cell(w, area, cell);
+        // (Undo puts back the windows placed, not the others on the
+        // display: a panel it left floating, moved by hand since, went
+        // back where it had been: review, 2026-11-28.)
+        let mut windows: Vec<WindowElement> = Vec::new();
+        for (w, ..) in &placed {
+            if !windows.contains(w) {
+                windows.push(w.clone());
+            }
         }
-        info!(windows = placed.len(), "arranged");
-        placed.len()
+        self.remember_arrangement(&windows, "Arrangement");
+        // (Those Focus zoomed, at the frames leaving it gave them back:
+        // the space still has the zoomed buffers' sizes, their programs
+        // yet to answer, and Undo put a window back zoomed-sized where it
+        // had been: review, 2026-11-28.)
+        for p in &mut self.arranged {
+            if let Some(frame) = own_frame_of(&p.window, &own) {
+                p.frame = frame;
+            }
+        }
+        for (w, cell, frame) in &placed {
+            self.set_frame(w, *frame, true);
+            self.set_cell(w, area, *cell);
+        }
+        info!(windows = placed.len(), floating, "arranged");
+        (placed.len(), floating)
+    }
+
+    /// What `arrange` would do with an arranger's answer, nothing changed
+    /// yet: the windows of the active display it names that it can put in
+    /// their parts (each with its part and frame), and how many of those
+    /// it names float. (So one it can do nothing with is refused before
+    /// anything is done for it: Focus left for Standard, its windows put
+    /// back: review, 2026-11-28.)
+    pub fn plan_arrangement(&self, placements: &[olo_protocol::Placement]) -> ArrangePlan {
+        let Some((_, area, windows)) = self.arrangement() else { return ArrangePlan { area: Rectangle::default(), placed: Vec::new(), floating: 0, own: Vec::new() } };
+        let gap = self.tile_gap();
+        let mut floating = 0;
+        // (Each window, the part it was asked into and its frame there.)
+        let mut placed = Vec::new();
+        for p in placements {
+            let Some(w) = windows.iter().find(|w| w.meta().id == p.id) else { continue };
+            let fraction = placement_fraction(p);
+            // (One full screen is left as it is too: placed as it was,
+            // it was told a tile's size and kept full screen, the tile's
+            // bookkeeping and the screen's at odds: review, 2026-11-28.)
+            let tiles = resizable(w) && !self.floats(w) && !w.meta().fullscreen.get();
+            match arranged_frame(area, fraction, gap, self.least_frame(w), tiles) {
+                // (Its part is the one asked for: put back in it later,
+                // `retile` gives way again from there.)
+                Some(frame) => placed.push((w.clone(), part(area, fraction, gap), frame)),
+                None => {
+                    info!(window = w.id(), app_id = w.app_id(), "arranging: it floats, left as it is");
+                    floating += 1;
+                }
+            }
+        }
+        // What leaving Focus gives each placed window back (`unzoom_window`),
+        // when the arrangement will leave it (`arranging`).
+        let leaving = self.active_output().is_some_and(|o| self.mode_now(&o) == olo_protocol::WindowingMode::Focus);
+        let own = if leaving { placed.iter().filter_map(|(w, ..)| Some((w.clone(), self.unzoomed_frame(w)?))).collect() } else { Vec::new() };
+        ArrangePlan { area, placed, floating, own }
+    }
+
+    /// The frame a window Focus zoomed goes back to as Focus is left
+    /// (`unzoom_window`): the one it was zoomed from, else its own before;
+    /// None if it isn't so zoomed, or has a tile to go back to.
+    fn unzoomed_frame(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+        if !window.meta().focus_zoomed.get() || !self.is_zoomed(window) || Self::tiled(window).is_some() {
+            return None;
+        }
+        let from = window.user_data().get::<ZoomedFrom>().and_then(|z| *z.0.borrow());
+        let pre = window.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
+        from.or(pre).map(|r| self.put_back_at(r))
     }
 
     /// The resizable windows of app `app_id` on this workspace (not its
@@ -2415,5 +2547,105 @@ mod tests {
         assert_eq!(give_way(third, Size::from((200, 100)), area), third);
         // Bigger than the whole area: at its start.
         assert_eq!(give_way(third, Size::from((3000, 100)), area), r(8, 8, 3000, 524));
+    }
+
+    /// What an arrangement does with a window it is asked to put in a
+    /// part (IPC's `Arrange`, `ui-lint --tiles`): a window that floats
+    /// (a fixed-size panel) stays as it is; one that tiles takes its part,
+    /// never smaller than its least frame, given way inwards.
+    #[test]
+    fn arranging_leaves_what_floats_and_holds_the_least() {
+        // A 1440 × 900 display's tiling area beside Deskbar, 8 apart.
+        let area = r(8, 8, 1240, 884);
+        let quarter = (0.0, 0.0, 0.5, 0.5);
+        // Preferences ▸ Terminal: fixed, 910 × 631. Asked into a quarter,
+        // it stays as it is (no frame), rather than being laid out at
+        // 620 × 438 over its own check boxes.
+        assert_eq!(arranged_frame(area, quarter, 8, Size::from((910, 631)), false), None);
+        // A window that tiles and fits: its part, exactly as `part` makes it.
+        assert_eq!(arranged_frame(area, quarter, 8, Size::from((250, 191)), true), Some(part(area, quarter, 8)));
+        assert_eq!(arranged_frame(area, quarter, 8, Size::from((250, 191)), true), Some(r(8, 8, 616, 438)));
+        // Asked into a tenth (124 × 88): Tracker's least, 250 × 191, kept,
+        // from where the part starts.
+        let tenth = (0.5, 0.5, 0.1, 0.1);
+        assert_eq!(arranged_frame(area, tenth, 8, Size::from((250, 191)), true), Some(r(632, 454, 250, 191)));
+        // In the corner: given way inwards, inside the area.
+        let corner = (0.9, 0.9, 0.1, 0.1);
+        let f = arranged_frame(area, corner, 8, Size::from((250, 191)), true).unwrap();
+        assert_eq!(f.size, Size::from((250, 191)));
+        assert_eq!((f.loc.x + f.size.w, f.loc.y + f.size.h), (area.loc.x + area.size.w, area.loc.y + area.size.h));
+    }
+
+    /// A part asked for at the area's edge, smaller than the least an
+    /// arranger may ask for, stays inside the area, its origin moved in
+    /// (a window with no least size had its frame 4% past the display);
+    /// what's out of range or not a number is brought into it.
+    #[test]
+    fn a_part_at_the_edge_stays_in_the_area() {
+        let at = |x: f32, y: f32, w: f32, h: f32| olo_protocol::Placement { id: 1, x, y, w, h };
+        let area = r(8, 8, 1240, 884);
+        for p in [at(0.99, 0.99, 0.01, 0.01), at(1.0, 1.0, 0.0, 0.0), at(1.5, -0.5, 2.0, f32::NAN), at(0.97, 0.0, 0.5, 1.0)] {
+            let (x, y, w, h) = placement_fraction(&p);
+            assert!(x + w <= 1.0 + 1e-6 && y + h <= 1.0 + 1e-6 && w >= LEAST_PART && h >= LEAST_PART, "{p:?}: {:?}", (x, y, w, h));
+            // A window with no least: its frame is its part, in the area.
+            let f = arranged_frame(area, (x, y, w, h), 8, Size::from((0, 0)), true).unwrap();
+            assert!(f.loc.x >= area.loc.x && f.loc.y >= area.loc.y && f.loc.x + f.size.w <= area.loc.x + area.size.w && f.loc.y + f.size.h <= area.loc.y + area.size.h, "{p:?}: {f:?} past {area:?}");
+        }
+        assert_eq!(placement_fraction(&at(0.99, 0.5, 0.01, 0.5)), (0.95, 0.5, 0.05, 0.5));
+        // Asked as it fits: as asked.
+        assert_eq!(placement_fraction(&at(0.5, 0.0, 0.5, 1.0)), (0.5, 0.0, 0.5, 1.0));
+    }
+
+    /// A part's gap never takes more than half of what it spans: at the
+    /// area's foot, 5% of 400 points under a gap of 48, it stays in the
+    /// area (it was a point tall, 4 points below it); gaps of 8 as ever.
+    #[test]
+    fn a_parts_gap_is_capped_by_its_span() {
+        let area = r(0, 0, 800, 400);
+        let p = part(area, (0.0, 0.95, 1.0, 0.05), 48);
+        assert!(p.loc.y >= area.loc.y && p.loc.y + p.size.h <= area.loc.y + area.size.h, "{p:?} out of {area:?}");
+        assert_eq!((p.loc.y, p.size.h), (390, 10));
+        assert_eq!(part(area, (0.0, 0.0, 0.5, 0.5), 8), r(0, 0, 396, 196));
+        assert_eq!(part(area, (0.5, 0.5, 0.5, 0.5), 8), r(404, 204, 396, 196));
+        // Nothing to span: a point.
+        assert_eq!(part(area, (1.0, 1.0, 0.0, 0.0), 48).size, Size::from((1, 1)));
+    }
+
+    /// Undo after an Arrange out of Focus puts a window back at the frame
+    /// leaving Focus gave it (`own_frame_of`), not the zoomed size the
+    /// space still had; others at their frames as they were.
+    #[test]
+    fn undo_after_focus_has_the_frames_out_of_it() {
+        let own = [("styled-edit", r(100, 80, 600, 400))];
+        assert_eq!(own_frame_of(&"styled-edit", &own), Some(r(100, 80, 600, 400)));
+        assert_eq!(own_frame_of(&"tracker", &own), None);
+    }
+
+    /// An arrangement with nothing to place is refused, saying why, and
+    /// only one with something goes ahead (leaving Focus for it).
+    #[test]
+    fn an_arrangement_with_nothing_to_place_is_refused() {
+        assert_eq!(arrangement_refused(0, 0), Some("none of those windows are on the active display"));
+        assert!(arrangement_refused(0, 2).is_some_and(|why| why.contains("float")));
+        assert_eq!(arrangement_refused(1, 0), None);
+        assert_eq!(arrangement_refused(2, 1), None);
+    }
+
+    /// Which windows can be sized both ways, by their least and most
+    /// sizes: not a fixed one (an alert), nor one fixed one way (a
+    /// Preferences panel as tall as its content).
+    #[test]
+    fn fixed_sizes_are_not_resizable() {
+        let s = |w: i32, h: i32| Size::<i32, Logical>::from((w, h));
+        // No most: resizable.
+        assert!(sizes_resizable(s(250, 191), s(0, 0)));
+        assert!(sizes_resizable(s(0, 0), s(0, 0)));
+        // A most above the least both ways.
+        assert!(sizes_resizable(s(250, 191), s(4000, 3000)));
+        // Fixed both ways (Preferences ▸ Terminal, an alert).
+        assert!(!sizes_resizable(s(910, 631), s(910, 631)));
+        // Fixed one way only: as tall as it shows, any width.
+        assert!(!sizes_resizable(s(500, 420), s(0, 420)));
+        assert!(!sizes_resizable(s(500, 420), s(500, 0)));
     }
 }

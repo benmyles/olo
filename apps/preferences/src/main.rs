@@ -69,7 +69,7 @@ use std::{
 };
 
 use olo_kit::{
-    Bounds, Cx, Element, FontWeight, Hsla, InteractiveElement as _, MouseButton, ParentElement as _, Styled as _, View, WindowHandle, WindowOptions, canvas, div, fill, icons,
+    Bounds, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, MouseButton, ParentElement as _, Styled as _, View, WindowHandle, WindowOptions, canvas, div, fill, icons,
     instance::{self, Launch},
     metrics as m, point, px, size, style, theme,
 };
@@ -267,10 +267,17 @@ impl Prefs {
         // taller than the screen, where it scrolls (`fits_content`).
         let (w, h) = panel.size();
         // Rex also has a one-column form. Give it that width on a narrow
-        // screen, with room for the window’s edges.
-        let width = if panel == Panel::Rex { olo_kit::displays().iter().map(|d| (f32::from(d.size.width) - 2.0 * m::WINDOW_INSET).max(1.0)).fold(w as f32, f32::min) } else { w as f32 };
+        // screen: the room beside Deskbar (the display's width less the
+        // window's edges was wider, and scrolled across, under Deskbar:
+        // reviews, 2026-11-28).
+        let width = if panel == Panel::Rex { (w as f32).min(olo_kit::screen_room_across().floor()) } else { w as f32 };
         let opened = self.settings.clone().unwrap_or_default();
-        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.window_title(), width, h as f32).fits_content() };
+        let mut options = WindowOptions { fixed: true, ..WindowOptions::new(panel.window_title(), width, h as f32).fits_content() };
+        // (One whose boxes stack: laid out as wide as the room has, down to
+        // its narrowest, not scrolled across.)
+        if let Some(least) = panel.least_width() {
+            options = options.min_size(least, 200.0);
+        }
         let window = olo_kit::open_window(options, move |cx| PanelView::new(panel, opened, cx));
         self.windows.push(Shown::Panel(panel, window));
     }
@@ -281,11 +288,12 @@ impl Prefs {
             w.raise();
             return;
         }
-        let rows = Panel::ALL.len().div_ceil(LAUNCHER_COLUMNS) as f32;
-        let w = 2.0 * m::WINDOW_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.0;
-        let h = 2.0 * m::WINDOW_INSET + rows * LAUNCHER_CELL.1;
+        // As many columns as there's room for beside Deskbar (five where
+        // there is: opened at five on a screen of 720 points, its fifth
+        // was under Deskbar; reviews, 2026-11-28).
+        let (w, h) = launcher_size((olo_kit::screen_room_across(), olo_kit::screen_room().floor()));
         let options = WindowOptions { fixed: true, ..WindowOptions::new("Preferences", w, h).min_size(w, h).floating() };
-        let window = olo_kit::open_window(options, |_| Launcher { hovered: None });
+        let window = olo_kit::open_window(options, |_| Launcher { hovered: None, scroll: olo_kit::ScrollHandle::new() });
         self.windows.push(Shown::Launcher(window));
     }
 
@@ -523,15 +531,66 @@ fn undo_command(command: &str) -> bool {
     }
 }
 
+/// The launcher's columns as it is made (fewer where its window is
+/// narrower: `launcher_grid`).
 const LAUNCHER_COLUMNS: usize = 5;
 /// (Wide enough for the longest names, "Touchpad & Mouse" and "About Olo
-/// Desktop": at 104 they ran past their cells, into the next.)
-const LAUNCHER_CELL: (f32, f32) = (120.0, 64.0);
+/// Desktop": at 104 they ran past their cells, into the next; and for
+/// "Language & Region" to have room either side in its tile's highlight,
+/// 4 points at 120: Gemini's look, 2026-11-28. At most 124, for four
+/// columns in the room beside Deskbar on 1440 × 900 at 2×, 534.)
+const LAUNCHER_CELL: (f32, f32) = (124.0, 64.0);
+/// The launcher's grid's room at its sides (`SPACING`, as a list's): four
+/// columns and the scroll bar fit the room beside Deskbar on a 720-point
+/// screen, 534 (4 × 124 + 2 × 12 + 14), as the window's inset of 16 did
+/// not.
+const LAUNCHER_INSET: f32 = m::SPACING;
+
+/// The launcher's grid in a window `width` points across: as many
+/// columns as fit inside its insets (`LAUNCHER_COLUMNS` at most, one at
+/// least), and how tall its rows are, insets and all. A window squeezed
+/// onto a small screen (1440 × 900 at 2×: 534 across) shows four, its
+/// rows scrolled, where the fifth ran past its edge (QA, 2026-11-28).
+/// The launcher's width as it opens with `room` across: as many whole
+/// columns as fit (`launcher_grid`), five at most.
+/// The launcher's size as it opens with `room` across and down (the
+/// screen's room): as wide as its whole columns, as tall as its rows; or,
+/// its rows more than the room down, as tall as the room, its scroll bar's
+/// width kept beside the columns, so it scrolls with as many. It opened
+/// 544 tall on a screen with room for 386, its last rows out of reach, and
+/// once squeezed, its bar took a column (review, 2026-11-28).
+fn launcher_size(room: (f32, f32)) -> (f32, f32) {
+    let (cols, height) = launcher_grid(room.0);
+    if height <= room.1 {
+        return (2.0 * LAUNCHER_INSET + cols as f32 * LAUNCHER_CELL.0, height);
+    }
+    let bar = olo_kit::widgets::SCROLL_BAR;
+    let (cols, height) = launcher_grid(room.0 - bar);
+    (2.0 * LAUNCHER_INSET + cols as f32 * LAUNCHER_CELL.0 + bar, height.min(room.1).floor())
+}
+
+/// The launcher's grid in a window `view` across and down: its columns,
+/// its height, and whether it scrolls (in the room beside its bar).
+fn launcher_layout(view: (f32, f32)) -> (usize, f32, bool) {
+    let (cols, height) = launcher_grid(view.0);
+    if height <= view.1 + 0.5 {
+        return (cols, height, false);
+    }
+    let (cols, height) = launcher_grid(view.0 - olo_kit::widgets::SCROLL_BAR);
+    (cols, height, true)
+}
+
+fn launcher_grid(width: f32) -> (usize, f32) {
+    let cols = (((width - 2.0 * LAUNCHER_INSET) / LAUNCHER_CELL.0).floor().max(0.0) as usize).clamp(1, LAUNCHER_COLUMNS);
+    (cols, 2.0 * m::WINDOW_INSET + Panel::ALL.len().div_ceil(cols) as f32 * LAUNCHER_CELL.1)
+}
 
 /// The launcher: every panel's icon and name; a click opens it.
 struct Launcher {
     /// The cell the pointer is over.
     hovered: Option<usize>,
+    /// Its rows, scrolled where they're taller than its window.
+    scroll: olo_kit::ScrollHandle,
 }
 
 impl View for Launcher {
@@ -548,10 +607,18 @@ impl View for Launcher {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let edit = prefs().history.edit_items(olo_kit::Menu::new("Edit"));
         olo_kit::menu::offer_asked(cx, vec![edit], |_| Some(vec![PREFS.get()?.try_lock().ok()?.history.edit_items(olo_kit::Menu::new("Edit"))]));
-        let mut grid = div().relative().size_full();
+        // As many columns as its window has room for, centred in it (at
+        // its own size, five, at its inset), the rows scrolled past its
+        // foot. (Its size asked for here: said again as it changes.)
+        let view = olo_kit::viewport_size();
+        // (Scrolled: in the room beside the scroll bar.)
+        let (cols, height, scrolls) = launcher_layout((f32::from(view.width), f32::from(view.height)));
+        let room = f32::from(view.width) - if scrolls { olo_kit::widgets::SCROLL_BAR } else { 0.0 };
+        let left = ((room - cols as f32 * LAUNCHER_CELL.0) / 2.0).max(LAUNCHER_INSET).floor();
+        let mut grid = div().relative().w_full().h(px(height)).flex_shrink_0();
         for (i, panel) in Panel::ALL.iter().copied().enumerate() {
-            let (col, row) = (i % LAUNCHER_COLUMNS, i / LAUNCHER_COLUMNS);
-            let (x, y) = (m::WINDOW_INSET + col as f32 * LAUNCHER_CELL.0, m::WINDOW_INSET + row as f32 * LAUNCHER_CELL.1);
+            let (col, row) = (i % cols, i / cols);
+            let (x, y) = (left + col as f32 * LAUNCHER_CELL.0, m::WINDOW_INSET + row as f32 * LAUNCHER_CELL.1);
             let hovered = self.hovered == Some(i);
             let cell = div()
                 .absolute()
@@ -562,13 +629,20 @@ impl View for Launcher {
                 .child(
                     canvas(move |g, b| {
                         let p = theme::palette();
-                        if hovered {
-                            let shade: Hsla = style::shade(&p, p.panel_background, 1.08);
-                            g.paint_quad(fill(style::inset(g, b, 2.0), shade).corner_radii(px(3.0)));
-                        }
+                        // The tile the pointer is over in the selection's
+                        // colours, as a list's chosen row and the emoji
+                        // grid's are (the panel a shade darker was about
+                        // 1.2:1, near gone in the dark: Opus's look,
+                        // 2026-11-28).
+                        let ink = if hovered {
+                            g.paint_quad(fill(style::snap(g, b), style::c(p.list_selected_background)).corner_radii(px(3.0)));
+                            style::c(p.list_selected_item_text)
+                        } else {
+                            style::c(p.panel_text)
+                        };
                         let icon = Bounds { origin: point(b.center().x - px(16.0), b.top() + px(4.0)), size: size(px(32.0), px(32.0)) };
                         icons::paint(g, icon, panel.icon());
-                        style::label(g, b.center().x, icon.bottom() + px(12.0), style::Align::Center, panel.title(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+                        style::label(g, b.center().x, icon.bottom() + px(12.0), style::Align::Center, panel.title(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
                         olo_kit::agent::record(g, olo_kit::agent::Node::button(panel.title(), b));
                         // (Each name centred under its icon: not lined up
                         // on the left with the one under it.)
@@ -592,7 +666,7 @@ impl View for Launcher {
                 .on_mouse_down(MouseButton::Left, move |_, _| prefs().open(panel.arg()));
             grid = grid.child(cell);
         }
-        grid
+        if scrolls { olo_kit::widgets::ScrollView::new(&self.scroll).border(false).child(grid).into_element() } else { grid.into_element() }
     }
 }
 
@@ -757,4 +831,75 @@ fn main() {
         });
         olo_kit::on_upgrade(|views| prefs().save_state(&views));
     });
+}
+
+#[cfg(test)]
+mod launcher_tests {
+    use super::*;
+
+    /// The launcher's grid: five columns at the size it's made, fewer in a
+    /// narrower window (squeezed onto a small screen), one at least, every
+    /// column inside the window's insets, every panel in a row.
+    #[test]
+    fn the_launcher_reflows_to_its_window() {
+        let made = 2.0 * LAUNCHER_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.0;
+        assert_eq!(launcher_grid(made).0, LAUNCHER_COLUMNS);
+        // 1440 × 900 at 2×, beside Deskbar: four, and four beside the bar.
+        assert_eq!(launcher_grid(534.0).0, 4);
+        assert_eq!(launcher_grid(534.0 - olo_kit::widgets::SCROLL_BAR).0, 4);
+        for width in [made + 300.0, made, 534.0, 400.0, 260.0, 2.0 * LAUNCHER_INSET + LAUNCHER_CELL.0, 60.0, 0.0] {
+            let (cols, height) = launcher_grid(width);
+            let rows = Panel::ALL.len().div_ceil(cols);
+            assert!((1..=LAUNCHER_COLUMNS).contains(&cols), "{width} wide: {cols} columns");
+            assert_eq!(height, 2.0 * m::WINDOW_INSET + rows as f32 * LAUNCHER_CELL.1, "{width} wide");
+            if width >= 2.0 * LAUNCHER_INSET + LAUNCHER_CELL.0 {
+                assert!(cols as f32 * LAUNCHER_CELL.0 + 2.0 * LAUNCHER_INSET <= width + 0.01, "{width} wide: {cols} columns run past its insets");
+            }
+        }
+    }
+
+    /// Every tile's name has room either side of it in its highlight (the
+    /// cell's whole width), 6 points at least: "Language & Region" had 4.
+    #[test]
+    fn the_tiles_names_have_room() {
+        for panel in Panel::ALL {
+            let w = f32::from(style::text_width(panel.title().to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL)));
+            assert!((LAUNCHER_CELL.0 - w) / 2.0 >= 6.0, "“{}”: {w:.1} across, {:.1} either side", panel.title(), (LAUNCHER_CELL.0 - w) / 2.0);
+        }
+    }
+
+    /// Opened fresh, the launcher is as wide as its columns where there's
+    /// room beside Deskbar: five on the smallest screen (1,094 across),
+    /// four on 1440 × 900 at 2× (534), never wider than the room; it
+    /// opened at five there, its fifth under Deskbar.
+    #[test]
+    fn the_launcher_opens_within_the_room() {
+        let five = 2.0 * LAUNCHER_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.0;
+        assert_eq!(launcher_size((1094.0, 736.0)).0, five);
+        for room in [1094.0, 656.0, 534.0, 400.0, 320.0] {
+            let (w, h) = launcher_size((room, 736.0));
+            assert!(w <= room, "{room} across: opened {w} wide");
+            assert_eq!(launcher_layout((w, h)).0, launcher_layout((room, 736.0)).0, "{room} across: its columns at the width it opened");
+        }
+    }
+
+    /// Opened fresh on 1440 × 900 at 2× (534 across, 386 or 417 down for
+    /// it), the launcher is no taller than the room and keeps four
+    /// columns with its scroll bar beside them, scrolled to its last row;
+    /// on the smallest screen it is as tall as its rows, five across.
+    #[test]
+    fn the_launcher_opens_in_the_room_down_too() {
+        for down in [386.0, 417.0] {
+            let (w, h) = launcher_size((534.0, down));
+            assert!(w <= 534.0 && h <= down, "{w} × {h} in 534 × {down}");
+            let (cols, height, scrolls) = launcher_layout((w, h));
+            assert!(scrolls && cols == 4, "{w} × {h}: {cols} columns, scrolls {scrolls}");
+            assert!(LAUNCHER_INSET * 2.0 + cols as f32 * LAUNCHER_CELL.0 + olo_kit::widgets::SCROLL_BAR <= w + 0.01);
+            // Its last row (About) in the content it scrolls through.
+            let rows = Panel::ALL.len().div_ceil(cols) as f32;
+            assert!(height >= m::WINDOW_INSET + rows * LAUNCHER_CELL.1, "{height}: its rows cut");
+        }
+        let (w, h) = launcher_size((1094.0, 736.0));
+        assert_eq!(launcher_layout((w, h)), (LAUNCHER_COLUMNS, h, false));
+    }
 }
