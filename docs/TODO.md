@@ -610,6 +610,115 @@ something nobody here has is in "Blocked", with what it waits for.
       Screenshot…` (command `"screenshot"`).
     - `apps/screenshot`'s card (`middle_cut`) can later move onto the
       shared `style::fit_middle`.
+    - Opus Step 7 R2 #4 (`crates/kit/src/menu.rs` pop-up menu elevation):
+      *"the menu is the same colour as the sidebar, or within a shade of
+      it in dark. It has a 1 px outline and no visible bevel or shadow.
+      Where it overlaps the list, it reads as a flat patch of the list
+      rather than something on top of it … Give the menu frame the same
+      bevel as the buttons: a 1 pt highlight on the top and left, a 1 pt
+      shadow on the bottom and right. Add a soft drop shadow: about 2 pt
+      offset, 6 pt blur, roughly 25% black in light and 50% in dark. Or
+      give menus their own background colour one step lighter than the
+      panel in both themes."*
+    - Opus Step 7 R2 #12 (`crates/kit/src/widgets/tabs.rs` & `strip.rs`
+      dark inactive tabs): *"in light, inactive tabs are clearly darker
+      than the active tab. In dark they're nearly the same, so the only
+      real difference is the bold label. Make inactive tabs one step
+      darker, the colour of the strip behind them. Keep the active tab
+      the same colour as the content and joined to its box, as the light
+      theme already does."*
+    - Gemini 4 Neon Step 7 R2 #10 (`crates/kit/src/menu.rs` checkmark
+      gutter): *"The `✓` marks sit only about 2–3pt from the left menu
+      border and about 2–3pt from the item labels (especially tight at
+      `1x`), whereas the right edge of the menu has about 12pt of
+      padding. Give the checkmark column slightly more breathing room
+      (~4–5pt on each side of `✓`) so the marks sit cleanly centered
+      between the border and labels."*
+    - Opus Step 7 R2 #11 (`crates/kit/src/widgets/strip.rs` subagent
+      tab glyph): *"The tab symbol is drawn as plain strokes at text
+      weight, unlike the boxed split icons in the pane headers. It looks
+      like a stray character. Redraw the tab symbol as a boxed 12 pt
+      pane-layout icon, the same drawing as the split icons in the pane
+      headers, in secondary colour. Or remove it."*
+    - **Step 7 Round 3 deferred code follow-ups (Astra 6.2):**
+      - Astra #4 (`crates/screen-pane/src/screens.rs:851`): make local
+        `list_in` read-only or reacquire the name's lifecycle lock and
+        verify the exact descriptor before unlinking stale descriptors so
+        enumeration cannot race a concurrent Start.
+      - Astra #5 (`crates/screen-pane/src/screens.rs:1200`): acquire the
+        name's lifecycle lock before `end_strays(Some(name))` inside
+        `screens::start` so two concurrent local Starts cannot end the
+        first while starting.
+      - Astra #6 (`crates/rex-link/src/screens.rs:173`, `:2995` &
+        `screen_follow.rs:879`): read and verify persisted `start_ticks`
+        against the pinned `pidfd` on remote hosts (with capability
+        distinction for older helpers) to prevent cross-session PID reuse
+        on remote guarded Stop.
+      - Astra #7 (`apps/rex/src/ui.rs:1911`, `:2067`, `:11658`): carry
+        `pid` alongside `started` in Rex's screen binding, Take Control
+        menu messages, and local Stop process-generation token to
+        disambiguate two starts within the same epoch second.
+      - Astra #11 (`crates/rex-link` / `apps/rex/src/screens_sock.rs`):
+        add a bounded per-screen generation verification reply (or embed
+        it in the Live stream handshake) so hosts with >256 KiB full
+        `list` output verify without hitting the RPC size budget.
+      - Astra #12 (`crates/screen-pane/src/stream.rs:3443` & `pane.rs:1949`):
+        route embedded `ScreenPane` Start through the same validated name
+        check as Rex's sidebar Start and tag `PaneMsg::Started` with
+        `source_binding_gen`.
+      - Astra #17/#18/#19 (`apps/screen/src/main.rs` & `crates/rex-link`):
+        pin/validate the history dir and generation when appending CLI
+        actions after delayed completions; designate a single owner writer
+        for `olo-rex-link screen`-wrapped invocations; record `take --new`
+        creation immediately on Start independently of window-move errors.
+      - Astra #23 (`apps/rex/src/activity_watch.rs:526`, `:547`): bound
+        pinned agent request replies to the protocol max size and apply
+        the deadline across setup, write, and response read.
+      - Astra #24 (`apps/rex/src/ui.rs:1549` & `crates/rex/src/transport.rs`):
+        publish the actual connected local Rex socket path (e.g.
+        `rex/server.sock` vs `rex/rex.sock`) from the connection worker
+        for desktop owner resolution.
+      - Astra #26 (`apps/rex/src/activity_screens.rs:854`, `pane.rs:714`,
+        `local.rs:724`, `apps/rex/src/main.rs:124`): move `open_in_agent_screens`,
+        local Take Control lock/procfs checks, and startup
+        `clear_controlled_by_me` off the UI thread.
+      - Astra #28 (`crates/screen-pane/src/replay.rs:1618`): add stacked
+        list/preview or full-width transport layout for narrow 320 pt
+        History panes.
+      - Astra #29 (`crates/screen-pane/src/pane.rs:3517`): support inline
+        rename or a Rename menu action in `compact_inline_bar` (`tile-h-third`).
+      - Astra #30 (`apps/rex/src/screens_sock.rs:7999`): synchronize the
+        History cancellation test with a command-entry barrier before
+        enabling the follower and assert deactivation drops the probe
+        before handle drop.
+    - **Step 7 Round 3 deferred visual / kit-wide follow-ups (Opus 5.5 & Gemini 4 Neon):**
+      - Opus #1/#2 (tall & wide tile viewport reflow): keeping the current
+        split/well layout for Step 7; future follow-up could hug
+        width-bound tall previews (`v-half`/`v-third`) with a Recent list
+        and place preview beside controls on wide >2:1 tiles
+        (`h-half`/`quarter`/`h-third`).
+      - Opus #5 (`crates/kit` interactive states): strengthen kit-wide
+        button/tab hover tint (8% selection-blue light / +8% lightness
+        dark), pressed bevel inversion, and 2 pt keyboard focus ring, and
+        capture explicit hover/pressed/focused showcase states.
+      - Opus #6/#10/#11/#12 & Neon-look #5 (kit chrome): raised menu
+        bevel + drop shadow + inset separators + wider checkmark gutter
+        (`crates/kit/src/menu.rs`), regroup Minder context menu into 3
+        groups, replace/refine `⊑` subagent tab glyph (`strip.rs`), unify
+        Rex sidebar filter box with `SearchField` magnifier + clear `×`,
+        and raise `Add Host…` button height in Sessions footer to 23–24 pt.
+      - Opus #9 (`crates/screen-pane/src/stats.rs`): let Stats cards fill
+        well height (12 pt outer pad), format peak figure as `"1"` with
+        `"Peak per minute in the last hour"` subtitle, and add `"1 h ago"`
+        / `"now"` X-axis labels.
+      - Opus #15 (`crates/screen-pane` Passwords empty state): widen max
+        width (480 pt) or split into primary title + secondary body so
+        `"available yet."` does not orphan on line 2.
+      - Opus #17/#18 (compact tile button priority & `h-third` sidebar):
+        unify button drop order across all compact tiles (`Screen ▾`,
+        `Take Screenshot…`, `Show Terminal`, `Open in Agent Screens`) and
+        collapse sidebar Type/State popups behind a filter button when
+        sidebar height < 300 pt.
 - **The Host window of a host that isn't connected is taller than the
   others, and of one that failed, taller than the smallest screen**
   (found 2026-11-27 picturing the Tweaks tab; there before it: the

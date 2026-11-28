@@ -211,31 +211,701 @@ thread_local! {
     static ANSWER: std::cell::RefCell<Option<serde_json::Value>> = const { std::cell::RefCell::new(None) };
 }
 
+/// Normalize `--quick` out of command arguments identically in `cli()` and
+/// `run_command()` so `olo-screen click --quick qa …` still derives `named = "qa"`
+/// for both history recording and direct CLI owner attribution (Neon #9).
+fn strip_quick_flag(command: &str, raw_rest: &[String]) -> (Vec<String>, bool) {
+    let mut rest: Vec<String> = raw_rest.to_vec();
+    let mut quick = std::env::var("OLO_SCREEN_QUICK").is_ok_and(|v| !v.is_empty() && v != "0");
+    if command == "run" {
+        if rest.get(1).map(String::as_str) == Some("--quick") {
+            rest.remove(1);
+            quick = true;
+        }
+    } else if history::ACTIONS.contains(&command) || command == "maximize" {
+        let n = rest.len();
+        rest.retain(|a| a != "--quick");
+        quick |= rest.len() != n;
+    }
+    (rest, quick)
+}
+
+/// Extract screen session `(pid, started)` ONLY from replies whose JSON
+/// describes the screen session itself (`start` and `take`), NEVER from
+/// `run` / `record-video` whose `"pid"` is the launched child program (Astra #9).
+fn answer_screen_gen(command: &str, answer: Option<&serde_json::Value>) -> (Option<i32>, Option<u64>) {
+    if !matches!(command, "start" | "take") {
+        return (None, None);
+    }
+    let pid = answer.and_then(|v| v["pid"].as_i64()).and_then(|p| i32::try_from(p).ok());
+    let started = answer.and_then(|v| v["started"].as_u64());
+    (pid, started)
+}
+
+/// Read Rex pane attribution environment variables consistently with
+/// `crates/rex-link/src/screens.rs`: `REX_BLOCK`, `REX_SESSION`, and
+/// `REX_SERVER_SOCKET` (stripping optional `unix://` prefix — Astra #12).
+fn read_direct_rex_env(get: impl Fn(&str) -> Option<String>) -> (Option<String>, String, Option<String>) {
+    let block = get("REX_BLOCK").filter(|s| !s.trim().is_empty());
+    let session = get("REX_SESSION").unwrap_or_default();
+    let socket = get("REX_SERVER_SOCKET").filter(|s| !s.trim().is_empty()).map(|s| s.strip_prefix("unix://").unwrap_or(&s).to_owned());
+    (block, session, socket)
+}
+
 /// Run a command; its exit code, or None for the window. An action on a
 /// screen goes in that screen's history (`history`), with what it
 /// answered and how it went.
 fn cli(args: &[String]) -> Option<Result<(), String>> {
     let command = args.first()?.clone();
+    let (norm_rest, _) = strip_quick_flag(&command, &args[1..]);
+    let named = norm_rest.first().filter(|a| !a.starts_with("--")).cloned();
+    let is_start = command == "start" || (command == "take" && has(&norm_rest, "--new"));
+    let is_stop_or_delete = matches!(command.as_str(), "stop" | "delete");
+    // Neon #6: match `rex-link`/`screens_sock` — `rename` never transfers ownership.
+    let is_mutating =
+        is_start || matches!(command.as_str(), "maximize" | "take") || (history::ACTIONS.contains(&command.as_str()) && !matches!(command.as_str(), "stop" | "delete" | "archive" | "unarchive"));
+    // Capture the runtime session generation BEFORE executing a mutating or
+    // stop/delete command so a delayed completion can verify under lock that
+    // the same generation is still present (Astra #10).
+    let pre_gen = if (is_mutating || is_stop_or_delete) && !is_start { named.as_deref().filter(|n| screens::valid_name(n)).and_then(|n| read_runtime_screen_gen_in(&screens::dir(), n)) } else { None };
+
     let at = history::now_ms();
     ANSWER.with(|a| a.borrow_mut().take());
     let result = run_command(args)?;
-    if history::ACTIONS.contains(&command.as_str()) {
-        let rest = &args[1..];
-        let answer = ANSWER.with(|a| a.borrow_mut().take()).map(for_history);
-        // The screen: as named, or the one `start` chose.
-        let named = rest.first().filter(|a| !a.starts_with("--")).cloned();
-        let name = if matches!(command.as_str(), "start" | "take") { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
-        if let Some(name) = name {
-            let args = if named.is_some() { rest[1..].to_vec() } else { rest.to_vec() };
-            let action = history::Action { at, ms: history::now_ms().saturating_sub(at), kind: command, args, result: answer, error: result.as_ref().err().cloned() };
-            history::record(&name, &action);
-            // (Its frames kept too, if what kept them has gone.)
-            if !matches!(action.kind.as_str(), "start" | "stop" | "delete" | "archive") {
-                screens::ensure_recorder(&name);
-            }
+    let answer = ANSWER.with(|a| a.borrow_mut().take()).map(for_history);
+    // The screen: as named, or the one `start` / `take --new` chose.
+    let name = if matches!(command.as_str(), "start" | "take") { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
+    if result.is_ok()
+        && let Some(ref target_name) = name
+        && screens::valid_name(target_name)
+    {
+        let (ans_pid, ans_started) = answer_screen_gen(&command, answer.as_ref());
+        let expected_gen = if is_start { ans_pid.map(|pid| ScreenGen { pid, started: ans_started, start_ticks: proc_start_ticks_of(pid) }) } else { pre_gen };
+        if let Err(e) = record_direct_cli_owner(&command, &norm_rest, target_name, expected_gen) {
+            eprintln!("olo-screen: warning: couldn't update Rex owner metadata for {target_name:?}: {e}");
+        }
+    }
+    if history::ACTIONS.contains(&command.as_str())
+        && let Some(name) = name
+    {
+        let args = if named.is_some() { norm_rest[1..].to_vec() } else { norm_rest.clone() };
+        let action = history::Action { at, ms: history::now_ms().saturating_sub(at), kind: command, args, result: answer, error: result.as_ref().err().cloned() };
+        history::record(&name, &action);
+        // (Its frames kept too, if what kept them has gone.)
+        if !matches!(action.kind.as_str(), "start" | "stop" | "delete" | "archive") {
+            screens::ensure_recorder(&name);
         }
     }
     Some(result)
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+struct DirectOwnerPane {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    host_key: Option<String>,
+    session_id: String,
+    block_id: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+struct DirectScreenOwner {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    host_key: Option<String>,
+    session_id: String,
+    block_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    started_by: Option<DirectOwnerPane>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pid: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    began: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    screen_pid: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    screen_started: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    screen_start_ticks: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rex_socket: Option<String>,
+    at: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ScreenGen {
+    pid: i32,
+    started: Option<u64>,
+    start_ticks: Option<u64>,
+}
+
+const DIRECT_OWNER_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
+static DIRECT_TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn proc_start_ticks_of(pid: i32) -> Option<u64> {
+    if pid <= 0 {
+        return None;
+    }
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
+}
+
+fn direct_euid() -> libc::uid_t {
+    // SAFETY: `geteuid()` has no preconditions.
+    unsafe { libc::geteuid() }
+}
+
+fn direct_c_name(name: &str) -> std::io::Result<std::ffi::CString> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\0') {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid filename {name:?}")));
+    }
+    std::ffi::CString::new(name).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in filename"))
+}
+
+/// Verify that every existing resolved ancestor of `dir` is either root-owned
+/// without world/group write (unless sticky) or owned by our UID without world
+/// write — allowing standard Linux symlink ancestors like `/home -> /var/home`
+/// and `/var/run -> /run` while rejecting other-UID or world-writable ancestors
+/// (Astra #20 / Neon #5, matching `apps/rex/src/screens_sock.rs::verify_safe_ancestors`).
+fn direct_verify_safe_ancestors(dir: &std::path::Path, uid: libc::uid_t) -> std::io::Result<()> {
+    use std::os::unix::fs::MetadataExt as _;
+    let mut anc = dir.parent();
+    while let Some(p) = anc {
+        if p.as_os_str().is_empty() || p == std::path::Path::new("/") {
+            break;
+        }
+        match std::fs::metadata(p) {
+            Ok(meta) => {
+                if !meta.file_type().is_dir() {
+                    return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("non-directory ancestor {}", p.display())));
+                }
+                let mode = meta.mode();
+                let auid = meta.uid();
+                let safe_root = auid == 0 && ((mode & 0o022) == 0 || (mode & libc::S_ISVTX) != 0);
+                let safe_self = auid == uid && (mode & 0o002) == 0;
+                if !safe_root && !safe_self {
+                    return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("unsafe ancestor directory {}", p.display())));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        anc = p.parent();
+    }
+    Ok(())
+}
+
+fn direct_open_verified_owned_dir(dir: &std::path::Path, create_if_missing: bool) -> std::io::Result<std::os::fd::OwnedFd> {
+    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+    use std::os::unix::fs::DirBuilderExt as _;
+    let uid = direct_euid();
+    direct_verify_safe_ancestors(dir, uid)?;
+    // Walk from the closest existing trusted ancestor using single-component
+    // `openat(O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)` + `fstat` so intermediate
+    // components cannot be swapped with symlinks or foreign directories (Astra #20).
+    let mut existing = dir.to_path_buf();
+    let mut missing_tail: Vec<std::ffi::OsString> = Vec::new();
+    while existing.parent().is_some() && std::fs::metadata(&existing).is_err() {
+        let Some(fname) = existing.file_name() else { break };
+        missing_tail.push(fname.to_os_string());
+        if !existing.pop() {
+            break;
+        }
+    }
+    if !missing_tail.is_empty() && !create_if_missing {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("directory {} not found", dir.display())));
+    }
+    if !missing_tail.is_empty() {
+        let mut b = std::fs::DirBuilder::new();
+        b.recursive(true).mode(0o700);
+        b.create(dir)?;
+    }
+    // Canonicalize the parent (following trusted system symlinks like `/home -> /var/home`),
+    // then open and verify each component under `/` or the canonical parent with `O_NOFOLLOW`.
+    let parent = dir.parent().unwrap_or_else(|| std::path::Path::new("/"));
+    let leaf = dir.file_name().and_then(|n| n.to_str()).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid dir {}", dir.display())))?;
+    let canon_parent = std::fs::canonicalize(parent)?;
+    let mut cur_fd = {
+        let root_c = std::ffi::CString::new("/").unwrap();
+        let raw = unsafe { libc::open(root_c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+        if raw < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        unsafe { OwnedFd::from_raw_fd(raw) }
+    };
+    for comp in canon_parent.components() {
+        let std::path::Component::Normal(seg) = comp else { continue };
+        let seg_str = seg.to_str().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "non-utf8 path component"))?;
+        let cseg = direct_c_name(seg_str)?;
+        let raw = unsafe { libc::openat(cur_fd.as_raw_fd(), cseg.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+        if raw < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let next_fd = unsafe { OwnedFd::from_raw_fd(raw) };
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(next_fd.as_raw_fd(), &mut st) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let safe_root = st.st_uid == 0 && ((st.st_mode & 0o022) == 0 || (st.st_mode & libc::S_ISVTX) != 0);
+        let safe_self = st.st_uid == uid && (st.st_mode & 0o002) == 0;
+        if (st.st_mode & libc::S_IFMT) != libc::S_IFDIR || (!safe_root && !safe_self) {
+            return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("unsafe ancestor component {seg_str:?}")));
+        }
+        cur_fd = next_fd;
+    }
+    let cleaf = direct_c_name(leaf)?;
+    // SAFETY: NUL-terminated component opened with O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC.
+    let raw = unsafe { libc::openat(cur_fd.as_raw_fd(), cleaf.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if raw < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: freshly opened owned descriptor.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if (st.st_mode & libc::S_IFMT) != libc::S_IFDIR || st.st_uid != uid || (st.st_mode & 0o002) != 0 {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("unsafe directory {}", dir.display())));
+    }
+    Ok(fd)
+}
+
+fn direct_open_verified_subdir_at(parent_fd: &std::os::fd::OwnedFd, name: &str, create_if_missing: bool) -> std::io::Result<std::os::fd::OwnedFd> {
+    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+    let uid = direct_euid();
+    let cname = direct_c_name(name)?;
+    if create_if_missing {
+        // SAFETY: valid dirfd and single component name.
+        let rc = unsafe { libc::mkdirat(parent_fd.as_raw_fd(), cname.as_ptr(), 0o700) };
+        if rc != 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(err);
+            }
+        }
+    }
+    // SAFETY: valid dirfd and single component name; refuses symlinks atomically.
+    let raw = unsafe { libc::openat(parent_fd.as_raw_fd(), cname.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if raw < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: freshly opened owned descriptor.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if (st.st_mode & libc::S_IFMT) != libc::S_IFDIR || st.st_uid != uid || (st.st_mode & 0o002) != 0 {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("unsafe screen directory {name:?}")));
+    }
+    Ok(fd)
+}
+
+fn direct_read_bounded_regular_at(dir_fd: &std::os::fd::OwnedFd, file_name: &str, max_bytes: usize) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    use std::os::fd::{AsRawFd as _, FromRawFd as _};
+    use std::os::unix::fs::MetadataExt as _;
+    let cname = direct_c_name(file_name).ok()?;
+    // SAFETY: valid dirfd and single component name.
+    let raw = unsafe { libc::openat(dir_fd.as_raw_fd(), cname.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if raw < 0 {
+        return None;
+    }
+    // SAFETY: freshly opened owned descriptor.
+    let f = unsafe { std::fs::File::from_raw_fd(raw) };
+    let meta = f.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > max_bytes as u64 || meta.uid() != direct_euid() {
+        return None;
+    }
+    let mut buf = Vec::with_capacity((meta.len() as usize).min(64 << 10));
+    f.take(max_bytes as u64 + 1).read_to_end(&mut buf).ok()?;
+    (buf.len() <= max_bytes).then_some(buf)
+}
+
+fn direct_write_file_atomic_at(dir_fd: &std::os::fd::OwnedFd, file_name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::fd::{AsRawFd as _, FromRawFd as _};
+    use std::sync::atomic::Ordering;
+    let target_c = direct_c_name(file_name)?;
+    let seq = DIRECT_TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp_name = format!(".{file_name}.tmp.{}.{seq}", std::process::id());
+    let tmp_c = direct_c_name(&tmp_name)?;
+    // SAFETY: valid dirfd and single component name; O_CREAT | O_EXCL | O_NOFOLLOW guarantees exclusive creation.
+    let raw = unsafe { libc::openat(dir_fd.as_raw_fd(), tmp_c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint) };
+    if raw < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: exclusively created fd owned by us.
+    let mut file = unsafe { std::fs::File::from_raw_fd(raw) };
+    let write_res = file.write_all(bytes).and_then(|()| file.flush());
+    drop(file);
+    if let Err(e) = write_res {
+        // SAFETY: we exclusively created `tmp_c`.
+        unsafe { libc::unlinkat(dir_fd.as_raw_fd(), tmp_c.as_ptr(), 0) };
+        return Err(e);
+    }
+    // SAFETY: valid dirfd and single component names.
+    if unsafe { libc::renameat(dir_fd.as_raw_fd(), tmp_c.as_ptr(), dir_fd.as_raw_fd(), target_c.as_ptr()) } != 0 {
+        let err = std::io::Error::last_os_error();
+        unsafe { libc::unlinkat(dir_fd.as_raw_fd(), tmp_c.as_ptr(), 0) };
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn direct_unlink_at_ignore_enoent(dir_fd: &std::os::fd::OwnedFd, file_name: &str) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd as _;
+    let cname = direct_c_name(file_name)?;
+    // SAFETY: valid dirfd and single component name.
+    if unsafe { libc::unlinkat(dir_fd.as_raw_fd(), cname.as_ptr(), 0) } != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::NotFound {
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
+fn direct_acquire_lock_at(dir_fd: &std::os::fd::OwnedFd, lock_name: &str, timeout: Duration) -> std::io::Result<std::os::fd::OwnedFd> {
+    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+    let uid = direct_euid();
+    let cname = direct_c_name(lock_name)?;
+    // SAFETY: valid dirfd and single component name; refuses symlinks.
+    let raw = unsafe { libc::openat(dir_fd.as_raw_fd(), cname.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC, 0o600 as libc::c_uint) };
+    if raw < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: freshly opened owned descriptor.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if (st.st_mode & libc::S_IFMT) != libc::S_IFREG || st.st_uid != uid {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("unsafe lock file {lock_name:?}")));
+    }
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        // SAFETY: valid open regular file descriptor.
+        if unsafe { libc::flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(fd);
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() == std::io::ErrorKind::Interrupted {
+            continue;
+        }
+        if err.kind() != std::io::ErrorKind::WouldBlock {
+            return Err(err);
+        }
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, format!("timed out waiting for lock {lock_name:?}")));
+        }
+        std::thread::sleep(Duration::from_millis(10).min(deadline - now));
+    }
+}
+
+fn read_direct_owner_at(dir_fd: &std::os::fd::OwnedFd, file_name: &str) -> Option<DirectScreenOwner> {
+    let buf = direct_read_bounded_regular_at(dir_fd, file_name, 64 * 1024)?;
+    let o = serde_json::from_slice::<DirectScreenOwner>(&buf).ok()?;
+    (!o.block_id.is_empty()).then_some(o)
+}
+
+#[cfg(test)]
+fn read_direct_owner(path: &std::path::Path) -> Option<DirectScreenOwner> {
+    let parent = path.parent()?;
+    let fname = path.file_name()?.to_str()?;
+    let dir_fd = direct_open_verified_owned_dir(parent, false).ok()?;
+    read_direct_owner_at(&dir_fd, fname)
+}
+
+fn read_runtime_screen_gen_at(rt_fd: &std::os::fd::OwnedFd, name: &str) -> Option<ScreenGen> {
+    #[derive(serde::Deserialize)]
+    struct RtGen {
+        name: String,
+        pid: i32,
+        #[serde(default)]
+        started: u64,
+        #[serde(default)]
+        start_ticks: Option<u64>,
+    }
+    let buf = direct_read_bounded_regular_at(rt_fd, &format!("{name}.json"), 64 * 1024)?;
+    let g = serde_json::from_slice::<RtGen>(&buf).ok()?;
+    if g.name != name || g.pid <= 0 {
+        return None;
+    }
+    let start_ticks = g.start_ticks.or_else(|| proc_start_ticks_of(g.pid));
+    Some(ScreenGen { pid: g.pid, started: (g.started > 0).then_some(g.started), start_ticks })
+}
+
+fn read_runtime_screen_gen_in(rt_dir: &std::path::Path, name: &str) -> Option<ScreenGen> {
+    let rt_fd = direct_open_verified_owned_dir(rt_dir, false).ok()?;
+    read_runtime_screen_gen_at(&rt_fd, name)
+}
+
+fn screen_gens_match(expected: ScreenGen, actual: ScreenGen) -> bool {
+    if expected.pid != actual.pid {
+        return false;
+    }
+    if let (Some(e), Some(a)) = (expected.started, actual.started)
+        && e != a
+    {
+        return false;
+    }
+    if let (Some(e), Some(a)) = (expected.start_ticks, actual.start_ticks)
+        && e != a
+    {
+        return false;
+    }
+    true
+}
+
+fn owner_matches_gen(o: &DirectScreenOwner, g: ScreenGen) -> bool {
+    if let Some(p) = o.screen_pid
+        && p != g.pid
+    {
+        return false;
+    }
+    if let (Some(os), Some(gs)) = (o.screen_started, g.started)
+        && os != gs
+    {
+        return false;
+    }
+    if let (Some(ot), Some(gt)) = (o.screen_start_ticks, g.start_ticks)
+        && ot != gt
+    {
+        return false;
+    }
+    true
+}
+
+/// Record or clean up desktop screen ownership sidecars (`NAME.owner.json` in
+/// runtime dir + `owner.json` in state dir) when `olo-screen` is invoked directly
+/// inside a local Rex terminal pane (Astra #7–#12, #14, #24).
+fn record_direct_cli_owner(command: &str, rest: &[String], name: &str, expected_gen: Option<ScreenGen>) -> std::io::Result<()> {
+    let rt_dir = screens::dir();
+    let state_root = history::dir(name).parent().map(std::path::Path::to_path_buf).unwrap_or_else(|| olo_xdg::state_dir().join("screens"));
+    record_direct_cli_owner_with_env(&rt_dir, &state_root, command, rest, name, expected_gen, DIRECT_OWNER_LOCK_TIMEOUT, |k| std::env::var(k).ok())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_direct_cli_owner_with_env(
+    rt_dir: &std::path::Path,
+    state_root: &std::path::Path,
+    command: &str,
+    rest: &[String],
+    name: &str,
+    expected_gen: Option<ScreenGen>,
+    lock_timeout: Duration,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> std::io::Result<()> {
+    let is_start = command == "start" || (command == "take" && has(rest, "--new"));
+    let is_stop_or_delete = matches!(command, "stop" | "delete");
+    let is_mutating = is_start || matches!(command, "maximize" | "take") || (history::ACTIONS.contains(&command) && !matches!(command, "stop" | "delete" | "archive" | "unarchive"));
+    if !is_mutating && !is_stop_or_delete {
+        return Ok(());
+    }
+    if is_stop_or_delete {
+        return unlink_direct_runtime_owner_in(rt_dir, state_root, name, expected_gen, lock_timeout);
+    }
+    let (env_block, env_session, env_socket) = read_direct_rex_env(get_env);
+    // Astra #8: skip irrelevant mutating actions outside Rex BEFORE opening any lock.
+    if !is_start && env_block.is_none() {
+        return Ok(());
+    }
+    record_direct_owner_in(rt_dir, state_root, name, is_start, env_block.as_deref(), &env_session, env_socket.as_deref(), expected_gen, lock_timeout)
+}
+
+fn unlink_direct_runtime_owner_in(rt_dir: &std::path::Path, state_root: &std::path::Path, name: &str, expected_gen: Option<ScreenGen>, lock_timeout: Duration) -> std::io::Result<()> {
+    if !screens::valid_name(name) {
+        return Ok(());
+    }
+    let rt_fd = match direct_open_verified_owned_dir(rt_dir, false) {
+        Ok(fd) => fd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let _life_lock = direct_acquire_lock_at(&rt_fd, &format!("{name}.lifecycle.lock"), lock_timeout)?;
+    let state_dir_fd = match direct_open_verified_owned_dir(state_root, false) {
+        Ok(root_fd) => match direct_open_verified_subdir_at(&root_fd, name, false) {
+            Ok(fd) => Some(fd),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    let _owner_lock =
+        if let Some(ref sfd) = state_dir_fd { direct_acquire_lock_at(sfd, ".owner.lock", lock_timeout)? } else { direct_acquire_lock_at(&rt_fd, &format!(".{name}.owner.lock"), lock_timeout)? };
+    // Never unlink if a running descriptor is present (e.g. a replacement started concurrently).
+    if read_runtime_screen_gen_at(&rt_fd, name).is_some() {
+        return Ok(());
+    }
+    let rt_owner_name = format!("{name}.owner.json");
+    if let Some(exp) = expected_gen
+        && let Some(existing) = read_direct_owner_at(&rt_fd, &rt_owner_name)
+        && !owner_matches_gen(&existing, exp)
+    {
+        return Ok(());
+    }
+    direct_unlink_at_ignore_enoent(&rt_fd, &rt_owner_name)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_direct_owner_in(
+    rt_dir: &std::path::Path,
+    state_root: &std::path::Path,
+    name: &str,
+    is_start: bool,
+    env_block: Option<&str>,
+    env_session: &str,
+    env_socket: Option<&str>,
+    expected_gen: Option<ScreenGen>,
+    lock_timeout: Duration,
+) -> std::io::Result<()> {
+    if !screens::valid_name(name) {
+        return Ok(());
+    }
+    let block_opt = env_block.filter(|b| !b.is_empty());
+    // Astra #8: skip irrelevant non-start actions outside Rex before touching any lock.
+    if !is_start && block_opt.is_none() {
+        return Ok(());
+    }
+
+    let rt_fd = match direct_open_verified_owned_dir(rt_dir, is_start) {
+        Ok(fd) => fd,
+        Err(e) if !is_start && e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    // Acquire lifecycle lock first (same lock ordering everywhere) to verify
+    // runtime session generation atomically against Start/Stop (Astra #10).
+    let _life_lock = direct_acquire_lock_at(&rt_fd, &format!("{name}.lifecycle.lock"), lock_timeout)?;
+
+    let create_state = is_start && block_opt.is_some();
+    let state_dir_fd = match direct_open_verified_owned_dir(state_root, create_state) {
+        Ok(root_fd) => match direct_open_verified_subdir_at(&root_fd, name, create_state) {
+            Ok(fd) => Some(fd),
+            Err(e) if !create_state && e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        },
+        Err(e) if !create_state && e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+
+    let _owner_lock =
+        if let Some(ref sfd) = state_dir_fd { direct_acquire_lock_at(sfd, ".owner.lock", lock_timeout)? } else { direct_acquire_lock_at(&rt_fd, &format!(".{name}.owner.lock"), lock_timeout)? };
+
+    let rt_gen = read_runtime_screen_gen_at(&rt_fd, name);
+    let rt_owner_name = format!("{name}.owner.json");
+
+    // Astra #10: verify under both locks that the runtime generation still
+    // matches what this invocation started or acted on before writing/unlinking.
+    if is_start {
+        if let Some(exp) = expected_gen {
+            let Some(cur) = rt_gen else { return Ok(()) };
+            if !screen_gens_match(exp, cur) {
+                return Ok(());
+            }
+        }
+    } else if let Some(exp) = expected_gen {
+        let Some(cur) = rt_gen else { return Ok(()) };
+        if !screen_gens_match(exp, cur) {
+            return Ok(());
+        }
+    } else if rt_gen.is_some() {
+        // Command acted on a stopped screen (`pre_gen = None`), but a new
+        // running screen started concurrently: never clobber its owner.
+        return Ok(());
+    }
+
+    let Some(block_id) = block_opt else {
+        // Astra #11: verified standalone Start outside Rex clears BOTH runtime
+        // `NAME.owner.json` AND persistent `owner.json` so stopping later cannot
+        // resurrect the previous Rex pane's ownership.
+        direct_unlink_at_ignore_enoent(&rt_fd, &rt_owner_name)?;
+        if let Some(ref sfd) = state_dir_fd {
+            direct_unlink_at_ignore_enoent(sfd, "owner.json")?;
+        }
+        return Ok(());
+    };
+
+    let need_rt = is_start || rt_gen.is_some();
+    let need_st = is_start || state_dir_fd.is_some();
+    if !need_rt && !need_st {
+        return Ok(());
+    }
+
+    let rt_existing = read_direct_owner_at(&rt_fd, &rt_owner_name);
+    let st_existing = state_dir_fd.as_ref().and_then(|sfd| read_direct_owner_at(sfd, "owner.json"));
+    let existing = rt_existing.as_ref().or(st_existing.as_ref());
+
+    let effective_gen = rt_gen.or(expected_gen);
+    let screen_pid = effective_gen.map(|g| g.pid);
+    let screen_started = effective_gen.and_then(|g| g.started);
+    let screen_start_ticks = effective_gen.and_then(|g| g.start_ticks);
+
+    let same_gen = |o: &DirectScreenOwner| effective_gen.is_none_or(|g| owner_matches_gen(o, g));
+    let started_by = if is_start {
+        Some(DirectOwnerPane { host_key: None, session_id: env_session.to_owned(), block_id: block_id.to_owned() })
+    } else {
+        existing.filter(|o| same_gen(o)).and_then(|o| o.started_by.clone())
+    };
+
+    let matches_target = |o: &DirectScreenOwner| {
+        o.host_key.is_none()
+            && o.session_id == env_session
+            && o.block_id == block_id
+            && o.rex_socket.as_deref() == env_socket
+            && (!is_start || o.started_by == started_by)
+            && (screen_pid.is_none() || o.screen_pid == screen_pid)
+            && (screen_started.is_none() || o.screen_started == screen_started)
+            && (screen_start_ticks.is_none() || o.screen_start_ticks == screen_start_ticks)
+    };
+    let rt_ok = !need_rt || rt_existing.as_ref().is_some_and(matches_target);
+    let st_ok = !need_st || st_existing.as_ref().is_some_and(matches_target);
+    let copies_agree = !need_rt || !need_st || rt_existing == st_existing;
+    // Astra #24: skip rewriting unchanged sidecars so repeated clicks do not churn
+    // files or wake Rex's watcher unnecessarily.
+    if rt_ok && st_ok && copies_agree {
+        return Ok(());
+    }
+
+    // If one authoritative copy already matches and the other merely drifted or
+    // went missing, repair the missing/stale copy without advancing `at`.
+    if let Some(auth) = rt_existing.as_ref().filter(|o| matches_target(o)).or_else(|| st_existing.as_ref().filter(|o| matches_target(o))) {
+        let bytes = serde_json::to_vec_pretty(auth).map_err(std::io::Error::other)?;
+        if need_rt && rt_existing.as_ref() != Some(auth) {
+            direct_write_file_atomic_at(&rt_fd, &rt_owner_name, &bytes)?;
+        }
+        if need_st
+            && let Some(ref sfd) = state_dir_fd
+            && st_existing.as_ref() != Some(auth)
+        {
+            direct_write_file_atomic_at(sfd, "owner.json", &bytes)?;
+        }
+        return Ok(());
+    }
+
+    let owner = DirectScreenOwner {
+        host_key: None,
+        session_id: env_session.to_owned(),
+        block_id: block_id.to_owned(),
+        started_by,
+        pid: None,
+        began: None,
+        screen_pid,
+        screen_started,
+        screen_start_ticks,
+        rex_socket: env_socket.map(str::to_owned),
+        at: history::now_ms(),
+    };
+    let bytes = serde_json::to_vec_pretty(&owner).map_err(std::io::Error::other)?;
+    if need_rt {
+        direct_write_file_atomic_at(&rt_fd, &rt_owner_name, &bytes)?;
+    }
+    if need_st && let Some(ref sfd) = state_dir_fd {
+        direct_write_file_atomic_at(sfd, "owner.json", &bytes)?;
+    }
+    Ok(())
 }
 
 /// An action's answer as its history keeps it: what the screen was after
@@ -464,19 +1134,8 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
     // or OLO_SCREEN_QUICK=1 for a run of them: an action answers with the
     // focus alone, at once, as before 2026-11-18, not with how the screen
     // is once settled (`afterwards`).
-    let mut rest: Vec<String> = args[1..].to_vec();
-    let mut quick = std::env::var("OLO_SCREEN_QUICK").is_ok_and(|v| !v.is_empty() && v != "0");
-    if command == "run" {
-        if rest.get(1).map(String::as_str) == Some("--quick") {
-            rest.remove(1);
-            quick = true;
-        }
-    } else if history::ACTIONS.contains(&command) || command == "maximize" {
-        let n = rest.len();
-        rest.retain(|a| a != "--quick");
-        quick |= rest.len() != n;
-    }
-    let rest = &rest[..];
+    let (rest_vec, quick) = strip_quick_flag(command, &args[1..]);
+    let rest = &rest_vec[..];
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
     // While the person has the screen, an agent's actions wait for them
     // (reading it still answers): two hands on one pointer made a mess.
@@ -2510,5 +3169,154 @@ mod tests {
         assert_eq!(v["started"], 1_750_000_123u64);
         assert_eq!(v["went"].as_array().map(Vec::len), Some(1));
         assert_eq!(v["stayed"], json!([]));
+    }
+
+    #[test]
+    fn astra_r2_f7_to_f12_f24_neon_f9_direct_local_cli_owner_attribution() {
+        let tmp = std::path::PathBuf::from(format!("/var/tmp/olo-screen-owner-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let rt_dir = tmp.join("rt");
+        let state_root = tmp.join("state");
+        std::fs::create_dir_all(&rt_dir).unwrap();
+        std::fs::create_dir_all(&state_root).unwrap();
+
+        let my_pid = std::process::id() as i32;
+        let my_ticks = proc_start_ticks_of(my_pid);
+        std::fs::write(rt_dir.join("qa.json"), format!(r#"{{"name":"qa","pid":{my_pid},"started":1750000100}}"#)).unwrap();
+
+        // Neon #9: `--quick` stripped from any arg position for non-run actions.
+        let (stripped, quick) = strip_quick_flag("click", &args(&["--quick", "qa", "100", "200"]));
+        assert!(quick && stripped.first().map(String::as_str) == Some("qa"), "got {stripped:?}");
+
+        // Astra #9: `run` child PID must NOT be extracted as screen session PID; `start`/`take` MUST.
+        assert_eq!(answer_screen_gen("run", Some(&json!({"pid": 999999}))), (None, None));
+        assert_eq!(answer_screen_gen("record-video", Some(&json!({"pid": 999999}))), (None, None));
+        assert_eq!(answer_screen_gen("start", Some(&json!({"name": "qa", "pid": my_pid, "started": 1750000100u64}))), (Some(my_pid), Some(1750000100)));
+        assert_eq!(answer_screen_gen("take", Some(&json!({"name": "qa", "pid": my_pid, "started": 1750000100u64}))), (Some(my_pid), Some(1750000100)));
+
+        // Astra #12: read REX_SERVER_SOCKET (stripping unix://) and ignore REX_SOCKET.
+        let env_lead = |k: &str| match k {
+            "REX_BLOCK" => Some("blk-lead".into()),
+            "REX_SESSION" => Some("sess-1".into()),
+            "REX_SOCKET" => Some("/wrong/rex-socket.sock".into()),
+            "REX_SERVER_SOCKET" => Some("unix:///run/user/1000/rex/server.sock".into()),
+            _ => None,
+        };
+        let gen1 = ScreenGen { pid: my_pid, started: Some(1_750_000_100), start_ticks: my_ticks };
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "start", &args(&["qa"]), "qa", Some(gen1), Duration::from_millis(200), env_lead).unwrap();
+        let rt_o = read_direct_owner(&rt_dir.join("qa.owner.json")).expect("runtime owner written");
+        let st_o = read_direct_owner(&state_root.join("qa/owner.json")).expect("state owner written");
+        assert_eq!(rt_o, st_o);
+        assert_eq!(rt_o.session_id, "sess-1");
+        assert_eq!(rt_o.block_id, "blk-lead");
+        assert_eq!(rt_o.rex_socket.as_deref(), Some("/run/user/1000/rex/server.sock"));
+        assert_eq!(rt_o.screen_pid, Some(my_pid));
+        assert_eq!(rt_o.screen_started, Some(1_750_000_100));
+        assert_eq!(rt_o.screen_start_ticks, my_ticks);
+        assert_eq!(rt_o.started_by, Some(DirectOwnerPane { host_key: None, session_id: "sess-1".into(), block_id: "blk-lead".into() }));
+
+        // Astra #24: repeated click from same pane skips rewriting unchanged sidecars (timestamp unchanged).
+        let at_before = rt_o.at;
+        std::thread::sleep(Duration::from_millis(5));
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "click", &args(&["qa", "10", "20"]), "qa", Some(gen1), Duration::from_millis(200), env_lead).unwrap();
+        let rt_same = read_direct_owner(&rt_dir.join("qa.owner.json")).unwrap();
+        assert_eq!(rt_same.at, at_before, "unchanged sidecar must not be rewritten");
+
+        // Subsequent action from child pane hands over `block_id` while preserving `started_by`.
+        let env_child = |k: &str| match k {
+            "REX_BLOCK" => Some("blk-child".into()),
+            "REX_SESSION" => Some("sess-1".into()),
+            "REX_SERVER_SOCKET" => Some("/run/user/1000/rex/server.sock".into()),
+            _ => None,
+        };
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "click", &args(&["qa", "10", "20"]), "qa", Some(gen1), Duration::from_millis(200), env_child).unwrap();
+        let after = read_direct_owner(&rt_dir.join("qa.owner.json")).expect("updated runtime owner");
+        assert_eq!(after.block_id, "blk-child");
+        assert_eq!(after.started_by, Some(DirectOwnerPane { host_key: None, session_id: "sess-1".into(), block_id: "blk-lead".into() }));
+
+        // Astra #10: delayed click from Gen 1 after Gen 2 started MUST NOT clobber Gen 2's owner.
+        std::fs::write(rt_dir.join("qa.json"), format!(r#"{{"name":"qa","pid":{my_pid},"started":1750000200}}"#)).unwrap();
+        let gen2 = ScreenGen { pid: my_pid, started: Some(1_750_000_200), start_ticks: my_ticks };
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "start", &args(&["qa"]), "qa", Some(gen2), Duration::from_millis(200), env_child).unwrap();
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "click", &args(&["qa", "10", "20"]), "qa", Some(gen1), Duration::from_millis(200), env_lead).unwrap();
+        let gen2_owner = read_direct_owner(&rt_dir.join("qa.owner.json")).unwrap();
+        assert_eq!(gen2_owner.block_id, "blk-child", "delayed Gen 1 click must not overwrite Gen 2");
+        assert_eq!(gen2_owner.screen_started, Some(1_750_000_200));
+
+        // Astra #11: verified standalone Start outside Rex clears BOTH runtime AND persistent owner.json.
+        std::fs::write(rt_dir.join("qa.json"), format!(r#"{{"name":"qa","pid":{my_pid},"started":1750000300}}"#)).unwrap();
+        let gen3 = ScreenGen { pid: my_pid, started: Some(1_750_000_300), start_ticks: my_ticks };
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "start", &args(&["qa"]), "qa", Some(gen3), Duration::from_millis(200), |_| None).unwrap();
+        assert!(!rt_dir.join("qa.owner.json").exists(), "standalone start must clear runtime owner");
+        assert!(!state_root.join("qa/owner.json").exists(), "standalone start must clear persistent owner so stopping cannot resurrect old pane");
+
+        // Astra #8: bounded lock timeout returns TimedOut instead of hanging, AND non-start outside Rex skips lock completely!
+        let rt_fd = direct_open_verified_owned_dir(&rt_dir, false).unwrap();
+        let held_lock = direct_acquire_lock_at(&rt_fd, "qa.lifecycle.lock", Duration::from_millis(100)).unwrap();
+        // Outside Rex click succeeds immediately without touching the lock:
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "click", &args(&["qa", "1", "1"]), "qa", Some(gen3), Duration::from_millis(30), |_| None).unwrap();
+        // Inside Rex click times out promptly:
+        let err = record_direct_cli_owner_with_env(&rt_dir, &state_root, "click", &args(&["qa", "1", "1"]), "qa", Some(gen3), Duration::from_millis(40), env_lead).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+        drop(held_lock);
+
+        // Astra #7: symlinked per-screen state directory is refused and nothing is written outside state_root.
+        let escape_dir = tmp.join("escape");
+        std::fs::create_dir_all(&escape_dir).unwrap();
+        std::os::unix::fs::symlink(&escape_dir, state_root.join("evil")).unwrap();
+        std::fs::write(rt_dir.join("evil.json"), format!(r#"{{"name":"evil","pid":{my_pid},"started":1750000400}}"#)).unwrap();
+        let gen_evil = ScreenGen { pid: my_pid, started: Some(1_750_000_400), start_ticks: my_ticks };
+        let sym_err = record_direct_cli_owner_with_env(&rt_dir, &state_root, "start", &args(&["evil"]), "evil", Some(gen_evil), Duration::from_millis(100), env_lead).unwrap_err();
+        assert!(!escape_dir.join("owner.json").exists(), "must never write through symlinked screen dir (err={sym_err})");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn r3_polish_astra_f20_neon_f5_f6_symlink_ancestor_world_writable_and_rename_no_owner() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let tmp = std::path::PathBuf::from(format!("/var/tmp/olo-screen-r3-polish-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // 1. Astra #20 / Neon #5: symlinked ancestor (modeling Fedora Atomic `/home -> /var/home`)
+        //    to a safe owned target succeeds, while a world-writable non-sticky ancestor is rejected!
+        let real_home = tmp.join("var_home/alice");
+        std::fs::create_dir_all(real_home.join("screens")).unwrap();
+        let link_home = tmp.join("home");
+        std::os::unix::fs::symlink(tmp.join("var_home"), &link_home).unwrap();
+        let via_symlink = link_home.join("alice/screens");
+        direct_open_verified_owned_dir(&via_symlink, false).expect("symlinked safe ancestor like /home -> /var/home must succeed");
+
+        let ww_parent = tmp.join("world_writable");
+        std::fs::create_dir_all(ww_parent.join("child")).unwrap();
+        std::fs::set_permissions(&ww_parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let ww_err = direct_open_verified_owned_dir(&ww_parent.join("child"), false).unwrap_err();
+        assert_eq!(ww_err.kind(), std::io::ErrorKind::PermissionDenied, "world-writable non-sticky ancestor must be rejected (err={ww_err})");
+        std::fs::set_permissions(&ww_parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        // 2. Neon #6: `rename` is NOT a mutating ownership-transfer command — neither running
+        //    nor stopped screens may have `owner.json` created or overwritten on `rename`.
+        let rt_dir = tmp.join("rt");
+        let state_root = tmp.join("state");
+        std::fs::create_dir_all(&rt_dir).unwrap();
+        std::fs::create_dir_all(state_root.join("stopped-qa")).unwrap();
+        let my_pid = std::process::id() as i32;
+        let my_ticks = proc_start_ticks_of(my_pid);
+        std::fs::write(rt_dir.join("running-qa.json"), format!(r#"{{"name":"running-qa","pid":{my_pid},"started":1750000100}}"#)).unwrap();
+        std::fs::write(state_root.join("stopped-qa/screen.json"), r#"{"width":800,"height":600,"scale":1.0}"#).unwrap();
+        let env_other = |k: &str| match k {
+            "REX_BLOCK" => Some("blk-renamer".into()),
+            "REX_SESSION" => Some("sess-2".into()),
+            _ => None,
+        };
+        let screen_gen = ScreenGen { pid: my_pid, started: Some(1_750_000_100), start_ticks: my_ticks };
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "rename", &args(&["running-qa", "New Title"]), "running-qa", Some(screen_gen), Duration::from_millis(100), env_other).unwrap();
+        assert!(!rt_dir.join("running-qa.owner.json").exists(), "rename on running screen must not write runtime owner");
+        assert!(!state_root.join("running-qa/owner.json").exists(), "rename on running screen must not write state owner");
+        record_direct_cli_owner_with_env(&rt_dir, &state_root, "rename", &args(&["stopped-qa", "New Title"]), "stopped-qa", None, Duration::from_millis(100), env_other).unwrap();
+        assert!(!state_root.join("stopped-qa/owner.json").exists(), "rename on stopped screen must not write state owner");
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

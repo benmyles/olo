@@ -523,10 +523,37 @@ fn may_ask_hosts() -> bool {
 }
 
 pub async fn run_host_link_within(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], stdin_payload: Option<&str>, within: std::time::Duration) -> Option<String> {
+    run_host_link_within_pinned(state, host_key, None, args, stdin_payload, within).await
+}
+
+/// Like [`run_host_link_within`], additionally pinning `(host_instance_id, conn_id)`
+/// (where `conn_id == 0` checks instance + endpoint only, e.g. for local hosts) so
+/// a queued or multi-step agent stop never executes on a replacement host or
+/// reconnected endpoint (Astra #5).
+pub async fn run_host_link_within_pinned(
+    state: &Arc<Mutex<crate::hub::HubState>>,
+    host_key: &str,
+    pin: Option<(u64, u64)>,
+    args: &[&str],
+    stdin_payload: Option<&str>,
+    within: std::time::Duration,
+) -> Option<String> {
     if !may_ask_hosts() {
         return None;
     }
-    let is_local = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| h.is_local);
+    let check_pin = |st: &crate::hub::HubState| -> Option<bool> {
+        let h = st.hosts.get(host_key)?;
+        if let Some((want_inst, want_conn)) = pin
+            && (h.host_instance_id != want_inst || (!h.is_local && want_conn != 0 && h.screens_conn_id != want_conn))
+        {
+            return None;
+        }
+        Some(h.is_local)
+    };
+    let is_local = {
+        let st = state.lock().unwrap_or_else(|e| e.into_inner());
+        check_pin(&st)?
+    };
     if is_local {
         let helper = local_helper_path()?;
         let mut child = tokio::process::Command::new(&helper).args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true).spawn().ok()?;
@@ -540,6 +567,12 @@ pub async fn run_host_link_within(state: &Arc<Mutex<crate::hub::HubState>>, host
         Some(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
         let (target, pool, askpass) = ensure_remote_helper(state, host_key).await.ok()?;
+        // Re-verify pin AFTER `ensure_remote_helper` (which may await SSH setup)
+        // so a host replacement during setup never runs the stop on the new host.
+        if pin.is_some() {
+            let st = state.lock().unwrap_or_else(|e| e.into_inner());
+            check_pin(&st)?;
+        }
         let mut cmd = olo_rex_client::helper::file(crate::link::ID);
         for a in args {
             cmd.push(' ');

@@ -6,6 +6,7 @@
 
 mod account;
 mod account_panel;
+mod activity_screens;
 mod activity_watch;
 mod agent;
 mod attach;
@@ -118,6 +119,9 @@ fn main() {
     if instance::forward(APP_ID, &raw_args) {
         return;
     }
+    // Clear any desktop Agent Screen `.control` leases left behind by our own
+    // PID across an in-place upgrade `exec` so agents are never locked out (Astra #5).
+    olo_screen_pane::screens::clear_controlled_by_me();
 
     let cli = parse_args(&raw_args);
     let restored_raw = olo_kit::restored_state();

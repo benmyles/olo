@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Rex Activity sidebar Agent Screens & embedded ScreenPane (dark)
+
+*09:05* — Dark mode view of Rex Activity sidebar Agent Screens with embedded ScreenPane.
+
+![Rex Activity sidebar Agent Screens & embedded ScreenPane (dark)](2026-11-28/090549-rex-activity-sidebar-agent-screens-embedded-scre.png)
+
+### Rex Activity sidebar Agent Screens & embedded ScreenPane (light)
+
+*09:05* — Agent Screens nested under controlling agents in Rex Activity sidebar with embedded Live/History/Stats/Passwords ScreenPane.
+
+![Rex Activity sidebar Agent Screens & embedded ScreenPane (light)](2026-11-28/090548-rex-activity-sidebar-agent-screens-embedded-scre.png)
+
 ### Rex Preferences: Minded Subagent Notifications (Dark)
 
 *05:38* — Opted-in minded subagent notifications state in dark mode with Reset link and symmetric BBox inset

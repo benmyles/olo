@@ -234,7 +234,7 @@ impl Default for Settings {
             // (Wide enough for the sidebar's control to show each
             // name's mark beside it and Activity's count, with room:
             // as Ben drew it. It was 192, where the marks gave way.)
-            sidebar_width: 224.0,
+            sidebar_width: 244.0,
             sidebar_collapsed: false,
             sidebar_mode: SidebarMode::Sessions,
             activity_include_idle: false,

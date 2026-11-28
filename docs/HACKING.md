@@ -1201,7 +1201,7 @@ after a burst it says a change).
 | `crates/session` | `olo-session`: starts and supervises app_server, Deskbar and the desktop; in-place reload and upgrade (see below). |
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/screen-codec` | `olo-screen-codec`: an Agent Screen's recording (`.olof`) and its 64 × 64 tiles, read and written; no GUI dependency, so the host's helper uses it too. |
-| `crates/screen-pane` | `olo-screen-pane`: the pane that shows one Agent Screen (Live, History, Stats, Passwords) over a `ScreenSource`: this computer's, or a host's by a stream. Agent Screens mounts it; Rex will. |
+| `crates/screen-pane` | `olo-screen-pane`: the pane that shows one Agent Screen (Live, History, Stats, Passwords) over a `ScreenSource`: this computer's, or a host's by a stream. Agent Screens and Rex both mount it. |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/app` | `olo-app`, the Application Kit: loopers (a thread and its queue, taken one message at a time, asleep when there's none), handlers and messengers with typed messages, timers, `ask` and its `Answer`, `Latest` (what would flood a queue, gathered) and the pool that work longer than a frame runs on. No drawing. |
 | `crates/interface` | `olo-interface`, the Interface Kit: a window on a looper of its own; views (`View`: its state, the messages it takes, the `body` that says what it shows) and the elements they're made of, kept and laid out between frames (taffy); what each draws kept as a display list (`Painter`, `canvas`); the display thread (`Stage`), which draws the frames, scrolls and springs without the looper; text, the Wayland client and the GPU renderer, all Olo's own. |
@@ -29527,20 +29527,29 @@ its drawing, `HubState::host_stands` what it shows).
   divides, `screen list`; `ScreensThere::rows`), so nothing is asked
   that wasn't before and nothing polls: the list is as the host last
   said (Check Again, and after anything done here). Look at Screen
-  (and opening a row) takes a picture there (`screen look`), reads the
-  file over the link (`RexHub::look_at_screen`, into Olo's cache,
-  `~/.cache/olo/rex-screens/HOST-NAME.png`, one file a screen, written
-  over by its next look) and opens it in what shows pictures here; Stop
-  Screen is `screen stop` (`RexHub::stop_screen`), its row "Stopping…"
-  with the busy ring until the host has answered. What couldn't be
-  done is one line under the buttons, with the down light: a sentence
-  of Olo's own, its first half in the ink of the window's other
+  (and opening a row) opens the screen live inside Rex's workspace as an
+  embedded `ScreenPane` (when the host's helper advertises `stream`; on
+  older helpers without `stream`, Look at Screen is disabled with an
+  upgrade tooltip telling the person to update Agent Screens on the
+  host); Stop Screen is guarded `screen stop` (`ScreensService`), its
+  row "Stopping…" with the busy ring until the host has answered. What
+  couldn't be done is one line under the buttons, with the down light: a
+  sentence of Olo's own, its first half in the ink of the window's other
   failures ("Couldn’t look at notes:" then "it isn’t running any
   more.", `host_screens::why_not_done`: the tool's own "there's no
   screen … (olo-screen list)" denied a row the list shows), and the
   host is asked again; the line's room is kept when nothing failed, so
   the window and the buttons at its foot don't move when something
-  does. The one chosen is kept by its name (`host_screen_chosen`), so
+  does. Rex's **Activity sidebar** (`apps/rex/src/activity_screens.rs`,
+  `apps/rex/src/screens_sock.rs`) also lists every live and recently
+  owned Agent Screen — local desktop screens and connected Rex hosts'
+  screens alike — nested under the agent pane controlling it (with
+  unowned running screens under the host's section, or a dedicated "This
+  computer" section when no local Rex server is configured). Selecting a
+  screen row mounts the shared `ScreenPane` in place of the terminal
+  with a breadcrumb strip back to the terminal (`Show Terminal` / `Esc`
+  when not controlling) and full Take Control (`⌘K`) support. The one
+  chosen is kept by its name (`host_screen_chosen`), so
   it stays chosen as a stopped screen goes down the list. With the
   list there, the lines above no longer name the screens that run
   (said once: "Update once the running screens below are stopped.",

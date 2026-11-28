@@ -101,6 +101,7 @@ pub fn screens_section(
     lines: &[ScreenLine],
     host: &HostStands,
     shown: &Shown,
+    can_live_stream: bool,
     on_do: impl Fn(&HostDo, &mut WindowCx) + 'static,
 ) -> Option<Element> {
     use olo_kit::widgets::{Column, ColumnListView};
@@ -137,9 +138,12 @@ pub fn screens_section(
     let columns = vec![Column::new("Screen", 100.0), Column::new("Title", 208.0), Column::new("Started", 80.0), Column::new("Status", 104.0)];
     let opened = {
         let (on_do, lines) = (on_do.clone(), lines.to_vec());
+        let host_key = shown.key.clone();
+        let host_instance_id = shown.host_instance_id;
+        let host_label = shown.name.clone();
         move |row: &usize, cx: &mut WindowCx| {
-            if let Some(line) = lines.get(*row).filter(|l| l.row.running && l.doing.is_none()) {
-                on_do(&HostDo::ScreenLook(line.row.name.clone()), cx);
+            if can_live_stream && let Some(line) = lines.get(*row).filter(|l| l.row.running && l.doing.is_none()) {
+                on_do(&HostDo::ScreenLook { host_key: host_key.clone(), host_instance_id, host_label: host_label.clone(), name: line.row.name.clone(), expected_started: line.row.started }, cx);
             }
         }
     };
@@ -169,7 +173,14 @@ pub fn screens_section(
     let chosen = list.state().single().and_then(|i| lines.get(i));
     let free = chosen.filter(|l| l.row.running && l.doing.is_none() && reached);
     let stop_action = free.map(|l| HostDo::ScreenStop { host_key: shown.key.clone(), host_instance_id: shown.host_instance_id, name: l.row.name.clone(), expected_started: l.row.started });
-    let look_action = free.map(|l| HostDo::ScreenLook(l.row.name.clone()));
+    let look_action = free.filter(|_| can_live_stream).map(|l| HostDo::ScreenLook {
+        host_key: shown.key.clone(),
+        host_instance_id: shown.host_instance_id,
+        host_label: shown.name.clone(),
+        name: l.row.name.clone(),
+        expected_started: l.row.started,
+    });
+    let look_tip = if !can_live_stream && reached { "Update Olo’s helper on this host to view screens live in Rex." } else { "Opens the screen live in Rex." };
     let wide = ["Look at Screen", "Stop Screen"].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
     let button = |label: &'static str, id: &'static str, tip: &'static str, what: Option<HostDo>| {
         let on_do = on_do.clone();
@@ -195,7 +206,7 @@ pub fn screens_section(
         .flex_row()
         .items_center()
         .gap(px(m::SPACING))
-        .child(button("Look at Screen", "host-screen-look", "Shows a picture of the screen as it is now.", look_action))
+        .child(button("Look at Screen", "host-screen-look", look_tip, look_action))
         .child(button("Stop Screen", "host-screen-stop", "Quits everything running on the screen. The screen stays in the list, stopped.", stop_action))
         .child(div().flex_1());
     // Under them, what couldn't be done last: one line with the down
@@ -311,8 +322,10 @@ pub enum HostDo {
     /// and observed `started` generation so a queued click can never retarget
     /// another host or stop a replacement run.
     ScreenStop { host_key: String, host_instance_id: u64, name: String, expected_started: Option<u64> },
-    /// A picture of one of the host's screens as it is now, shown here.
-    ScreenLook(String),
+    /// Look at one of the host's screens live in Rex, carrying the rendered
+    /// `(host_key, host_instance_id, expected_started)` so queued clicks never
+    /// retarget another host or a replacement session (Astra #4).
+    ScreenLook { host_key: String, host_instance_id: u64, host_label: String, name: String, expected_started: Option<u64> },
     /// A kept folder (by its path there) let go of: `true` asks to confirm
     /// first (`Forget…`), `false` forgets immediately (gone folders).
     StopKept(String, bool),

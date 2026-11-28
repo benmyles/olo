@@ -744,6 +744,16 @@ struct DesktopRuntimeScreen {
     pid: i32,
     #[serde(default)]
     started: u64,
+    #[serde(default)]
+    start_ticks: Option<u64>,
+    #[serde(default)]
+    width: i32,
+    #[serde(default)]
+    height: i32,
+    #[serde(default)]
+    scale: f64,
+    #[serde(default)]
+    sound: bool,
 }
 
 fn desktop_proc_start_ticks(pid: i32) -> Option<u64> {
@@ -768,7 +778,7 @@ fn read_desktop_runtime_screen_at(rt_fd: &OwnedFd, name: &str) -> Option<Desktop
 }
 
 fn desktop_gen_of(s: &DesktopRuntimeScreen) -> DesktopScreenGen {
-    DesktopScreenGen { pid: s.pid, started: s.started, start_ticks: desktop_proc_start_ticks(s.pid) }
+    DesktopScreenGen { pid: s.pid, started: s.started, start_ticks: s.start_ticks.or_else(|| desktop_proc_start_ticks(s.pid)) }
 }
 
 fn desktop_gen_matches(actual: &DesktopScreenGen, expected: &DesktopScreenGen) -> bool {
@@ -807,7 +817,7 @@ pub fn snapshot_desktop_screen_gen(name: &str) -> Option<DesktopScreenGen> {
     let (rt_dir, _) = desktop_screen_dirs();
     let rt_fd = open_verified_owned_dir(&rt_dir, false).ok()?;
     let s = read_desktop_runtime_screen_at(&rt_fd, name)?;
-    if !rex_sock::pid_is_alive(s.pid.max(0) as u32) {
+    if !olo_screen_pane::screens::is_screen_session_alive_in(&rt_dir, s.pid, name, s.start_ticks) {
         return None;
     }
     Some(desktop_gen_of(&s))
@@ -998,7 +1008,7 @@ pub fn unlink_desktop_runtime_owner_in(rt_dir: &Path, state_root: &Path, name: &
         },
     };
     if let Some(cur) = read_desktop_runtime_screen_at(&rt_fd, name)
-        && rex_sock::pid_is_alive(cur.pid.max(0) as u32)
+        && olo_screen_pane::screens::is_screen_session_alive_in(rt_dir, cur.pid, name, cur.start_ticks)
     {
         let cur_gen = desktop_gen_of(&cur);
         match expected_gen {
@@ -1025,70 +1035,343 @@ pub fn desktop_screen_dirs() -> (PathBuf, PathBuf) {
 /// Scan desktop screen owner records from runtime (`NAME.owner.json`) and
 /// persistent state (`NAME/owner.json`), validating running screens against
 /// their live `(pid, started, start_ticks)` generation and rejecting symlinks.
-pub fn load_desktop_owners_in(rt_dir: &Path, state_root: &Path) -> HashMap<String, ScreenOwner> {
+///
+/// Opens at most one history subdirectory FD at a time (Astra #20) and bounds
+/// discovered history screens to `MAX_SCREENS_PER_HOST`.
+/// Maximum state subdirectories scanned during a single desktop enumeration
+/// pass so adversarial directory bloat cannot stall the background refresher
+/// (Astra #23 / Neon #13).
+const MAX_DESKTOP_DIR_SCAN: usize = 16_384;
+
+/// Inspect a single desktop screen's owner record (runtime + persistent state),
+/// opening at most one state subdirectory FD and validating running sessions
+/// against their live `(pid, started, start_ticks, rt_dir)` identity.
+fn read_single_desktop_owner(rt_fd: Option<&OwnedFd>, state_root_fd: Option<&OwnedFd>, running: Option<&DesktopRuntimeScreen>, name: &str) -> Option<ScreenOwner> {
+    let rt_owner = || rt_fd.and_then(|fd| read_owner_file_at(fd, &format!("{name}.owner.json")));
+    let st_owner = || {
+        let sroot = state_root_fd?;
+        let sub_fd = open_verified_subdir_at(sroot, name, false).ok()?;
+        if !regular_exists_at(&sub_fd, "owner.json") {
+            return None;
+        }
+        if running.is_none() && !regular_exists_at(&sub_fd, "actions.jsonl") && !regular_exists_at(&sub_fd, "screen.json") {
+            return None;
+        }
+        read_owner_file_at(&sub_fd, "owner.json")
+    };
+    match running {
+        Some(rt) => rt_owner().filter(|o| owner_matches_running(o, rt)).or_else(|| st_owner().filter(|o| owner_matches_running(o, rt))),
+        None => st_owner().or_else(rt_owner),
+    }
+}
+
+/// Scan running desktop screen descriptors in `rt_dir` (verified with `listed_in`
+/// + `start_ticks`, bounded to `MAX_SCREENS_PER_HOST`).
+fn scan_running_desktop_screens(rt_dir: &Path, rt_fd: Option<&OwnedFd>, own: Option<&str>) -> HashMap<String, DesktopRuntimeScreen> {
     let mut running: HashMap<String, DesktopRuntimeScreen> = HashMap::new();
-    let rt_fd = open_verified_owned_dir(rt_dir, false).ok();
-    if let (Some(rfd), Ok(rd)) = (rt_fd.as_ref(), std::fs::read_dir(rt_dir)) {
-        for entry in rd.flatten() {
-            let Ok(fname) = entry.file_name().into_string() else { continue };
-            if !fname.ends_with(".json") || fname.ends_with("-settings.json") || fname.ends_with(".owner.json") {
-                continue;
+    let (Some(rfd), Ok(rd)) = (rt_fd, std::fs::read_dir(rt_dir)) else { return running };
+    let mut truncated = false;
+    for (scanned, entry) in rd.flatten().enumerate() {
+        if scanned >= MAX_DESKTOP_DIR_SCAN {
+            truncated = true;
+            break;
+        }
+        let Ok(fname) = entry.file_name().into_string() else { continue };
+        if !fname.ends_with(".json") || fname.ends_with("-settings.json") || fname.ends_with(".owner.json") {
+            continue;
+        }
+        let Some(name) = fname.strip_suffix(".json") else { continue };
+        if own == Some(name) || rex_sock::validate_screen_name(name).is_err() {
+            continue;
+        }
+        if let Some(s) = read_desktop_runtime_screen_at(rfd, name)
+            && olo_screen_pane::screens::is_screen_session_alive_in(rt_dir, s.pid, name, s.start_ticks)
+        {
+            if running.len() >= MAX_SCREENS_PER_HOST {
+                truncated = true;
+                break;
             }
-            let Some(name) = fname.strip_suffix(".json") else { continue };
-            if rex_sock::validate_screen_name(name).is_err() {
-                continue;
-            }
-            if let Some(s) = read_desktop_runtime_screen_at(rfd, name)
-                && rex_sock::pid_is_alive(s.pid.max(0) as u32)
-            {
-                running.insert(name.to_owned(), s);
-            }
+            running.insert(name.to_owned(), s);
         }
     }
+    if truncated {
+        tracing::warn!("Rex desktop runtime screens scan truncated at cap ({MAX_SCREENS_PER_HOST})");
+    }
+    running
+}
 
-    let mut names: std::collections::HashSet<String> = running.keys().cloned().collect();
-    let state_root_fd = open_verified_owned_dir(state_root, false).ok();
-    let mut state_sub_fds: HashMap<String, OwnedFd> = HashMap::new();
-    if let (Some(sroot), Ok(rd)) = (state_root_fd.as_ref(), std::fs::read_dir(state_root)) {
-        for entry in rd.flatten() {
+/// Scan desktop screen owner records using a pre-captured `running` snapshot
+/// (Neon #4.3: ensures `cur_screens` and `cur_start_ticks` come from one `rt_dir` scan).
+fn load_desktop_owners_with_running(rt_fd: Option<&OwnedFd>, state_root: &Path, state_root_fd: Option<&OwnedFd>, running: &HashMap<String, DesktopRuntimeScreen>) -> HashMap<String, ScreenOwner> {
+    let mut out = HashMap::new();
+    // 1. Always inspect all running screens first.
+    for (name, rt) in running {
+        if let Some(o) = read_single_desktop_owner(rt_fd, state_root_fd, Some(rt), name) {
+            out.insert(name.clone(), o);
+        }
+    }
+    // 2. Stream state subdirectories and only keep qualifying owned histories up
+    //    to `MAX_SCREENS_PER_HOST` (never sorting/truncating all unowned folders first).
+    if let (Some(sroot), Ok(rd)) = (state_root_fd, std::fs::read_dir(state_root)) {
+        let mut truncated = false;
+        for (scanned, entry) in rd.flatten().enumerate() {
+            if scanned >= MAX_DESKTOP_DIR_SCAN {
+                truncated = true;
+                break;
+            }
             if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
                 continue;
             }
             let Ok(name) = entry.file_name().into_string() else { continue };
-            if rex_sock::validate_screen_name(&name).is_ok()
-                && let Ok(sub_fd) = open_verified_subdir_at(sroot, &name, false)
+            if running.contains_key(&name) || rex_sock::validate_screen_name(&name).is_err() {
+                continue;
+            }
+            if out.len() >= MAX_SCREENS_PER_HOST {
+                truncated = true;
+                break;
+            }
+            if let Ok(sub_fd) = open_verified_subdir_at(sroot, &name, false)
                 && regular_exists_at(&sub_fd, "owner.json")
                 && (regular_exists_at(&sub_fd, "actions.jsonl") || regular_exists_at(&sub_fd, "screen.json"))
+                && let Some(o) = read_owner_file_at(&sub_fd, "owner.json")
             {
-                names.insert(name.clone());
-                state_sub_fds.insert(name, sub_fd);
+                out.insert(name, o);
             }
         }
-    }
-
-    let mut out = HashMap::new();
-    for name in names {
-        let rt_owner = || rt_fd.as_ref().and_then(|fd| read_owner_file_at(fd, &format!("{name}.owner.json")));
-        let st_owner = || state_sub_fds.get(&name).and_then(|fd| read_owner_file_at(fd, "owner.json"));
-        let owner = match running.get(&name) {
-            Some(rt) => rt_owner().filter(|o| owner_matches_running(o, rt)).or_else(|| st_owner().filter(|o| owner_matches_running(o, rt))),
-            None => st_owner().or_else(rt_owner),
-        };
-        if let Some(o) = owner {
-            out.insert(name, o);
+        if truncated {
+            tracing::warn!("Rex desktop screen owner scan truncated at cap ({MAX_SCREENS_PER_HOST} / {MAX_DESKTOP_DIR_SCAN} entries)");
         }
     }
     out
 }
 
+/// Scan desktop screen owner records from runtime (`NAME.owner.json`) and
+/// persistent state (`NAME/owner.json`), validating running screens against
+/// their live `(pid, started, start_ticks, rt_dir)` generation and rejecting symlinks.
+///
+/// Prioritizes **running screens first**, then **qualifying owned histories**
+/// (streaming without unbounded allocation or alphabetical truncation of owned
+/// screens — Astra #23 / Neon #13), opening at most one subdir FD at a time.
+#[cfg(test)]
+pub fn load_desktop_owners_in(rt_dir: &Path, state_root: &Path) -> HashMap<String, ScreenOwner> {
+    let rt_fd = open_verified_owned_dir(rt_dir, false).ok();
+    let running = scan_running_desktop_screens(rt_dir, rt_fd.as_ref(), None);
+    let state_root_fd = open_verified_owned_dir(state_root, false).ok();
+    load_desktop_owners_with_running(rt_fd.as_ref(), state_root, state_root_fd.as_ref(), &running)
+}
+
+fn read_small_text_at(dir_fd: &OwnedFd, file_name: &str) -> Option<String> {
+    let bytes = read_bounded_regular_at(dir_fd, file_name, 4096)?;
+    let s = String::from_utf8(bytes).ok()?;
+    let trimmed = s.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn default_kept_scale() -> f64 {
+    1.0
+}
+
+fn read_kept_screen_size_at(dir_fd: &OwnedFd) -> Option<(i32, i32, f64, bool)> {
+    #[derive(Deserialize)]
+    struct KeptScreen {
+        #[serde(default)]
+        width: i32,
+        #[serde(default)]
+        height: i32,
+        #[serde(default = "default_kept_scale")]
+        scale: f64,
+        #[serde(default)]
+        sound: bool,
+    }
+    let bytes = read_bounded_regular_at(dir_fd, "screen.json", 4096)?;
+    let k: KeptScreen = serde_json::from_slice(&bytes).ok()?;
+    Some((k.width, k.height, if k.scale.is_finite() && k.scale > 0.0 { k.scale } else { 1.0 }, k.sound))
+}
+
+/// Build a single [`RexScreen`] entry for desktop screen `name` (used by both
+/// full enumeration and incremental single-screen refresh — Astra #24).
+fn load_single_desktop_screen(
+    rt_dir: &Path,
+    state_root: &Path,
+    state_root_fd: Option<&OwnedFd>,
+    running: Option<&DesktopRuntimeScreen>,
+    owner_rec: Option<&ScreenOwner>,
+    name: &str,
+) -> Option<RexScreen> {
+    let (has_state_marker, archived, title, kept_meta) = match state_root_fd.and_then(|sroot| open_verified_subdir_at(sroot, name, false).ok()) {
+        Some(sub_fd) => {
+            let has_marker = regular_exists_at(&sub_fd, "screen.json") || regular_exists_at(&sub_fd, "actions.jsonl");
+            (has_marker, regular_exists_at(&sub_fd, "archived"), read_small_text_at(&sub_fd, "title").map(|t| truncate_utf8(&t, MAX_TITLE_LEN)), read_kept_screen_size_at(&sub_fd))
+        }
+        None => (false, false, None, None),
+    };
+    if running.is_none() && !has_state_marker {
+        return None;
+    }
+    // Use the shared checked history reader (handles lines > 64 KiB cleanly
+    // and distinguishes verified-empty `Ok(None)` -> `actions = Some(0)` from
+    // corrupt/unreadable `Err(_)` -> `actions = None` — Astra #6 / #22).
+    let (last_used, actions) = match olo_screen_pane::history::last_used_fast_checked_in(state_root, name) {
+        Ok(Some(ts)) => (Some(ts), None),
+        Ok(None) => (None, Some(0)),
+        Err(_) => (None, None),
+    };
+    let owner_pane = owner_rec.map(|o| OwnerPane { host_key: o.host_key.clone(), session_id: o.session_id.clone(), block_id: o.block_id.clone() });
+    let started_by = owner_rec.and_then(|o| o.started_by.clone());
+    let (state, width, height, scale, sound, pid, started, controlled) = match running {
+        Some(rt) => (
+            HostScreenState::Running,
+            rt.width,
+            rt.height,
+            if rt.scale.is_finite() && rt.scale > 0.0 { rt.scale } else { 1.0 },
+            rt.sound,
+            Some(rt.pid),
+            (rt.started > 0).then_some(rt.started),
+            olo_screen_pane::screens::controlled_in(rt_dir, name),
+        ),
+        None => {
+            let (kw, kh, ks, ksound) = kept_meta.unwrap_or((0, 0, 1.0, false));
+            (if archived { HostScreenState::Archived } else { HostScreenState::Stopped }, kw, kh, ks, ksound, None, None, false)
+        }
+    };
+    Some(RexScreen {
+        name: name.to_owned(),
+        title,
+        state,
+        width: width.max(0) as u32,
+        height: height.max(0) as u32,
+        scale,
+        sound,
+        pid,
+        started,
+        last_used,
+        actions,
+        controlled,
+        owner: owner_pane,
+        started_by,
+        controlled_by: None,
+    })
+}
+
+/// Scan local desktop screens (running first, then owned histories, then verified
+/// stopped non-archived standalone screens up to `MAX_SCREENS_PER_HOST`) inside
+/// `(rt_dir, state_root)`, excluding Rex's own `OLO_SCREEN`.
+///
+/// Keeping verified stopped standalone screens in raw inventory allows an open
+/// standalone local screen pane (and upgrade restore) to stay open with its
+/// history after Stop, while `resolve_activity_screens` still hides unowned
+/// stopped screens from the Activity sidebar (Astra #18, #23 / Neon #13).
+fn load_desktop_screens_with_running(
+    rt_dir: &Path,
+    state_root: &Path,
+    state_root_fd: Option<&OwnedFd>,
+    running: &HashMap<String, DesktopRuntimeScreen>,
+    owners: &HashMap<String, ScreenOwner>,
+    own: Option<&str>,
+) -> Vec<RexScreen> {
+    // Priority order (Astra #18, #23):
+    // 1. Running screens (always included first so stopped histories can never displace them).
+    // 2. Owned stopped screens.
+    // 3. Verified non-archived standalone stopped screens (for open-pane/restore continuity).
+    let mut selected: Vec<String> = Vec::with_capacity(running.len().min(MAX_SCREENS_PER_HOST));
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut running_names: Vec<String> = running.keys().cloned().collect();
+    running_names.sort();
+    for name in running_names {
+        if selected.len() >= MAX_SCREENS_PER_HOST {
+            break;
+        }
+        if seen.insert(name.clone()) {
+            selected.push(name);
+        }
+    }
+    let mut owned_names: Vec<String> = owners.keys().filter(|n| own != Some(n.as_str()) && !seen.contains(*n)).cloned().collect();
+    owned_names.sort();
+    for name in owned_names {
+        if selected.len() >= MAX_SCREENS_PER_HOST {
+            break;
+        }
+        if seen.insert(name.clone()) {
+            selected.push(name);
+        }
+    }
+    if selected.len() < MAX_SCREENS_PER_HOST
+        && let (Some(sroot), Ok(rd)) = (state_root_fd, std::fs::read_dir(state_root))
+    {
+        let mut truncated = false;
+        let mut extra_stopped: Vec<String> = Vec::new();
+        let budget = MAX_SCREENS_PER_HOST - selected.len();
+        for (scanned, entry) in rd.flatten().enumerate() {
+            if scanned >= MAX_DESKTOP_DIR_SCAN {
+                truncated = true;
+                break;
+            }
+            if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+                continue;
+            }
+            let Ok(name) = entry.file_name().into_string() else { continue };
+            if own == Some(name.as_str()) || seen.contains(&name) || rex_sock::validate_screen_name(&name).is_err() {
+                continue;
+            }
+            if extra_stopped.len() >= budget {
+                truncated = true;
+                break;
+            }
+            if let Ok(sub_fd) = open_verified_subdir_at(sroot, &name, false)
+                && !regular_exists_at(&sub_fd, "archived")
+                && (regular_exists_at(&sub_fd, "screen.json") || regular_exists_at(&sub_fd, "actions.jsonl"))
+            {
+                extra_stopped.push(name);
+            }
+        }
+        extra_stopped.sort();
+        for name in extra_stopped {
+            if seen.insert(name.clone()) {
+                selected.push(name);
+            }
+        }
+        if truncated {
+            tracing::warn!("Rex desktop stopped screens scan truncated at cap ({MAX_SCREENS_PER_HOST})");
+        }
+    }
+
+    let mut out = Vec::with_capacity(selected.len());
+    for name in selected {
+        if let Some(sc) = load_single_desktop_screen(rt_dir, state_root, state_root_fd, running.get(&name), owners.get(&name), &name) {
+            out.push(sc);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+pub fn load_desktop_screens_in(rt_dir: &Path, state_root: &Path, owners: &HashMap<String, ScreenOwner>) -> Vec<RexScreen> {
+    let own = std::env::var("OLO_SCREEN").ok();
+    let rt_fd = open_verified_owned_dir(rt_dir, false).ok();
+    let running = scan_running_desktop_screens(rt_dir, rt_fd.as_ref(), own.as_deref());
+    let state_root_fd = open_verified_owned_dir(state_root, false).ok();
+    load_desktop_screens_with_running(rt_dir, state_root, state_root_fd.as_ref(), &running, owners, own.as_deref())
+}
+
 /// Apply a successful bridged `olo.screen` action to disk (`NAME.owner.json` +
 /// `owner.json`) and `HubState::desktop_screen_owners`, guarding against stale
-/// completions overwriting or unlinking a replacement screen generation.
+/// completions overwriting or unlinking a replacement screen generation, and
+/// bumping `st.screens_rev` whenever in-memory ownership changes (Neon #9.4).
 pub fn record_bridge_screen_outcome(state: &Arc<Mutex<HubState>>, host_key: &str, session_id: Option<&str>, block_id: Option<&str>, args: &[String], stdout: &str, pre_gen: Option<DesktopScreenGen>) {
     let Some(action) = extract_bridge_screen_action(args, stdout) else { return };
     let (rt_dir, state_root) = desktop_screen_dirs();
     let block_id = block_id.unwrap_or_default();
     let session_id = session_id.unwrap_or_default();
+    let set_in_mem = |name: String, owner: Option<ScreenOwner>| {
+        let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = match owner {
+            Some(o) => st.desktop_screen_owners.insert(name, o.clone()).as_ref() != Some(&o),
+            None => st.desktop_screen_owners.remove(&name).is_some(),
+        };
+        if changed {
+            st.screens_rev = st.screens_rev.wrapping_add(1);
+        }
+    };
     match action {
         BridgeScreenAction::Started { name, pid, started } => {
             let expected_gen = match (pid, started) {
@@ -1097,14 +1380,12 @@ pub fn record_bridge_screen_outcome(state: &Arc<Mutex<HubState>>, host_key: &str
             };
             if block_id.is_empty() {
                 if unlink_desktop_runtime_owner_in(&rt_dir, &state_root, &name, expected_gen) {
-                    state.lock().unwrap_or_else(|e| e.into_inner()).desktop_screen_owners.remove(&name);
+                    set_in_mem(name, None);
                 }
                 return;
             }
             match record_desktop_owner_in(&rt_dir, &state_root, &name, host_key, session_id, block_id, true, expected_gen) {
-                Ok(Some(owner)) => {
-                    state.lock().unwrap_or_else(|e| e.into_inner()).desktop_screen_owners.insert(name, owner);
-                }
+                Ok(Some(owner)) => set_in_mem(name, Some(owner)),
                 Ok(None) => {}
                 Err(e) => tracing::warn!("Rex desktop screen owner write for {name:?} failed: {e}"),
             }
@@ -1114,9 +1395,7 @@ pub fn record_bridge_screen_outcome(state: &Arc<Mutex<HubState>>, host_key: &str
                 return;
             }
             match record_desktop_owner_in(&rt_dir, &state_root, &name, host_key, session_id, block_id, false, pre_gen) {
-                Ok(Some(owner)) => {
-                    state.lock().unwrap_or_else(|e| e.into_inner()).desktop_screen_owners.insert(name, owner);
-                }
+                Ok(Some(owner)) => set_in_mem(name, Some(owner)),
                 Ok(None) => {}
                 Err(e) => tracing::warn!("Rex desktop screen owner update for {name:?} failed: {e}"),
             }
@@ -1126,55 +1405,481 @@ pub fn record_bridge_screen_outcome(state: &Arc<Mutex<HubState>>, host_key: &str
         }
         BridgeScreenAction::Deleted { name } => {
             if unlink_desktop_runtime_owner_in(&rt_dir, &state_root, &name, pre_gen) {
-                state.lock().unwrap_or_else(|e| e.into_inner()).desktop_screen_owners.remove(&name);
+                set_in_mem(name, None);
             }
         }
     }
 }
 
-/// Filter `olo_kit::watch` change batches so irrelevant lock/settings/log files
-/// do not trigger owner rescans, while directory-only batches (e.g. overflow or
-/// directory creation/removal) still refresh cleanly.
-pub(crate) fn is_desktop_owner_watch_relevant(rt_watch: &Path, state_watch: &Path, changed: &[PathBuf]) -> bool {
+/// Result of classifying a `olo_kit::watch` batch for desktop screen directories.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum DesktopWatchDelta {
+    Ignore,
+    Full,
+    Names(Vec<String>),
+}
+
+/// Classify `olo_kit::watch` change batches into either ignored noise, specific
+/// changed screen names (for incremental O(1) refresh — Astra #24), or a full
+/// directory rescan (on overflow / directory replacement).
+pub(crate) fn classify_desktop_owner_watch_changes(rt_watch: &Path, state_watch: &Path, changed: &[PathBuf]) -> DesktopWatchDelta {
     if changed.is_empty() {
-        return false;
+        return DesktopWatchDelta::Ignore;
     }
+    let has_rt_root = changed.iter().any(|p| p == rt_watch);
+    let has_state_root = changed.iter().any(|p| p == state_watch);
     let has_specific_children = changed.iter().any(|p| p != rt_watch && p != state_watch);
     if !has_specific_children {
         // Directory-only event (overflow or watched dir appeared/disappeared).
-        return true;
+        return DesktopWatchDelta::Full;
     }
-    // `olo_kit::watch` emits the watched directory alongside any touched child
-    // inside it (`[state_root/NAME, state_root/NAME/.owner.lock]`). When a
-    // grandchild under `state_root/NAME` is present in the batch, judge that
-    // screen directory strictly by its children so `.owner.lock` / `.tmp`
-    // writes inside a watched subdirectory never trigger spurious rescans.
+    // Astra #14: on inotify queue overflow, `crates/kit-base/src/watch.rs` emits
+    // ALL watched paths (`rt_watch`, `state_watch`, and every already-watched
+    // `state_watch/<name>` subdir) with NO specific child file inside `rt_watch`
+    // or any `state_watch/<name>` subdir. Treat that overflow batch as `Full` so
+    // screens created during lost events are never missed!
+    let has_specific_file_event = changed.iter().any(|p| p.parent() == Some(rt_watch) || p.parent().and_then(Path::parent) == Some(state_watch));
+    if has_rt_root && has_state_root && !has_specific_file_event {
+        return DesktopWatchDelta::Full;
+    }
     let subdirs_with_children: std::collections::HashSet<&Path> = changed.iter().filter_map(|p| p.parent().filter(|d| d.parent() == Some(state_watch))).collect();
-    changed.iter().any(|p| {
+    let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for p in changed {
         if p == rt_watch || p == state_watch {
-            return false;
+            continue;
         }
-        let Some(fname) = p.file_name().and_then(|n| n.to_str()) else { return false };
+        let Some(fname) = p.file_name().and_then(|n| n.to_str()) else { continue };
         if fname.ends_with(".tmp") || fname.ends_with(".lock") || fname.ends_with(".bus") {
-            return false;
+            continue;
         }
         if p.parent() == Some(rt_watch) {
             if matches!(fname, "logs" | "views" | "no-sound") || fname.ends_with("-settings.json") {
-                return false;
+                continue;
             }
-            return fname.ends_with(".json");
+            let screen_name = fname.strip_suffix(".owner.json").or_else(|| fname.strip_suffix(".json")).or_else(|| fname.strip_suffix(".control"));
+            if let Some(sn) = screen_name
+                && rex_sock::validate_screen_name(sn).is_ok()
+            {
+                names.insert(sn.to_owned());
+            }
+            continue;
         }
         if p.parent() == Some(state_watch) {
             if subdirs_with_children.contains(p.as_path()) {
-                return false;
+                continue;
             }
-            return rex_sock::validate_screen_name(fname).is_ok();
+            if rex_sock::validate_screen_name(fname).is_ok() {
+                names.insert(fname.to_owned());
+            }
+            continue;
         }
-        if p.parent().and_then(Path::parent) == Some(state_watch) {
-            return matches!(fname, "owner.json" | "actions.jsonl" | "screen.json");
+        if let Some(parent) = p.parent()
+            && parent.parent() == Some(state_watch)
+            && matches!(fname, "owner.json" | "actions.jsonl" | "screen.json" | "title" | "archived")
+            && let Some(sn) = parent.file_name().and_then(|n| n.to_str())
+            && rex_sock::validate_screen_name(sn).is_ok()
+        {
+            names.insert(sn.to_owned());
         }
-        false
-    })
+    }
+    if names.is_empty() { DesktopWatchDelta::Ignore } else { DesktopWatchDelta::Names(names.into_iter().collect()) }
+}
+
+/// Filter `olo_kit::watch` change batches so irrelevant lock/settings/log files
+/// do not trigger owner rescans, while directory-only batches still refresh cleanly.
+#[cfg(test)]
+pub(crate) fn is_desktop_owner_watch_relevant(rt_watch: &Path, state_watch: &Path, changed: &[PathBuf]) -> bool {
+    !matches!(classify_desktop_owner_watch_changes(rt_watch, state_watch, changed), DesktopWatchDelta::Ignore)
+}
+
+/// Which remote stream [`ScreensService::open_direct_relay`] opens for Rex's
+/// own embedded [`olo_screen_pane::ScreenPane`].
+#[derive(Clone, Debug)]
+pub enum DirectRelayKind {
+    Live,
+    History,
+    Export(Vec<String>),
+}
+
+/// Event-driven cancellation future: pins & enables the `Notify` waiter BEFORE
+/// checking `cancelled` so a concurrent `notify_waiters()` can never be lost
+/// between the check and `.await` (Neon #1).
+async fn wait_direct_cancelled(cancelled: &AtomicBool, notify: &Notify) {
+    loop {
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        notified.await;
+    }
+}
+
+/// Outcome of opening a Linux `pidfd` for a live screen PID, distinguishing a
+/// dead/reaped process (`ESRCH`) from permanent kernel/policy unavailability
+/// (`ENOSYS`, `EPERM`, etc.) so we re-scan on `ESRCH` without spinning on
+/// unavailable kernels (Astra #17 / Neon #6).
+enum PidfdOpen {
+    Opened(tokio::io::unix::AsyncFd<OwnedFd>),
+    Exited,
+    Unavailable,
+}
+
+fn open_screen_pidfd(pid: i32) -> PidfdOpen {
+    if pid <= 0 {
+        return PidfdOpen::Exited;
+    }
+    // SAFETY: `pidfd_open` syscall takes a valid pid and flags; returns new fd or -1.
+    let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, libc::PIDFD_NONBLOCK as libc::c_uint) };
+    if raw < 0 {
+        return match io::Error::last_os_error().raw_os_error() {
+            Some(libc::ESRCH) => PidfdOpen::Exited,
+            _ => PidfdOpen::Unavailable,
+        };
+    }
+    // SAFETY: `owned` is a freshly created nonblocking pidfd exclusively owned by
+    // this `AsyncFd` for its entire lifetime (deregistered before close on drop).
+    let owned = unsafe { OwnedFd::from_raw_fd(raw as libc::c_int) };
+    match unsafe { tokio::io::unix::AsyncFd::register_with_interest(owned, tokio::io::Interest::READABLE) } {
+        Ok(afd) => PidfdOpen::Opened(afd),
+        Err(_) => PidfdOpen::Unavailable,
+    }
+}
+
+/// Verify that a fresh `olo-rex-link screen list` JSON array from the host
+/// still reports `name` as running with matching `expected_started` and/or
+/// `expected_pid` AFTER `stream NAME` has already emitted its first byte
+/// (`initial_remote`).
+///
+/// Returns `Ok(true)` when verified matching, `Ok(false)` when `list` parsed
+/// cleanly and `name` is absent or running a different generation/PID, and
+/// `Err(())` when `stdout` was malformed (non-terminal probe failure — Astra #8, #11).
+fn verify_remote_list_generation(stdout: &str, name: &str, expected_started: Option<u64>, expected_pid: Option<i32>) -> Result<bool, ()> {
+    let trimmed = stdout.trim();
+    let val = serde_json::from_str::<serde_json::Value>(trimmed).map_err(|_| ())?;
+    let arr = val.as_array().ok_or(())?;
+    let matched = arr.iter().any(|item| {
+        if item.get("name").and_then(|v| v.as_str()) != Some(name) {
+            return false;
+        }
+        if let Some(want_started) = expected_started
+            && item.get("started").and_then(|v| v.as_u64()) != Some(want_started)
+        {
+            return false;
+        }
+        if let Some(want_pid) = expected_pid
+            && item.get("pid").and_then(|v| v.as_i64()) != Some(want_pid as i64)
+        {
+            return false;
+        }
+        true
+    });
+    Ok(matched)
+}
+
+impl ScreensService {
+    /// Open a direct bidirectional relay to `olo-rex-link screen <stream|history|export>`
+    /// through this service's [`ScreenOpener`] (QUIC priority `-1` with SSH fallback)
+    /// without going through Rex's local Unix socket server.
+    ///
+    /// Pins `(host_key, host_instance_id, expected_conn_id)` strictly (Astra #1, #3),
+    /// races every await against event-driven cancellation (Astra #13 / Neon #9),
+    /// and verifies BOTH follower state AND a fresh host `list` generation probe
+    /// AFTER `stream` opens before exposing Live bytes (Astra #3).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_direct_relay(
+        self: &Arc<Self>,
+        host_key: &str,
+        host_instance_id: u64,
+        expected_conn_id: Option<u64>,
+        name: &str,
+        kind: DirectRelayKind,
+        expected_started: Option<u64>,
+        expected_pid: Option<i32>,
+        cancelled: Arc<AtomicBool>,
+        cancel_notify: Arc<Notify>,
+    ) -> Result<StdUnixStream, String> {
+        if cancelled.load(Ordering::Acquire) {
+            return Err("cancelled".to_owned());
+        }
+        rex_sock::validate_screen_name(name).map_err(|e| e.to_owned())?;
+        let deadline = Instant::now() + self.current_handshake_timeout();
+        let mut ctx = self.resolve_connected_host_pinned(host_key, host_instance_id, expected_conn_id)?;
+        tokio::select! {
+            res = self.wait_fresh_snapshot(&mut ctx, deadline) => res?,
+            _ = wait_direct_cancelled(&cancelled, &cancel_notify) => return Err("cancelled".to_owned()),
+        }
+
+        let check_live_generation = |svc: &Self, target: &ScreenTarget| -> Result<(), String> {
+            let st = svc.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(h) = st.hosts.get(&target.host_key) else {
+                return Err(format!("“{}” isn’t one of Rex’s hosts.", target.host_key));
+            };
+            if h.host_instance_id != target.host_instance_id || h.conn_id != target.conn_id || h.conn_state != RexHostConn::Connected {
+                return Err(format!("“{}” is disconnected. Reconnect in Rex to resume.", h.label));
+            }
+            if let DirectRelayKind::Live = &kind
+                && (expected_started.is_some() || expected_pid.is_some())
+            {
+                let still_same = h
+                    .screens
+                    .get(name)
+                    .is_some_and(|s| s.state == HostScreenState::Running && expected_started.is_none_or(|st_ts| s.started == Some(st_ts)) && expected_pid.is_none_or(|p| s.pid == Some(p)));
+                if !still_same {
+                    return Err("__olo_screen_gone__:The screen stopped.".to_owned());
+                }
+            }
+            Ok(())
+        };
+
+        check_live_generation(self, &ctx.target)?;
+
+        let args = match &kind {
+            DirectRelayKind::Live => vec!["stream".to_owned(), name.to_owned()],
+            DirectRelayKind::History => {
+                let proto = tokio::select! {
+                    res = self.ensure_protocol(&ctx.target, deadline) => res?,
+                    _ = wait_direct_cancelled(&cancelled, &cancel_notify) => return Err("cancelled".to_owned()),
+                };
+                if proto.proto >= 1 && proto.commands.iter().any(|c| c == "history-stream") {
+                    vec!["history-stream".to_owned(), name.to_owned()]
+                } else if proto.proto >= 1 && proto.commands.iter().any(|c| c == "history-wire" || c == "history --wire") {
+                    vec!["history".to_owned(), name.to_owned(), "--wire".to_owned()]
+                } else {
+                    return Err(format!("Update Olo’s helper on “{}” to view screen history.", ctx.label));
+                }
+            }
+            DirectRelayKind::Export(extra) => {
+                rex_sock::validate_export_args(extra).map_err(|e| e.to_owned())?;
+                let mut v = Vec::with_capacity(2 + extra.len());
+                v.push("export".to_owned());
+                v.push(name.to_owned());
+                v.extend(extra.iter().cloned());
+                v
+            }
+        };
+
+        if cancelled.load(Ordering::Acquire) {
+            return Err("cancelled".to_owned());
+        }
+        let (sync_end, async_std) = StdUnixStream::pair().map_err(|e| format!("couldn’t create local stream pair: {e}"))?;
+        async_std.set_nonblocking(true).map_err(|e| format!("couldn’t configure stream pair: {e}"))?;
+        let async_end = UnixStream::from_std(async_std).map_err(|e| format!("couldn’t attach stream pair: {e}"))?;
+        let (read_half, write_half) = async_end.into_split();
+
+        let (remote, initial_remote, watchers, permit) = tokio::select! {
+            res = self.open_and_confirm_relay(&mut ctx, &read_half, args, deadline) => res?,
+            _ = wait_direct_cancelled(&cancelled, &cancel_notify) => return Err("cancelled".to_owned()),
+        };
+        if cancelled.load(Ordering::Acquire) {
+            drop(remote);
+            drop(permit);
+            return Err("cancelled".to_owned());
+        }
+        // Post-Ready recheck #1: verify host instance, connection, and cached
+        // follower generation did not change while SSH/QUIC was opening.
+        if let Err(err) = check_live_generation(self, &ctx.target) {
+            drop(remote);
+            drop(permit);
+            return Err(err);
+        }
+        // Post-Ready recheck #2 (Astra #3, #8, #11): query the host's live `list`
+        // directly AFTER `stream NAME` has already attached & emitted `initial_remote`.
+        // Checks every available identity field (`expected_started` and/or `expected_pid`),
+        // distinguishes verified generation mismatch (`__olo_screen_gone__`) from a
+        // probe/truncation/parse failure (retryable error, never falsely marking a
+        // healthy screen as Stopped).
+        if let DirectRelayKind::Live = &kind
+            && (expected_started.is_some() || expected_pid.is_some())
+        {
+            let probe = tokio::select! {
+                res = self.run_one_shot(&ctx.target, &ctx.label, vec!["list".to_owned()], deadline, ctx.host_cancel.clone()) => res,
+                _ = wait_direct_cancelled(&cancelled, &cancel_notify) => {
+                    drop(remote);
+                    drop(permit);
+                    return Err("cancelled".to_owned());
+                }
+            };
+            match probe {
+                Ok(out) if out.ok() && !out.truncated => match verify_remote_list_generation(&out.stdout, name, expected_started, expected_pid) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        drop(remote);
+                        drop(permit);
+                        return Err("__olo_screen_gone__:The screen stopped or restarted.".to_owned());
+                    }
+                    Err(()) => {
+                        drop(remote);
+                        drop(permit);
+                        return Err(format!("Couldn’t verify “{name}” on “{}” (unexpected list reply).", ctx.label));
+                    }
+                },
+                Ok(_) => {
+                    drop(remote);
+                    drop(permit);
+                    return Err(format!("Couldn’t verify “{name}” on “{}”; retrying.", ctx.label));
+                }
+                Err(e) => {
+                    drop(remote);
+                    drop(permit);
+                    return Err(e);
+                }
+            }
+        }
+        let shutdown_rx = self.shutdown_tx.subscribe();
+        let host_cancel = ctx.host_cancel;
+        tokio::spawn(async move {
+            let _permit = permit;
+            relay_bidirectional(read_half, write_half, watchers, Vec::new(), initial_remote, remote, host_cancel, shutdown_rx).await;
+        });
+        Ok(sync_end)
+    }
+
+    /// Run a one-shot `olo-rex-link screen <args...>` command directly through
+    /// this service's [`ScreenOpener`], pinning `(host_key, host_instance_id,
+    /// expected_conn_id)` and racing every await against event-driven
+    /// cancellation (Astra #1, #3, #13).
+    pub async fn run_direct_command(
+        &self,
+        host_key: &str,
+        host_instance_id: u64,
+        expected_conn_id: Option<u64>,
+        args: &[String],
+        cancelled: Arc<AtomicBool>,
+        cancel_notify: Arc<Notify>,
+    ) -> Result<olo_screen_pane::CommandOutput, String> {
+        if cancelled.load(Ordering::Acquire) {
+            return Err("cancelled".to_owned());
+        }
+        let timeout = self.current_rpc_timeout();
+        let deadline = Instant::now() + timeout;
+        let mut ctx = self.resolve_connected_host_pinned(host_key, host_instance_id, expected_conn_id)?;
+        tokio::select! {
+            res = self.wait_fresh_snapshot(&mut ctx, deadline) => res?,
+            _ = wait_direct_cancelled(&cancelled, &cancel_notify) => return Err("cancelled".to_owned()),
+        }
+        if cancelled.load(Ordering::Acquire) {
+            return Err("cancelled".to_owned());
+        }
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let rem = remaining_until(deadline, &ctx.label)?;
+        let out = tokio::select! {
+            res = self.opener.run_screen_command(ctx.target.clone(), args.to_vec(), rem) => res?,
+            _ = wait_direct_cancelled(&cancelled, &cancel_notify) => return Err("cancelled".to_owned()),
+            _ = wait_true(&mut ctx.host_cancel) => return Err(format!("“{}” is disconnected. Reconnect in Rex to resume.", ctx.label)),
+            _ = wait_true(&mut shutdown_rx) => return Err("Rex is shutting down.".to_owned()),
+        };
+        if out.truncated {
+            return Err(format!("“{}” exceeded the screen command output limit.", ctx.label));
+        }
+        Ok(olo_screen_pane::CommandOutput { status: out.status.map_or(-1, |s| s as i32), stdout: out.stdout, stderr: out.stderr })
+    }
+
+    /// Guarded Stop entrypoint for Rex Activity & Host panels: pins
+    /// `(host_key, host_instance_id)`, requires atomic `stop-expected`, and
+    /// retains BOTH `expected_started` and `expected_last_used`.
+    #[cfg(test)]
+    pub async fn stop_screen_for_host_instance_expected(
+        &self,
+        host_key: &str,
+        host_instance_id: u64,
+        name: &str,
+        expected_started: Option<u64>,
+        expected_last_used: Option<u64>,
+    ) -> Result<(), String> {
+        self.stop_screen_for_host_instance_expected_pinned(host_key, host_instance_id, None, name, expected_started, expected_last_used).await
+    }
+
+    /// Guarded Stop entrypoint additionally pinning `expected_conn_id` so a host
+    /// reconnect to an older helper under the same host instance expires the
+    /// confirmation and always runs a fresh protocol check (Astra #1).
+    pub async fn stop_screen_for_host_instance_expected_pinned(
+        &self,
+        host_key: &str,
+        host_instance_id: u64,
+        expected_conn_id: Option<u64>,
+        name: &str,
+        expected_started: Option<u64>,
+        expected_last_used: Option<u64>,
+    ) -> Result<(), String> {
+        rex_sock::validate_screen_name(name)?;
+        let deadline = Instant::now() + self.current_rpc_timeout();
+        let ctx = self.resolve_connected_host_pinned(host_key, host_instance_id, expected_conn_id)?;
+        if expected_started.is_none() {
+            return Err(format!("Update Olo on “{}” to stop a screen from here.", ctx.label));
+        }
+        self.run_guarded_stop(ctx, name, expected_started, expected_last_used, deadline).await
+    }
+
+    /// Guarded Clear History entrypoint for Rex's embedded `ScreenPane`: pins
+    /// `(host_key, host_instance_id, expected_conn_id)`, waits for a fresh
+    /// snapshot, verifies live `clear-expected` capability via `ensure_protocol`,
+    /// and sends `--expected-started` + `--expected-last-used` (Astra #1).
+    pub async fn clear_history_for_host_instance_expected(
+        &self,
+        host_key: &str,
+        host_instance_id: u64,
+        expected_conn_id: Option<u64>,
+        name: &str,
+        expected_started: Option<u64>,
+        expected_last_used: Option<u64>,
+    ) -> Result<(), String> {
+        rex_sock::validate_screen_name(name)?;
+        let Some(exp_lu) = expected_last_used else {
+            return Err("Update Olo on this computer to clear a screen’s history from here.".into());
+        };
+        let exp_started = expected_started.unwrap_or(0);
+        let deadline = Instant::now() + self.current_rpc_timeout();
+        let mut ctx = self.resolve_connected_host_pinned(host_key, host_instance_id, expected_conn_id)?;
+        self.wait_fresh_snapshot(&mut ctx, deadline).await?;
+        let proto = self.ensure_protocol(&ctx.target, deadline).await.map_err(|m| truncate_utf8(&m, MAX_ERROR_LEN))?;
+        let has_cap = proto.proto >= 1 && proto.capabilities.iter().any(|c| c == "clear-expected" || c == "clear_expected");
+        if !has_cap {
+            return Err(format!("Update Olo on “{}” to clear a screen’s history from here.", ctx.label));
+        }
+        let argv = vec!["history".to_owned(), name.to_owned(), "--clear".to_owned(), "--expected-started".to_owned(), exp_started.to_string(), "--expected-last-used".to_owned(), exp_lu.to_string()];
+        match self.run_one_shot(&ctx.target, &ctx.label, argv, deadline, ctx.host_cancel).await {
+            Ok(out) if out.ok() => Ok(()),
+            Ok(out) => Err(out.error_words("clear history failed")),
+            Err(message) => Err(truncate_utf8(&message, MAX_ERROR_LEN)),
+        }
+    }
+
+    /// Start a stopped remote screen by exact positional name (`start NAME --keep`),
+    /// pinning `(host_key, host_instance_id)`, checking installed status, and
+    /// verifying the returned screen identity matches `name` (Astra #3, #8 / Neon #2).
+    pub async fn start_screen_for_host_instance(&self, host_key: &str, host_instance_id: u64, name: &str) -> Result<RexScreen, String> {
+        rex_sock::validate_screen_name(name)?;
+        let deadline = Instant::now() + self.current_rpc_timeout();
+        let mut ctx = self.resolve_connected_host_instance(host_key, host_instance_id)?;
+        self.wait_fresh_snapshot(&mut ctx, deadline).await?;
+        {
+            let st = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(h) = st.hosts.get(&ctx.target.host_key)
+                && let Some(status) = &h.follow_status
+                && status.installed.as_deref().is_none_or(|v| v.trim().is_empty())
+            {
+                return Err(format!("Olo screens are not installed on “{}”.", ctx.label));
+            }
+        }
+        let argv = vec!["start".to_owned(), name.to_owned(), "--keep".to_owned()];
+        let out = self.run_one_shot(&ctx.target, &ctx.label, argv, deadline, ctx.host_cancel).await.map_err(|m| truncate_utf8(&m, MAX_ERROR_LEN))?;
+        if !out.ok() {
+            return Err(out.error_words("start failed"));
+        }
+        if out.truncated {
+            return Err("host start response exceeded output limit".into());
+        }
+        let screen = parse_started_screen_json(&out.stdout)?;
+        let Some(clean_screen) = sanitize_host_screen(&ctx.target.host_key, screen) else {
+            return Err("host returned invalid screen name".into());
+        };
+        if clean_screen.name != name {
+            return Err(format!("“{}” started screen “{}” instead of “{name}”.", ctx.label, clean_screen.name));
+        }
+        Ok(host_screen_to_rex_screen(&ctx.target.host_key, clean_screen, &self.owner_resolver))
+    }
 }
 
 /// Owned handle for [`watch_desktop_screen_owners`]: dropping it stops both
@@ -1195,31 +1900,185 @@ impl Drop for DesktopOwnersWatch {
     }
 }
 
-/// Collect `[rt_dir, state_root]` plus verified existing screen subdirectories
-/// under `state_root` (bounded by `MAX_SCREENS_PER_HOST`), because
+/// Collect `[rt_dir, state_root]` plus verified screen subdirectories under
+/// `state_root` (prioritizing running + owned screens first, then other verified
+/// non-archived stopped screens, bounded by `MAX_SCREENS_PER_HOST`), because
 /// `olo_kit::watch` is non-recursive and needs explicit watches on each
-/// `state_root/<NAME>` directory to see updates to `owner.json` inside it
-/// (Agy Finding 3).
-fn desktop_owner_watch_paths(rt_dir: &Path, state_root: &Path) -> Vec<PathBuf> {
+/// `state_root/<NAME>` directory (Astra #23 / Neon #13).
+fn desktop_owner_watch_paths_with_running(rt_dir: &Path, state_root: &Path, state_root_fd: Option<&OwnedFd>, running: &HashMap<String, DesktopRuntimeScreen>) -> Vec<PathBuf> {
     let mut paths = vec![rt_dir.to_path_buf(), state_root.to_path_buf()];
-    if let (Ok(sroot), Ok(rd)) = (open_verified_owned_dir(state_root, false), std::fs::read_dir(state_root)) {
-        let mut subdirs: Vec<String> = rd
-            .flatten()
-            .filter_map(|entry| {
-                if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
-                    return None;
-                }
-                let name = entry.file_name().into_string().ok()?;
-                if rex_sock::validate_screen_name(&name).is_ok() && open_verified_subdir_at(&sroot, &name, false).is_ok() { Some(name) } else { None }
-            })
-            .collect();
-        subdirs.sort();
-        subdirs.truncate(MAX_SCREENS_PER_HOST);
-        for name in subdirs {
-            paths.push(state_root.join(name));
+    let (Some(sroot), Ok(rd)) = (state_root_fd, std::fs::read_dir(state_root)) else { return paths };
+    let mut prio: Vec<String> = Vec::new();
+    let mut owned: Vec<String> = Vec::new();
+    let mut other: Vec<String> = Vec::new();
+    for (scanned, entry) in rd.flatten().enumerate() {
+        if scanned >= MAX_DESKTOP_DIR_SCAN {
+            break;
+        }
+        if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+            continue;
+        }
+        let Ok(name) = entry.file_name().into_string() else { continue };
+        if rex_sock::validate_screen_name(&name).is_err() {
+            continue;
+        }
+        let Ok(sub_fd) = open_verified_subdir_at(sroot, &name, false) else { continue };
+        if running.contains_key(&name) {
+            if prio.len() < MAX_SCREENS_PER_HOST {
+                prio.push(name);
+            }
+        } else if regular_exists_at(&sub_fd, "owner.json") {
+            if owned.len() < MAX_SCREENS_PER_HOST {
+                owned.push(name);
+            }
+        } else if !regular_exists_at(&sub_fd, "archived") && other.len() < MAX_SCREENS_PER_HOST {
+            other.push(name);
         }
     }
+    prio.sort();
+    owned.sort();
+    other.sort();
+    for name in prio.into_iter().chain(owned).chain(other).take(MAX_SCREENS_PER_HOST) {
+        paths.push(state_root.join(name));
+    }
     paths
+}
+
+/// Priority rank for desktop screen inventory & watch-cap admission (higher = keep):
+/// `Running (3) > Owned stopped (2) > Unowned stopped (1)` (Astra #13 / Neon #4.1).
+fn desktop_screen_priority(sc: &RexScreen, owners: &HashMap<String, ScreenOwner>) -> u8 {
+    if sc.state == HostScreenState::Running {
+        3
+    } else if owners.contains_key(&sc.name) || sc.owner.is_some() || sc.started_by.is_some() {
+        2
+    } else {
+        1
+    }
+}
+
+/// Apply an incremental delta of changed screen names into the retained maps and
+/// watch list in O(|delta|) without cloning the entire inventory, enforcing
+/// `MAX_SCREENS_PER_HOST` priority admission on both `cur_screens` and
+/// `tracked_paths` so newly started live screens evict unowned stopped entries
+/// instead of being starved (Astra #13, #15 / Neon #4.1).
+struct DesktopDeltaEntry {
+    name: String,
+    owner: Option<ScreenOwner>,
+    screen: Option<RexScreen>,
+    start_ticks: Option<Option<u64>>,
+    sub_exists: bool,
+}
+
+fn merge_desktop_owners_delta(target: &mut HashMap<String, ScreenOwner>, cur_owners: &HashMap<String, ScreenOwner>, batch: &[String]) -> bool {
+    let mut diff = false;
+    for name in batch {
+        match cur_owners.get(name) {
+            Some(o) => {
+                if target.get(name) != Some(o) {
+                    target.insert(name.clone(), o.clone());
+                    diff = true;
+                }
+            }
+            None => {
+                if target.remove(name).is_some() {
+                    diff = true;
+                }
+            }
+        }
+    }
+    diff
+}
+
+fn apply_desktop_incremental_delta(
+    state_root: &Path,
+    deltas: Vec<DesktopDeltaEntry>,
+    cur_owners: &mut HashMap<String, ScreenOwner>,
+    cur_screens: &mut HashMap<String, RexScreen>,
+    cur_start_ticks: &mut HashMap<String, Option<u64>>,
+    tracked_paths: &mut Vec<PathBuf>,
+    cap: usize,
+) -> bool {
+    let mut paths_changed = false;
+    for d in deltas {
+        match d.owner {
+            Some(o) => {
+                cur_owners.insert(d.name.clone(), o);
+            }
+            None => {
+                cur_owners.remove(&d.name);
+            }
+        }
+        match d.start_ticks {
+            Some(ticks) => {
+                cur_start_ticks.insert(d.name.clone(), ticks);
+            }
+            None => {
+                cur_start_ticks.remove(&d.name);
+            }
+        }
+        match d.screen {
+            Some(sc) => {
+                let new_prio = desktop_screen_priority(&sc, cur_owners);
+                if !cur_screens.contains_key(&d.name) && cur_screens.len() >= cap {
+                    // Evict the lowest-priority screen strictly below `new_prio` (or
+                    // alphabetically last among equal-priority unowned stopped).
+                    let victim = cur_screens
+                        .values()
+                        .map(|other| (desktop_screen_priority(other, cur_owners), &other.name))
+                        .filter(|(p, _)| *p < new_prio)
+                        .min_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(a.1)))
+                        .map(|(_, n)| n.clone());
+                    if let Some(evict_name) = victim {
+                        cur_screens.remove(&evict_name);
+                        cur_start_ticks.remove(&evict_name);
+                        let evict_path = state_root.join(&evict_name);
+                        if let Some(pos) = tracked_paths.iter().position(|p| p == &evict_path) {
+                            tracked_paths.remove(pos);
+                            paths_changed = true;
+                        }
+                        cur_screens.insert(d.name.clone(), sc);
+                    }
+                } else {
+                    cur_screens.insert(d.name.clone(), sc);
+                }
+            }
+            None => {
+                cur_screens.remove(&d.name);
+            }
+        }
+        let sub_path = state_root.join(&d.name);
+        if d.sub_exists {
+            if !tracked_paths.contains(&sub_path) {
+                if tracked_paths.len() < cap + 2 {
+                    tracked_paths.push(sub_path);
+                    paths_changed = true;
+                } else if let Some(sc) = cur_screens.get(&d.name) {
+                    let new_prio = desktop_screen_priority(sc, cur_owners);
+                    // Evict the lowest-priority watched subdir if strictly lower priority.
+                    let victim_pos = tracked_paths
+                        .iter()
+                        .enumerate()
+                        .skip(2)
+                        .filter_map(|(idx, p)| {
+                            let vn = p.file_name()?.to_str()?;
+                            let vp = cur_screens.get(vn).map_or(0, |s| desktop_screen_priority(s, cur_owners));
+                            (vp < new_prio).then_some((vp, vn.to_owned(), idx))
+                        })
+                        .min_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)))
+                        .map(|(_, _, idx)| idx);
+                    if let Some(pos) = victim_pos {
+                        tracked_paths.remove(pos);
+                        tracked_paths.push(sub_path);
+                        paths_changed = true;
+                    }
+                }
+            }
+        } else if let Some(pos) = tracked_paths.iter().position(|p| p == &sub_path) {
+            tracked_paths.remove(pos);
+            paths_changed = true;
+        }
+    }
+    paths_changed
 }
 
 /// Watch `$XDG_RUNTIME_DIR/olo-screens/`, `$XDG_STATE_HOME/olo/screens/`, and
@@ -1239,7 +2098,8 @@ pub(crate) fn watch_desktop_screen_owners_in(
     state: Arc<Mutex<HubState>>,
     notify: Arc<dyn Fn(HubNotice) + Send + Sync>,
 ) -> DesktopOwnersWatch {
-    let dirty = Arc::new(AtomicBool::new(true));
+    let pending_full = Arc::new(AtomicBool::new(true));
+    let pending_names: Arc<Mutex<std::collections::BTreeSet<String>>> = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let wake = Arc::new(Notify::new());
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     #[cfg(test)]
@@ -1251,52 +2111,121 @@ pub(crate) fn watch_desktop_screen_owners_in(
 
     let rt_watch = rt_dir.clone();
     let state_watch = state_root.clone();
-    let dirty_cb = dirty.clone();
+    let full_cb = pending_full.clone();
+    let names_cb = pending_names.clone();
     let wake_cb = wake.clone();
 
     // Register ONLY `[rt_dir, state_root]` synchronously so startup never does
     // synchronous directory reads on the UI thread; the background refresher
     // discovers verified `state_root/<NAME>` subdirs and updates `Watch::set`
-    // BEFORE running `load_desktop_owners_in` on every pass (Round 2 Finding 2).
+    // BEFORE running `load_desktop_owners_in` on every pass.
     let initial_paths = vec![rt_dir.clone(), state_root.clone()];
-    let watch = Arc::new(Mutex::new(olo_kit::watch::watch(initial_paths.clone(), move |changed| {
-        if is_desktop_owner_watch_relevant(&rt_watch, &state_watch, changed) {
-            dirty_cb.store(true, Ordering::Release);
+    let watch = Arc::new(Mutex::new(olo_kit::watch::watch(initial_paths.clone(), move |changed| match classify_desktop_owner_watch_changes(&rt_watch, &state_watch, changed) {
+        DesktopWatchDelta::Ignore => {}
+        DesktopWatchDelta::Full => {
+            full_cb.store(true, Ordering::Release);
+            wake_cb.notify_one();
+        }
+        DesktopWatchDelta::Names(batch) => {
+            let mut g = names_cb.lock().unwrap_or_else(|e| e.into_inner());
+            if g.len() + batch.len() > 64 {
+                g.clear();
+                full_cb.store(true, Ordering::Release);
+            } else {
+                for n in batch {
+                    g.insert(n);
+                }
+            }
+            drop(g);
             wake_cb.notify_one();
         }
     })));
     let watch_bg = watch.clone();
 
     // Single serialized background refresher (0 wakeups/s at rest; exits cleanly on drop).
+    // Uses incremental single-screen updates when only specific screen names changed
+    // (Astra #24), and tracks live desktop screen PIDs keyed by `(pid, name)` with
+    // post-open liveness verification and ESRCH invalidation (Astra #17 / Neon #6).
     let rt_scan = rt_dir;
     let state_scan = state_root;
     rt.spawn(async move {
         let mut tracked_paths = initial_paths;
+        let mut cur_owners: HashMap<String, ScreenOwner> = HashMap::new();
+        let mut cur_screens: HashMap<String, RexScreen> = HashMap::new();
+        let mut cur_start_ticks: HashMap<String, Option<u64>> = HashMap::new();
+        let mut watched_pids: HashMap<(i32, String), tokio::task::AbortHandle> = HashMap::new();
+        let own = std::env::var("OLO_SCREEN").ok();
         loop {
             if *shutdown_rx.borrow() {
                 break;
             }
-            while dirty.swap(false, Ordering::AcqRel) {
+            loop {
                 if *shutdown_rx.borrow() {
+                    break;
+                }
+                let do_full = pending_full.swap(false, Ordering::AcqRel);
+                let batch_names: Vec<String> = {
+                    let mut g = pending_names.lock().unwrap_or_else(|e| e.into_inner());
+                    if do_full {
+                        g.clear();
+                        Vec::new()
+                    } else {
+                        std::mem::take(&mut *g).into_iter().collect()
+                    }
+                };
+                if !do_full && batch_names.is_empty() {
                     break;
                 }
                 let r = rt_scan.clone();
                 let s = state_scan.clone();
                 let watch_io = watch_bg.clone();
-                let prev_paths = tracked_paths.clone();
-                let Ok((next, next_paths)) = tokio::task::spawn_blocking(move || {
-                    // Discover subdirs and install inotify watches via `Watch::set`
-                    // BEFORE reading owner files so any write to `owner.json` inside
-                    // a newly created subdir is either seen by this scan or caught
-                    // by the already-installed watch (Round 2 Finding 2).
-                    let paths = desktop_owner_watch_paths(&r, &s);
-                    if paths != prev_paths
-                        && let Some(w) = watch_io.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
-                    {
-                        w.set(paths.clone());
+                let own_c = own.clone();
+                let batch_for_publish = batch_names.clone();
+
+                enum ScanResult {
+                    Full { owners: HashMap<String, ScreenOwner>, screens: HashMap<String, RexScreen>, ticks: HashMap<String, Option<u64>>, paths: Vec<PathBuf> },
+                    Delta(Vec<DesktopDeltaEntry>),
+                }
+
+                let Ok(scan_res) = tokio::task::spawn_blocking(move || {
+                    let rt_fd = open_verified_owned_dir(&r, false).ok();
+                    let state_root_fd = open_verified_owned_dir(&s, false).ok();
+                    if do_full {
+                        // Neon #4.3 & Astra #15: ONE `rt_dir` snapshot feeds watch paths,
+                        // owners, screens, and `cur_start_ticks` atomically.
+                        let running_rt = scan_running_desktop_screens(&r, rt_fd.as_ref(), own_c.as_deref());
+                        let paths = desktop_owner_watch_paths_with_running(&r, &s, state_root_fd.as_ref(), &running_rt);
+                        let owners = load_desktop_owners_with_running(rt_fd.as_ref(), &s, state_root_fd.as_ref(), &running_rt);
+                        let screens_vec = load_desktop_screens_with_running(&r, &s, state_root_fd.as_ref(), &running_rt, &owners, own_c.as_deref());
+                        let mut smap = HashMap::with_capacity(screens_vec.len());
+                        let mut tmap = HashMap::with_capacity(running_rt.len());
+                        for (n, rt_s) in &running_rt {
+                            tmap.insert(n.clone(), rt_s.start_ticks);
+                        }
+                        for sc in screens_vec {
+                            smap.insert(sc.name.clone(), sc);
+                        }
+                        ScanResult::Full { owners, screens: smap, ticks: tmap, paths }
+                    } else {
+                        // Astra #15: incremental blocking I/O inspects ONLY `batch_names`
+                        // without cloning the 1024-entry inventory maps!
+                        let mut deltas = Vec::with_capacity(batch_names.len());
+                        for name in batch_names {
+                            if own_c.as_deref() == Some(name.as_str()) {
+                                continue;
+                            }
+                            let sub_exists = state_root_fd.as_ref().is_some_and(|sr| open_verified_subdir_at(sr, &name, false).is_ok());
+                            let rt_screen = rt_fd
+                                .as_ref()
+                                .and_then(|rfd| read_desktop_runtime_screen_at(rfd, &name))
+                                .filter(|rt_s| olo_screen_pane::screens::is_screen_session_alive_in(&r, rt_s.pid, &name, rt_s.start_ticks));
+                            let start_ticks = rt_screen.as_ref().map(|rt_s| rt_s.start_ticks);
+                            let owner = read_single_desktop_owner(rt_fd.as_ref(), state_root_fd.as_ref(), rt_screen.as_ref(), &name);
+                            let screen = load_single_desktop_screen(&r, &s, state_root_fd.as_ref(), rt_screen.as_ref(), owner.as_ref(), &name);
+                            deltas.push(DesktopDeltaEntry { name, owner, screen, start_ticks, sub_exists });
+                        }
+                        ScanResult::Delta(deltas)
                     }
-                    let owners = load_desktop_owners_in(&r, &s);
-                    (owners, paths)
                 })
                 .await
                 else {
@@ -1305,18 +2234,131 @@ pub(crate) fn watch_desktop_screen_owners_in(
                 if *shutdown_rx.borrow() {
                     break;
                 }
-                tracked_paths = next_paths;
+                match scan_res {
+                    ScanResult::Full { owners, screens, ticks, paths } => {
+                        if paths != tracked_paths {
+                            tracked_paths = paths;
+                            if let Some(w) = watch_io.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                                w.set(tracked_paths.clone());
+                            }
+                        }
+                        cur_owners = owners;
+                        cur_screens = screens;
+                        cur_start_ticks = ticks;
+                    }
+                    ScanResult::Delta(deltas) => {
+                        let paths_changed = apply_desktop_incremental_delta(&state_scan, deltas, &mut cur_owners, &mut cur_screens, &mut cur_start_ticks, &mut tracked_paths, MAX_SCREENS_PER_HOST);
+                        if paths_changed && let Some(w) = watch_io.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                            w.set(tracked_paths.clone());
+                        }
+                    }
+                }
+
+                // Sync pidfd exit observers keyed by `(pid, name)` and prune finished
+                // handles so reused PIDs always install a fresh observer. Validate
+                // liveness AFTER opening pidfd and invalidate/re-arm on `ESRCH` or
+                // post-open mismatch BEFORE publishing `Running` (Astra #17 / Neon #6).
+                let live_entries: Vec<(i32, String, Option<u64>)> = cur_screens
+                    .values()
+                    .filter(|sc| sc.state == HostScreenState::Running)
+                    .filter_map(|sc| sc.pid.map(|p| (p, sc.name.clone(), cur_start_ticks.get(&sc.name).copied().flatten())))
+                    .collect();
+                let live_keys: std::collections::HashSet<(i32, String)> = live_entries.iter().map(|(p, n, _)| (*p, n.clone())).collect();
+                watched_pids.retain(|key, abort| {
+                    if !abort.is_finished() && live_keys.contains(key) {
+                        true
+                    } else {
+                        abort.abort();
+                        false
+                    }
+                });
+                let mut exited_names: Vec<String> = Vec::new();
+                for (pid, name, start_ticks) in live_entries {
+                    let key = (pid, name.clone());
+                    if watched_pids.contains_key(&key) {
+                        continue;
+                    }
+                    match open_screen_pidfd(pid) {
+                        PidfdOpen::Opened(afd) => {
+                            if !olo_screen_pane::screens::is_screen_session_alive_in(&rt_scan, pid, &name, start_ticks) {
+                                drop(afd);
+                                exited_names.push(name);
+                                continue;
+                            }
+                            let n_cb = pending_names.clone();
+                            let w_cb = wake.clone();
+                            let mut sd = shutdown_rx.clone();
+                            let exit_name = name.clone();
+                            let jh = tokio::spawn(async move {
+                                tokio::select! {
+                                    _ = afd.readable() => {
+                                        n_cb.lock().unwrap_or_else(|e| e.into_inner()).insert(exit_name);
+                                        w_cb.notify_one();
+                                    }
+                                    _ = wait_true(&mut sd) => {}
+                                }
+                            });
+                            watched_pids.insert(key, jh.abort_handle());
+                        }
+                        PidfdOpen::Exited => {
+                            // Process died between scan and pidfd_open: DO NOT publish
+                            // it as Running; re-arm incremental refresh for this name.
+                            exited_names.push(name);
+                        }
+                        PidfdOpen::Unavailable => {
+                            // Permanent kernel/policy unavailability: never spin-retry.
+                        }
+                    }
+                }
+                if !exited_names.is_empty() {
+                    let mut pg = pending_names.lock().unwrap_or_else(|e| e.into_inner());
+                    for dead in exited_names {
+                        if let Some(sc) = cur_screens.get_mut(&dead) {
+                            sc.state = HostScreenState::Stopped;
+                            sc.pid = None;
+                            sc.started = None;
+                            sc.controlled = false;
+                        }
+                        cur_start_ticks.remove(&dead);
+                        pg.insert(dead);
+                    }
+                    drop(pg);
+                    wake.notify_one();
+                }
+
+                let mut next_screens: Vec<RexScreen> = cur_screens.values().cloned().collect();
+                next_screens.sort_by(|a, b| a.name.cmp(&b.name));
                 let changed = {
                     let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
-                    if st.desktop_screen_owners == next {
-                        false
+                    let mut diff = false;
+                    if do_full {
+                        if st.desktop_screen_owners != cur_owners {
+                            st.desktop_screen_owners = cur_owners.clone();
+                            diff = true;
+                        }
                     } else {
-                        st.desktop_screen_owners = next;
-                        true
+                        // Neon #4.2: merge ONLY the processed delta names into
+                        // `st.desktop_screen_owners` so concurrent in-memory updates
+                        // from `record_bridge_screen_outcome` for other screens are preserved!
+                        if merge_desktop_owners_delta(&mut st.desktop_screen_owners, &cur_owners, &batch_for_publish) {
+                            diff = true;
+                        }
                     }
+                    if st.desktop_screens != next_screens {
+                        st.desktop_screens = next_screens;
+                        diff = true;
+                    }
+                    if !st.desktop_screens_loaded {
+                        st.desktop_screens_loaded = true;
+                        diff = true;
+                    }
+                    if diff {
+                        st.screens_rev = st.screens_rev.wrapping_add(1);
+                    }
+                    diff
                 };
                 if changed {
-                    notify(HubNotice::StateChanged);
+                    notify(HubNotice::ScreensChanged);
                 }
                 #[cfg(test)]
                 let _ = init_done_tx.send_replace(true);
@@ -1328,6 +2370,9 @@ pub(crate) fn watch_desktop_screen_owners_in(
                 _ = wake.notified() => {}
                 _ = wait_true(&mut shutdown_rx) => break,
             }
+        }
+        for (_, abort) in watched_pids {
+            abort.abort();
         }
         #[cfg(test)]
         task_done_bg.notify_waiters();
@@ -1349,14 +2394,41 @@ pub(crate) fn watch_desktop_screen_owners_in(
 
 /// Live per-host screens snapshot carried into [`HubState::host_screens`] and
 /// merged monotonically into the Host window's `ScreensThere`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LiveHostScreens {
     pub host_instance_id: u64,
     pub conn_id: u64,
     pub rev: u64,
+    pub conn_state: RexHostConn,
     pub has_follow_snapshot: bool,
     pub status: Option<HostScreenStatus>,
+    pub can_control: Option<bool>,
+    pub control_disabled_reason: Option<String>,
+    pub proto: u32,
+    pub commands: Vec<String>,
+    pub capabilities: Vec<String>,
+    pub disconnected_at: Option<u64>,
     pub screens: Vec<RexScreen>,
+}
+
+impl Default for LiveHostScreens {
+    fn default() -> Self {
+        Self {
+            host_instance_id: 0,
+            conn_id: 0,
+            rev: 0,
+            conn_state: RexHostConn::Disconnected,
+            has_follow_snapshot: false,
+            status: None,
+            can_control: None,
+            control_disabled_reason: None,
+            proto: 0,
+            commands: Vec::new(),
+            capabilities: Vec::new(),
+            disconnected_at: None,
+            screens: Vec::new(),
+        }
+    }
 }
 
 /// Persisted last-known host screens snapshot carried across in-place Rex
@@ -1376,8 +2448,15 @@ pub struct HostScreensUpdate {
     pub host_instance_id: u64,
     pub conn_id: u64,
     pub rev: u64,
+    pub conn_state: RexHostConn,
     pub has_follow_snapshot: bool,
     pub status: Option<HostScreenStatus>,
+    pub can_control: Option<bool>,
+    pub control_disabled_reason: Option<String>,
+    pub proto: u32,
+    pub commands: Vec<String>,
+    pub capabilities: Vec<String>,
+    pub disconnected_at: Option<u64>,
     pub screens: Vec<RexScreen>,
 }
 
@@ -2035,7 +3114,24 @@ impl ScreensService {
                 let conn_id = raw.conn_id;
                 let status = raw.follow_status.clone();
                 let rex_host = raw.into_rex_host(&self.owner_resolver);
-                (host_key, LiveHostScreens { host_instance_id, conn_id, rev, has_follow_snapshot: false, status, screens: rex_host.screens })
+                (
+                    host_key,
+                    LiveHostScreens {
+                        host_instance_id,
+                        conn_id,
+                        rev,
+                        conn_state: RexHostConn::Disconnected,
+                        has_follow_snapshot: false,
+                        status,
+                        can_control: rex_host.can_control,
+                        control_disabled_reason: rex_host.control_disabled_reason,
+                        proto: 0,
+                        commands: Vec::new(),
+                        capabilities: rex_host.capabilities,
+                        disconnected_at: rex_host.disconnected_at,
+                        screens: rex_host.screens,
+                    },
+                )
             })
             .collect()
     }
@@ -2995,6 +4091,8 @@ impl ScreensService {
                         let conn_id = raw.conn_id;
                         let has_follow_snapshot = raw.has_follow_snapshot;
                         let follow_status = raw.follow_status.clone();
+                        let proto = raw.protocol.as_ref().map_or(0, |p| p.proto);
+                        let commands = raw.protocol.as_ref().map(|p| p.commands.clone()).unwrap_or_default();
                         let host = raw.into_rex_host(&svc_pub.owner_resolver);
                         {
                             let mut st = svc_pub.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -3005,7 +4103,22 @@ impl ScreensService {
                             }
                         }
                         if let Some(cb) = &svc_pub.on_host_screens {
-                            cb(HostScreensUpdate { host_key: host.key.clone(), host_instance_id, conn_id, rev, has_follow_snapshot, status: follow_status, screens: host.screens.clone() });
+                            cb(HostScreensUpdate {
+                                host_key: host.key.clone(),
+                                host_instance_id,
+                                conn_id,
+                                rev,
+                                conn_state: host.state,
+                                has_follow_snapshot,
+                                status: follow_status,
+                                can_control: host.can_control,
+                                control_disabled_reason: host.control_disabled_reason.clone(),
+                                proto,
+                                commands,
+                                capabilities: host.capabilities.clone(),
+                                disconnected_at: host.disconnected_at,
+                                screens: host.screens.clone(),
+                            });
                         }
                         if svc_pub.tx.receiver_count() > 0 {
                             let _ = svc_pub.tx.send(BroadcastEvent { seq, line: RexFollowLine::HostUpdated { rev, host: Box::new(host) } });
@@ -3332,6 +4445,10 @@ impl ScreensService {
     }
 
     fn resolve_connected_host_instance(&self, key: &str, host_instance_id: u64) -> Result<ConnectedHostCtx, String> {
+        self.resolve_connected_host_pinned(key, host_instance_id, None)
+    }
+
+    fn resolve_connected_host_pinned(&self, key: &str, host_instance_id: u64, expected_conn_id: Option<u64>) -> Result<ConnectedHostCtx, String> {
         let st = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let Some(h) = st.hosts.get(key) else {
             return Err(format!("“{key}” isn’t one of Rex’s hosts."));
@@ -3341,6 +4458,12 @@ impl ScreensService {
         }
         if h.conn_state != RexHostConn::Connected {
             return Err(format!("“{}” is disconnected. Reconnect in Rex to resume.", h.label));
+        }
+        if let Some(want_conn) = expected_conn_id
+            && want_conn != 0
+            && h.conn_id != want_conn
+        {
+            return Err(format!("“{}” reconnected before this action could run. Please confirm again.", h.label));
         }
         Ok(ConnectedHostCtx {
             target: h.screen_target(),
@@ -4239,6 +5362,7 @@ async fn write_follow_line_cancellable(w: &mut tokio::net::unix::OwnedWriteHalf,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use olo_screen_pane::ScreenSource;
     use std::{collections::VecDeque, sync::atomic::AtomicUsize};
 
     /// Allocate a fresh, unpredictable, private `0700` directory under `/var/tmp`
@@ -4274,7 +5398,9 @@ mod tests {
         streams: Mutex<StreamQueueMap>,
         stream_fallback: Mutex<Option<StreamHandler>>,
         opened_streams: Mutex<Vec<(String, u64, Vec<String>)>>,
+        stream_opened_notify: Arc<Notify>,
         commands: Mutex<Vec<(String, u64, Vec<String>)>>,
+        command_entered_notify: Arc<Notify>,
         command_handler: Mutex<CommandHandler>,
         opened_hosts: Mutex<Vec<String>>,
         open_host_ready: AtomicBool,
@@ -4286,7 +5412,9 @@ mod tests {
                 streams: Mutex::new(HashMap::new()),
                 stream_fallback: Mutex::new(None),
                 opened_streams: Mutex::new(Vec::new()),
+                stream_opened_notify: Arc::new(Notify::new()),
                 commands: Mutex::new(Vec::new()),
+                command_entered_notify: Arc::new(Notify::new()),
                 command_handler: Mutex::new(Box::new(|_target, args, _timeout| {
                     let args = args.to_vec();
                     Box::pin(async move {
@@ -4340,6 +5468,7 @@ mod tests {
         fn open_screen_stream(&self, target: ScreenTarget, args: Vec<String>) -> ScreenStreamFuture {
             let verb = args.first().cloned().unwrap_or_default();
             self.opened_streams.lock().unwrap_or_else(|e| e.into_inner()).push((target.host_key.clone(), target.conn_id, args.clone()));
+            self.stream_opened_notify.notify_waiters();
             let queued = self.streams.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&(target.host_key.clone(), verb)).and_then(VecDeque::pop_front);
             let res = match queued {
                 Some(r) => r,
@@ -4356,6 +5485,7 @@ mod tests {
 
         fn run_screen_command(&self, target: ScreenTarget, args: Vec<String>, timeout: Duration) -> ScreenCommandFuture {
             self.commands.lock().unwrap_or_else(|e| e.into_inner()).push((target.host_key.clone(), target.conn_id, args.clone()));
+            self.command_entered_notify.notify_waiters();
             let h = self.command_handler.lock().unwrap_or_else(|e| e.into_inner());
             h(&target, &args, timeout)
         }
@@ -5645,20 +6775,32 @@ mod tests {
         assert_eq!(unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) }, 0);
         assert!(record_desktop_owner_in(&rt_dir, &state_root, "fifo-qa", "dev", "s1", "b1", true, None).is_err());
 
-        // Real screen generation guard (Finding 29):
-        let my_pid = std::process::id() as i32;
-        std::fs::write(rt_dir.join("qa.json"), format!(r#"{{"name":"qa","pid":{my_pid},"started":2000}}"#)).unwrap();
+        // Real screen generation guard (Finding 29 + Astra #2):
+        let mut fake_sess = {
+            use std::os::unix::process::CommandExt as _;
+            std::process::Command::new("/usr/bin/sleep")
+                .arg0("olo-session")
+                .arg("30")
+                .env("OLO_SCREEN", "qa")
+                .env("XDG_RUNTIME_DIR", rt_dir.parent().unwrap())
+                .spawn()
+                .expect("spawn dummy olo-session")
+        };
+        let sess_pid = fake_sess.id() as i32;
+        std::fs::write(rt_dir.join("qa.json"), format!(r#"{{"name":"qa","pid":{sess_pid},"started":2000}}"#)).unwrap();
         std::fs::create_dir_all(state_root.join("qa")).unwrap();
         std::fs::write(state_root.join("qa/screen.json"), "{}").unwrap();
         // Pane B owns generation `started=2000`:
-        let owned_b = record_desktop_owner_in(&rt_dir, &state_root, "qa", "host-b", "sb", "bb", true, Some(DesktopScreenGen { pid: my_pid, started: 2000, start_ticks: None })).unwrap().unwrap();
+        let owned_b = record_desktop_owner_in(&rt_dir, &state_root, "qa", "host-b", "sb", "bb", true, Some(DesktopScreenGen { pid: sess_pid, started: 2000, start_ticks: None })).unwrap().unwrap();
         assert_eq!(owned_b.block_id, "bb");
         // Late mutation from Pane A for older generation `started=1000` MUST NOT overwrite B's owner!
-        assert!(record_desktop_owner_in(&rt_dir, &state_root, "qa", "host-a", "sa", "ba", false, Some(DesktopScreenGen { pid: my_pid, started: 1000, start_ticks: None })).unwrap().is_none());
+        assert!(record_desktop_owner_in(&rt_dir, &state_root, "qa", "host-a", "sa", "ba", false, Some(DesktopScreenGen { pid: sess_pid, started: 1000, start_ticks: None })).unwrap().is_none());
         // Late stop from Pane A for `started=1000` MUST NOT unlink B's runtime sidecar!
-        assert!(!unlink_desktop_runtime_owner_in(&rt_dir, &state_root, "qa", Some(DesktopScreenGen { pid: my_pid, started: 1000, start_ticks: None })));
+        assert!(!unlink_desktop_runtime_owner_in(&rt_dir, &state_root, "qa", Some(DesktopScreenGen { pid: sess_pid, started: 1000, start_ticks: None })));
         let loaded = load_desktop_owners_in(&rt_dir, &state_root);
         assert_eq!(loaded.get("qa").map(|o| o.block_id.as_str()), Some("bb"));
+        let _ = fake_sess.kill();
+        let _ = fake_sess.wait();
 
         // Finding 32: remote owner naming `host_key: Some("local")` cannot spoof a local tab!
         let state = Arc::new(Mutex::new(HubState::test_empty()));
@@ -6880,5 +8022,546 @@ mod tests {
         }
         assert_eq!(svc.snapshot().hosts[0].label, "Second");
         svc.shutdown();
+    }
+
+    #[tokio::test]
+    async fn astra_f3_f7_f27_direct_relay_pins_instance_and_verifies_host_generation_post_ready_deterministically() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let dir = scratch_dir("astra-f3-f7");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let sock = dir.join("rex.sock");
+        let state_path = dir.join("state.json");
+        let opener = DoubleOpener::new();
+        let list_reply = Arc::new(Mutex::new(r#"[{"name":"qa","pid":12345,"started":1000}]"#.to_owned()));
+        let list_reply_c = list_reply.clone();
+        opener.set_command_handler(move |_t, args, _to| {
+            let args = args.to_vec();
+            let reply = list_reply_c.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            Box::pin(async move {
+                if args.first().map(String::as_str) == Some("list") {
+                    Ok(CommandExecOutput { status: Some(0), stdout: reply, stderr: String::new(), truncated: false })
+                } else {
+                    Ok(CommandExecOutput {
+                        status: Some(0),
+                        stdout: r#"{"proto":1,"commands":["follow","stream","history-stream","export"],"capabilities":["control-ack","stop-expected","clear-expected"]}"#.to_owned(),
+                        stderr: String::new(),
+                        truncated: false,
+                    })
+                }
+            })
+        });
+        let svc = ScreensService::new(sock.clone(), state_path.clone(), std::process::id(), opener.clone(), Arc::new(|_, _| None), None, None);
+        let id1 = next_host_instance_id();
+        svc.set_initial_hosts(vec![("dev".into(), id1, "Dev".into(), RexHostConn::Disconnected)]);
+        let rt = tokio::runtime::Handle::current();
+        svc.start_server(&rt).unwrap();
+
+        let (cid1, mut fh) =
+            connect_and_seed(&svc, &opener, &sock, "dev", id1, sample_status(Some("2026.11.27"), true, None), vec![sample_host_screen("qa", HostScreenState::Running, Some(1000), Some(2000))]).await;
+
+        // 1. Mismatched host_instance_id MUST be rejected even when key matches (Astra #3).
+        let wrong_id = next_host_instance_id();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let notify = Arc::new(Notify::new());
+        let err = svc.open_direct_relay("dev", wrong_id, Some(cid1), "qa", DirectRelayKind::Live, Some(1000), Some(12345), cancelled.clone(), notify.clone()).await.unwrap_err();
+        assert!(err.contains("changed") || err.contains("disconnected") || err.contains("Dev"), "unexpected err: {err}");
+
+        // 2. Real direct live relay succeeds when post-Ready host `list` confirms (started=1000, pid=12345),
+        //    delivers bytes, and closes peer with immediate EOF on cancel.
+        let (sc, mut sh) = tokio::io::duplex(16 * 1024);
+        sh.write_all(b"frame-ok").await.unwrap();
+        opener.push_stream("dev", "stream", Box::pin(sc));
+        let live_sock = svc.open_direct_relay("dev", id1, Some(cid1), "qa", DirectRelayKind::Live, Some(1000), Some(12345), cancelled.clone(), notify.clone()).await.expect("open live relay");
+        let mut buf = [0u8; 8];
+        let mut live_sock_r = live_sock;
+        tokio::task::spawn_blocking(move || {
+            use std::io::Read as _;
+            live_sock_r.read_exact(&mut buf).unwrap();
+            assert_eq!(&buf, b"frame-ok");
+            drop(live_sock_r);
+        })
+        .await
+        .unwrap();
+        let mut peer_buf = [0u8; 8];
+        let n = tokio::time::timeout(Duration::from_secs(2), sh.read(&mut peer_buf)).await.expect("peer must see immediate EOF").unwrap();
+        assert_eq!(n, 0, "expected clean EOF on remote stream peer");
+
+        // 3. Astra #3 (stalled follower): follower STILL caches started=1000, but host
+        //    restarted `qa` to started=2000 BEFORE `stream` opened; post-Ready `list`
+        //    detects Gen 2 and rejects BEFORE handing bytes to ScreenPane!
+        *list_reply.lock().unwrap_or_else(|e| e.into_inner()) = r#"[{"name":"qa","pid":99999,"started":2000}]"#.to_owned();
+        let (sc_stale, mut sh_stale) = tokio::io::duplex(16 * 1024);
+        sh_stale.write_all(b"gen2-bytes").await.unwrap();
+        opener.push_stream("dev", "stream", Box::pin(sc_stale));
+        let stale_err = svc.open_direct_relay("dev", id1, Some(cid1), "qa", DirectRelayKind::Live, Some(1000), Some(12345), cancelled.clone(), notify.clone()).await.unwrap_err();
+        assert!(stale_err.contains("__olo_screen_gone__"), "stalled follower with host Gen 2 MUST fail closed: {stale_err}");
+
+        // 4. Astra #27 (deterministic barrier, ZERO sleeps): wait until `open_screen_stream`
+        //    actually entered, deliver follower update to started=2000, confirm follower applied,
+        //    then release Ready byte and assert post-Ready check rejects.
+        *list_reply.lock().unwrap_or_else(|e| e.into_inner()) = r#"[{"name":"qa","pid":12345,"started":1000}]"#.to_owned();
+        let (sc2, mut sh2) = tokio::io::duplex(16 * 1024);
+        opener.push_stream("dev", "stream", Box::pin(sc2));
+        let (mut fr, _fw, _snap) = open_follow_client(&sock).await;
+        let stream_wait = opener.stream_opened_notify.notified();
+        let svc_c = svc.clone();
+        let relay_fut = tokio::spawn(async move { svc_c.open_direct_relay("dev", id1, Some(cid1), "qa", DirectRelayKind::Live, Some(1000), Some(12345), cancelled, notify).await });
+        tokio::time::timeout(Duration::from_secs(2), stream_wait).await.expect("open_screen_stream entered");
+        send_follow_event(&mut fh, &FollowEvent::Screen { screen: Box::new(sample_host_screen("qa", HostScreenState::Running, Some(2000), Some(3000))) }).await;
+        wait_follow_until(&mut fr, |l| {
+            matches!(l, RexFollowLine::HostUpdated { host, .. } if host.key == "dev" && host.screens.iter().any(|s| s.name == "qa" && s.started == Some(2000))).then_some(())
+        })
+        .await;
+        let _ = sh2.write_all(b"R").await;
+        let res = tokio::time::timeout(Duration::from_secs(3), relay_fut).await.expect("relay task").unwrap();
+        assert!(res.is_err(), "post-Ready follower generation mismatch must fail closed");
+        assert!(res.unwrap_err().contains("__olo_screen_gone__"));
+        svc.shutdown();
+    }
+
+    #[tokio::test]
+    async fn astra_f13_f16_f27_neon_f10_direct_command_and_pane_history_handle_cancel_deterministically() {
+        let dir = scratch_dir("astra-f13-f16");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let sock = dir.join("rex.sock");
+        let state_path = dir.join("state.json");
+        let opener = DoubleOpener::new();
+        opener.set_command_handler(|_t, _a, _to| Box::pin(std::future::pending()));
+        let svc = ScreensService::new(sock.clone(), state_path.clone(), std::process::id(), opener.clone(), Arc::new(|_, _| None), None, None);
+        let id = next_host_instance_id();
+        svc.set_initial_hosts(vec![("dev".into(), id, "Dev".into(), RexHostConn::Disconnected)]);
+        let rt = tokio::runtime::Handle::current();
+        svc.start_server(&rt).unwrap();
+
+        let (cid, _fh) =
+            connect_and_seed(&svc, &opener, &sock, "dev", id, sample_status(Some("2026.11.27"), true, None), vec![sample_host_screen("qa", HostScreenState::Running, Some(1000), None)]).await;
+
+        // 1. Deterministic barrier on `run_direct_command` cancellation (ZERO sleeps, Astra #27).
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let notify = Arc::new(Notify::new());
+        let c2 = cancelled.clone();
+        let n2 = notify.clone();
+        let svc2 = svc.clone();
+        let entered = opener.command_entered_notify.notified();
+        let jh = tokio::spawn(async move { svc2.run_direct_command("dev", id, Some(cid), &["frame-at".into(), "qa".into(), "100".into()], c2, n2).await });
+        tokio::time::timeout(Duration::from_secs(2), entered).await.expect("run_screen_command entered");
+        cancelled.store(true, Ordering::Release);
+        notify.notify_waiters();
+        let err = tokio::time::timeout(Duration::from_secs(2), jh).await.expect("stalled command must cancel promptly").unwrap().unwrap_err();
+        assert_eq!(err, "cancelled");
+
+        // 2. Exercise real `HubStreamOpener` through `StreamScreenSource::follow_history`
+        //    and confirm `set_active(false)` wakes an in-flight stalled probe/handshake
+        //    immediately (Astra #16 / #27 / Neon #10)!
+        let pane_opener = Arc::new(crate::activity_screens::HubStreamOpener::new(svc.clone(), rt.clone(), "dev", id, Some(cid), Some(1000), Some(12345)));
+        let info = olo_screen_pane::ScreenInfo {
+            id: olo_screen_pane::ScreenId::host("dev", "Dev", "qa"),
+            title: None,
+            state: olo_screen_pane::ScreenState::Running,
+            size: Some((1440, 900)),
+            scale: 1.0,
+            sound: false,
+            started_ms: Some(1_000_000),
+            last_used_ms: Some(2000),
+            disconnected_at_ms: None,
+            actions: Some(3),
+            controlled: false,
+            capabilities: olo_screen_pane::PaneCapabilities::remote_default(),
+        };
+        let src = Arc::new(olo_screen_pane::StreamScreenSource::with_host_cache(info, pane_opener, Arc::new(olo_screen_pane::HostProtocolCache::new())));
+        let mut hist_handle = src.follow_history(Box::new(|_| {}));
+        let entered_probe = opener.command_entered_notify.notified();
+        hist_handle.set_active(true);
+        tokio::time::timeout(Duration::from_secs(2), entered_probe).await.expect("history open entered protocol probe");
+        hist_handle.set_active(false);
+        // Dropping the handle joins its worker thread; if `set_active(false)` / shutdown
+        // did not cancel the stalled probe, this join would hang until RPC timeout!
+        tokio::time::timeout(Duration::from_secs(2), tokio::task::spawn_blocking(move || drop(hist_handle))).await.expect("history handle must join promptly after cancel").unwrap();
+        svc.shutdown();
+    }
+
+    #[tokio::test]
+    async fn astra_f1_pane_stop_and_clear_pin_connection_and_recheck_live_protocol() {
+        let dir = scratch_dir("astra-f1");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let sock = dir.join("rex.sock");
+        let state_path = dir.join("state.json");
+        let opener = DoubleOpener::new();
+        let svc = ScreensService::new(sock.clone(), state_path.clone(), std::process::id(), opener.clone(), Arc::new(|_, _| None), None, None);
+        let id = next_host_instance_id();
+        svc.set_initial_hosts(vec![("dev".into(), id, "Dev".into(), RexHostConn::Disconnected)]);
+        let rt = tokio::runtime::Handle::current();
+        svc.start_server(&rt).unwrap();
+
+        let (cid1, _fh1) =
+            connect_and_seed(&svc, &opener, &sock, "dev", id, sample_status(Some("2026.11.27"), true, None), vec![sample_host_screen("qa", HostScreenState::Running, Some(1000), Some(2000))]).await;
+
+        // Build a StreamScreenSource pinned to connection `cid1` with a full cached HostCapabilities.
+        let full_caps = olo_screen_pane::HostCapabilities {
+            proto: 1,
+            commands: vec!["follow".into(), "stream".into(), "history-stream".into()],
+            stop_expected: true,
+            stop_expected_started: true,
+            clear_expected: true,
+            ..Default::default()
+        };
+        let pane_opener = Arc::new(crate::activity_screens::HubStreamOpener::new(svc.clone(), rt.clone(), "dev", id, Some(cid1), Some(1000), Some(12345)));
+        let info = olo_screen_pane::ScreenInfo {
+            id: olo_screen_pane::ScreenId::host("dev", "Dev", "qa"),
+            title: None,
+            state: olo_screen_pane::ScreenState::Running,
+            size: Some((1440, 900)),
+            scale: 1.0,
+            sound: false,
+            started_ms: Some(1_000_000),
+            last_used_ms: Some(2000),
+            disconnected_at_ms: None,
+            actions: Some(3),
+            controlled: false,
+            capabilities: olo_screen_pane::PaneCapabilities::remote_default(),
+        };
+        let src = Arc::new(olo_screen_pane::StreamScreenSource::with_host_cache(info, pane_opener, Arc::new(olo_screen_pane::HostProtocolCache::fixed(full_caps))));
+
+        // Now host reconnects under the SAME host_instance_id (`id`) to an OLDER helper lacking `stop-expected` & `clear-expected`!
+        opener.set_command_handler(|_t, _args, _to| {
+            Box::pin(async move {
+                Ok(CommandExecOutput {
+                    status: Some(0),
+                    stdout: r#"{"proto":1,"commands":["follow","stream"],"capabilities":["stop-expected-started"]}"#.to_owned(),
+                    stderr: String::new(),
+                    truncated: false,
+                })
+            })
+        });
+        let (fc2, mut fh2) = tokio::io::duplex(16 * 1024);
+        opener.push_stream("dev", "follow", Box::pin(fc2));
+        let cid2 = next_conn_id();
+        svc.host_connected(&rt, "dev", id, cid2, 2, "Dev", None);
+        send_follow_event(
+            &mut fh2,
+            &FollowEvent::Snapshot { proto: 1, status: sample_status(Some("2026.11.20"), true, None), screens: vec![sample_host_screen("qa", HostScreenState::Running, Some(1000), Some(2000))] },
+        )
+        .await;
+        let _ = opener.take_commands();
+
+        // 1. Old pane source (pinned to cid1) MUST refuse both Stop and Clear after reconnect!
+        let src_stop = src.clone();
+        let stop_err = tokio::task::spawn_blocking(move || src_stop.stop_if_expected(Some(1000), Some(2000))).await.unwrap().unwrap_err();
+        assert!(stop_err.contains("reconnected"), "stale connection stop must fail closed: {stop_err}");
+
+        let src_clear = src.clone();
+        let clear_err = tokio::task::spawn_blocking(move || src_clear.clear_history_expected(Some(0), Some(2000))).await.unwrap().unwrap_err();
+        assert!(clear_err.contains("reconnected"), "stale connection clear must fail closed: {clear_err}");
+
+        // 2. Even on the NEW connection `cid2`, a live Clear/Stop with a stale fixed cache MUST
+        //    still recheck the service's live `ensure_protocol` and refuse the older helper!
+        let err_clear_old = svc.clear_history_for_host_instance_expected("dev", id, Some(cid2), "qa", Some(0), Some(2000)).await.unwrap_err();
+        assert!(err_clear_old.contains("Update Olo"), "older helper lacking clear-expected must be refused: {err_clear_old}");
+        let cmds = opener.take_commands();
+        assert!(cmds.iter().all(|(_, a)| a.first().map(String::as_str) != Some("stop") && a.first().map(String::as_str) != Some("history")), "destructive command must never be sent: {cmds:?}");
+        svc.shutdown();
+    }
+
+    #[test]
+    fn astra_f18_f23_f24_neon_f9_f13_desktop_inventory_prioritization_standalone_stopped_and_incremental_delta() {
+        let dir = scratch_dir("astra-f18-f23-f24");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let rt_dir = dir.join("rt");
+        let state_root = dir.join("state");
+        std::fs::create_dir(&rt_dir).unwrap();
+        std::fs::set_permissions(&rt_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::create_dir(&state_root).unwrap();
+        std::fs::set_permissions(&state_root, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        // 1. Astra #18: a verified stopped standalone local screen (no owner.json, has screen.json,
+        //    not archived) stays in raw `load_desktop_screens_in` inventory so stopping an open
+        //    standalone pane preserves its history instead of closing the pane!
+        let stand_dir = state_root.join("solo");
+        std::fs::create_dir(&stand_dir).unwrap();
+        std::fs::write(stand_dir.join("screen.json"), r#"{"width":1280,"height":800,"scale":1.0}"#).unwrap();
+
+        // 2. Astra #23 / Neon #13: >MAX_SCREENS_PER_HOST alphabetically-earlier unowned folders
+        //    must NEVER displace a later-named owned stopped screen (`zzz-owned`)!
+        for i in 0..(MAX_SCREENS_PER_HOST + 20) {
+            let d = state_root.join(format!("a-{i:04}"));
+            std::fs::create_dir(&d).unwrap();
+            std::fs::write(d.join("screen.json"), r#"{"width":800,"height":600,"scale":1.0}"#).unwrap();
+        }
+        let z_dir = state_root.join("zzz-owned");
+        std::fs::create_dir(&z_dir).unwrap();
+        std::fs::write(z_dir.join("screen.json"), r#"{"width":1440,"height":900,"scale":1.0}"#).unwrap();
+        std::fs::write(z_dir.join("owner.json"), r#"{"session_id":"s1","block_id":"b1","at":1795800000000}"#).unwrap();
+
+        let owners = load_desktop_owners_in(&rt_dir, &state_root);
+        assert!(owners.contains_key("zzz-owned"), "owned screen sorting after >1024 unowned folders MUST be discovered");
+        let screens = load_desktop_screens_in(&rt_dir, &state_root, &owners);
+        assert!(screens.iter().any(|s| s.name == "zzz-owned" && s.state == HostScreenState::Stopped), "owned screen MUST be in raw inventory");
+
+        // In a smaller state dir without cap saturation, standalone stopped `solo` is retained in raw inventory.
+        let small_state = dir.join("small-state");
+        std::fs::create_dir(&small_state).unwrap();
+        std::fs::set_permissions(&small_state, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::create_dir(small_state.join("solo")).unwrap();
+        std::fs::write(small_state.join("solo").join("screen.json"), r#"{"width":1280,"height":800,"scale":1.0}"#).unwrap();
+        let small_owners = load_desktop_owners_in(&rt_dir, &small_state);
+        let small_screens = load_desktop_screens_in(&rt_dir, &small_state, &small_owners);
+        assert!(
+            small_screens.iter().any(|s| s.name == "solo" && s.state == HostScreenState::Stopped && s.actions == Some(0)),
+            "stopped standalone screen must stay in raw inventory with verified empty actions=Some(0)"
+        );
+
+        // 3. Astra #24: single-screen watch events classify to exact `DesktopWatchDelta::Names(["qa"])`
+        //    so unrelated screens are never rescanned, while `.lock`/`.tmp` are ignored and dir-only is `Full`.
+        assert_eq!(classify_desktop_owner_watch_changes(&rt_dir, &state_root, &[state_root.join("qa").join("actions.jsonl")]), DesktopWatchDelta::Names(vec!["qa".into()]));
+        assert_eq!(classify_desktop_owner_watch_changes(&rt_dir, &state_root, &[state_root.join("qa").join(".owner.lock")]), DesktopWatchDelta::Ignore);
+        assert_eq!(classify_desktop_owner_watch_changes(&rt_dir, &state_root, std::slice::from_ref(&rt_dir)), DesktopWatchDelta::Full);
+    }
+
+    #[tokio::test]
+    async fn astra_f2_f8_guarded_stop_requires_stop_expected_and_start_uses_positional_keep() {
+        let dir = scratch_dir("astra-f2-f8");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let sock = dir.join("rex.sock");
+        let state_path = dir.join("state.json");
+        let opener = DoubleOpener::new();
+        let svc = ScreensService::new(sock.clone(), state_path.clone(), std::process::id(), opener.clone(), Arc::new(|_, _| None), None, None);
+        let id = next_host_instance_id();
+        svc.set_initial_hosts(vec![("dev".into(), id, "Dev".into(), RexHostConn::Disconnected)]);
+        let rt = tokio::runtime::Handle::current();
+        svc.start_server(&rt).unwrap();
+
+        // Configure legacy helper BEFORE connecting so initial protocol probe caches
+        // capabilities lacking atomic `stop-expected` (Astra #2 / Neon #7).
+        opener.set_command_handler(|_t, args, _to| {
+            let args = args.to_vec();
+            Box::pin(async move {
+                if args.first().map(String::as_str) == Some("start") {
+                    Ok(CommandExecOutput {
+                        status: Some(0),
+                        stdout: r#"{"name":"wrong-name","state":"running","width":1440,"height":900,"scale":1.0,"sound":false,"pid":123,"started":1000}"#.to_owned(),
+                        stderr: String::new(),
+                        truncated: false,
+                    })
+                } else {
+                    Ok(CommandExecOutput {
+                        status: Some(0),
+                        stdout: r#"{"proto":1,"commands":["follow","stream"],"capabilities":["stop-expected-started"]}"#.to_owned(),
+                        stderr: String::new(),
+                        truncated: false,
+                    })
+                }
+            })
+        });
+
+        let (_cid, _fh) =
+            connect_and_seed(&svc, &opener, &sock, "dev", id, sample_status(Some("2026.11.27"), true, None), vec![sample_host_screen("qa", HostScreenState::Stopped, None, Some(2000))]).await;
+
+        // 1. start_screen_for_host_instance must send `["start", "qa", "--keep"]` and reject mismatched name.
+        let bad = svc.start_screen_for_host_instance("dev", id, "qa").await.unwrap_err();
+        assert!(bad.contains("wrong-name"), "mismatched screen name must be rejected, got: {bad}");
+        let cmds = opener.take_commands();
+        assert!(cmds.iter().any(|(_, a)| a == &["start", "qa", "--keep"]), "start must use positional name + --keep, got: {cmds:?}");
+
+        // 2. stop_screen_for_host_instance_expected must reject hosts lacking atomic `stop-expected`.
+        let err = svc.stop_screen_for_host_instance_expected("dev", id, "qa", Some(1000), Some(2000)).await.unwrap_err();
+        assert!(err.contains("Update Olo"), "legacy host without stop-expected must be refused, got: {err}");
+        svc.shutdown();
+    }
+
+    #[test]
+    fn astra_f21_f22_desktop_screens_rejects_recycled_pid_and_reads_large_actions_and_kept_size() {
+        let dir = scratch_dir("astra-f21-f22");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let rt_dir = dir.join("rt");
+        let state_root = dir.join("state");
+        std::fs::create_dir(&rt_dir).unwrap();
+        std::fs::set_permissions(&rt_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::create_dir(&state_root).unwrap();
+        std::fs::set_permissions(&state_root, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        // 1. Runtime descriptor with our OWN PID (NOT `olo-session`) + leftover `.control` file:
+        //    must be treated as NOT running and `controlled == false` (Astra #21).
+        let my_pid = std::process::id();
+        std::fs::write(rt_dir.join("stale.json"), format!(r#"{{"name":"stale","pid":{my_pid},"width":1440,"height":900,"scale":1.0,"started":1700000000}}"#)).unwrap();
+        std::fs::write(rt_dir.join("stale.control"), format!("{my_pid}\n")).unwrap();
+
+        // 2. Stopped owned screen directory with `owner.json`, `screen.json` (kept 1280x800 size),
+        //    and an >80 KiB `actions.jsonl` line: must parse `last_used = 1795800005000` and `width/height` (Astra #22, Opus #4).
+        let big_dir = state_root.join("big");
+        std::fs::create_dir(&big_dir).unwrap();
+        std::fs::write(big_dir.join("owner.json"), r#"{"session_id":"s1","block_id":"b1","at":1795800005000}"#).unwrap();
+        std::fs::write(big_dir.join("screen.json"), r#"{"width":1280,"height":800,"scale":1.0}"#).unwrap();
+        let pad = "x".repeat(80 * 1024);
+        std::fs::write(big_dir.join("actions.jsonl"), format!("{{\"at\":1795800005000,\"ms\":12,\"kind\":\"click\",\"args\":[\"{pad}\"]}}\n")).unwrap();
+
+        let owners = load_desktop_owners_in(&rt_dir, &state_root);
+        let screens = load_desktop_screens_in(&rt_dir, &state_root, &owners);
+        assert!(screens.iter().all(|s| s.name != "stale" || (s.state == HostScreenState::Stopped && !s.controlled)), "recycled non-olo-session PID must not show as running or controlled");
+        let big = screens.iter().find(|s| s.name == "big").expect("stopped screen loaded");
+        assert_eq!(big.state, HostScreenState::Stopped);
+        assert_eq!(big.width, 1280);
+        assert_eq!(big.height, 800);
+        assert_eq!(big.last_used, Some(1_795_800_005_012));
+
+        // 3. Astra #17 / Neon #6: verify `open_screen_pidfd` returns `Exited` on a non-existent PID
+        //    so the watcher invalidates and never publishes a crashed screen as Running.
+        assert!(matches!(open_screen_pidfd(i32::MAX - 1), PidfdOpen::Exited | PidfdOpen::Unavailable));
+    }
+
+    #[test]
+    fn r3_polish_neon_f1_wait_direct_cancelled_never_loses_wakeup() {
+        use std::task::{Context, Poll, Waker};
+        let cancelled = AtomicBool::new(false);
+        let notify = Notify::new();
+        let mut fut = std::pin::pin!(wait_direct_cancelled(&cancelled, &notify));
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
+
+        // First poll registers & enables the Notify waiter BEFORE checking `cancelled`.
+        assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Pending));
+        // Concurrent cancellation fires notify_waiters() immediately:
+        cancelled.store(true, Ordering::Release);
+        notify.notify_waiters();
+        // Next poll MUST resolve immediately with zero lost wakeup!
+        assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Ready(())));
+    }
+
+    #[tokio::test]
+    async fn r3_polish_astra_f8_f11_remote_list_generation_pid_only_and_nonterminal_probe_error() {
+        // 1. Unit check of `verify_remote_list_generation`:
+        let list_json = r#"[{"name":"qa","pid":4242,"started":1000}]"#;
+        assert_eq!(verify_remote_list_generation(list_json, "qa", None, Some(4242)), Ok(true));
+        assert_eq!(verify_remote_list_generation(list_json, "qa", None, Some(9999)), Ok(false), "mismatched PID when started is None must return Ok(false)");
+        assert_eq!(verify_remote_list_generation("not-json", "qa", None, Some(4242)), Err(()), "malformed JSON must return non-terminal Err(())");
+        assert_eq!(verify_remote_list_generation(r#"{"not":"array"}"#, "qa", None, Some(4242)), Err(()));
+
+        // 2. End-to-end `open_direct_relay(DirectRelayKind::Live)`:
+        let dir = scratch_dir("r3-astra-f8-f11");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let sock = dir.join("rex.sock");
+        let state_path = dir.join("state.json");
+        let opener = DoubleOpener::new();
+        let svc = ScreensService::new(sock.clone(), state_path.clone(), std::process::id(), opener.clone(), Arc::new(|_, _| None), None, None);
+        let id = next_host_instance_id();
+        svc.set_initial_hosts(vec![("dev".into(), id, "Dev".into(), RexHostConn::Disconnected)]);
+        let rt = tokio::runtime::Handle::current();
+        svc.start_server(&rt).unwrap();
+
+        let mut running_no_started = sample_host_screen("qa", HostScreenState::Running, None, Some(2000));
+        running_no_started.pid = Some(4242);
+        let (cid, _fh) = connect_and_seed(&svc, &opener, &sock, "dev", id, sample_status(Some("2026.11.27"), true, None), vec![running_no_started]).await;
+
+        // 2a. Astra #11: truncated / non-zero `list --json` probe must NOT return `__olo_screen_gone__:`!
+        opener.set_command_handler(|_t, args, _to| {
+            let args = args.to_vec();
+            Box::pin(async move {
+                if args.first().map(String::as_str) == Some("list") {
+                    Ok(CommandExecOutput { status: Some(0), stdout: "[{\"name\":\"qa\"".to_owned(), stderr: String::new(), truncated: true })
+                } else {
+                    Ok(CommandExecOutput {
+                        status: Some(0),
+                        stdout: r#"{"proto":1,"commands":["follow","stream"],"capabilities":["stop-expected"]}"#.to_owned(),
+                        stderr: String::new(),
+                        truncated: false,
+                    })
+                }
+            })
+        });
+        let (sc1, mut sh1) = tokio::io::duplex(4096);
+        let _ = sh1.write_all(b"OLOS").await;
+        opener.push_stream("dev", "stream", Box::pin(sc1));
+        let err_probe = svc.open_direct_relay("dev", id, Some(cid), "qa", DirectRelayKind::Live, None, Some(4242), Arc::new(AtomicBool::new(false)), Arc::new(Notify::new())).await.unwrap_err();
+        assert!(!err_probe.starts_with("__olo_screen_gone__:"), "truncated list probe must NOT be terminal ScreenGone, got: {err_probe}");
+
+        // 2b. Astra #8: parsed `list --json` showing a different PID when `expected_started == None` MUST return `__olo_screen_gone__:`!
+        opener.set_command_handler(|_t, args, _to| {
+            let args = args.to_vec();
+            Box::pin(async move {
+                if args.first().map(String::as_str) == Some("list") {
+                    Ok(CommandExecOutput { status: Some(0), stdout: r#"[{"name":"qa","pid":9999,"started":1001}]"#.to_owned(), stderr: String::new(), truncated: false })
+                } else {
+                    Ok(CommandExecOutput {
+                        status: Some(0),
+                        stdout: r#"{"proto":1,"commands":["follow","stream"],"capabilities":["stop-expected"]}"#.to_owned(),
+                        stderr: String::new(),
+                        truncated: false,
+                    })
+                }
+            })
+        });
+        let (sc2, mut sh2) = tokio::io::duplex(4096);
+        let _ = sh2.write_all(b"OLOS").await;
+        opener.push_stream("dev", "stream", Box::pin(sc2));
+        let err_gone = svc.open_direct_relay("dev", id, Some(cid), "qa", DirectRelayKind::Live, None, Some(4242), Arc::new(AtomicBool::new(false)), Arc::new(Notify::new())).await.unwrap_err();
+        assert!(err_gone.starts_with("__olo_screen_gone__:"), "verified PID mismatch must return ScreenGone sentinel, got: {err_gone}");
+        svc.shutdown();
+    }
+
+    #[test]
+    fn r3_polish_astra_f13_f14_f15_neon_f4_desktop_watcher_overflow_and_cap_priority() {
+        let dir = scratch_dir("r3-astra-f13-f14");
+        let _cleanup = ScratchCleanup(dir.clone());
+        let rt_dir = dir.join("rt");
+        let state_root = dir.join("state");
+        std::fs::create_dir(&rt_dir).unwrap();
+        std::fs::create_dir(&state_root).unwrap();
+
+        // 1. Astra #14: inotify overflow batch (`[rt_dir, state_root, state_root/existing]`) MUST return Full!
+        assert_eq!(
+            classify_desktop_owner_watch_changes(&rt_dir, &state_root, &[rt_dir.clone(), state_root.clone(), state_root.join("existing")]),
+            DesktopWatchDelta::Full,
+            "root+subdir overflow batch must trigger Full rescan"
+        );
+        // Specific file event alongside root dir still classifies incrementally as Names:
+        assert_eq!(classify_desktop_owner_watch_changes(&rt_dir, &state_root, &[state_root.clone(), state_root.join("qa/owner.json")]), DesktopWatchDelta::Names(vec!["qa".into()]));
+
+        // 2. Astra #13 / Neon #4.1: at `cap = 2` with two unowned stopped screens, a newly started
+        //    running screen `zzz-live` MUST evict a lower-priority unowned stopped screen and be watched!
+        let mk_rex = |name: &str, state: HostScreenState| RexScreen {
+            name: name.into(),
+            title: None,
+            state,
+            width: 1440,
+            height: 900,
+            scale: 1.0,
+            sound: false,
+            pid: (state == HostScreenState::Running).then_some(100),
+            started: (state == HostScreenState::Running).then_some(500),
+            last_used: None,
+            actions: Some(0),
+            controlled: false,
+            owner: None,
+            started_by: None,
+            controlled_by: None,
+        };
+        let mut cur_owners = HashMap::new();
+        let mut cur_screens = HashMap::from([("a-stopped".into(), mk_rex("a-stopped", HostScreenState::Stopped)), ("b-stopped".into(), mk_rex("b-stopped", HostScreenState::Stopped))]);
+        let mut cur_ticks = HashMap::new();
+        let mut tracked_paths = vec![rt_dir.clone(), state_root.clone(), state_root.join("a-stopped"), state_root.join("b-stopped")];
+
+        let changed = apply_desktop_incremental_delta(
+            &state_root,
+            vec![DesktopDeltaEntry { name: "zzz-live".into(), owner: None, screen: Some(mk_rex("zzz-live", HostScreenState::Running)), start_ticks: Some(Some(777)), sub_exists: true }],
+            &mut cur_owners,
+            &mut cur_screens,
+            &mut cur_ticks,
+            &mut tracked_paths,
+            2,
+        );
+        assert!(changed, "watch paths must update when evicting stopped screen for running screen");
+        assert!(cur_screens.contains_key("zzz-live"), "newly started running screen must NEVER be starved at cap");
+        assert_eq!(cur_screens.len(), 2, "cap must still be respected");
+        assert_eq!(cur_ticks.get("zzz-live"), Some(&Some(777)));
+        assert!(tracked_paths.contains(&state_root.join("zzz-live")), "newly started screen state dir must be watched");
+
+        // 3. Neon #4.2: incremental owner publish for screen `a` MUST preserve concurrent
+        //    in-memory `record_bridge_screen_outcome` owner for unrelated screen `b`!
+        let owner_a = ScreenOwner { session_id: "s1".into(), block_id: "b-a".into(), at: 100, ..Default::default() };
+        let owner_b = ScreenOwner { session_id: "s1".into(), block_id: "b-bridge".into(), at: 200, ..Default::default() };
+        let mut hub_owners = HashMap::from([("b-bridge-screen".into(), owner_b.clone())]);
+        let scanned_owners = HashMap::from([("a-disk-screen".into(), owner_a.clone())]);
+        assert!(merge_desktop_owners_delta(&mut hub_owners, &scanned_owners, &["a-disk-screen".into()]));
+        assert_eq!(hub_owners.get("a-disk-screen"), Some(&owner_a));
+        assert_eq!(hub_owners.get("b-bridge-screen"), Some(&owner_b), "unrelated concurrent bridge owner must be preserved");
     }
 }

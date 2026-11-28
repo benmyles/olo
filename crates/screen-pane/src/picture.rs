@@ -69,6 +69,10 @@ pub(crate) struct PictureWell {
     me: olo_kit::Messenger<Msg>,
     /// Where the picture went when last painted.
     shown: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
+    /// Last painted picture width reported to `on_sized` (to refresh host zoom %
+    /// once whenever the drawn image rectangle changes, with zero render loop).
+    reported_w: std::cell::Cell<Option<f32>>,
+    on_sized: Option<std::rc::Rc<dyn Fn()>>,
     name: SharedString,
     /// Frames shown live, of this size (pixels), under `key`.
     live: Option<(u32, u32)>,
@@ -89,10 +93,16 @@ impl PictureWell {
             asked: Default::default(),
             me: cx.messenger(),
             shown: Default::default(),
+            reported_w: Default::default(),
+            on_sized: None,
             name: name.into(),
             live: None,
             key: KEYS.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    pub(crate) fn set_on_sized(&mut self, cb: impl Fn() + 'static) {
+        self.on_sized = Some(std::rc::Rc::new(cb));
     }
 
     /// Show frames live, of `size` (`Window::set_external_buffer` under
@@ -184,7 +194,8 @@ impl PictureWell {
             (None, None) => self.shape.unwrap_or((16.0, 10.0)),
         };
         let aspect = w / h.max(1.0);
-        let room = Bounds::from_corners(inner.origin + point(px(m::SPACING), px(m::SPACING)), inner.bottom_right() - point(px(m::SPACING), px(m::SPACING)));
+        let pad = if f32::from(inner.size.height) < 130.0 { m::TIGHT } else { m::SPACING };
+        let room = Bounds::from_corners(inner.origin + point(px(pad), px(pad)), inner.bottom_right() - point(px(pad), px(pad)));
         let (rw, rh) = (f32::from(room.size.width).max(1.0), f32::from(room.size.height).max(1.0));
         let (pw, ph) = if rw / rh > aspect { (rh * aspect, rh) } else { (rw, rw / aspect) };
         let pic = style::snap_centred(g, room.center(), pw, ph);
@@ -192,6 +203,13 @@ impl PictureWell {
             // Where the compositor can show it: at whole points.
             let pic = g.external_bounds(pic);
             self.shown.set(Some(pic));
+            let pw_f = f32::from(pic.size.width);
+            if self.reported_w.get().is_none_or(|prev| (prev - pw_f).abs() > 0.25) {
+                self.reported_w.set(Some(pw_f));
+                if let Some(cb) = &self.on_sized {
+                    cb();
+                }
+            }
             let hair = style::hairline(g);
             style::fill_rect(g, Bounds::from_corners(pic.origin - point(hair, hair), pic.bottom_right() + point(hair, hair)), style::c(p.control_border));
             g.place_external(self.key, pic);
@@ -220,6 +238,13 @@ impl PictureWell {
             return;
         };
         self.shown.set(Some(pic));
+        let pw_f = f32::from(pic.size.width);
+        if self.reported_w.get().is_none_or(|prev| (prev - pw_f).abs() > 0.25) {
+            self.reported_w.set(Some(pw_f));
+            if let Some(cb) = &self.on_sized {
+                cb();
+            }
+        }
         let hair = style::hairline(g);
         let frame = Bounds::from_corners(pic.origin - point(hair, hair), pic.bottom_right() + point(hair, hair));
         style::fill_rect(g, frame, style::c(p.control_border));

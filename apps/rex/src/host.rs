@@ -57,8 +57,6 @@ pub struct Shown {
 pub enum ScreenDo {
     /// Stopped there (what runs on it ends; the screen is kept).
     Stop,
-    /// A picture of it as it is now, fetched and shown here.
-    Look,
 }
 
 impl Shown {
@@ -249,35 +247,21 @@ pub fn stop_screen(hub: &Arc<RexHub>, host_key: &str, host_instance_id: u64, nam
     hub.stop_screen_guarded(host_key, host_instance_id, name, expected_started, ended);
 }
 
-/// One of the window's host's screens looked at (a picture of it fetched, and
-/// opened in what shows pictures here): begun now, and the window told when
-/// the host has answered. Stopping a screen goes through [`stop_screen`] so
-/// host identity and `--expected-started` are enforced.
-pub fn look_at_screen(hub: &Arc<RexHub>, name: &str) {
-    let key = {
+/// Record a screen action failure (e.g. "Look at Screen" refused on an older
+/// helper or vanished screen) directly on the Host window's `screen_failed`
+/// row when it is still showing `(host_key, host_instance_id)` (Neon #12).
+pub fn screen_failed(host_key: &str, host_instance_id: u64, name: &str, what: &str, why: &str) {
+    let mut updated = false;
+    {
         let mut live = live();
-        let Some(shown) = live.as_mut().filter(|shown| shown.screen_doing(name).is_none()) else { return };
-        shown.screen_doing.push((name.to_owned(), ScreenDo::Look));
-        shown.screen_failed = None;
-        shown.key.clone()
-    };
-    crate::ui::host_changed();
-    let (of, named) = (key.clone(), name.to_owned());
-    let ended = move |result: Result<(), String>| {
-        if let Some(shown) = live().as_mut().filter(|shown| shown.key == of) {
-            shown.screen_doing.retain(|(n, _)| *n != named);
-            if let Err(why) = result {
-                // (One sentence of Olo's own: what wasn't done, to which, and why.)
-                let why = crate::host_screens::why_not_done(&why);
-                let what = olo_kit::tr!("Couldn’t look at {}", named);
-                shown.screen_failed = Some((named.clone(), what.to_string(), why));
-            }
+        if let Some(shown) = live.as_mut().filter(|shown| shown.key == host_key && (host_instance_id == 0 || shown.host_instance_id == host_instance_id)) {
+            shown.screen_failed = Some((name.to_owned(), what.to_owned(), why.to_owned()));
+            updated = true;
         }
+    }
+    if updated {
         crate::ui::host_changed();
-    };
-    hub.look_at_screen(&key, name, move |looked| {
-        ended(looked.and_then(|picture| olo_xdg::open::open(&olo_xdg::open::Target::Path(picture)).map_err(|e| olo_kit::tr!("The picture couldn’t be shown: {}", e).to_string())))
-    });
+    }
 }
 
 /// Remove All… was pressed (`true`), or its question answered no.

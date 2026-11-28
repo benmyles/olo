@@ -1880,7 +1880,7 @@ impl SshSessionPool {
     ///   `crates/rex/src/sync.rs` (`send_to`, `receive_from`, `fetch_index`,
     ///   `mutate_host`, `receive_paths`, `send_paths`),
     ///   `apps/rex/src/files_sock.rs` (`handle_read_to_cache`),
-    ///   `apps/rex/src/hub.rs` (`tell_codex`, `look_at_screen`, remote folder
+    ///   `apps/rex/src/hub.rs` (`tell_codex`, remote folder
     ///   watcher), `apps/rex/src/activity_watch.rs` (`tail_command`,
     ///   `run_host_link_within`, `follow_host_link`,
     ///   `resolve_pane_transcript_once`), and `apps/rex/src/screens_sock.rs`

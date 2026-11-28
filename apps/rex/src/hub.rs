@@ -53,6 +53,8 @@ pub enum HubNotice {
     BlockOutput(BlockKey),
     /// Host/session/layout/status/prompt metadata changed (redraws full chrome).
     StateChanged,
+    /// Desktop or remote host screens list/ownership/metadata changed.
+    ScreensChanged,
     /// A `rex.ui` custom prompt arrived from a server.
     PromptRequested {
         host_key: String,
@@ -2228,6 +2230,16 @@ pub struct HubState {
     /// Controlling Rex pane for each desktop Agent Screen (from `NAME.owner.json`
     /// and bridged `olo.screen` calls), keyed by screen name.
     pub desktop_screen_owners: HashMap<String, olo_rex_link::screen_wire::ScreenOwner>,
+    /// Live local desktop screens (running + owned stopped) scanned off the UI thread.
+    pub desktop_screens: Vec<olo_screen_pane::rex_sock::RexScreen>,
+    /// True once the initial off-thread desktop screens scan has completed.
+    pub desktop_screens_loaded: bool,
+    /// Monotonic revision bumped whenever desktop/remote screens or their owners change,
+    /// allowing UI windows to cache resolved screen inventories across redraws (Astra #23).
+    pub screens_rev: u64,
+    /// Monotonic revision bumped whenever hosts, connection states, session/window/block
+    /// layouts, or subagent parent/membership topology change (Astra #25).
+    pub topology_rev: u64,
     /// Live Agent Screens reported by each connected (or last-known disconnected)
     /// remote host's `olo-rex-link screen follow`, keyed by host key.
     pub host_screens: HashMap<String, crate::screens_sock::LiveHostScreens>,
@@ -2265,6 +2277,59 @@ struct HeldPaneNotice {
 }
 
 impl HostRuntime {
+    pub(crate) fn demo_connected(key: &str, label: &str, endpoint: &str, sessions: Vec<SessionView>) -> Self {
+        Self {
+            key: key.to_owned(),
+            host_instance_id: crate::screens_sock::next_host_instance_id(),
+            screens_conn_id: 1,
+            screens_state_seq: 1,
+            label: label.to_owned(),
+            endpoint_raw: endpoint.to_owned(),
+            endpoint: None,
+            is_local: false,
+            conn_state: HostConnState::Connected,
+            connection_lost: None,
+            client_id: None,
+            reconnect_token: None,
+            retry: None,
+            server_status: None,
+            server_version: None,
+            server_newer: None,
+            helper: HostHelper::Used,
+            helper_current: Some(true),
+            helper_sync_err: None,
+            bridge_there: None,
+            skill_there: None,
+            skill_current: None,
+            skill_sync_err: None,
+            commands_there: None,
+            commands_current: None,
+            commands_sync_err: None,
+            screens: None,
+            screens_doing: None,
+            agent_keys: None,
+            account: None,
+            carried: None,
+            agent_sessions: None,
+            repos_there: None,
+            tailscale: None,
+            tailscale_seq: 0,
+            synced_hosts: Vec::new(),
+            session_summaries: sessions.iter().map(|s| SessionSummary { session_id: s.session_id.clone(), label: s.label.clone() }).collect(),
+            sessions: sessions.into_iter().map(|s| (s.session_id.clone(), s)).collect(),
+            pending_focus: HashMap::new(),
+            pending_placements: HashMap::new(),
+            pending_creates: HashMap::new(),
+            creating_defer: HashMap::new(),
+            keymap_bindings: Vec::new(),
+            keymap_modes: Vec::new(),
+            keymap_diagnostics: Vec::new(),
+            control: None,
+            input_tx: None,
+            window_tx: None,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn test_connected(key: &str, sessions: HashMap<String, SessionView>) -> Self {
         Self {
@@ -2396,6 +2461,10 @@ impl HubState {
         (n.minded_subagents && (n.blocked || n.done || n.failed)) || !self.is_minded_subagent(bk)
     }
 
+    pub fn bump_topology(&mut self) {
+        self.topology_rev = self.topology_rev.wrapping_add(1);
+    }
+
     #[cfg(test)]
     pub(crate) fn test_empty() -> Self {
         Self {
@@ -2421,6 +2490,10 @@ impl HubState {
             agents_snapshot_pending: HashMap::new(),
             agent_states: HashMap::new(),
             desktop_screen_owners: HashMap::new(),
+            desktop_screens: Vec::new(),
+            desktop_screens_loaded: false,
+            screens_rev: 0,
+            topology_rev: 0,
             host_screens: HashMap::new(),
             quick_look_cache: HashMap::new(),
             visible_panes: HashMap::new(),
@@ -3435,6 +3508,10 @@ impl RexHub {
             agents_snapshot_pending: HashMap::new(),
             agent_states: HashMap::new(),
             desktop_screen_owners: HashMap::new(),
+            desktop_screens: Vec::new(),
+            desktop_screens_loaded: false,
+            screens_rev: 0,
+            topology_rev: 0,
             host_screens: HashMap::new(),
             quick_look_cache: HashMap::new(),
             visible_panes: HashMap::new(),
@@ -3474,12 +3551,20 @@ impl RexHub {
                         host_instance_id: upd.host_instance_id,
                         conn_id: upd.conn_id,
                         rev: upd.rev,
+                        conn_state: upd.conn_state,
                         has_follow_snapshot: upd.has_follow_snapshot,
                         status: upd.status.clone(),
+                        can_control: upd.can_control,
+                        control_disabled_reason: upd.control_disabled_reason.clone(),
+                        proto: upd.proto,
+                        commands: upd.commands.clone(),
+                        capabilities: upd.capabilities.clone(),
+                        disconnected_at: upd.disconnected_at,
                         screens: upd.screens.clone(),
                     };
                     if st.host_screens.get(&upd.host_key) != Some(&next_live) {
                         st.host_screens.insert(upd.host_key.clone(), next_live);
+                        st.screens_rev = st.screens_rev.wrapping_add(1);
                         changed = true;
                     }
                     // Only merge follower rows/status into `host.screens` once a
@@ -3498,7 +3583,7 @@ impl RexHub {
                     changed
                 };
                 if changed {
-                    notify(HubNotice::StateChanged);
+                    notify(HubNotice::ScreensChanged);
                 }
             })
         };
@@ -3509,37 +3594,57 @@ impl RexHub {
                 let removed = {
                     let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
                     if st.host_screens.get(&host_key).is_some_and(|l| l.host_instance_id == host_instance_id || !st.hosts.contains_key(&host_key)) {
-                        st.host_screens.remove(&host_key).is_some()
+                        let did = st.host_screens.remove(&host_key).is_some();
+                        if did {
+                            st.screens_rev = st.screens_rev.wrapping_add(1);
+                        }
+                        did
                     } else {
                         false
                     }
                 };
                 if removed {
+                    notify(HubNotice::ScreensChanged);
                     notify(HubNotice::StateChanged);
                 }
             })
         };
         let on_last_used = {
             let state = state.clone();
+            let notify = notify.clone();
             Arc::new(move |upd: crate::screens_sock::LastUsedUpdate| {
-                let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
-                // Match live host instance + connection ID so a delayed activity
-                // tick for a replaced host never touches the replacement's row (Finding 15).
-                let matches_live = st.hosts.get(&upd.host_key).is_some_and(|h| !h.is_local && h.host_instance_id == upd.host_instance_id && h.screens_conn_id == upd.conn_id);
-                if !matches_live {
-                    return;
-                }
-                if let Some(live) = st.host_screens.get_mut(&upd.host_key)
-                    && live.host_instance_id == upd.host_instance_id
-                    && live.conn_id == upd.conn_id
-                    && let Some(sc) = live.screens.iter_mut().find(|s| s.name == upd.name)
-                {
-                    if sc.last_used.is_none_or(|prev| upd.last_used > prev) {
-                        sc.last_used = Some(upd.last_used);
+                let changed = {
+                    let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+                    // Match live host instance + connection ID so a delayed activity
+                    // tick for a replaced host never touches the replacement's row (Finding 15).
+                    let matches_live = st.hosts.get(&upd.host_key).is_some_and(|h| !h.is_local && h.host_instance_id == upd.host_instance_id && h.screens_conn_id == upd.conn_id);
+                    if !matches_live {
+                        return;
                     }
-                    if let Some(a) = upd.actions {
-                        sc.actions = Some(a);
+                    let mut diff = false;
+                    if let Some(live) = st.host_screens.get_mut(&upd.host_key)
+                        && live.host_instance_id == upd.host_instance_id
+                        && live.conn_id == upd.conn_id
+                        && let Some(sc) = live.screens.iter_mut().find(|s| s.name == upd.name)
+                    {
+                        if sc.last_used.is_none_or(|prev| upd.last_used > prev) {
+                            sc.last_used = Some(upd.last_used);
+                            diff = true;
+                        }
+                        if let Some(a) = upd.actions
+                            && sc.actions != Some(a)
+                        {
+                            sc.actions = Some(a);
+                            diff = true;
+                        }
                     }
+                    if diff {
+                        st.screens_rev = st.screens_rev.wrapping_add(1);
+                    }
+                    diff
+                };
+                if changed {
+                    notify(HubNotice::ScreensChanged);
                 }
             })
         };
@@ -4171,6 +4276,9 @@ impl RexHub {
                 st.host_order.push(key.to_owned());
             }
         }
+        if let Some(mode) = crate::activity_screens::demo_screens_mode() {
+            crate::activity_screens::seed_demo_screens_state(&mut st, &theme, &mode);
+        }
     }
 
     pub fn connect_host(&self, host_key: &str) {
@@ -4396,6 +4504,9 @@ impl RexHub {
                     (!h.is_local && crate::screens_sock::is_ssh_endpoint(&h.endpoint_raw)).then(|| (host.id.clone(), h.host_instance_id, host.label.clone()))
                 })
                 .collect();
+            if !changes.renamed.is_empty() {
+                st.bump_topology();
+            }
             (changes, agents, renamed_info)
         };
         for (id, inst_id, label) in &renamed_info {
@@ -4506,6 +4617,7 @@ impl RexHub {
                 st.settings.saved_hosts.push(SavedHost { id: id.clone(), label: label.clone(), endpoint: endpoint.clone(), icon: None, auto_connect: true, ssh_agent_socket: None });
                 st.settings.save();
             }
+            st.bump_topology();
             old_inst
         };
         if let Some(old_inst) = replaced_inst {
@@ -4575,6 +4687,16 @@ impl RexHub {
         self.inner.screens_service.shutdown();
     }
 
+    /// Direct handle to [`ScreensService`] for Rex's embedded [`olo_screen_pane::ScreenPane`].
+    pub fn screens_service(&self) -> Arc<crate::screens_sock::ScreensService> {
+        self.inner.screens_service.clone()
+    }
+
+    /// Runtime handle used by [`crate::activity_screens::HubStreamOpener`].
+    pub fn rt_handle(&self) -> tokio::runtime::Handle {
+        self.rt.handle().clone()
+    }
+
     pub fn remove_host(&self, host_key: &str) {
         self.remove_host_as(host_key, true, true);
     }
@@ -4627,6 +4749,7 @@ impl RexHub {
                 f.state = ForwardState::Waiting;
             }
             st.retain_blocks(|k| k.host_key != host_key);
+            st.bump_topology();
             (endpoint, inst_id, prev_conn_id, state_seq, is_ssh)
         };
         self.inner.invalidate_agents_follower(host_key, false);
@@ -4683,6 +4806,8 @@ impl RexHub {
             };
             st.host_order.retain(|k| k != &key);
             st.host_screens.remove(&key);
+            st.screens_rev = st.screens_rev.wrapping_add(1);
+            st.bump_topology();
             st.forwards.retain(|f| f.host_key != key);
             st.retain_blocks(|bk| bk.host_key != key);
             st.settings.saved_hosts.retain(|h| h.id != key);
@@ -4703,6 +4828,7 @@ impl RexHub {
                 let _ = ctrl.hosts_remove(&id_copy).await;
             });
         }
+        (self.notify)(HubNotice::ScreensChanged);
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -5007,9 +5133,29 @@ impl RexHub {
         });
     }
 
+    /// Verify that `host_key` currently matches a live pinned `(host_instance_id, conn_id)` (Astra #1).
+    pub(crate) fn host_matches_pin(&self, host_key: &str, host_instance_id: u64, conn_id: u64) -> bool {
+        self.inner.host_matches_pin(host_key, host_instance_id, conn_id)
+    }
+
+    /// Capture the live `(host_instance_id, screens_conn_id)` pin for `host_key`
+    /// when rendering a row or building a context menu (Astra #1). Returns `None`
+    /// for missing hosts or disconnected remote hosts (`screens_conn_id == 0`).
+    pub(crate) fn host_live_pin(&self, host_key: &str) -> Option<(u64, u64)> {
+        self.inner.host_live_pin(host_key)
+    }
+
     /// Gracefully stops and closes a native subagent child tab (and optionally its
     /// entire descendant subtree bottom-up when `tree` is true).
+    #[allow(dead_code)]
     pub fn stop_subagent(&self, host_key: &str, session_id: &str, window_id: &str, force: bool, tree: bool) {
+        self.stop_subagent_pinned(host_key, None, session_id, window_id, force, tree);
+    }
+
+    /// Like [`Self::stop_subagent`], pinning `(host_instance_id, screens_conn_id)`
+    /// captured when a confirmation dialog opened so a host replacement or
+    /// reconnect cannot route the stop to a different server (Astra #5).
+    pub fn stop_subagent_pinned(&self, host_key: &str, pin: Option<(u64, u64)>, session_id: &str, window_id: &str, force: bool, tree: bool) {
         // (Asked of the host's agents service, as `olo agent stop` asks it.)
         let mut args = vec![window_id.to_owned(), "--json".to_owned()];
         if force {
@@ -5020,7 +5166,13 @@ impl RexHub {
         }
         let (inner, hk, sid) = (self.inner.clone(), host_key.to_owned(), session_id.to_owned());
         self.rt.spawn(async move {
-            let answer = inner.ask_agents(&hk, "stop", Some(json!({ "args": args })), Some(sid), None, None).await;
+            if let Some((want_inst, want_conn)) = pin
+                && !inner.host_matches_pin(&hk, want_inst, want_conn)
+            {
+                tracing::warn!("Refusing stale subagent stop on {hk}: host instance or connection changed");
+                return;
+            }
+            let answer = inner.ask_agents_pinned(&hk, pin, "stop", Some(json!({ "args": args })), Some(sid), None, None).await;
             if !answer.ok {
                 tracing::warn!("Stopping a child tab on {hk}: {}", answer.stderr.unwrap_or_default().trim());
             }
@@ -5035,11 +5187,25 @@ impl RexHub {
     /// back under the tab and told the tab's own agent "its minder
     /// ended: what it asks comes to you again", of agents about to end
     /// (a code review, 2026-11-27).
+    #[allow(dead_code)]
     pub fn stop_subagents_in_order(&self, host_key: &str, session_id: &str, window_ids: Vec<String>) {
+        self.stop_subagents_in_order_pinned(host_key, None, session_id, window_ids);
+    }
+
+    /// Like [`Self::stop_subagents_in_order`], pinning `(host_instance_id, conn_id)`
+    /// before EVERY dispatch and abandoning remaining stops if either changes
+    /// mid-sequence (Astra #5).
+    pub fn stop_subagents_in_order_pinned(&self, host_key: &str, pin: Option<(u64, u64)>, session_id: &str, window_ids: Vec<String>) {
         let (inner, hk, sid) = (self.inner.clone(), host_key.to_owned(), session_id.to_owned());
         self.rt.spawn(async move {
             for window_id in window_ids {
-                let answer = inner.ask_agents(&hk, "stop", Some(json!({ "args": [window_id, "--json", "--tree"] })), Some(sid.clone()), None, None).await;
+                if let Some((want_inst, want_conn)) = pin
+                    && !inner.host_matches_pin(&hk, want_inst, want_conn)
+                {
+                    tracing::warn!("Aborting remaining subagent stops on {hk}: host instance or connection changed");
+                    break;
+                }
+                let answer = inner.ask_agents_pinned(&hk, pin, "stop", Some(json!({ "args": [window_id, "--json", "--tree"] })), Some(sid.clone()), None, None).await;
                 if !answer.ok {
                     tracing::warn!("Stopping a child tab on {hk}: {}", answer.stderr.unwrap_or_default().trim());
                 }
@@ -6251,66 +6417,6 @@ impl RexHub {
             let result = inner.screens_service.stop_screen_for_host_instance(&host_key, host_instance_id, &name, expected_started).await;
             let still_same = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).is_some_and(|h| h.host_instance_id == host_instance_id);
             if still_same {
-                inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
-                (inner.notify)(HubNotice::StateChanged);
-            }
-            done(result);
-        });
-    }
-
-    /// A picture of one of a far host's screens as it is now: taken
-    /// there by the host's helper (`screen look`), read over the link,
-    /// and put in this computer's cache (one file a screen, written over
-    /// by the next look). Where it is here.
-    pub fn look_at_screen(&self, host_key: &str, name: &str, done: impl FnOnce(Result<PathBuf, String>) + Send + 'static) {
-        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
-        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
-            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
-            return;
-        };
-        let label = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default();
-        let (inner, host_key, name) = (self.inner.clone(), host_key.to_owned(), name.to_owned());
-        self.rt.spawn(async move {
-            use tokio::io::AsyncReadExt as _;
-            // (Taken into a file of the helper's choosing among the
-            // screen's own pictures there, whose path it prints; then
-            // that file's bytes, by a command that writes nothing else.)
-            let look = format!("sh -c {}", shell_quote(&crate::host_screens::helper_script(&format!("look {}", shell_quote(&name)))));
-            let taken = match pool.exec(&target, askpass.clone(), &look, &mut |_| {}).await {
-                Ok(ran) if ran.ok() => ran
-                    .output
-                    .lines()
-                    .rev()
-                    .map(str::trim)
-                    .find(|l| l.starts_with('/') && l.ends_with(".png"))
-                    .map(str::to_owned)
-                    .ok_or_else(|| olo_kit::words::tr("The host didn’t say where its picture is.").to_string()),
-                Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().trim_start_matches("olo-screen: ").to_owned()),
-                Err(e) => Err(e.to_string()),
-            };
-            let result = match taken {
-                Err(why) => Err(why),
-                Ok(there) => match pool.exec_io(&target, askpass.clone(), &format!("cat {}", shell_quote(&there))).await {
-                    Err(e) => Err(e.to_string()),
-                    Ok(mut stream) => {
-                        let mut bytes = Vec::new();
-                        // (A screen's picture is a few megabytes at the most.)
-                        match (&mut stream).take(64 << 20).read_to_end(&mut bytes).await {
-                            Err(e) => Err(e.to_string()),
-                            Ok(_) if !bytes.starts_with(b"\x89PNG") => Err(olo_kit::words::tr("What came from the host isn’t a picture.").to_string()),
-                            Ok(_) => {
-                                let dir = olo_xdg::cache_dir().join("rex-screens");
-                                let safe = |s: &str| s.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect::<String>();
-                                let here = dir.join(format!("{}-{}.png", safe(&label), safe(&name)));
-                                std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&here, &bytes)).map(|()| here).map_err(|e| e.to_string())
-                            }
-                        }
-                    }
-                },
-            };
-            // (It couldn't be looked at: the list here is behind what is
-            // there, most likely a screen that stopped since. Asked again.)
-            if result.is_err() {
                 inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
                 (inner.notify)(HubNotice::StateChanged);
             }
@@ -9138,7 +9244,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.control = Some(ctrl.clone());
                             h.input_tx = Some(in_tx);
                             h.window_tx = Some(win_tx);
-                            if !is_local_host && let RexEndpoint::Ssh { target, pool, askpass } = &endpoint {
+                            let res = if !is_local_host && let RexEndpoint::Ssh { target, pool, askpass } = &endpoint {
                                 let conn_id = crate::screens_sock::next_conn_id();
                                 h.screens_conn_id = conn_id;
                                 h.screens_state_seq += 1;
@@ -9147,7 +9253,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                 Some((conn_id, state_seq, h.label.clone(), pinned))
                             } else {
                                 None
-                            }
+                            };
+                            st.bump_topology();
+                            res
                         } else {
                             ctrl.close();
                             input_worker.abort();
@@ -9265,6 +9373,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             f.state = ForwardState::Waiting;
                         }
                         st.retain_blocks(|k| k.host_key != host_key);
+                        st.bump_topology();
                         label
                     };
                     self.invalidate_agents_follower(&host_key, false);
@@ -9300,7 +9409,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.screens_conn_id = 0;
                             h.screens_state_seq += 1;
                             h.conn_state = HostConnState::Reconnecting { attempt, last_error: err_msg.clone() };
-                            Some(h.screens_state_seq)
+                            let seq = h.screens_state_seq;
+                            st.bump_topology();
+                            Some(seq)
                         } else {
                             None
                         }
@@ -9627,6 +9738,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             let theme = st.active_theme.clone();
             let live_ids: HashSet<String> = blocks.iter().map(|b| b.block_id.clone()).collect();
             st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id && !live_ids.contains(&bk.block_id)));
+            st.bump_topology();
             for b in &blocks {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: b.block_id.clone() };
                 let is_terminal = b.creator_name == "com.superlogical.terminal" || b.flavor.starts_with("com.superlogical.terminal");
@@ -10379,6 +10491,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             h.sessions.retain(|id, _| ids.contains(id.as_str()));
             h.session_summaries = rows.clone();
             st.retain_blocks(|b| b.host_key != host_key || ids.contains(b.session_id.as_str()));
+            st.bump_topology();
         }
         for view in snapshot.views {
             let session_id = view.session_id.clone();
@@ -10418,6 +10531,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     if !h.session_summaries.iter().any(|row| row.session_id == s.session_id) {
                         h.session_summaries.push(s.clone());
                     }
+                    st.bump_topology();
                 }
                 if let Ok(att) = ctrl.session_attach(&s.session_id).await {
                     self.ingest_session(host_key, ctrl, ep, att.payload.view, &[]).await;
@@ -10448,6 +10562,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         h.session_summaries.retain(|s| s.session_id != session_id);
                     }
                     st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id));
+                    st.bump_topology();
                     st.forwards.retain(|f| {
                         if f.host_key == host_key && f.handle.session_id == session_id {
                             if f.kept {
@@ -10993,11 +11108,42 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         self.bridge_calls.answer(async move { inner.ask_agents(&hk, &op, args, session_id, block_id, None).await }).await
     }
 
+    /// Capture the live `(host_instance_id, screens_conn_id)` pin for `host_key`
+    /// when rendering a row or building a context menu (Astra #1). Returns `None`
+    /// for missing hosts or disconnected remote hosts (`screens_conn_id == 0`) so
+    /// a stale menu never acquires a replacement host's identity or `(0, 0)` wildcard.
+    pub(crate) fn host_live_pin(&self, host_key: &str) -> Option<(u64, u64)> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        host_live_pin_in(&st.hosts, host_key)
+    }
+
+    /// Verify that `host_key` currently matches a live pinned `(host_instance_id, conn_id)`.
+    /// Rejects zero `host_instance_id` and (for remote hosts) zero `conn_id` so a
+    /// missing or disconnected host never becomes a wildcard (Astra #1).
+    pub(crate) fn host_matches_pin(&self, host_key: &str, host_instance_id: u64, conn_id: u64) -> bool {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        host_matches_pin_in(&st.hosts, host_key, host_instance_id, conn_id)
+    }
+
     /// Asks a host's agents service one thing (`olo-rex-link agent
     /// request` there: locally, or over the host's SSH connection) and
     /// gives back its answer. `args`: the command's own, as `olo` sends
     /// them (`{"args":[…],"cwd":…}`) or structured.
     pub(crate) async fn ask_agents(&self, host_key: &str, op: &str, args: Option<Value>, session_id: Option<String>, block_id: Option<String>, within: Option<Duration>) -> bridge::BridgeResponse {
+        self.ask_agents_pinned(host_key, None, op, args, session_id, block_id, within).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn ask_agents_pinned(
+        &self,
+        host_key: &str,
+        pin: Option<(u64, u64)>,
+        op: &str,
+        args: Option<Value>,
+        session_id: Option<String>,
+        block_id: Option<String>,
+        within: Option<Duration>,
+    ) -> bridge::BridgeResponse {
         use olo_rex_link::agents::wire::{PROTO, Request, Response};
         let mut req = Request { proto: PROTO, op: op.to_owned(), session: session_id.unwrap_or_default(), block: block_id.unwrap_or_default(), ..Default::default() };
         if let Some(v) = args {
@@ -11017,7 +11163,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             _ => Duration::from_secs(60),
         });
         let Ok(line) = serde_json::to_string(&req) else { return bridge::BridgeResponse::err("olo agent: the request couldn't be written\n") };
-        let answer = crate::activity_watch::run_host_link_within(&self.state, host_key, &["agent", "request"], Some(&(line + "\n")), within).await;
+        let answer = crate::activity_watch::run_host_link_within_pinned(&self.state, host_key, pin, &["agent", "request"], Some(&(line + "\n")), within).await;
         let Some(answer) = answer.and_then(|out| serde_json::from_str::<Response>(out.trim()).ok()) else {
             return bridge::BridgeResponse {
                 ok: false,
@@ -11249,6 +11395,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     st.agent_states.remove(&(host_key.to_owned(), id));
                 }
             }
+            st.bump_topology();
             Self::reconcile_locked(&mut st, host_key, &was_minded, false, snapshot_arrived)
         };
         for notice in to_emit {
@@ -12159,7 +12306,7 @@ mod tests {
 
         // Finding 12: when `has_follow_snapshot == false` (older helper lacking `follow`),
         // probe rows and fields MUST stay untouched!
-        let no_snap = crate::screens_sock::LiveHostScreens { host_instance_id: 1, conn_id: 7, rev: 2, has_follow_snapshot: false, status: None, screens: vec![] };
+        let no_snap = crate::screens_sock::LiveHostScreens { host_instance_id: 1, conn_id: 7, rev: 2, has_follow_snapshot: false, status: None, screens: vec![], ..Default::default() };
         let mut kept = base_probe.clone();
         assert!(!merge_live_screens_into_there(&mut kept, &no_snap, 7));
         assert_eq!(kept, base_probe);
@@ -12172,6 +12319,7 @@ mod tests {
             has_follow_snapshot: true,
             status: Some(HostScreenStatus { installed: Some("2026.11.27".into()), committed: Some(200), default_on_host: true, not_set_up_reason: None }),
             screens: vec![],
+            ..Default::default()
         };
         assert!(!merge_live_screens_into_there(&mut kept, &live_old_conn, 7));
         assert_eq!(kept, base_probe);
@@ -12200,6 +12348,7 @@ mod tests {
                 owner: None,
                 started_by: None,
             })],
+            ..Default::default()
         };
         assert!(merge_live_screens_into_there(&mut kept, &live_now, 7));
         assert_eq!(kept.installed.as_deref(), Some("2026.11.27"));
@@ -13575,6 +13724,61 @@ mod tests {
             assert_eq!(attention_events(&notices), vec![(Target::Pane(bk("s1", "blk-same")), "work · Agent blocked".to_owned(), "during reconnect".to_owned())]);
         });
     }
+
+    #[test]
+    fn r3_polish_astra_f1_host_live_pin_and_host_matches_pin_reject_wildcards_and_replacements() {
+        let mut hosts: HashMap<String, HostRuntime> = HashMap::new();
+        let mut local = HostRuntime::test_connected("local", HashMap::new());
+        local.is_local = true;
+        local.host_instance_id = 11;
+        local.screens_conn_id = 0;
+        hosts.insert("local".into(), local);
+
+        let mut remote = HostRuntime::test_connected("dev-box", HashMap::new());
+        remote.is_local = false;
+        remote.host_instance_id = 22;
+        remote.screens_conn_id = 7;
+        hosts.insert("dev-box".into(), remote);
+
+        let mut offline = HostRuntime::test_connected("offline-box", HashMap::new());
+        offline.is_local = false;
+        offline.host_instance_id = 33;
+        offline.screens_conn_id = 0;
+        hosts.insert("offline-box".into(), offline);
+
+        // Live pin capture:
+        assert_eq!(host_live_pin_in(&hosts, "local"), Some((11, 0)));
+        assert_eq!(host_live_pin_in(&hosts, "dev-box"), Some((22, 7)));
+        assert_eq!(host_live_pin_in(&hosts, "offline-box"), None, "disconnected remote host must not yield wildcard pin");
+        assert_eq!(host_live_pin_in(&hosts, "missing"), None);
+
+        // Pin matching:
+        assert!(host_matches_pin_in(&hosts, "local", 11, 0));
+        assert!(host_matches_pin_in(&hosts, "dev-box", 22, 7));
+        assert!(!host_matches_pin_in(&hosts, "dev-box", 0, 0), "zero instance wildcard must be rejected");
+        assert!(!host_matches_pin_in(&hosts, "dev-box", 22, 0), "zero remote conn_id wildcard must be rejected");
+        assert!(!host_matches_pin_in(&hosts, "dev-box", 22, 6), "stale remote conn_id after reconnect must be rejected");
+        assert!(!host_matches_pin_in(&hosts, "dev-box", 21, 7), "stale host_instance_id after host replacement must be rejected");
+        assert!(!host_matches_pin_in(&hosts, "offline-box", 33, 0), "disconnected remote host must not match");
+    }
+}
+
+fn host_live_pin_in(hosts: &HashMap<String, HostRuntime>, host_key: &str) -> Option<(u64, u64)> {
+    let h = hosts.get(host_key)?;
+    if h.host_instance_id == 0 {
+        return None;
+    }
+    if !h.is_local && h.screens_conn_id == 0 {
+        return None;
+    }
+    Some((h.host_instance_id, h.screens_conn_id))
+}
+
+fn host_matches_pin_in(hosts: &HashMap<String, HostRuntime>, host_key: &str, host_instance_id: u64, conn_id: u64) -> bool {
+    if host_instance_id == 0 {
+        return false;
+    }
+    hosts.get(host_key).is_some_and(|h| h.host_instance_id == host_instance_id && (h.is_local || (conn_id != 0 && h.screens_conn_id == conn_id)))
 }
 
 /// Merge live follower rows and install metadata ON TOP of probe-owned machine

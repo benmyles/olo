@@ -55,7 +55,7 @@ use std::{
     path::Path,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     thread::JoinHandle,
     time::{Duration, Instant},
@@ -542,6 +542,25 @@ pub trait StreamOpener: Send + Sync {
     /// Run a single one-shot helper command (`olo-rex-link screen <args...>`),
     /// returning its exit status, stdout, and stderr.
     fn run_command(&self, args: &[String], cancelled: Arc<AtomicBool>) -> Result<CommandOutput, String>;
+
+    /// Optional event-driven wakeup invoked whenever a cancellation flag
+    /// previously passed to this opener flips to `true`, so async openers
+    /// (like Rex's `HubStreamOpener`) abort handshakes immediately with zero polling.
+    fn notify_cancel(&self) {}
+
+    /// Optional guarded Stop entrypoint that routes through the host service's
+    /// live protocol-checked guarded stop path (Astra #1). Returns `None` to
+    /// fall back to the default `run_command` CLI dispatch.
+    fn stop_screen_guarded(&self, _name: &str, _expected_started: Option<u64>, _expected_last_used: Option<u64>) -> Option<Result<(), String>> {
+        None
+    }
+
+    /// Optional guarded Clear History entrypoint that routes through the host
+    /// service's live protocol-checked guarded clear path (Astra #1). Returns
+    /// `None` to fall back to the default `run_command` CLI dispatch.
+    fn clear_history_guarded(&self, _name: &str, _expected_started: Option<u64>, _expected_last_used: Option<u64>) -> Option<Result<(), String>> {
+        None
+    }
 }
 
 /// Reconnect backoff schedule used by [`StreamScreenSource`] when a live or
@@ -722,7 +741,7 @@ impl HostCapabilities {
 
 enum ProtocolCacheState {
     Unprobed,
-    Probing,
+    Probing(u64),
     Cached(HostCapabilities),
 }
 
@@ -731,6 +750,7 @@ enum ProtocolCacheState {
 /// [`HostCapabilities`] for every [`StreamScreenSource`] on that host.
 pub struct HostProtocolCache {
     state: Mutex<ProtocolCacheState>,
+    next_probe_gen: AtomicU64,
     cvar: Condvar,
 }
 
@@ -744,20 +764,37 @@ impl HostProtocolCache {
     /// Create an empty cache that will probe `screen --protocol` once on first
     /// use from a worker thread.
     pub fn new() -> HostProtocolCache {
-        HostProtocolCache { state: Mutex::new(ProtocolCacheState::Unprobed), cvar: Condvar::new() }
+        HostProtocolCache { state: Mutex::new(ProtocolCacheState::Unprobed), next_probe_gen: AtomicU64::new(1), cvar: Condvar::new() }
     }
 
     /// Create a cache already populated with `caps` (zero `--protocol` calls).
     pub fn fixed(caps: HostCapabilities) -> HostProtocolCache {
-        HostProtocolCache { state: Mutex::new(ProtocolCacheState::Cached(caps)), cvar: Condvar::new() }
+        HostProtocolCache { state: Mutex::new(ProtocolCacheState::Cached(caps)), next_probe_gen: AtomicU64::new(1), cvar: Condvar::new() }
     }
 
     /// Non-blocking read of already-cached capabilities (`None` if unprobed).
     pub fn get(&self) -> Option<HostCapabilities> {
         match &*self.state.lock().unwrap_or_else(|e| e.into_inner()) {
             ProtocolCacheState::Cached(c) => Some(c.clone()),
-            ProtocolCacheState::Unprobed | ProtocolCacheState::Probing => None,
+            ProtocolCacheState::Unprobed | ProtocolCacheState::Probing(_) => None,
         }
+    }
+
+    /// Install freshly probed capabilities in place without replacing the cache
+    /// or tearing down live streams (Neon #3). Supersedes any in-flight probe
+    /// generation so a late legacy reply cannot overwrite authoritative follower
+    /// capabilities (Astra #21).
+    pub fn set_probed_caps(&self, caps: HostCapabilities) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        *st = ProtocolCacheState::Cached(caps);
+        self.cvar.notify_all();
+    }
+
+    /// Wake any thread waiting in [`Self::get_or_probe_cancellable`] after a
+    /// cancellation flag flips so cancelled probes abort immediately without polling.
+    pub fn wake_waiters(&self) {
+        let _st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        self.cvar.notify_all();
     }
 
     /// Return cached host capabilities, or probe `olo-rex-link screen --protocol`
@@ -768,52 +805,79 @@ impl HostProtocolCache {
     /// A transport error (`Err(_)`) returns [`HostCapabilities::legacy()`]
     /// without poisoning the cache so a subsequent connection can still probe.
     pub fn get_or_probe(&self, opener: &dyn StreamOpener) -> HostCapabilities {
-        {
+        self.get_or_probe_cancellable(opener, Arc::new(AtomicBool::new(false))).unwrap_or_else(|_| HostCapabilities::legacy())
+    }
+
+    /// Cancellable protocol probe (Astra #16 / Neon #10 / Astra #21): forwards
+    /// `cancelled` into `opener.run_command`, wakes waiting followers promptly
+    /// via [`Self::wake_waiters`], and never overwrites authoritative capabilities
+    /// installed by [`Self::set_probed_caps`] while the probe was in flight.
+    pub fn get_or_probe_cancellable(&self, opener: &dyn StreamOpener, cancelled: Arc<AtomicBool>) -> Result<HostCapabilities, String> {
+        let my_gen = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             loop {
+                if cancelled.load(Ordering::Acquire) {
+                    return Err("cancelled".into());
+                }
                 match &*st {
-                    ProtocolCacheState::Cached(c) => return c.clone(),
-                    ProtocolCacheState::Probing => {
+                    ProtocolCacheState::Cached(c) => return Ok(c.clone()),
+                    ProtocolCacheState::Probing(_) => {
                         st = self.cvar.wait(st).unwrap_or_else(|e| e.into_inner());
                     }
                     ProtocolCacheState::Unprobed => {
-                        *st = ProtocolCacheState::Probing;
-                        break;
+                        let g = self.next_probe_gen.fetch_add(1, Ordering::AcqRel);
+                        *st = ProtocolCacheState::Probing(g);
+                        break g;
                     }
                 }
             }
-        }
+        };
         struct ResetOnDrop<'a> {
             cache: &'a HostProtocolCache,
+            my_gen: u64,
             done: bool,
         }
         impl Drop for ResetOnDrop<'_> {
             fn drop(&mut self) {
                 if !self.done {
                     let mut st = self.cache.state.lock().unwrap_or_else(|e| e.into_inner());
-                    if matches!(*st, ProtocolCacheState::Probing) {
+                    if matches!(*st, ProtocolCacheState::Probing(g) if g == self.my_gen) {
                         *st = ProtocolCacheState::Unprobed;
                     }
                     self.cache.cvar.notify_all();
                 }
             }
         }
-        let mut guard = ResetOnDrop { cache: self, done: false };
-        match opener.run_command(&["--protocol".to_owned()], Arc::new(AtomicBool::new(false))) {
+        let mut guard = ResetOnDrop { cache: self, my_gen, done: false };
+        match opener.run_command(&["--protocol".to_owned()], cancelled.clone()) {
             Ok(out) => {
                 let caps = if out.success() { HostCapabilities::parse_protocol_json(&out.stdout).unwrap_or_else(|_| HostCapabilities::legacy()) } else { HostCapabilities::legacy() };
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                *st = ProtocolCacheState::Cached(caps.clone());
                 guard.done = true;
+                let installed = match &*st {
+                    ProtocolCacheState::Probing(g) if *g == my_gen => {
+                        *st = ProtocolCacheState::Cached(caps.clone());
+                        caps
+                    }
+                    ProtocolCacheState::Cached(existing) => existing.clone(),
+                    _ => caps,
+                };
                 self.cvar.notify_all();
-                caps
+                Ok(installed)
             }
-            Err(_) => {
+            Err(e) => {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                *st = ProtocolCacheState::Unprobed;
                 guard.done = true;
+                let existing = match &*st {
+                    ProtocolCacheState::Probing(g) if *g == my_gen => {
+                        *st = ProtocolCacheState::Unprobed;
+                        None
+                    }
+                    ProtocolCacheState::Cached(c) => Some(c.clone()),
+                    _ => None,
+                };
                 self.cvar.notify_all();
-                HostCapabilities::legacy()
+                if cancelled.load(Ordering::Acquire) || e == "cancelled" { Err("cancelled".into()) } else { Ok(existing.unwrap_or_else(HostCapabilities::legacy)) }
             }
         }
     }
@@ -890,6 +954,18 @@ impl StreamScreenSource {
         caps
     }
 
+    /// Update already-probed host capabilities in place on this source and its
+    /// [`HostProtocolCache`] without tearing down active streams or dropping
+    /// Take Control (Neon #3).
+    pub fn set_probed_caps(&self, caps: HostCapabilities) {
+        self.protocol_cache.set_probed_caps(caps.clone());
+        let mut info = self.info.lock().unwrap_or_else(|e| e.into_inner());
+        caps.apply_to(&mut info.capabilities);
+        if let Some(ctrl) = self.active.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            ctrl.explicit_control_ack.store(info.capabilities.explicit_control_ack, Ordering::Release);
+        }
+    }
+
     /// Update the running session's `started` timestamp (seconds since epoch)
     /// used by generation-checked `stop --expected-started`.
     pub fn set_session_started(&self, started: Option<u64>) {
@@ -958,6 +1034,8 @@ impl StreamScreenSource {
         }
         let _done_guard = DoneGuard(done_flag);
 
+        let opener_cancel = self.opener.clone();
+        cancel.register_hook(move || opener_cancel.notify_cancel());
         let LiveStream { reader, mut writer, cancel: stream_cancel } = self.opener.open_history(&self.id.name, cancel.flag())?;
         let handle_slot: TeardownSlot = Arc::new(Mutex::new(None));
         let write_res = write_history_request(&mut writer, &HistoryRequest::FrameAt { req: 1, at: at_ms });
@@ -1278,6 +1356,8 @@ impl Drop for ThreadGuard {
 
 struct StreamLiveHandle {
     ctrl: Arc<StreamControl>,
+    opener: Arc<dyn StreamOpener>,
+    protocol_cache: Arc<HostProtocolCache>,
     source_active: Option<Arc<Mutex<Option<Arc<StreamControl>>>>>,
     session_join: Option<JoinHandle<()>>,
     deliver_join: Option<JoinHandle<()>>,
@@ -1286,6 +1366,8 @@ struct StreamLiveHandle {
 impl StreamLiveHandle {
     fn shutdown(&mut self) {
         self.ctrl.stop.store(true, Ordering::SeqCst);
+        self.protocol_cache.wake_waiters();
+        self.opener.notify_cancel();
         if let Some(active) = self.source_active.take() {
             let mut slot = active.lock().unwrap_or_else(|e| e.into_inner());
             if slot.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, &self.ctrl)) {
@@ -1511,7 +1593,10 @@ fn run_session(
         retire_live_session(&source_active, &ctrl);
         return;
     }
-    let host_caps = protocol_cache.get_or_probe(&*opener);
+    let Ok(host_caps) = protocol_cache.get_or_probe_cancellable(&*opener, ctrl.stop.clone()) else {
+        retire_live_session(&source_active, &ctrl);
+        return;
+    };
     {
         let mut inf = info.lock().unwrap_or_else(|e| e.into_inner());
         host_caps.apply_to(&mut inf.capabilities);
@@ -2054,6 +2139,8 @@ impl Drop for HistThreadGuard {
 
 struct StreamHistoryHandle {
     ctrl: Arc<HistoryControl>,
+    opener: Arc<dyn StreamOpener>,
+    protocol_cache: Arc<HostProtocolCache>,
     source_history: Option<Arc<Mutex<Option<Arc<HistoryControl>>>>>,
     session_join: Option<JoinHandle<()>>,
 }
@@ -2067,6 +2154,8 @@ impl StreamHistoryHandle {
             self.ctrl.conn_cancel.lock().unwrap_or_else(|e| e.into_inner()).store(true, Ordering::SeqCst);
             self.ctrl.state_cvar.notify_all();
         }
+        self.protocol_cache.wake_waiters();
+        self.opener.notify_cancel();
         if let Some(slot_arc) = self.source_history.take() {
             let mut slot = slot_arc.lock().unwrap_or_else(|e| e.into_inner());
             if slot.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, &self.ctrl)) {
@@ -2132,6 +2221,10 @@ impl HistoryHandle for StreamHistoryHandle {
             prev
         };
         if !active && was {
+            // Astra #16 / Neon #10: wake any in-flight `open_history` or
+            // `--protocol` probe immediately on tab switch away from History.
+            self.protocol_cache.wake_waiters();
+            self.opener.notify_cancel();
             self.ctrl.fire_cancel();
             let mut f = self.ctrl.frame.lock().unwrap_or_else(|e| e.into_inner());
             f.latest_req = f.latest_req.wrapping_add(1);
@@ -2268,22 +2361,6 @@ fn run_history_session(
         if !ctrl.wait_until_active() {
             break;
         }
-        let use_snapshot_done = match probed_snapshot_done {
-            Some(v) => v,
-            None => {
-                let host_caps = protocol_cache.get_or_probe(&*opener);
-                let v = {
-                    let mut inf = info.lock().unwrap_or_else(|e| e.into_inner());
-                    host_caps.apply_to(&mut inf.capabilities);
-                    inf.capabilities.history_snapshot_done
-                };
-                probed_snapshot_done = Some(v);
-                if ctrl.stop.load(Ordering::Acquire) || !ctrl.active.load(Ordering::Acquire) {
-                    continue;
-                }
-                v
-            }
-        };
         let open_epoch = ctrl.resume_epoch.load(Ordering::Acquire);
         let conn_cancel = Arc::new(AtomicBool::new(false));
         {
@@ -2293,6 +2370,25 @@ fn run_history_session(
             }
             *ctrl.conn_cancel.lock().unwrap_or_else(|e| e.into_inner()) = conn_cancel.clone();
         }
+        let use_snapshot_done = match probed_snapshot_done {
+            Some(v) => v,
+            None => {
+                let Ok(host_caps) = protocol_cache.get_or_probe_cancellable(&*opener, conn_cancel.clone()) else {
+                    attempt = 0;
+                    continue;
+                };
+                let v = {
+                    let mut inf = info.lock().unwrap_or_else(|e| e.into_inner());
+                    host_caps.apply_to(&mut inf.capabilities);
+                    inf.capabilities.history_snapshot_done
+                };
+                probed_snapshot_done = Some(v);
+                if ctrl.stop.load(Ordering::Acquire) || !ctrl.active.load(Ordering::Acquire) || conn_cancel.load(Ordering::Acquire) {
+                    continue;
+                }
+                v
+            }
+        };
 
         let opened = opener.open_history(&name, conn_cancel.clone());
         if ctrl.stop.load(Ordering::Acquire) || !ctrl.active.load(Ordering::Acquire) || conn_cancel.load(Ordering::Acquire) {
@@ -2900,6 +2996,51 @@ fn format_part_spec(actions: &[usize]) -> String {
 // `ScreenSource` implementation
 // ---------------------------------------------------------------------------
 
+impl StreamScreenSource {
+    fn release_control_and_wait_with_timeout(&self, final_events: Vec<SyntheticEvent>, timeout: Duration) -> Result<(), String> {
+        let ctrl = self.active.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let Some(ctrl) = ctrl else {
+            self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
+            return Ok(());
+        };
+        let target_seq = {
+            let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
+            let had = matches!(wq.control_state, ControlState::Requested | ControlState::Held | ControlState::Releasing);
+            if !had || !wq.connected || wq.terminal {
+                wq.control_state = ControlState::Idle;
+                wq.pending_take_seq = None;
+                drop(wq);
+                self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
+                return Ok(());
+            }
+            if wq.control_state != ControlState::Releasing {
+                if !final_events.is_empty() && wq.control_state == ControlState::Held {
+                    wq.push_input_bounded(final_events);
+                }
+                let seq = wq.alloc_control_seq();
+                wq.control_state = ControlState::Releasing;
+                wq.pending_take_seq = None;
+                wq.release_req_seq = seq;
+                wq.cmds.push_back(WriteCmd::Control { on: false, seq });
+                ctrl.write_cvar.notify_one();
+            }
+            wq.release_req_seq
+        };
+        self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
+        let deadline = Instant::now() + timeout;
+        let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
+        while wq.release_done_seq < target_seq && wq.connected && !wq.terminal && !ctrl.stop.load(Ordering::Acquire) {
+            let rem = deadline.saturating_duration_since(Instant::now());
+            if rem.is_zero() {
+                return Err("Timed out waiting to release control of this screen.".to_owned());
+            }
+            let (next, _) = ctrl.release_cvar.wait_timeout(wq, rem).unwrap_or_else(|e| e.into_inner());
+            wq = next;
+        }
+        Ok(())
+    }
+}
+
 impl ScreenSource for StreamScreenSource {
     fn id(&self) -> &ScreenId {
         &self.id
@@ -2952,11 +3093,20 @@ impl ScreenSource for StreamScreenSource {
         let protocol_cache = self.protocol_cache.clone();
         let reconnect = self.reconnect.clone();
         let info = self.info.clone();
+        let opener_handle = self.opener.clone();
         let active_slot = self.active.clone();
+        let protocol_cache_handle = self.protocol_cache.clone();
         let session_join =
             std::thread::Builder::new().name(session_name).spawn(move || run_session(name, opener, protocol_cache, reconnect, info, active_slot, session_ctrl)).expect("spawn stream-session");
 
-        Box::new(StreamLiveHandle { ctrl, source_active: Some(self.active.clone()), session_join: Some(session_join), deliver_join: Some(deliver_join) })
+        Box::new(StreamLiveHandle {
+            ctrl,
+            opener: opener_handle,
+            protocol_cache: protocol_cache_handle,
+            source_active: Some(self.active.clone()),
+            session_join: Some(session_join),
+            deliver_join: Some(deliver_join),
+        })
     }
 
     fn set_controlled(&self, on: bool) -> Result<(), String> {
@@ -3030,46 +3180,7 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn release_control_and_wait(&self, final_events: Vec<SyntheticEvent>) -> Result<(), String> {
-        let ctrl = self.active.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let Some(ctrl) = ctrl else {
-            self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
-            return Ok(());
-        };
-        let target_seq = {
-            let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
-            let had = matches!(wq.control_state, ControlState::Requested | ControlState::Held | ControlState::Releasing);
-            if !had || !wq.connected || wq.terminal {
-                wq.control_state = ControlState::Idle;
-                wq.pending_take_seq = None;
-                drop(wq);
-                self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
-                return Ok(());
-            }
-            if wq.control_state != ControlState::Releasing {
-                if !final_events.is_empty() && wq.control_state == ControlState::Held {
-                    wq.push_input_bounded(final_events);
-                }
-                let seq = wq.alloc_control_seq();
-                wq.control_state = ControlState::Releasing;
-                wq.pending_take_seq = None;
-                wq.release_req_seq = seq;
-                wq.cmds.push_back(WriteCmd::Control { on: false, seq });
-                ctrl.write_cvar.notify_one();
-            }
-            wq.release_req_seq
-        };
-        self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
-        let deadline = Instant::now() + RELEASE_ACK_TIMEOUT;
-        let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
-        while wq.release_done_seq < target_seq && wq.connected && !wq.terminal && !ctrl.stop.load(Ordering::Acquire) {
-            let rem = deadline.saturating_duration_since(Instant::now());
-            if rem.is_zero() {
-                break;
-            }
-            let (next, _) = ctrl.release_cvar.wait_timeout(wq, rem).unwrap_or_else(|e| e.into_inner());
-            wq = next;
-        }
-        Ok(())
+        self.release_control_and_wait_with_timeout(final_events, RELEASE_ACK_TIMEOUT)
     }
 
     fn send_input(&self, events: Vec<SyntheticEvent>) {
@@ -3114,12 +3225,14 @@ impl ScreenSource for StreamScreenSource {
         let info = self.info.clone();
         let reconnect = self.reconnect.clone();
         let limits = HistoryRetentionLimits { max_actions: self.max_retained_actions, max_action_bytes: self.max_retained_action_bytes, max_frames: self.max_retained_frames };
+        let opener_handle = self.opener.clone();
+        let protocol_cache_handle = self.protocol_cache.clone();
         let session_join = std::thread::Builder::new()
             .name(session_name)
             .spawn(move || run_history_session(name, opener, protocol_cache, info, reconnect, limits, session_ctrl, on_event))
             .expect("spawn hist-session");
 
-        Box::new(StreamHistoryHandle { ctrl, source_history: Some(self.history.clone()), session_join: Some(session_join) })
+        Box::new(StreamHistoryHandle { ctrl, opener: opener_handle, protocol_cache: protocol_cache_handle, source_history: Some(self.history.clone()), session_join: Some(session_join) })
     }
 
     fn frame_at(&self, at_ms: u64) -> Result<Option<(u64, Frame)>, String> {
@@ -3206,7 +3319,18 @@ impl ScreenSource for StreamScreenSource {
         if cancel.is_cancelled() {
             return Err("cancelled".into());
         }
-        let host_caps = self.probe_capabilities();
+        // Astra #22: register cancellation wakeups BEFORE probing protocol so
+        // cancelling during an unprobed host's `--protocol` RPC aborts immediately.
+        let opener_cancel = self.opener.clone();
+        let cache_cancel = self.protocol_cache.clone();
+        cancel.register_hook(move || {
+            cache_cancel.wake_waiters();
+            opener_cancel.notify_cancel();
+        });
+        let host_caps = self.protocol_cache.get_or_probe_cancellable(&*self.opener, cancel.flag())?;
+        if cancel.is_cancelled() {
+            return Err("cancelled".into());
+        }
         let mut args = Vec::new();
         if let Some(which) = actions {
             if which.is_empty() {
@@ -3389,6 +3513,18 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn stop_if_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        screens::require_valid_name(&self.id.name)?;
+        // Astra #1: prefer the host service's live protocol-checked guarded stop
+        // path when the opener provides it (so reconnecting to an older helper
+        // under the same host instance can never dispatch an unhonored guard).
+        if let Some(res) = self.opener.stop_screen_guarded(&self.id.name, expected_started, expected_last_used) {
+            res?;
+            *self.expected_started.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let mut info = self.info.lock().unwrap_or_else(|e| e.into_inner());
+            info.state = ScreenState::Stopped;
+            info.controlled = false;
+            return Ok(());
+        }
         // B.3 (#2–#4): guarded Stop requires the helper's atomic `"stop-expected"`
         // capability (NOT `"stop-expected-started"` alone, which dropped its lock
         // before stopping).
@@ -3424,6 +3560,13 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn clear_history_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        screens::require_valid_name(&self.id.name)?;
+        // Astra #1: prefer the host service's live protocol-checked guarded clear.
+        if let Some(res) = self.opener.clear_history_guarded(&self.id.name, expected_started, expected_last_used) {
+            res?;
+            self.info.lock().unwrap_or_else(|e| e.into_inner()).last_used_ms = None;
+            return Ok(());
+        }
         if expected_started.is_some() || expected_last_used.is_some() {
             let caps = self.probe_capabilities();
             if !caps.clear_expected {
@@ -5526,5 +5669,127 @@ mod tests {
         assert!(disc_src.frame_at(1_000).unwrap().is_none(), "disconnected frame_at must return Ok(None) without oneshot RPC");
         assert_eq!(disc_opener.history_open_count(), 0, "disconnected frame_at must not call open_history");
         drop(handle);
+    }
+
+    #[test]
+    fn r3_polish_astra_f3_f21_f22_release_timeout_late_probe_and_cancel_export_probe() {
+        // 1. Astra #3 (remote): `release_control_and_wait_with_timeout` MUST return Err on timeout
+        //    when the connected host never acknowledges `Control { on: false }`.
+        let opener = Arc::new(MockOpener::empty());
+        let (c_live, mut h_live) = UnixStream::pair().unwrap();
+        opener.plan.lock().unwrap().push_back(Ok(c_live));
+        let proto = HostCapabilities::parse_protocol_json(r#"{"proto":1,"commands":["follow","stream"],"capabilities":["control-ack"]}"#).unwrap();
+        let src = StreamScreenSource::with_host_cache(remote_info("qa"), opener.clone(), Arc::new(HostProtocolCache::fixed(proto)));
+        let (tx, rx) = channel();
+        let handle = src.watch_live(
+            Vec::new(),
+            Box::new(move |ev| {
+                let _ = tx.send(ev);
+            }),
+        );
+        write_server_msg(&mut h_live, &ServerMsg::Status(StreamStatus { message: "ready".into(), reconnecting: false, error: false })).unwrap();
+        let _ = recv_within(&rx, "live ready");
+        let f1 = solid_frame(64, 64, [1, 2, 3, 255]);
+        write_server_msg(&mut h_live, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f1, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
+        assert_eq!(read_client_msg(&mut h_live).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
+        let _ = recv_within(&rx, "keyframe");
+        src.note_live_frame_accepted();
+        src.set_controlled(true).expect("request control");
+        let seq = match read_client_msg(&mut h_live).unwrap() {
+            Some(ClientMsg::ControlSeq { on: true, seq }) => seq,
+            other => panic!("expected ControlSeq on=true, got {other:?}"),
+        };
+        write_server_msg(&mut h_live, &ServerMsg::Control { held: true, seq, reason: None }).unwrap();
+        let _ = recv_within(&rx, "control granted");
+
+        // Do NOT answer the release message: timeout MUST return Err!
+        let err = src.release_control_and_wait_with_timeout(Vec::new(), Duration::from_millis(60)).unwrap_err();
+        assert!(err.contains("Timed out"), "remote release timeout must propagate Err, got: {err}");
+        drop(h_live);
+        drop(handle);
+
+        // 2. Astra #21 & #22: Blocking probe opener that wakes via `notify_cancel` OR explicit gate.
+        struct BlockingProbeOpener {
+            entered: (Mutex<bool>, Condvar),
+            gate: (Mutex<bool>, Condvar),
+            export_opens: AtomicUsize,
+        }
+        impl BlockingProbeOpener {
+            fn new() -> Arc<Self> {
+                Arc::new(Self { entered: (Mutex::new(false), Condvar::new()), gate: (Mutex::new(false), Condvar::new()), export_opens: AtomicUsize::new(0) })
+            }
+            fn wait_entered(&self) {
+                let mut e = self.entered.0.lock().unwrap();
+                while !*e {
+                    e = self.entered.1.wait(e).unwrap();
+                }
+            }
+            fn release(&self) {
+                *self.gate.0.lock().unwrap() = true;
+                self.gate.1.notify_all();
+            }
+        }
+        impl StreamOpener for BlockingProbeOpener {
+            fn open_live(&self, _: &str, _: Arc<AtomicBool>) -> Result<LiveStream, String> {
+                Err("unused".into())
+            }
+            fn open_history(&self, _: &str, _: Arc<AtomicBool>) -> Result<LiveStream, String> {
+                Err("unused".into())
+            }
+            fn open_export(&self, _: &str, _: &[String], _: Arc<AtomicBool>) -> Result<LiveStream, String> {
+                self.export_opens.fetch_add(1, Ordering::AcqRel);
+                Err("should not open export".into())
+            }
+            fn run_command(&self, _args: &[String], cancelled: Arc<AtomicBool>) -> Result<CommandOutput, String> {
+                *self.entered.0.lock().unwrap() = true;
+                self.entered.1.notify_all();
+                let mut g = self.gate.0.lock().unwrap();
+                while !*g && !cancelled.load(Ordering::Acquire) {
+                    g = self.gate.1.wait(g).unwrap();
+                }
+                if cancelled.load(Ordering::Acquire) {
+                    return Err("cancelled".into());
+                }
+                Ok(CommandOutput { status: 1, stdout: String::new(), stderr: "old helper".into() })
+            }
+            fn notify_cancel(&self) {
+                self.gate.1.notify_all();
+            }
+        }
+
+        // 2a. Astra #21: late legacy probe must NEVER overwrite newer `set_probed_caps`!
+        let cache = Arc::new(HostProtocolCache::new());
+        let probe_opener = BlockingProbeOpener::new();
+        let cache_bg = cache.clone();
+        let opener_bg = probe_opener.clone();
+        let t_probe = std::thread::spawn(move || cache_bg.get_or_probe_cancellable(opener_bg.as_ref(), Arc::new(AtomicBool::new(false))));
+        probe_opener.wait_entered();
+        let modern = HostCapabilities::parse_protocol_json(r#"{"proto":1,"commands":["follow","stream","export"],"capabilities":["stop-expected","clear-expected"]}"#).unwrap();
+        cache.set_probed_caps(modern.clone());
+        probe_opener.release();
+        let res_caps = t_probe.join().unwrap().expect("probe returns modern caps");
+        assert!(res_caps.stop_expected && res_caps.clear_expected, "probe must observe authoritative follower caps");
+        assert!(cache.get().is_some_and(|c| c.stop_expected && c.clear_expected), "late legacy probe must NOT overwrite follower caps");
+
+        // 2b. Astra #22: `export_video_cancellable` aborts promptly during blocked `--protocol` probe!
+        let exp_opener = BlockingProbeOpener::new();
+        let exp_cache = Arc::new(HostProtocolCache::new());
+        let exp_src = StreamScreenSource::with_host_cache(remote_info("qa"), exp_opener.clone(), exp_cache);
+        let cancel = ExportCancel::new();
+        let cancel_bg = cancel.clone();
+        let opener_watch = exp_opener.clone();
+        let t_cancel = std::thread::spawn(move || {
+            opener_watch.wait_entered();
+            cancel_bg.cancel();
+        });
+        let dir = scratch_dir("r3-f22-export-cancel");
+        let out_mp4 = dir.join("out.mp4");
+        let t0 = Instant::now();
+        let exp_err = exp_src.export_video_cancellable(Some(&[0, 2]), 1, &out_mp4, &cancel, &mut |_| true).unwrap_err();
+        t_cancel.join().unwrap();
+        assert!(t0.elapsed() < Duration::from_secs(1), "cancelled export probe took too long: {:?}", t0.elapsed());
+        assert!(exp_err.to_ascii_lowercase().contains("cancel"), "expected cancellation error, got: {exp_err}");
+        assert_eq!(exp_opener.export_opens.load(Ordering::Acquire), 0, "cancelled probe must not open export stream");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

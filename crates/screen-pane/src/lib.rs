@@ -24,7 +24,10 @@ pub mod stream;
 
 pub use local::LocalScreenSource;
 pub use olo_screen_codec::{EncodedDelta, Frame, FrameIndex, FrameMark, TileEncoding, TileRect};
-pub use pane::{HEADER_H, ScreenMenuState, ScreenPane, ScreenPaneEvent, Tab, capture_stop_expectations, header_bar};
+pub use pane::{
+    HEADER_H, ResolvedControlShortcut, ScreenMenuState, ScreenPane, ScreenPaneEvent, Tab, capture_stop_expectations, capture_stop_expectations_strict, control_shortcuts, control_shortcuts_detailed,
+    header_bar, is_control_shortcut, is_control_shortcut_with_command,
+};
 pub use picture::Shot;
 pub use rex_client::{OpenHostError, RexSockClient, RexSockOpener};
 pub use shares::Padded;

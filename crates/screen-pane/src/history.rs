@@ -637,7 +637,7 @@ fn parse_oversized_line_prefix(prefix: &str) -> OversizedPrefix {
 /// - If the final line is longer than 64 KiB or the tail holds only valid
 ///   `"oversized"` placeholder lines, scans backwards in bounded 64 KiB chunks
 ///   (up to 4 MiB) inspecting each record's top-level JSON header.
-pub(crate) fn last_used_fast_checked_in(root: &Path, name: &str) -> Result<Option<u64>, String> {
+pub fn last_used_fast_checked_in(root: &Path, name: &str) -> Result<Option<u64>, String> {
     crate::screens::require_valid_name(name)?;
     let root_fd = match open_root_dir(root) {
         Ok(fd) => fd,
@@ -844,6 +844,13 @@ impl Reader {
         self.more_in(&root_dir(), name)
     }
 
+    /// Checked variant of [`Self::more`] that distinguishes a missing/empty
+    /// history (`Ok(([], reset))`) from an unreadable or corrupt `actions.jsonl`
+    /// (`Err(reason)`) so local Stop fails closed before prompting (Astra #10 / Neon #7).
+    pub fn more_checked(&mut self, name: &str) -> Result<(Vec<Action>, bool), String> {
+        self.more_checked_in(&root_dir(), name)
+    }
+
     pub(crate) fn more_in(&mut self, root: &Path, name: &str) -> (Vec<Action>, bool) {
         let Ok(dfd) = open_screen_dir_fd(root, name) else {
             let reset = self.inode.take().is_some();
@@ -856,6 +863,75 @@ impl Reader {
             return (Vec::new(), reset);
         };
         self.more_file(&mut f)
+    }
+
+    pub(crate) fn more_checked_in(&mut self, root: &Path, name: &str) -> Result<(Vec<Action>, bool), String> {
+        let dfd = match open_screen_dir_fd(root, name) {
+            Ok(fd) => fd,
+            Err(e) if e.contains("No such file") => {
+                let reset = self.inode.take().is_some();
+                self.offset = 0;
+                return Ok((Vec::new(), reset));
+            }
+            Err(_) => {
+                self.inode = None;
+                self.offset = 0;
+                return Err("Couldn’t read this screen’s history.".to_owned());
+            }
+        };
+        let mut f = match openat_regular(&dfd, "actions.jsonl", libc::O_RDONLY, 0) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let reset = self.inode.take().is_some();
+                self.offset = 0;
+                return Ok((Vec::new(), reset));
+            }
+            Err(_) => {
+                self.inode = None;
+                self.offset = 0;
+                return Err("Couldn’t read this screen’s history.".to_owned());
+            }
+        };
+        self.more_file_checked(&mut f)
+    }
+
+    fn more_file_checked(&mut self, f: &mut File) -> Result<(Vec<Action>, bool), String> {
+        let meta = f.metadata().map_err(|_| "Couldn’t read this screen’s history.".to_owned())?;
+        if !meta.file_type().is_file() {
+            return Err("Couldn’t read this screen’s history.".to_owned());
+        }
+        let id = (meta.dev(), meta.ino());
+        let reset = self.inode != Some(id) || meta.len() < self.offset;
+        if reset {
+            self.inode = Some(id);
+            self.offset = 0;
+        }
+        let mut text = Vec::new();
+        let max_read = (MAX_BYTES * 2).saturating_sub(self.offset);
+        if meta.len() > self.offset && max_read > 0 {
+            f.seek(SeekFrom::Start(self.offset)).map_err(|_| "Couldn’t read this screen’s history.".to_owned())?;
+            f.take(max_read).read_to_end(&mut text).map_err(|_| "Couldn’t read this screen’s history.".to_owned())?;
+        }
+        let whole = text.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+        let slice = std::str::from_utf8(&text[..whole]).map_err(|_| "This screen’s history log is corrupt and couldn’t be read.".to_owned())?;
+        let mut actions = Vec::new();
+        for line in slice.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let act: Action = serde_json::from_str(line).map_err(|_| "This screen’s history log is corrupt and couldn’t be read.".to_owned())?;
+            actions.push(act);
+        }
+        // If the entire file has non-whitespace content without a trailing newline,
+        // verify it isn't a corrupt un-terminated record when nothing parsed yet.
+        if whole == 0 && self.offset == 0 && !text.is_empty() && text.iter().any(|b| !b.is_ascii_whitespace()) {
+            let tail_str = std::str::from_utf8(&text).map_err(|_| "This screen’s history log is corrupt and couldn’t be read.".to_owned())?;
+            if serde_json::from_str::<Action>(tail_str.trim()).is_err() {
+                return Err("This screen’s history log is corrupt and couldn’t be read.".to_owned());
+            }
+        }
+        self.offset += whole as u64;
+        Ok((actions, reset))
     }
 
     /// What is new in an already-verified regular `actions.jsonl` file.
@@ -1418,6 +1494,47 @@ mod tests {
         appender2.flush().unwrap();
         let mut reader2 = std::fs::File::open(&p_near).unwrap();
         assert_eq!(last_used_fast_checked_from_file(&mut reader2, near_snap_len, "qa").unwrap(), Some(1_750_000_100_020));
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn r3_polish_astra_f10_neon_f7_reader_more_checked_fails_closed_on_unreadable_and_corrupt() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let scratch = PathBuf::from("/var/tmp").join(format!("olo-hist-r3-f10-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(scratch.join("qa")).unwrap();
+
+        // 1. Absent or empty file -> Ok(([], _)) (verified empty).
+        let mut reader = Reader::default();
+        assert_eq!(reader.more_checked_in(&scratch, "qa").unwrap().0.len(), 0);
+        let log_path = scratch.join("qa/actions.jsonl");
+        std::fs::write(&log_path, "").unwrap();
+        assert_eq!(reader.more_checked_in(&scratch, "qa").unwrap().0.len(), 0);
+
+        // 2. Corrupt JSON line -> Err (never silent Ok([])).
+        std::fs::write(&log_path, "not-valid-json\n").unwrap();
+        let err = reader.more_checked_in(&scratch, "qa").unwrap_err();
+        assert!(err.contains("corrupt") || err.contains("unreadable"), "expected corrupt error, got: {err}");
+
+        // 3. Valid line followed by corrupt line -> Err (fails closed).
+        let valid = serde_json::to_string(&act(1_750_000_000_000, 12, "click", &["10", "20"], None)).unwrap();
+        std::fs::write(&log_path, format!("{valid}\n{{broken\n")).unwrap();
+        assert!(reader.more_checked_in(&scratch, "qa").is_err(), "corrupt trailing line must return Err");
+
+        // 4. Unreadable (chmod 000) -> Err when running as non-root.
+        std::fs::write(&log_path, format!("{valid}\n")).unwrap();
+        std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::File::open(&log_path).is_err() {
+            assert!(reader.more_checked_in(&scratch, "qa").is_err(), "unreadable actions.jsonl must return Err");
+        }
+        std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        // 5. Once repaired, reader recovers cleanly with reset = true and returns the valid action.
+        let (recovered, reset) = reader.more_checked_in(&scratch, "qa").expect("recover after repair");
+        assert!(reset, "recovery after unreadability/corruption must emit reset = true");
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].kind, "click");
 
         let _ = std::fs::remove_dir_all(&scratch);
     }

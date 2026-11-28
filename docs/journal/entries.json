@@ -5578,5 +5578,17 @@
   "title": "Rex Preferences: Minded Subagent Notifications (Dark)",
   "caption": "Opted-in minded subagent notifications state in dark mode with Reset link and symmetric BBox inset",
   "image": "2026-11-28/053838-rex-preferences-minded-subagent-notifications-da.png"
+ },
+ {
+  "time": "2026-11-28T09:05:48",
+  "title": "Rex Activity sidebar Agent Screens & embedded ScreenPane (light)",
+  "caption": "Agent Screens nested under controlling agents in Rex Activity sidebar with embedded Live/History/Stats/Passwords ScreenPane.",
+  "image": "2026-11-28/090548-rex-activity-sidebar-agent-screens-embedded-scre.png"
+ },
+ {
+  "time": "2026-11-28T09:05:49",
+  "title": "Rex Activity sidebar Agent Screens & embedded ScreenPane (dark)",
+  "caption": "Dark mode view of Rex Activity sidebar Agent Screens with embedded ScreenPane.",
+  "image": "2026-11-28/090549-rex-activity-sidebar-agent-screens-embedded-scre.png"
  }
 ]

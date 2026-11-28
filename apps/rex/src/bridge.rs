@@ -548,7 +548,7 @@ pub async fn handle_bridge_request(
                     rewritten_args.push(a.clone());
                 }
             }
-            let out = tokio::process::Command::new(screen_bin).args(&rewritten_args).stdin(std::process::Stdio::null()).output().await;
+            let out = bridge_screen_command(&screen_bin, &rewritten_args).output().await;
             match out {
                 Ok(o) => {
                     let stdout = String::from_utf8_lossy(&o.stdout).into_owned();
@@ -574,6 +574,16 @@ pub async fn handle_bridge_request(
         }
         other => BridgeResponse::err(format!("unknown Olo Bridge command '{other}'")),
     }
+}
+
+/// Build the desktop `olo-screen` command for a bridged host request, clearing
+/// any inherited Rex pane environment variables so bridged calls never
+/// misattribute a remote agent's desktop screen to whichever local Rex pane
+/// happened to launch the desktop Rex process (Neon #9).
+fn bridge_screen_command(screen_bin: &std::path::Path, args: &[String]) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(screen_bin);
+    cmd.args(args).env_remove("REX_BLOCK").env_remove("REX_SESSION").env_remove("REX_SOCKET").env_remove("REX_SERVER_SOCKET").stdin(std::process::Stdio::null());
+    cmd
 }
 
 /// Resolve a desktop path given by a remote agent (`rex://local/…`, `file://…`,
@@ -1646,5 +1656,14 @@ mod commands_tests {
         assert!(ls_out.contains("sub"));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn neon_r2_f9_bridge_screen_command_clears_inherited_rex_env() {
+        let cmd = bridge_screen_command(Path::new("/usr/bin/olo-screen"), &["start".into(), "qa".into()]);
+        let envs: Vec<_> = cmd.as_std().get_envs().collect();
+        for key in ["REX_BLOCK", "REX_SESSION", "REX_SOCKET", "REX_SERVER_SOCKET"] {
+            assert!(envs.iter().any(|(k, v)| *k == std::ffi::OsStr::new(key) && v.is_none()), "bridge_screen_command must explicitly remove inherited {key}, got {envs:?}");
+        }
     }
 }

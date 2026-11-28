@@ -117,7 +117,7 @@ pub fn screen_info_for(name: &str, running: Option<&Screen>, title: Option<Strin
 
 enum LocalInputCmd {
     Events(Vec<SyntheticEvent>),
-    Release { final_events: Vec<SyntheticEvent>, lock: Option<ControlLock>, done: Sender<()> },
+    Release { final_events: Vec<SyntheticEvent>, lock: Option<ControlLock>, done: Arc<(Mutex<bool>, Condvar)> },
 }
 
 /// Pinned identity of the exact local headless session that granted Take
@@ -277,7 +277,8 @@ fn spawn_bound_input_worker(name: String, pinned: PinnedSession, timeout: Durati
                         if let Some(mut l) = lock.take() {
                             l.release();
                         }
-                        let _ = done.send(());
+                        *done.0.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                        done.1.notify_all();
                         break;
                     }
                 }
@@ -334,6 +335,17 @@ fn send_input_batch_to(client: &mut Option<Client>, pinned: &PinnedSession, name
     false
 }
 
+type ReleaseGate = Arc<(Mutex<bool>, Condvar)>;
+
+/// Unified active control session + in-flight asynchronous release gate guarded
+/// under a single mutex so transitioning `active -> pending_release` is atomic
+/// with zero race window (Neon #3).
+#[derive(Default)]
+struct ControlSlot {
+    active: Option<ControlSession>,
+    pending_release: Option<ReleaseGate>,
+}
+
 /// Local desktop implementation of [`ScreenSource`].
 pub struct LocalScreenSource {
     id: ScreenId,
@@ -342,7 +354,7 @@ pub struct LocalScreenSource {
     /// from `info.started_ms` (which stays `None` on local screens so the header
     /// derives "up …" from history's start action) so Stop confirms generation.
     expected_started: Mutex<Option<u64>>,
-    control: Mutex<Option<ControlSession>>,
+    control: Mutex<ControlSlot>,
     player: Arc<Mutex<OwnedPlayer>>,
     seg_cache: Arc<Mutex<SegmentCache>>,
     history_following: Arc<AtomicBool>,
@@ -356,7 +368,7 @@ impl LocalScreenSource {
             id: info.id.clone(),
             info: Mutex::new(info),
             expected_started: Mutex::new(None),
-            control: Mutex::new(None),
+            control: Mutex::new(ControlSlot::default()),
             player: Arc::new(Mutex::new(OwnedPlayer::new(Vec::new()))),
             seg_cache: Arc::new(Mutex::new(SegmentCache::new())),
             history_following: Arc::new(AtomicBool::new(false)),
@@ -389,8 +401,33 @@ impl LocalScreenSource {
 
     fn begin_control_session(&self, pinned: PinnedSession, wayland_display: String, lock: ControlLock, timeout: Duration) {
         let (input_tx, input_join) = spawn_bound_input_worker(self.id.name.clone(), pinned, timeout);
-        *self.control.lock().unwrap_or_else(|e| e.into_inner()) = Some(ControlSession { lock: Some(lock), wayland_display, input_tx, _input_join: input_join });
+        let mut slot = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        slot.active = Some(ControlSession { lock: Some(lock), wayland_display, input_tx, _input_join: input_join });
+        drop(slot);
         self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = true;
+    }
+
+    /// Wait up to `timeout` on an in-flight release gate, clearing it from
+    /// `self.control` ONLY once the worker has finished draining held input and
+    /// dropped `ControlLock`. On timeout, leaves the unfinished gate in place
+    /// and returns an error so callers do not proceed with Stop (Astra #3 / Neon #3).
+    fn wait_release_gate(&self, done: &ReleaseGate, timeout: Duration) -> Result<(), String> {
+        let deadline = Instant::now() + timeout;
+        let mut finished = done.0.lock().unwrap_or_else(|e| e.into_inner());
+        while !*finished {
+            let rem = deadline.saturating_duration_since(Instant::now());
+            if rem.is_zero() {
+                return Err("Timed out waiting to release control of this screen.".to_owned());
+            }
+            let (next, _) = done.1.wait_timeout(finished, rem).unwrap_or_else(|e| e.into_inner());
+            finished = next;
+        }
+        drop(finished);
+        let mut slot = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.pending_release.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, done)) {
+            slot.pending_release = None;
+        }
+        Ok(())
     }
 
     /// Queue final input releases + `ControlLock` drop onto the `screen-input`
@@ -398,22 +435,49 @@ impl LocalScreenSource {
     /// Controlling / pane close), returns immediately without blocking the
     /// window thread while the worker holds `ControlLock` until final releases
     /// complete. When `wait == true` (worker-thread Stop / tests), waits up to
-    /// [`RELEASE_WAIT`] for the worker to finish unlocking.
-    fn finish_control_session(&self, final_events: Vec<SyntheticEvent>, wait: bool) {
-        let session = self.control.lock().unwrap_or_else(|e| e.into_inner()).take();
+    /// `timeout` for the worker to finish unlocking and returns an error on timeout.
+    fn finish_control_session_with_timeout(&self, final_events: Vec<SyntheticEvent>, wait: bool, timeout: Duration) -> Result<(), String> {
+        let (session, in_flight) = {
+            let mut slot = self.control.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(session) = slot.active.take() {
+                let done = Arc::new((Mutex::new(false), Condvar::new()));
+                slot.pending_release = Some(done.clone());
+                (Some((session, done)), None)
+            } else if wait {
+                (None, slot.pending_release.clone())
+            } else {
+                (None, None)
+            }
+        };
         self.info.lock().unwrap_or_else(|e| e.into_inner()).controlled = false;
-        let Some(mut session) = session else { return };
-        let (done_tx, done_rx) = channel::<()>();
-        let lock = session.lock.take();
-        if session.input_tx.send(LocalInputCmd::Release { final_events, lock, done: done_tx }).is_ok() && wait {
-            let _ = done_rx.recv_timeout(RELEASE_WAIT);
-        }
+        let done = if let Some((mut session, done)) = session {
+            let lock = session.lock.take();
+            if session.input_tx.send(LocalInputCmd::Release { final_events, lock, done: done.clone() }).is_err() {
+                *done.0.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                done.1.notify_all();
+                let mut slot = self.control.lock().unwrap_or_else(|e| e.into_inner());
+                if slot.pending_release.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, &done)) {
+                    slot.pending_release = None;
+                }
+                return Ok(());
+            }
+            done
+        } else if let Some(in_flight) = in_flight {
+            in_flight
+        } else {
+            return Ok(());
+        };
+        if wait { self.wait_release_gate(&done, timeout) } else { Ok(()) }
+    }
+
+    fn finish_control_session(&self, final_events: Vec<SyntheticEvent>, wait: bool) -> Result<(), String> {
+        self.finish_control_session_with_timeout(final_events, wait, RELEASE_WAIT)
     }
 }
 
 impl Drop for LocalScreenSource {
     fn drop(&mut self) {
-        self.finish_control_session(Vec::new(), false);
+        let _ = self.finish_control_session(Vec::new(), false);
     }
 }
 
@@ -681,8 +745,17 @@ fn rename_in(state_root: &Path, runtime_dir: &Path, name: &str, title: Option<&s
 impl LocalScreenSource {
     pub(crate) fn set_controlled_in(&self, rt_dir: &Path, on: bool) -> Result<(), String> {
         if on {
-            if self.control.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
-                return Ok(());
+            let pending = {
+                let slot = self.control.lock().unwrap_or_else(|e| e.into_inner());
+                if slot.active.is_some() {
+                    return Ok(());
+                }
+                slot.pending_release.clone()
+            };
+            // Neon #3: await any in-flight asynchronous release before re-acquiring
+            // so we never contend with our own `screen-input` worker's `ControlLock`.
+            if let Some(gate) = pending {
+                self.wait_release_gate(&gate, RELEASE_WAIT)?;
             }
             let screen = screens::get_in(rt_dir, &self.id.name)?;
             // Final pass B.2 (#5/#24): verify the session we are about to
@@ -698,7 +771,7 @@ impl LocalScreenSource {
             self.begin_control_session(pinned, screen.wayland_display, lock, INPUT_IPC_TIMEOUT);
             Ok(())
         } else {
-            self.finish_control_session(Vec::new(), false);
+            let _ = self.finish_control_session(Vec::new(), false);
             Ok(())
         }
     }
@@ -775,28 +848,27 @@ impl ScreenSource for LocalScreenSource {
     fn release_control(&self, final_events: Vec<SyntheticEvent>) -> Result<(), String> {
         // Non-blocking on the UI thread: `screen-input` retains `ControlLock`
         // until final releases finish on the pinned session, then unlocks.
-        self.finish_control_session(final_events, false);
-        Ok(())
+        self.finish_control_session(final_events, false)
     }
 
     fn release_control_and_wait(&self, final_events: Vec<SyntheticEvent>) -> Result<(), String> {
         // Worker-thread path (e.g. before `stop()`): wait for `screen-input`
-        // to finish releasing held keys and drop `ControlLock`.
-        self.finish_control_session(final_events, true);
-        Ok(())
+        // to finish releasing held keys and drop `ControlLock`, returning Err on
+        // timeout (Astra #3 / Neon #3).
+        self.finish_control_session(final_events, true)
     }
 
     fn send_input(&self, events: Vec<SyntheticEvent>) {
         if events.is_empty() {
             return;
         }
-        if let Some(session) = self.control.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        if let Some(session) = self.control.lock().unwrap_or_else(|e| e.into_inner()).active.as_ref() {
             let _ = session.input_tx.send(LocalInputCmd::Events(events));
         }
     }
 
     fn join_clipboard(&self) -> Option<Box<dyn Send>> {
-        let display = self.control.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|s| s.wayland_display.clone())?;
+        let display = self.control.lock().unwrap_or_else(|e| e.into_inner()).active.as_ref().map(|s| s.wayland_display.clone())?;
         Some(Box::new(clip::join_display(display)))
     }
 
@@ -820,6 +892,7 @@ impl ScreenSource for LocalScreenSource {
         let spawned = std::thread::Builder::new().name("screen-history".into()).spawn(move || {
             let mut reader = history::Reader::default();
             let mut first = true;
+            let mut was_unavailable = false;
             let mut frames_read: Option<Instant> = None;
             let mut last_index = Arc::new(FrameIndex::default());
             loop {
@@ -827,30 +900,53 @@ impl ScreenSource for LocalScreenSource {
                     following_bg.store(false, Ordering::Release);
                     return;
                 }
-                let (actions, reset) = reader.more(&name);
-                // The frames: with new actions, or now and then as they come.
-                let due = frames_read.is_none_or(|t| t.elapsed() >= FRAMES_EVERY);
-                let read_frames = first || reset || !actions.is_empty() || due;
-                let mut frames_changed = false;
-                let mut index_replaced = false;
-                if read_frames {
-                    frames_read = Some(Instant::now());
-                    if let Ok(dir) = history::dir_checked(&name) {
-                        let scan = seg_cache.lock().unwrap_or_else(|e| e.into_inner()).scan(&dir);
-                        if first || scan.changed || scan.replaced {
-                            let frames = scan.segments.iter().flat_map(|s| s.frames.iter().map(|e| olo_screen_codec::FrameMark { at: e.at, key: e.key })).collect();
-                            last_index = Arc::new(FrameIndex { frames, last_size: scan.last_size });
-                            player.lock().unwrap_or_else(|e| e.into_inner()).update(scan.segments);
-                            frames_changed = scan.changed || scan.replaced;
-                            index_replaced = scan.replaced;
+                // Astra #10 / Neon #7: emit `HistoryEvent::Failed` when
+                // `actions.jsonl` is unreadable or corrupt so `ScreenPane::ask_stop`
+                // fails closed instead of treating unreadable history as verified empty.
+                let read_frames = match reader.more_checked(&name) {
+                    Err(reason) => {
+                        if first || !was_unavailable {
+                            on_event(HistoryEvent::Failed(reason));
+                            was_unavailable = true;
                         }
+                        first = false;
+                        true
                     }
-                }
-                if first || reset || !actions.is_empty() || frames_changed {
-                    let texts = actions.iter().map(replay::search_text).collect();
-                    on_event(HistoryEvent::Loaded { actions, texts, reset: first || reset, index_reset: first || reset || index_replaced, frames: last_index.clone() });
-                }
-                first = false;
+                    Ok((actions, reset)) => {
+                        let recovered = was_unavailable;
+                        was_unavailable = false;
+                        // The frames: with new actions, or now and then as they come.
+                        let due = frames_read.is_none_or(|t| t.elapsed() >= FRAMES_EVERY);
+                        let read_frames = first || recovered || reset || !actions.is_empty() || due;
+                        let mut frames_changed = false;
+                        let mut index_replaced = false;
+                        if read_frames {
+                            frames_read = Some(Instant::now());
+                            if let Ok(dir) = history::dir_checked(&name) {
+                                let scan = seg_cache.lock().unwrap_or_else(|e| e.into_inner()).scan(&dir);
+                                if first || recovered || scan.changed || scan.replaced {
+                                    let frames = scan.segments.iter().flat_map(|s| s.frames.iter().map(|e| olo_screen_codec::FrameMark { at: e.at, key: e.key })).collect();
+                                    last_index = Arc::new(FrameIndex { frames, last_size: scan.last_size });
+                                    player.lock().unwrap_or_else(|e| e.into_inner()).update(scan.segments);
+                                    frames_changed = scan.changed || scan.replaced;
+                                    index_replaced = scan.replaced;
+                                }
+                            }
+                        }
+                        if first || recovered || reset || !actions.is_empty() || frames_changed {
+                            let texts = actions.iter().map(replay::search_text).collect();
+                            on_event(HistoryEvent::Loaded {
+                                actions,
+                                texts,
+                                reset: first || recovered || reset,
+                                index_reset: first || recovered || reset || index_replaced,
+                                frames: last_index.clone(),
+                            });
+                        }
+                        first = false;
+                        read_frames
+                    }
+                };
                 // Until the folder changes (or the watch is dropped: done), or
                 // frames left unread are due.
                 let changed =
@@ -912,8 +1008,9 @@ impl ScreenSource for LocalScreenSource {
     }
 
     fn stop_if_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
-        // Ensure any in-flight local release completes before stopping.
-        self.finish_control_session(Vec::new(), true);
+        // Ensure any in-flight local release completes before stopping (propagating
+        // timeout errors instead of stopping while keys or ControlLock are held — Astra #3).
+        self.finish_control_session(Vec::new(), true)?;
         screens::stop_if_expected(&self.id.name, expected_started, expected_last_used)?;
         *self.expected_started.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut info = self.info.lock().unwrap_or_else(|e| e.into_inner());
@@ -1046,7 +1143,7 @@ mod tests {
         assert!(ctrl_path.is_file());
         let pinned = PinnedSession::pin(std::process::id() as i32, sock_path);
         src.begin_control_session(pinned, "wayland-test".into(), lock, Duration::from_secs(2));
-        src.finish_control_session(vec![SyntheticEvent::Key { key: 30, pressed: false }], true);
+        src.finish_control_session(vec![SyntheticEvent::Key { key: 30, pressed: false }], true).expect("finish control session");
         server.join().unwrap();
 
         assert!(saw_lock_while_receiving.load(Ordering::Acquire), ".control must remain locked until final release events are delivered");
@@ -1260,7 +1357,7 @@ mod tests {
         let rt = dir.join("rt");
         std::fs::create_dir_all(&rt).unwrap();
 
-        let mut fake_session = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").spawn().expect("spawn dummy session");
+        let mut fake_session = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").env("XDG_RUNTIME_DIR", &dir).spawn().expect("spawn dummy session");
         let sock = rt.join("olo-test.sock");
         let _listener = UnixListener::bind(&sock).unwrap();
         let scr = Screen {
@@ -1313,5 +1410,53 @@ mod tests {
         let err = dyn_src.stop_if_generation(Some(1_234)).unwrap_err();
         assert!(!err.contains("doesn't support guarded stop"), "must override stop_if_generation, got: {err}");
         assert!(err.contains("can't name a screen"), "expected screens::stop_if_expected name validation, got: {err}");
+    }
+
+    #[test]
+    fn r3_polish_astra_f3_neon_f3_control_release_timeout_propagates_and_keeps_gate() {
+        let dir = scratch_dir("r3-f3-release-timeout");
+        let rt = dir.join("rt");
+        std::fs::create_dir_all(&rt).unwrap();
+        let sock_path = dir.join("olo.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let ctrl_path = rt.join("qa.control");
+        let (release_tx, release_rx) = channel::<()>();
+
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut writer = stream.try_clone().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            writeln!(writer, "{{\"type\":\"ok\"}}").unwrap();
+            writer.flush().unwrap();
+            line.clear();
+            // Hold the final key-up reply until the test releases the barrier!
+            let _ = reader.read_line(&mut line);
+            let _ = release_rx.recv();
+            writeln!(writer, "{{\"type\":\"ok\"}}").unwrap();
+            writer.flush().unwrap();
+        });
+
+        let src = LocalScreenSource::from_stopped("qa", None, false, None);
+        let lock = screens::try_acquire_control_in(&rt, "qa").unwrap();
+        let pinned = PinnedSession::pin(std::process::id() as i32, sock_path);
+        src.begin_control_session(pinned, "wayland-test".into(), lock, Duration::from_secs(2));
+
+        // 1. Short timeout MUST return Err AND keep `pending_release` set in `ControlSlot`.
+        let err = src.finish_control_session_with_timeout(vec![SyntheticEvent::Key { key: 30, pressed: false }], true, Duration::from_millis(45)).unwrap_err();
+        assert!(err.contains("Timed out"), "expected timeout error, got: {err}");
+        assert!(ctrl_path.is_file(), ".control lock must remain held while release worker is still blocked");
+
+        // 2. A second waiter MUST still see the unfinished pending_release gate and return Err on timeout!
+        let err2 = src.finish_control_session_with_timeout(Vec::new(), true, Duration::from_millis(35)).unwrap_err();
+        assert!(err2.contains("Timed out"), "second waiter must still block on pending_release, got: {err2}");
+
+        // 3. Once the socket unblocks, waiting succeeds and unlinks `.control`.
+        release_tx.send(()).unwrap();
+        src.finish_control_session_with_timeout(Vec::new(), true, Duration::from_secs(2)).expect("release completes once worker finishes");
+        server.join().unwrap();
+        assert!(!ctrl_path.exists(), ".control must be unlinked once pending release finishes");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

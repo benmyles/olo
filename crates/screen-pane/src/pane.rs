@@ -47,27 +47,91 @@ use crate::{
 };
 
 pub const HEADER_H: f32 = 40.0;
+const COMPACT_HEADER_H: f32 = 28.0;
+const NARROW_HEADER_WRAP_W: f32 = 460.0;
+const HEADER_BTN_GAP: f32 = 8.0;
+const COMPACT_WELL_PAD: f32 = 6.0;
+
+/// Adaptive chrome layout derived from `(pane_w, pane_h)` so short horizontal
+/// tiles keep a generous Live well with uniform 6 pt margins and merged tab/title
+/// chrome, and narrow vertical tiles give the title/subtitle the full pane width
+/// without renaming or dropping actions (Opus #1, #2, #3, #7).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PaneChromeLayout {
+    outer_py: f32,
+    outer_gap: f32,
+    hide_subtitle: bool,
+    hide_footer_caption: bool,
+    /// Merge title, inline status, and `[Take Control] [Screen ▾]` onto the
+    /// TabView's top strip (`tile-h-third`, `pane_h < 226 && pane_w >= 640`).
+    compact_inline_tabs: bool,
+    wrap_buttons: bool,
+}
+
+fn plan_pane_chrome(pane_w: f32, pane_h: f32, is_live_running: bool) -> PaneChromeLayout {
+    // 1. Very short horizontal tile (e.g. `tile-h-third`, ~175–210 pt pane height):
+    //    when wide enough (`>= 640 pt`), merge title, compact status, and controls
+    //    right onto the TabView's top strip and use uniform 6 pt margins around the
+    //    Live well so the preview gets nearly double the area (Opus #7 / Neon-look #12).
+    if is_live_running && pane_h < 226.0 {
+        return PaneChromeLayout { outer_py: 6.0, outer_gap: 6.0, hide_subtitle: true, hide_footer_caption: true, compact_inline_tabs: pane_w >= 640.0, wrap_buttons: false };
+    }
+    // 2. Tight height (~226..262 pt): hide subtitle to keep Live well generous.
+    if is_live_running && pane_h < 262.0 {
+        return PaneChromeLayout { outer_py: 8.0, outer_gap: 8.0, hide_subtitle: true, hide_footer_caption: false, compact_inline_tabs: false, wrap_buttons: false };
+    }
+    // 3. Moderate height (e.g. `tile-h-half`, ~275 pt): full header + footer,
+    //    slightly tighter vertical rhythm so the well stays generous.
+    let outer_py = if pane_h < 320.0 { 10.0 } else { m::WINDOW_INSET };
+    let outer_gap = if pane_h < 320.0 { 8.0 } else { m::SPACING };
+    let wrap_buttons = pane_w < NARROW_HEADER_WRAP_W;
+    PaneChromeLayout { outer_py, outer_gap, hide_subtitle: false, hide_footer_caption: false, compact_inline_tabs: false, wrap_buttons }
+}
 
 /// Shared header bar layout used by both [`ScreenPane::header`] and host
 /// headers so icon, title, subtitle, and right-aligned action buttons always
-/// sit on the exact same vertical coordinates (no 2 pt jump between views).
+/// sit on the exact same vertical coordinates with a uniform 8 pt gap between
+/// buttons (Opus #3).
 pub fn header_bar(face: Element, buttons: impl IntoIterator<Item = Element>) -> Element {
-    div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).children(buttons).into_any_element()
+    let btn_row = div().flex_shrink_0().flex().flex_row().items_center().gap(px(HEADER_BTN_GAP)).children(buttons);
+    div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(btn_row).into_any_element()
 }
 
 /// Capture `(expected_started, expected_last_used)` by value when opening a
 /// Stop confirmation dialog, shared by [`ScreenPane::ask_stop`] and
-/// `apps/screen`'s Stop path (Final pass B.3 / Astra #4).
+/// `apps/screen`'s Stop path (Final pass B.3 / Astra #4, #6).
 ///
 /// Sends `Some(0)` for a screen known to have done nothing (`last_used == None`
-/// and not known to have `actions > 0`), and fails closed for a remote running
-/// screen whose `started` generation is unknown.
+/// and not known to have `actions > 0`), and fails closed when a remote running
+/// screen's `started` is unknown or when `actions > 0` without a readable
+/// timestamp (never silently disabling `check_expected_last_used`).
 pub fn capture_stop_expectations(
     is_local: bool,
     started: Option<u64>,
     replay_last_used: Option<u64>,
     info_last_used: Option<u64>,
     actions: Option<usize>,
+) -> Result<(Option<u64>, Option<u64>), String> {
+    // Astra #10: on local screens, `actions == None` means unreadable/unknown
+    // history, NOT verified empty; only `Some(0)` is verified empty.
+    let verified_empty = if is_local { actions == Some(0) } else { actions.is_none_or(|n| n == 0) };
+    capture_stop_expectations_strict(is_local, started, replay_last_used, info_last_used, actions, verified_empty)
+}
+
+/// Strict Stop expectation capture shared by [`ScreenPane::ask_stop`] and Rex's
+/// Activity sidebar Stop confirmation (Astra #6 / Neon #2).
+///
+/// Reserves `expected_last_used = Some(0)` strictly for a **verified empty**
+/// history (`verified_empty == true`) and fails closed whenever local history
+/// cannot be verified (corrupt/unreadable `actions.jsonl` or unknown count with
+/// no timestamp), rather than returning `expected_last_used = None`.
+pub fn capture_stop_expectations_strict(
+    is_local: bool,
+    started: Option<u64>,
+    replay_last_used: Option<u64>,
+    info_last_used: Option<u64>,
+    actions: Option<usize>,
+    verified_empty: bool,
 ) -> Result<(Option<u64>, Option<u64>), String> {
     if !is_local && started.is_none() {
         return Err("Couldn’t confirm which running session to stop because its start time isn’t known yet.".into());
@@ -78,8 +142,10 @@ pub fn capture_stop_expectations(
     };
     let expected_last_used = match observed {
         Some(ts) => Some(ts),
-        None if actions.is_none_or(|n| n == 0) => Some(0),
-        None => None,
+        None if verified_empty && actions.is_none_or(|n| n == 0) => Some(0),
+        None => {
+            return Err("Couldn’t verify this screen’s latest activity before stopping it. Try again once its history can be read.".into());
+        }
     };
     Ok((started, expected_last_used))
 }
@@ -125,15 +191,83 @@ fn notch(v: f32) -> i32 {
     }
 }
 
+/// Resolved `screen.control` shortcut carrying whether terminal `raw` mode
+/// translated a platform Command/Alt chord into `Ctrl+Shift+…` (so physical
+/// Left `Ctrl+Shift+K` on Mac/BeOS profiles passes through to the controlled
+/// screen instead of being swallowed — Astra #25 / Neon #2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedControlShortcut {
+    pub shortcut: keys::Shortcut,
+    pub requires_physical_command: bool,
+}
+
+/// Map a physical [`olo_protocol::Chord`] to the app-side [`ResolvedControlShortcut`]
+/// matching `olo_kit_base::keys::app_side` locally (without touching kit-base).
+fn chord_app_side_detailed(c: &olo_protocol::Chord, command: olo_protocol::CommandKey, raw: bool) -> Option<ResolvedControlShortcut> {
+    let (cmd, alt) = match command {
+        olo_protocol::CommandKey::Command => (c.cmd || c.ctrl, c.alt),
+        olo_protocol::CommandKey::Alt => (c.alt || c.ctrl, c.cmd),
+        olo_protocol::CommandKey::Control if c.cmd => return None,
+        olo_protocol::CommandKey::Control => (c.ctrl, c.alt),
+    };
+    let by_command_key = match command {
+        olo_protocol::CommandKey::Command => c.cmd,
+        olo_protocol::CommandKey::Alt => c.alt,
+        olo_protocol::CommandKey::Control => false,
+    };
+    let shifted_for_raw = raw && by_command_key && !c.ctrl;
+    let shift = c.shift || shifted_for_raw;
+    Some(ResolvedControlShortcut { shortcut: keys::Shortcut { key: c.key, shift, command: cmd, alt }, requires_physical_command: shifted_for_raw })
+}
+
+/// Resolve `screen.control` shortcuts with physical-command-key provenance
+/// (Astra #25 / Neon #2).
+pub fn control_shortcuts_detailed(raw: bool) -> Vec<ResolvedControlShortcut> {
+    let p = keys::profile();
+    let list: Vec<ResolvedControlShortcut> =
+        olo_protocol::shortcuts::entry("screen.control").map(|e| e.keys(&p)).unwrap_or_default().into_iter().filter_map(|k| chord_app_side_detailed(&k.single()?, p.command_key, raw)).collect();
+    if !list.is_empty() {
+        return list;
+    }
+    let chord = olo_protocol::Chord {
+        key: keys::evdev("k"),
+        ctrl: p.command_key == olo_protocol::CommandKey::Control,
+        cmd: p.command_key == olo_protocol::CommandKey::Command,
+        alt: p.command_key == olo_protocol::CommandKey::Alt,
+        shift: false,
+    };
+    chord_app_side_detailed(&chord, p.command_key, raw).into_iter().collect()
+}
+
+/// Resolve the `screen.control` shortcut (⌘K by default, respecting keyboard
+/// profile & user overrides) in either normal (`raw = false`) or terminal
+/// (`raw = true`, where Mac/BeOS command chords arrive with Shift added so
+/// plain left `Ctrl+K` passes through to the controlled screen) form (Neon #1).
+pub fn control_shortcuts(raw: bool) -> Vec<keys::Shortcut> {
+    control_shortcuts_detailed(raw).into_iter().map(|r| r.shortcut).collect()
+}
+
+/// Match `k` against a pre-resolved list of [`ResolvedControlShortcut`]s using
+/// `physical_command_held` only for raw-mode translated platform-command chords
+/// (so physical Left `Ctrl+Shift+K` passes through on Mac/BeOS while custom
+/// non-command bindings like `Alt+K` or `F9` still toggle control — Astra #25 / Neon #2).
+fn match_resolved_control_shortcuts(list: &[ResolvedControlShortcut], k: &Keystroke, physical_command_held: bool) -> bool {
+    list.iter().any(|r| (!r.requires_physical_command || physical_command_held) && keys::pressed(&r.shortcut, k))
+}
+
+/// Whether `k` matches `screen.control`, distinguishing physical platform
+/// command chords (`physical_command_held`) from Left `Ctrl+Shift+K` in raw
+/// terminal mode while honoring custom non-command keybindings (Astra #25 / Neon #2).
+pub fn is_control_shortcut_with_command(k: &Keystroke, raw: bool, physical_command_held: bool) -> bool {
+    match_resolved_control_shortcuts(&control_shortcuts_detailed(raw), k, physical_command_held)
+}
+
 /// Whether `k` matches the resolved Take Control / Stop Controlling shortcut
-/// (`screen.control`, ⌘K by default), preserving keyboard-profile overrides
-/// without calling `olo_kit::menu::shortcut_command` (which would re-enter the
-/// host window's `MenuBar::of` callback and panic on `self.pane.read(cx)` while
-/// [`ScreenPane`] is borrowed for key delivery).
-fn is_control_shortcut(k: &Keystroke, raw: bool) -> bool {
-    let mut menus = [Menu::new("").item("", "control").key("k")];
-    olo_kit::menu::resolve(&mut menus, raw);
-    olo_kit::menu::find_shortcut(&menus, k).as_deref() == Some("control")
+/// (`screen.control`, ⌘K by default), preserving keyboard-profile overrides and
+/// terminal `raw` Shift semantics without calling `olo_kit::menu::shortcut_command`
+/// (which would re-enter the host window's `MenuBar::of` callback — Neon #1).
+pub fn is_control_shortcut(k: &Keystroke, raw: bool) -> bool {
+    is_control_shortcut_with_command(k, raw, true)
 }
 
 /// The chosen screen's tabs.
@@ -531,11 +665,6 @@ impl PaneState {
         self.exports.get(id).map(|e| (e.done, e.cancel.clone()))
     }
 
-    fn export_done_current(&self) -> Option<f32> {
-        let id = self.screen_id()?;
-        self.exports.get(id).map(|e| e.done)
-    }
-
     fn begin_export(&mut self, id: ScreenId, path: PathBuf) -> Option<ExportCancel> {
         if self.exports.contains_key(&id) {
             return None;
@@ -588,14 +717,15 @@ impl PaneState {
         true
     }
 
-    /// Apply a completed `stop()` reply for `id`, releasing control if the user
-    /// retook control of `id` while stop was in flight. Returns `true` if
-    /// control was released.
-    fn on_stopped_reply(&mut self, id: &ScreenId) -> bool {
-        let Some(mut info) = self.info.clone() else { return false };
-        if &info.id != id {
+    /// Apply a completed `stop()` reply for `(id, source, expected_started)`,
+    /// ignoring delayed replies from an older source/generation so a replacement
+    /// session is never marked Stopped or stripped of its control lease (Astra #14).
+    /// Returns `true` if active control was released.
+    fn on_stopped_reply(&mut self, id: &ScreenId, source: &Arc<dyn ScreenSource>, expected_started: Option<u64>) -> bool {
+        if !self.matches_captured_session(id, source, expected_started) {
             return false;
         }
+        let Some(mut info) = self.info.clone() else { return false };
         let was_controlling = self.controlling;
         info.state = ScreenState::Stopped;
         info.controlled = false;
@@ -832,7 +962,7 @@ impl PaneState {
         (!trimmed.is_empty() && trimmed != name).then(|| trimmed.to_owned())
     }
 
-    fn header_subtitle_parts(&self, actions: usize, last_action_ms: Option<u64>, replay_started_ms: Option<u64>, now_ms: u64) -> Vec<String> {
+    fn header_subtitle_parts(&self, actions: usize, last_action_ms: Option<u64>, replay_started_ms: Option<u64>, now_ms: u64, show_size: bool) -> Vec<String> {
         let Some(info) = &self.info else { return Vec::new() };
         let mut parts = Vec::new();
         let location_phrase = match &info.id.location {
@@ -856,15 +986,15 @@ impl PaneState {
                 Some(ago) => format!("{base} {ago}"),
                 None => base,
             });
-            if let Some((w, h)) = info.size {
+            if show_size && let Some((w, h)) = info.size {
                 parts.push(format!("{w} × {h}"));
             }
             return parts;
         }
         // Unified order (Opus 2 / Gemini 2 / Opus 12):
-        // "Running [on X] · up T · N actions · W × H" so W × H drops first
-        // when room runs out, "Running [on X]" never drops, and "last …" is
-        // omitted (the Live footer already displays it).
+        // "Running [on X] · up T · N actions [· W × H]" so trailing segments
+        // drop whole when room runs out; embedded hosts with a status bar omit
+        // `W × H` here to avoid repeating size (Opus Minor).
         let action_count = actions.max(info.actions.unwrap_or(0));
         if info.is_running() {
             parts.push(match &location_phrase {
@@ -889,7 +1019,8 @@ impl PaneState {
         if action_count > 0 {
             parts.push(format!("{} action{}", style::thousands(action_count), if action_count == 1 { "" } else { "s" }));
         }
-        if info.is_running()
+        if show_size
+            && info.is_running()
             && let Some((w, h)) = info.size
         {
             parts.push(format!("{w} × {h}"));
@@ -899,7 +1030,7 @@ impl PaneState {
 
     #[cfg(test)]
     fn header_subtitle(&self, actions: usize, last_action_ms: Option<u64>, replay_started_ms: Option<u64>, now_ms: u64) -> String {
-        self.header_subtitle_parts(actions, last_action_ms, replay_started_ms, now_ms).join(" · ")
+        self.header_subtitle_parts(actions, last_action_ms, replay_started_ms, now_ms, true).join(" · ")
     }
 
     /// Whether the Live well should show the neutral barber-pole loading view
@@ -972,7 +1103,8 @@ impl PaneState {
         let a = latest_action?;
         let what = replay::command(a);
         let mark = if a.error.is_some() { "  ✗" } else { "" };
-        Some((what, format!("{mark} · {}", stats::ago(a.at.saturating_add(a.ms), now_ms))))
+        // Agy-look #6: symmetric spacing around `·` so monospace closing quotes never hug the dot.
+        Some((what, format!("{mark}  ·  {}", stats::ago(a.at.saturating_add(a.ms), now_ms))))
     }
 
     fn live_placeholder(&self) -> String {
@@ -1087,6 +1219,8 @@ pub enum PaneMsg {
     /// Wake the UI to pull the single latest RGBA frame from `pending_live`
     /// (coalesced so a busy UI never accumulates a backlog of pictures).
     LiveFrameReady,
+    /// The Live picture well painted at a new drawn width (updates host zoom %).
+    LiveSized,
     /// A frame shown live: watch `watch`'s, connection generation `conn_gen`.
     LiveDmabuf {
         watch: u64,
@@ -1109,8 +1243,8 @@ pub enum PaneMsg {
         message: String,
     },
     Started(ScreenId, Result<ScreenInfo, String>),
-    Stopped(ScreenId, Result<(), String>),
-    Cleared(ScreenId, Result<(), String>),
+    Stopped(ScreenId, Arc<dyn ScreenSource>, Option<u64>, Result<(), String>),
+    Cleared(ScreenId, Arc<dyn ScreenSource>, Result<(), String>),
     Renamed(ScreenId, Arc<dyn ScreenSource>, u64, Option<String>, Result<(), String>),
     /// The person's display-workspaces (display, index, name), where a
     /// screen's windows can be given.
@@ -1198,8 +1332,18 @@ pub struct ScreenPane {
     state: PaneState,
     me: Messenger<PaneMsg>,
     /// Width of the pane's outer box, set by the host via [`ScreenPane::set_width`]
-    /// (falls back to viewport width if unset).
+    /// or [`ScreenPane::set_size`] (falls back to viewport width if unset).
     width: Option<f32>,
+    /// Height of the pane's outer box, set by the host via [`ScreenPane::set_size`]
+    /// (falls back to viewport height if unset).
+    height: Option<f32>,
+    /// Optional host-provided overflow menu items (`(label, command)`) surfaced
+    /// in the header's `Screen ▾` menu when the host hides its own top strip on
+    /// short tiles (Opus #1).
+    host_overflow: Vec<(SharedString, SharedString)>,
+    #[allow(clippy::type_complexity)]
+    host_overflow_cb: Option<std::rc::Rc<dyn Fn(&str, &mut WindowCx)>>,
+    pending_take_control: bool,
     /// Whether Start/Stop header buttons delegate to the host via
     /// [`ScreenPaneEvent::StartRequested`] / [`ScreenPaneEvent::StopRequested`]
     /// (used by Agent Screens to honour sidebar multi-selection and its shared
@@ -1208,6 +1352,26 @@ pub struct ScreenPane {
     /// Whether this pane is hosted inside a terminal-style window whose command
     /// shortcuts arrive with an added Shift (`MenuBar::raw`).
     raw_shortcuts: bool,
+    /// Host-provided physical command-key predicate (e.g. `keymap::command_held`
+    /// in Rex) so `ScreenPane::key` matches `RexWindow` and never swallows Left
+    /// `Ctrl+Shift+K` on Mac/BeOS profiles (Astra #25 / Neon #2).
+    #[allow(clippy::type_complexity)]
+    raw_command_check: Option<std::rc::Rc<dyn Fn(&Keystroke) -> bool>>,
+    /// Optional host callback invoked once whenever `PictureWell` paints at a
+    /// different width so status-bar zoom `%` matches the drawn rectangle exactly (Opus #13).
+    #[allow(clippy::type_complexity)]
+    live_scale_cb: Option<std::rc::Rc<dyn Fn(&mut WindowCx)>>,
+    /// Monotonic counter incremented on every `set_source` replacement so open
+    /// Stop / Clear confirmation dialogs expire if the source/connection is replaced (Astra #1).
+    source_binding_gen: u64,
+    /// When true, the host renders the `Screen ▾` menu button in its own narrow
+    /// breadcrumb strip (`tile-v-third`), so the pane header omits its action
+    /// button row to save ~32 pt height and give the title/subtitle full width (Opus #3).
+    hide_header_actions: bool,
+    /// Whether the header subtitle includes `· W × H` (`true` for standalone
+    /// Agent Screens; `false` when embedded in Rex which displays size + zoom
+    /// in its status bar — Opus Minor).
+    show_header_size: bool,
     /// The screen the Live tab shows, being watched `(id, watch_seq, paused, handle)`.
     watching: Option<(ScreenId, u64, bool, Box<dyn LiveHandle>)>,
     /// Single-slot mailbox holding only the newest RGBA frame from `watch_live`
@@ -1239,15 +1403,31 @@ pub struct ScreenPane {
 impl ScreenPane {
     pub fn new(initial_tab: Tab, cx: &mut Cx<Self>) -> ScreenPane {
         let me = cx.messenger();
-        let live = cx.new_view(|cx| PictureWell::new("Screen", cx));
+        let me_sized = me.clone();
+        let live = cx.new_view(|cx| {
+            let mut well = PictureWell::new("Screen", cx);
+            well.set_on_sized(move || {
+                let _ = me_sized.send(PaneMsg::LiveSized);
+            });
+            well
+        });
         let live_at = live.read(cx).shown_at();
         let modifiers = if std::env::var_os("OLO_SCREEN_PICTURES").is_some() { Vec::new() } else { olo_kit::external_modifiers(XRGB8888) };
         let pane = ScreenPane {
             state: PaneState::new(initial_tab),
             me,
             width: None,
+            height: None,
+            host_overflow: Vec::new(),
+            host_overflow_cb: None,
+            pending_take_control: false,
             host_lifecycle: false,
             raw_shortcuts: false,
+            raw_command_check: None,
+            live_scale_cb: None,
+            source_binding_gen: 0,
+            hide_header_actions: false,
+            show_header_size: true,
             watching: None,
             pending_live: Arc::new(Mutex::new(None)),
             live_frame_queued: Arc::new(AtomicBool::new(false)),
@@ -1279,6 +1459,79 @@ impl ScreenPane {
         self.raw_shortcuts = raw;
     }
 
+    /// Supply a physical command-key check for raw-mode terminal hosts (such as
+    /// Rex's `keymap::command_held`) so Left `Ctrl+Shift+K` passes through to
+    /// controlled screens on Mac/BeOS profiles (Astra #25 / Neon #2).
+    pub fn set_physical_command_check(&mut self, check: impl Fn(&Keystroke) -> bool + 'static) {
+        self.raw_command_check = Some(std::rc::Rc::new(check));
+    }
+
+    /// Register a callback invoked once whenever the Live picture well paints at
+    /// a new drawn width so a host status bar refreshes its rounded zoom `%` (Opus #13).
+    pub fn on_live_scale_changed(&mut self, cb: impl Fn(&mut WindowCx) + 'static) {
+        self.live_scale_cb = Some(std::rc::Rc::new(cb));
+    }
+
+    /// Hide the pane header's action button row when the host surfaces
+    /// `Screen ▾` in its own narrow breadcrumb strip (`tile-v-third`, Opus #3).
+    pub fn set_hide_header_actions(&mut self, hide: bool, cx: &mut Cx<Self>) {
+        if self.hide_header_actions != hide {
+            self.hide_header_actions = hide;
+            cx.invalidate();
+        }
+    }
+
+    /// Control whether the header subtitle includes `· W × H` (set `false` when
+    /// the host displays dimensions and zoom in a status bar — Opus Minor).
+    pub fn set_show_header_size(&mut self, show: bool, cx: &mut Cx<Self>) {
+        if self.show_header_size != show {
+            self.show_header_size = show;
+            cx.invalidate();
+        }
+    }
+
+    /// Whether a text field inside this pane (inline rename or History search)
+    /// currently owns keyboard focus so global shortcuts like `⌘K` don't steal typing (Neon #8.4).
+    pub fn is_editing_text(&self, cx: &WindowCx) -> bool {
+        self.renaming.is_some() || self.replay.as_ref().is_some_and(|r| r.read(cx).is_search_focused(cx))
+    }
+
+    /// Open the full `Screen ▾` overflow menu at `at` (used when a narrow host
+    /// breadcrumb bar hosts the `Screen ▾` button in `tile-v-third` — Opus #3).
+    pub fn open_screen_menu_at(&mut self, at: Point<Pixels>, cx: &mut Cx<Self>) {
+        self.learn_spaces();
+        let mut menu = self.overflow_menu(true, true, true, true, cx);
+        olo_kit::menu::resolve(std::slice::from_mut(&mut menu), self.raw_shortcuts);
+        let me = cx.view_ref();
+        olo_kit::menu::context_menu(cx, menu, at, move |cmd, cx| {
+            let cmd = cmd.to_owned();
+            me.update(cx, move |p, cx| p.run_overflow_command(&cmd, cx));
+        });
+    }
+
+    /// Detach active Take Control on the UI thread for an external host Stop
+    /// worker (e.g. Rex's Activity sidebar Stop confirmation — Astra #15 / Neon #4).
+    ///
+    /// Verifies the pane is still bound to `(id, expected_started)` before
+    /// detaching held keys/buttons (`detach_control_for_worker`), emits
+    /// `ScreenPaneEvent::Controlling(id, false)` if control was active, and still
+    /// returns `Some((source, Vec::new()))` when bound to that session even if an
+    /// alert already triggered an async release on deactivation, so the worker's
+    /// `release_control_and_wait` awaits any in-flight `pending_release`.
+    pub fn detach_control_for_stop(&mut self, id: &ScreenId, expected_started: Option<u64>, cx: &mut Cx<Self>) -> Option<(Arc<dyn ScreenSource>, Vec<SyntheticEvent>)> {
+        let cur_src = self.state.source().cloned()?;
+        if !self.state.matches_captured_session(id, &cur_src, expected_started) {
+            return None;
+        }
+        self.pending_take_control = false;
+        let (was_controlling, pending) = self.state.detach_control_for_worker();
+        if was_controlling {
+            cx.emit(ScreenPaneEvent::Controlling(id.clone(), false));
+        }
+        cx.invalidate();
+        pending.or(Some((cur_src, Vec::new())))
+    }
+
     /// Set the screen source shown by this pane (`None` shows nothing).
     pub fn set_source(&mut self, source: Option<Arc<dyn ScreenSource>>, cx: &mut Cx<Self>) {
         let was_controlling = self.state.controlling();
@@ -1293,6 +1546,8 @@ impl ScreenPane {
             cx.emit(ScreenPaneEvent::Controlling(id, false));
         }
         if changed {
+            self.source_binding_gen = self.source_binding_gen.wrapping_add(1);
+            self.pending_take_control = false;
             // (Another screen or source instance chosen: abandon rename and live
             // stream before binding the new source. Preserve cached `Replay`
             // read-only when rebinding the SAME screen across disconnect/reconnect
@@ -1313,6 +1568,14 @@ impl ScreenPane {
         self.sync_watch(cx);
         self.sync_history(cx);
         cx.invalidate();
+    }
+
+    /// Bind a new [`ScreenSource`], dropping cached `Replay` even if the logical
+    /// [`ScreenId`] matches (used when a host instance is replaced under the same
+    /// key so the old host's history is never shown under the new host — Astra #16).
+    pub fn set_source_fresh(&mut self, source: Option<Arc<dyn ScreenSource>>, cx: &mut Cx<Self>) {
+        self.replay = None;
+        self.set_source(source, cx);
     }
 
     /// Update metadata for the currently shown screen (state, size, title,
@@ -1337,6 +1600,62 @@ impl ScreenPane {
             self.width = Some(width);
             cx.invalidate();
         }
+    }
+
+    /// Set the outer `(width, height)` allocated to this pane by its host layout.
+    pub fn set_size(&mut self, width: f32, height: f32, cx: &mut Cx<Self>) {
+        if self.width != Some(width) || self.height != Some(height) {
+            self.width = Some(width);
+            self.height = Some(height);
+            cx.invalidate();
+        }
+    }
+
+    /// Register host-supplied overflow actions shown inside the header's
+    /// `Screen ▾` menu (used when the host hides its breadcrumb strip on short
+    /// horizontal tiles so actions remain reachable without stealing height).
+    pub fn set_host_overflow(&mut self, actions: Vec<(SharedString, SharedString)>, on_action: impl Fn(&str, &mut WindowCx) + 'static, cx: &mut Cx<Self>) {
+        let changed = self.host_overflow != actions;
+        self.host_overflow = actions;
+        self.host_overflow_cb = Some(std::rc::Rc::new(on_action));
+        if changed {
+            cx.invalidate();
+        }
+    }
+
+    /// Clear any host-supplied overflow actions.
+    pub fn clear_host_overflow(&mut self, cx: &mut Cx<Self>) {
+        if !self.host_overflow.is_empty() || self.host_overflow_cb.is_some() {
+            self.host_overflow.clear();
+            self.host_overflow_cb = None;
+            cx.invalidate();
+        }
+    }
+
+    /// Current Live picture fit scale (`drawn_width / logical_screen_width`),
+    /// reading the actual drawn image rectangle from [`PictureWell`] after well
+    /// padding (falling back to the analytical layout estimate only before the
+    /// first paint) so status bars match the rendered preview to ±0.5% (Opus #13).
+    pub fn live_fit_scale(&self) -> Option<f32> {
+        let (sw, sh) = self.state.live_logical_size();
+        if sw <= 0.0 || sh <= 0.0 || !self.state.is_running() || self.state.shown_tab() != Tab::Live {
+            return None;
+        }
+        if let Some(pic) = self.live_at.get() {
+            let ratio = f32::from(pic.size.width) / (sw as f32);
+            if ratio.is_finite() && ratio > 0.0 {
+                return Some(ratio);
+            }
+        }
+        if let (Some(pane_w), Some(pane_h)) = (self.width, self.height) {
+            return analytical_live_fit_scale(pane_w, pane_h, self.hide_header_actions, sw as f32, sh as f32);
+        }
+        None
+    }
+
+    /// Whether the Live well currently holds a displayed frame (RGBA or dmabuf).
+    pub fn live_has_shot(&self, cx: &WindowCx) -> bool {
+        self.live.read(cx).has_shot()
     }
 
     /// Mark whether the host is performing a screen start/stop operation so the
@@ -1365,6 +1684,9 @@ impl ScreenPane {
     }
 
     pub fn set_tab(&mut self, tab: Tab, cx: &mut Cx<Self>) {
+        if tab != Tab::Live {
+            self.pending_take_control = false;
+        }
         let id = self.state.screen_id().cloned();
         let released = self.state.set_tab(tab);
         if released && let Some(id) = id {
@@ -1381,6 +1703,9 @@ impl ScreenPane {
     /// lazy remote history stream is closed (unless exporting), and Take
     /// Control is released until visible again.
     pub fn set_visible(&mut self, visible: bool, cx: &mut Cx<Self>) {
+        if !visible {
+            self.pending_take_control = false;
+        }
         let id = self.state.screen_id().cloned();
         let released = self.state.set_visible(visible);
         if released && let Some(id) = id {
@@ -1395,7 +1720,33 @@ impl ScreenPane {
         self.state.controlling()
     }
 
+    /// One-shot Take Control request: takes control immediately if the screen is
+    /// local or already has a live picture; otherwise arms a single attempt on the
+    /// very first incoming live frame (cleared on stop_controlling, tab change,
+    /// hide, or source switch — Astra #4 / Neon #3).
+    pub fn request_control_when_ready(&mut self, cx: &mut Cx<Self>) {
+        if !self.state.visible {
+            self.pending_take_control = false;
+            return;
+        }
+        let Some(info) = self.state.info() else {
+            self.pending_take_control = false;
+            return;
+        };
+        if !info.is_running() || !info.capabilities.can_control || info.capabilities.host_disconnected {
+            self.pending_take_control = false;
+            return;
+        }
+        if info.id.is_local() || self.live.read(cx).has_shot() || self.state.controlling() {
+            self.pending_take_control = false;
+            self.take_control(cx);
+        } else {
+            self.pending_take_control = true;
+        }
+    }
+
     pub fn stop_controlling(&mut self, cx: &mut Cx<Self>) {
+        self.pending_take_control = false;
         let id = self.state.screen_id().cloned();
         if self.state.stop_controlling() {
             if let Some(id) = id {
@@ -1680,12 +2031,28 @@ impl ScreenPane {
     fn ask_stop(&mut self, cx: &mut Cx<Self>) {
         let Some(info) = self.state.info().filter(|i| i.is_running()).cloned() else { return };
         let Some(source) = self.state.source().cloned() else { return };
-        // Capture BOTH `started` and `last_used` BY VALUE via the shared helper
-        // (sends `Some(0)` for known-empty screens and fails closed on remote
-        // screens whose `started` is unknown — Final pass B.3 / Astra #4).
+        // Capture BOTH `started` and `last_used` BY VALUE via the strict helper
+        // (sends `Some(0)` ONLY for verified-empty history and fails closed on
+        // unreadable/unverified local history or unknown remote `started` — Astra #6 / Neon #2).
         let started = source.session_started().or_else(|| info.started_ms.map(|ms| ms / 1000));
-        let replay_lu = self.replay.as_ref().and_then(|r| r.read(cx).actions().iter().rev().find(|a| !a.is_oversized()).map(|a| a.at.saturating_add(a.ms)));
-        let (expected_started, expected_last_used) = match capture_stop_expectations(info.id.is_local(), started, replay_lu, info.last_used_ms, info.actions) {
+        let (replay_lu, replay_actions, replay_verified_empty, replay_unreadable) = match self.replay.as_ref() {
+            Some(r) => {
+                let r = r.read(cx);
+                let unreadable = r.unavailable().is_some();
+                let lu = r.actions().iter().rev().find(|a| !a.is_oversized()).map(|a| a.at.saturating_add(a.ms));
+                let acts = (r.loaded() && !unreadable).then(|| r.actions().len());
+                let empty = r.loaded() && !unreadable && r.actions().is_empty();
+                (lu, acts, empty, unreadable)
+            }
+            None => (None, None, false, false),
+        };
+        if info.id.is_local() && replay_unreadable {
+            self.alert("Couldn’t verify this screen’s latest activity because its history couldn’t be read.", cx);
+            return;
+        }
+        let effective_actions = replay_actions.or(info.actions);
+        let verified_empty = if info.id.is_local() { replay_verified_empty || info.actions == Some(0) } else { effective_actions.is_none_or(|n| n == 0) };
+        let (expected_started, expected_last_used) = match capture_stop_expectations_strict(info.id.is_local(), started, replay_lu, info.last_used_ms, effective_actions, verified_empty) {
             Ok(v) => v,
             Err(msg) => {
                 self.alert(&msg, cx);
@@ -1703,30 +2070,40 @@ impl ScreenPane {
         );
         let me = cx.view_ref();
         let id = info.id.clone();
+        let captured_gen = self.source_binding_gen;
         open_alert(cx, "Stop Screen", "warning", &message, &["Cancel", "Stop Screen"], move |choice, cx| {
             if *choice != Some(1) {
                 return;
             }
             let (source, id) = (source.clone(), id.clone());
             me.update(cx, move |p, cx| {
-                // B.2 (#5/#24): only release the pane's active control if it is
-                // still bound to the EXACT screen source and session generation
-                // captured when the dialog opened (never a replacement session!).
-                let release_first = if p.state.matches_captured_session(&id, &source, expected_started) {
-                    let (was_controlling, pending) = p.state.detach_control_for_worker();
-                    if was_controlling {
-                        cx.emit(ScreenPaneEvent::Controlling(id.clone(), false));
-                    }
-                    pending
-                } else {
-                    None
-                };
+                // Astra #1: expire confirmation if the source/connection was
+                // replaced while the confirmation dialog was open.
+                if p.source_binding_gen != captured_gen || !p.state.matches_captured_session(&id, &source, expected_started) {
+                    p.alert("This screen or its connection changed since you asked; refusing to stop it.", cx);
+                    return;
+                }
+                // B.2 (#5/#24) & Astra #15 / Neon #4: detach active control once
+                // on the UI thread AND still wait on `release_control_and_wait`
+                // if opening the alert already started an async release.
+                let (was_controlling, pending) = p.state.detach_control_for_worker();
+                if was_controlling {
+                    cx.emit(ScreenPaneEvent::Controlling(id.clone(), false));
+                }
+                let release_first = pending.or_else(|| Some((source.clone(), Vec::new())));
                 let messenger = p.me.clone();
                 std::thread::spawn(move || {
-                    if let Some((ctrl_src, up)) = release_first {
-                        let _ = ctrl_src.release_control_and_wait(up);
-                    }
-                    messenger.send(PaneMsg::Stopped(id, source.stop_if_expected(expected_started, expected_last_used)));
+                    // Astra #3: propagate control-release timeout as an error
+                    // instead of proceeding with Stop while keys or ControlLock
+                    // are still held.
+                    let res = match release_first {
+                        Some((ctrl_src, up)) => match ctrl_src.release_control_and_wait(up) {
+                            Ok(()) => source.stop_if_expected(expected_started, expected_last_used),
+                            Err(err) => Err(err),
+                        },
+                        None => source.stop_if_expected(expected_started, expected_last_used),
+                    };
+                    messenger.send(PaneMsg::Stopped(id, source, expected_started, res));
                 });
                 cx.invalidate();
             });
@@ -1751,14 +2128,26 @@ impl ScreenPane {
             ScreenLocation::Local => String::new(),
         };
         let message = format!("Clear the history of “{}”{where_str}? Its actions and the frames kept with them are deleted. This can’t be undone.", info.display_name());
-        let messenger = self.me.clone();
+        let me = cx.view_ref();
         let id = info.id.clone();
-        open_alert(cx, "Clear History", "warning", &message, &["Cancel", "Clear History"], move |choice, _| {
+        let captured_gen = self.source_binding_gen;
+        open_alert(cx, "Clear History", "warning", &message, &["Cancel", "Clear History"], move |choice, cx| {
             if *choice != Some(1) {
                 return;
             }
-            let (messenger, source, id) = (messenger.clone(), source.clone(), id.clone());
-            std::thread::spawn(move || messenger.send(PaneMsg::Cleared(id, source.clear_history_expected(expected_started, expected_last_used))));
+            let (source, id) = (source.clone(), id.clone());
+            me.update(cx, move |p, cx| {
+                // Astra #1: expire confirmation if source/connection changed while dialog was open.
+                if p.source_binding_gen != captured_gen || !p.state.matches_captured_session(&id, &source, None) {
+                    p.alert("This screen or its connection changed since you asked; refusing to clear history.", cx);
+                    return;
+                }
+                let messenger = p.me.clone();
+                std::thread::spawn(move || {
+                    let res = source.clear_history_expected(expected_started, expected_last_used);
+                    messenger.send(PaneMsg::Cleared(id, source, res));
+                });
+            });
         });
     }
 
@@ -2090,9 +2479,218 @@ impl ScreenPane {
         }
     }
 
+    /// Build the overflow popup menu for `"Screen ▾"` containing folded pane
+    /// actions, optional local `Move Windows To ▸` submenu (Astra #22), host
+    /// overflow actions, and destructive `Stop Screen…` / `Clear History…` last
+    /// after a separator (Opus #3).
+    fn overflow_menu(&self, include_export: bool, include_shot: bool, include_lifecycle: bool, include_move: bool, cx: &WindowCx) -> Menu {
+        let Some(info) = self.state.info() else { return Menu::new("") };
+        let running = info.is_running();
+        let disconnected = info.capabilities.host_disconnected;
+        let mut menu = Menu::new("");
+        let mut has_any = false;
+        if include_shot {
+            menu = menu.item("Take Screenshot…", "screenshot").enabled(self.can_shoot(cx));
+            has_any = true;
+        }
+        if include_export {
+            menu = menu.item("Export Video…", "export").enabled(self.can_export(cx));
+            has_any = true;
+        }
+        if include_move && running && !disconnected && info.capabilities.can_move_windows && olo_kit::moving::menus_offer() {
+            menu = menu.submenu(self.give_menu());
+            has_any = true;
+        }
+        if !self.host_overflow.is_empty() {
+            if has_any {
+                menu = menu.separator();
+            }
+            for (label, cmd) in &self.host_overflow {
+                menu = menu.item(label.to_string(), format!("__host__:{cmd}"));
+            }
+            has_any = true;
+        }
+        if include_lifecycle {
+            if has_any {
+                menu = menu.separator();
+            }
+            if running {
+                menu = menu.item("Stop Screen…", "stop-screen").enabled(!disconnected);
+            } else {
+                menu = menu.item("Start Screen", "start-screen").enabled(!self.state.busy() && !disconnected);
+                menu = menu.item("Clear History…", "clear").enabled(!disconnected);
+            }
+        }
+        menu
+    }
+
+    fn run_overflow_command(&mut self, cmd: &str, cx: &mut Cx<Self>) {
+        if let Some(host_cmd) = cmd.strip_prefix("__host__:") {
+            if let Some(cb) = self.host_overflow_cb.clone() {
+                cb(host_cmd, cx);
+            }
+            return;
+        }
+        match cmd {
+            "stop-screen" if self.host_lifecycle => {
+                if let Some(id) = self.state.screen_id().cloned() {
+                    cx.emit(ScreenPaneEvent::StopRequested(id));
+                }
+            }
+            "start-screen" if self.host_lifecycle => {
+                if let Some(id) = self.state.screen_id().cloned() {
+                    cx.emit(ScreenPaneEvent::StartRequested(id));
+                }
+            }
+            other => {
+                self.run_command(other, cx);
+            }
+        }
+    }
+
+    /// Compact inline status text + color role for `tile-h-third` (Neon-look #12 / Astra #22):
+    /// shows any exceptional refusal/warning/error note prominently in amber/red,
+    /// otherwise compact `Running · <host>` (or `Stopped · <host>`).
+    fn compact_inline_status(&self, info: &ScreenInfo) -> (String, CompactStatusTone) {
+        if info.capabilities.host_disconnected {
+            return (
+                match &info.id.location {
+                    ScreenLocation::Host { host_label, .. } => format!("Disconnected · {host_label}"),
+                    ScreenLocation::Local => "Disconnected".to_owned(),
+                },
+                CompactStatusTone::Muted,
+            );
+        }
+        if let Some(note) = &self.state.control_note {
+            return (note.clone(), CompactStatusTone::Warning);
+        }
+        if !info.capabilities.can_control
+            && let Some(reason) = &info.capabilities.control_disabled_reason
+        {
+            return (reason.clone(), CompactStatusTone::Warning);
+        }
+        if let Some(err) = &self.state.failure {
+            return (err.clone(), CompactStatusTone::Error);
+        }
+        match &self.state.live_status {
+            LiveStatus::Reconnecting => return ("Reconnecting…".to_owned(), CompactStatusTone::Warning),
+            LiveStatus::Warning(msg) if !msg.is_empty() => return (msg.clone(), CompactStatusTone::Warning),
+            LiveStatus::Disconnected(msg) if !msg.is_empty() => return (msg.clone(), CompactStatusTone::Error),
+            _ => {}
+        }
+        if self.state.controlling() {
+            return ("You have control".to_owned(), CompactStatusTone::Control);
+        }
+        let loc = match &info.id.location {
+            ScreenLocation::Host { host_label, .. } => Some(host_label.as_str()),
+            ScreenLocation::Local if info.capabilities.show_location => Some("this computer"),
+            ScreenLocation::Local => None,
+        };
+        let state_word = if info.is_running() { "Running" } else { "Stopped" };
+        let label = match loc {
+            Some(h) => format!("{state_word} · {h}"),
+            None => state_word.to_owned(),
+        };
+        (label, if info.is_running() { CompactStatusTone::Running } else { CompactStatusTone::Muted })
+    }
+
+    /// Single-row compact strip placed right of the TabView's tabs on short wide
+    /// horizontal tiles (`tile-h-third`, Opus #7 / Neon-look #12 / Astra #22).
+    fn compact_inline_bar(&mut self, info: &ScreenInfo, cx: &mut Cx<Self>) -> Element {
+        let disconnected = info.capabilities.host_disconnected;
+        let running = info.is_running();
+        let has_shot = self.live.read(cx).has_shot();
+        let controlling = self.state.controlling();
+        let can_control = !disconnected && info.capabilities.can_control && (info.id.is_local() || has_shot || controlling);
+        let control_label = if controlling {
+            "Stop Controlling"
+        } else if self.state.control_pending {
+            "Taking Control…"
+        } else {
+            "Take Control"
+        };
+        // Opus #4 & #6: compact 20 pt buttons on the 22 pt tab-strip row so their
+        // labels sit on the exact tab baseline and bottoms clear the panel edge.
+        let control_btn = Button::new(control_label).small().id("take-control").min_width(104.0).enabled(can_control).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+            if p.state.controlling() || p.state.control_pending {
+                p.stop_controlling(cx);
+            } else {
+                p.take_control(cx);
+            }
+        }));
+        let overflow_btn = Button::new("Screen").menu().small().id("screen-overflow").min_width(0.0).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+            let at = cx.mouse_position();
+            p.open_screen_menu_at(at, cx);
+        }));
+
+        let title = SharedString::from(info.display_name().to_owned());
+        let (status_label, status_tone) = self.compact_inline_status(info);
+        let status_label = SharedString::from(status_label);
+        let face = canvas(move |g, r| {
+            olo_kit::review::own_grid(g, r);
+            let p = theme::palette();
+            let icon_sz = 16.0_f32;
+            let icon = style::snap(g, Bounds { origin: point(r.left(), r.center().y - px(icon_sz / 2.0)), size: size(px(icon_sz), px(icon_sz)) });
+            icons::paint(g, icon, "agent-screens");
+            let x = icon.right() + px(6.0);
+            let avail = (r.right() - x).max(px(0.0));
+            if avail < px(24.0) {
+                return;
+            }
+            let baseline = style::baseline_at(g, r.center().y, style::PLAIN_SIZE);
+            let title_font = style::ui_font(FontWeight::BOLD);
+            let title_w = style::text_width(title.clone(), style::PLAIN_SIZE, title_font.clone());
+            let title_room = avail.min(title_w + px(2.0));
+            let t = style::label_on_baseline_fit(g, x, baseline, style::Align::Left, title.clone(), style::PLAIN_SIZE, title_font, c(p.panel_text), title_room);
+            agent::record(g, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
+
+            let sx = t.right() + px(10.0);
+            let sroom = (r.right() - sx).max(px(0.0));
+            if sroom >= px(48.0) && !status_label.is_empty() {
+                let dot_center = point(sx + px(4.0), r.center().y);
+                let (dot_color, text_ink, weight) = match status_tone {
+                    CompactStatusTone::Running => (Some(c(p.success)), style::secondary_text(&p), FontWeight::NORMAL),
+                    CompactStatusTone::Control => (Some(c(p.keyboard_navigation)), c(p.panel_text), FontWeight::NORMAL),
+                    CompactStatusTone::Warning => (Some(c(p.warning)), c(olo_theme::readable(p.warning, p.panel_background, 4.5)), FontWeight::BOLD),
+                    CompactStatusTone::Error => (Some(c(p.failure)), c(olo_theme::readable(p.failure, p.panel_background, 4.5)), FontWeight::BOLD),
+                    CompactStatusTone::Muted => (None, style::secondary_text(&p), FontWeight::NORMAL),
+                };
+                let text_x = if let Some(dc) = dot_color {
+                    paint_status_dot(g, dot_center, 7.0, dc);
+                    sx + px(13.0)
+                } else {
+                    if disconnected {
+                        paint_status_ring(g, dot_center, 7.0, tertiary_ink(&p, p.panel_background));
+                    } else if !running {
+                        paint_status_dot(g, dot_center, 7.0, style::disabled_text(&p));
+                    }
+                    sx + px(13.0)
+                };
+                let text_room = (r.right() - text_x).max(px(0.0));
+                if text_room >= px(24.0) {
+                    let st_r = style::label_on_baseline_fit(g, text_x, baseline, style::Align::Left, status_label.clone(), style::SMALL_SIZE, style::ui_font(weight), text_ink, text_room);
+                    agent::record(g, agent::Node::label(status_label.clone(), st_r));
+                }
+            }
+        })
+        .flex_1()
+        .min_w_0()
+        .h_full();
+
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .h(px(olo_kit::widgets::TAB_HEIGHT))
+            .child(face)
+            .child(div().flex_shrink_0().flex().flex_row().items_center().gap(px(HEADER_BTN_GAP)).child(control_btn).child(overflow_btn))
+            .into_any_element()
+    }
+
     /// The chosen screen's name, how it's doing, and what can be done
     /// with it.
-    fn header(&mut self, cx: &mut Cx<Self>) -> Element {
+    fn header(&mut self, layout: PaneChromeLayout, cx: &mut Cx<Self>) -> Element {
         let Some(info) = self.state.info().cloned() else { return div().into_any_element() };
         let now = history::now_ms();
         let (actions, last, started) = match &self.replay {
@@ -2104,16 +2702,19 @@ impl ScreenPane {
         };
         let running = info.is_running();
         let disconnected = info.capabilities.host_disconnected;
-        let line_parts = self.state.header_subtitle_parts(actions, last, started, now);
+        let line_parts = self.state.header_subtitle_parts(actions, last, started, now, self.show_header_size);
+        let compact_status = layout.hide_subtitle.then(|| self.compact_inline_status(&info));
         let title = SharedString::from(info.display_name().to_owned());
         let renaming_now = self.renaming.is_some();
+        let hide_sub = layout.hide_subtitle;
+        let icon_sz = if hide_sub { 24.0_f32 } else { 32.0_f32 };
         let title_at = self.title_at.clone();
         let face = canvas(move |g, r| {
             olo_kit::review::own_grid(g, r);
             let p = theme::palette();
-            let icon = style::snap(g, Bounds { origin: point(r.left(), r.center().y - px(16.0)), size: size(px(32.0), px(32.0)) });
+            let icon = style::snap(g, Bounds { origin: point(r.left(), r.center().y - px(icon_sz / 2.0)), size: size(px(icon_sz), px(icon_sz)) });
             icons::paint(g, icon, "agent-screens");
-            let x = icon.right() + px(m::SPACING);
+            let x = icon.right() + px(if hide_sub { 8.0 } else { m::SPACING });
             let w = (r.right() - x).max(px(0.0));
             // (No room for even a few letters, in a window made narrow:
             // none, rather than an "…" over the buttons beside it.)
@@ -2122,15 +2723,48 @@ impl ScreenPane {
             }
             // (Its field over it while it's renamed.)
             if !renaming_now {
-                let t = style::label_fit(g, x, r.top() + px(11.0), style::Align::Left, title.clone(), 15.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), w);
+                // Neon-look #8: vertically center the 2-line title+subtitle block
+                // against the 32 pt icon (`4..36`) and 24 pt buttons (`8..32`).
+                let (title_y, title_pt) = if hide_sub { (r.center().y, 14.0) } else { (r.top() + px(13.0), 15.0) };
+                let t = style::label_fit(g, x, title_y, style::Align::Left, title.clone(), title_pt, style::ui_font(FontWeight::BOLD), c(p.panel_text), w);
                 agent::record(g, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
                 title_at.set(t);
+                if hide_sub
+                    && let Some((ref label, tone)) = compact_status
+                    && !label.is_empty()
+                {
+                    let sx = t.right() + px(10.0);
+                    let sroom = (r.right() - sx).max(px(0.0));
+                    if sroom >= px(48.0) {
+                        let dot_center = point(sx + px(4.0), r.center().y);
+                        let (dc, ink, weight) = match tone {
+                            CompactStatusTone::Running => (Some(c(p.success)), style::secondary_text(&p), FontWeight::NORMAL),
+                            CompactStatusTone::Control => (Some(c(p.keyboard_navigation)), c(p.panel_text), FontWeight::NORMAL),
+                            CompactStatusTone::Warning => (Some(c(p.warning)), c(olo_theme::readable(p.warning, p.panel_background, 4.5)), FontWeight::BOLD),
+                            CompactStatusTone::Error => (Some(c(p.failure)), c(olo_theme::readable(p.failure, p.panel_background, 4.5)), FontWeight::BOLD),
+                            CompactStatusTone::Muted => (None, style::secondary_text(&p), FontWeight::NORMAL),
+                        };
+                        if let Some(dc) = dc {
+                            paint_status_dot(g, dot_center, 7.0, dc);
+                        } else if disconnected {
+                            paint_status_ring(g, dot_center, 7.0, tertiary_ink(&p, p.panel_background));
+                        } else {
+                            paint_status_dot(g, dot_center, 7.0, style::disabled_text(&p));
+                        }
+                        let text_x = sx + px(13.0);
+                        let text_room = (r.right() - text_x).max(px(0.0));
+                        if text_room >= px(24.0) {
+                            let st_r = style::label_fit(g, text_x, r.center().y, style::Align::Left, label.clone(), style::SMALL_SIZE, style::ui_font(weight), ink, text_room);
+                            agent::record(g, agent::Node::label(label.clone(), st_r));
+                        }
+                    }
+                }
             }
-            // (Left out while a name is typed: the field has the room.)
-            if renaming_now {
+            // (Left out while a name is typed or in compact single-row mode.)
+            if renaming_now || hide_sub {
                 return;
             }
-            let line_y = r.top() + px(29.0);
+            let line_y = r.top() + px(28.5);
             // Raise dot slightly to align optically with the x-height and `·` dividers.
             let dot_center = point(x + px(4.0), line_y - px(0.5));
             if disconnected {
@@ -2143,10 +2777,18 @@ impl ScreenPane {
             let plain = style::ui_font(FontWeight::NORMAL);
             let mut shown = line_parts.clone();
             let mut text = shown.join(" · ");
-            // Drop whole trailing segments rather than cutting mid-word.
+            // Drop whole trailing segments rather than cutting mid-word (Opus #3).
             while shown.len() > 1 && style::text_width(text.clone(), style::PLAIN_SIZE, plain.clone()) > sub_w {
                 shown.pop();
                 text = shown.join(" · ");
+            }
+            // If even `"Running on <long-host>"` exceeds room, drop `" on <host>"`
+            // whole before ever resorting to mid-word ellipsis.
+            if shown.len() == 1
+                && style::text_width(text.clone(), style::PLAIN_SIZE, plain.clone()) > sub_w
+                && let Some((head, _)) = text.split_once(" on ")
+            {
+                text = head.to_owned();
             }
             let sub_ink = if disconnected { tertiary_ink(&p, p.panel_background) } else { style::secondary_text(&p) };
             let t = style::label_fit(g, x + px(14.0), line_y, style::Align::Left, text.clone(), style::PLAIN_SIZE, plain, sub_ink, sub_w);
@@ -2172,7 +2814,7 @@ impl ScreenPane {
             Some(field) => face.child(
                 div()
                     .absolute()
-                    .left(px(32.0 + m::SPACING))
+                    .left(px(icon_sz + if hide_sub { 8.0 } else { m::SPACING }))
                     .right_0()
                     .top_0()
                     .bottom_0()
@@ -2188,62 +2830,102 @@ impl ScreenPane {
             ),
             None => face,
         };
-        let first = if running {
-            Button::new("Stop Screen…").min_width(96.0).enabled(!disconnected).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+        // Opus Minor / Neon-look #6: use `Button::new("Screen").menu()` so its
+        // downward chevron matches `All types ▾` and `Kind: All Actions ▾` identically.
+        let make_overflow_btn = |inc_export: bool, inc_shot: bool, inc_life: bool, inc_move: bool, cx: &mut Cx<Self>| {
+            Button::new("Screen").menu().id("screen-overflow").min_width(0.0).on_click(cx.listener(move |p: &mut ScreenPane, _, cx| {
+                if inc_move {
+                    p.learn_spaces();
+                }
+                let mut menu = p.overflow_menu(inc_export, inc_shot, inc_life, inc_move, cx);
+                olo_kit::menu::resolve(std::slice::from_mut(&mut menu), p.raw_shortcuts);
+                let at = cx.mouse_position();
+                let me = cx.view_ref();
+                olo_kit::menu::context_menu(cx, menu, at, move |cmd, cx| {
+                    let cmd = cmd.to_owned();
+                    me.update(cx, move |p, cx| p.run_overflow_command(&cmd, cx));
+                });
+            }))
+        };
+
+        // 1. Short narrow tile (`hide_footer_caption` without wide inline tab merge):
+        //    Take Control (regular weight) + `Screen ▾` (with Move Windows To ▸ when local).
+        if layout.hide_footer_caption {
+            let has_shot = self.live.read(cx).has_shot();
+            let controlling = self.state.controlling();
+            let can_control = !disconnected && info.capabilities.can_control && (info.id.is_local() || has_shot || controlling);
+            let control_label = if controlling {
+                "Stop Controlling"
+            } else if self.state.control_pending {
+                "Taking Control…"
+            } else {
+                "Take Control"
+            };
+            let control_btn = Button::new(control_label).id("take-control").min_width(120.0).enabled(can_control).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+                if p.state.controlling() || p.state.control_pending {
+                    p.stop_controlling(cx);
+                } else {
+                    p.take_control(cx);
+                }
+            }));
+            let overflow_btn = make_overflow_btn(true, true, true, true, cx);
+            let btn_row = div().flex_shrink_0().flex().flex_row().items_center().gap(px(HEADER_BTN_GAP)).child(control_btn).child(overflow_btn);
+            return div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(COMPACT_HEADER_H)).flex_shrink_0().child(face).child(btn_row).into_any_element();
+        }
+
+        // 2. Narrow host-breadcrumb mode (`tile-v-third`, Opus #3): host places
+        //    `Screen ▾` in its breadcrumb strip right of `Show Terminal`, so the
+        //    pane header omits the action button row completely (saving ~32 pt).
+        if self.hide_header_actions {
+            return div().w_full().h(px(HEADER_H)).flex_shrink_0().flex().flex_row().items_center().child(face).into_any_element();
+        }
+
+        let shot = Button::new("Take Screenshot…").min_width(96.0).enabled(self.can_shoot(cx)).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_screenshot(cx)));
+        let start_btn = (!running).then(|| {
+            let busy = self.state.busy();
+            Button::new(if busy { "Starting…" } else { "Start Screen" }).id("start-screen").min_width(96.0).enabled(!busy && !disconnected).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
                 if p.host_lifecycle {
                     if let Some(id) = p.state.screen_id().cloned() {
-                        cx.emit(ScreenPaneEvent::StopRequested(id));
+                        cx.emit(ScreenPaneEvent::StartRequested(id));
                     }
                 } else {
-                    p.ask_stop(cx);
+                    p.start_screen(cx);
                 }
             }))
+        });
+
+        // 3. Narrow standalone pane (`pane_w < 460 pt`, e.g. standalone Agent Screens):
+        //    full-width title/subtitle on row 1, right-aligned `[Take Screenshot…] [Screen ▾]` on row 2.
+        if layout.wrap_buttons {
+            let mut buttons: Vec<Element> = Vec::new();
+            if running {
+                buttons.push(shot.into_any_element());
+            } else if let Some(sb) = start_btn {
+                buttons.push(sb.into_any_element());
+            }
+            // `Screen ▾` always rightmost (Opus #3).
+            buttons.push(make_overflow_btn(true, !running, true, false, cx).into_any_element());
+            let row1 = div().w_full().h(px(HEADER_H)).flex().flex_row().items_center().child(face);
+            let row2 = div().w_full().mt(px(HEADER_BTN_GAP)).flex().flex_row().items_center().justify_end().gap(px(HEADER_BTN_GAP)).children(buttons);
+            return div().w_full().flex_shrink_0().flex().flex_col().child(row1).child(row2).into_any_element();
+        }
+
+        // 4. Standard / quarter / h-half / v-half (`pane_w >= 460 pt`, Opus #3):
+        //    consistent `[Take Screenshot…] [Screen ▾]` (running) or
+        //    `[Take Screenshot…] [Start Screen] [Screen ▾]` (stopped), with
+        //    `Export Video…` and destructive `Stop Screen…` / `Clear History…`
+        //    cleanly tucked inside `Screen ▾` (always rightmost!).
+        let mut buttons: Vec<Element> = vec![shot.into_any_element()];
+        if let Some(sb) = start_btn {
+            buttons.push(sb.into_any_element());
+        }
+        buttons.push(make_overflow_btn(true, false, true, false, cx).into_any_element());
+        if hide_sub {
+            let btn_row = div().flex_shrink_0().flex().flex_row().items_center().gap(px(HEADER_BTN_GAP)).children(buttons);
+            div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(COMPACT_HEADER_H)).flex_shrink_0().child(face).child(btn_row).into_any_element()
         } else {
-            Button::new("Clear History…").min_width(96.0).enabled(!disconnected).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_clear(cx)))
-        };
-        // Exporting, it shows how far (an export takes seconds to minutes),
-        // History's bar too.
-        let exporting = self.state.export_done_current();
-        let export = match exporting {
-            Some(done) => Button::new("Export Video…").min_width(96.0).working(Some(done)),
-            None => Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_export(cx))),
-        };
-        let shot = Button::new("Take Screenshot…").min_width(96.0).enabled(self.can_shoot(cx)).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_screenshot(cx)));
-        // Finding 31: on narrow panes (380 pt min window / 420 pt vertical third),
-        // fold secondary menu-accessible actions (Export Video…, Take Screenshot…)
-        // so the header never overflows its width.
-        let pane_w = self.width.unwrap_or_else(|| f32::from(cx.viewport_size().width));
-        let show_export = if running { pane_w >= 460.0 } else { pane_w >= 540.0 };
-        let show_shot = running || pane_w >= 540.0;
-        let mut buttons: Vec<Element> = Vec::new();
-        if show_export {
-            buttons.push(export.into_any_element());
+            header_bar(face.into_any_element(), buttons)
         }
-        if show_shot {
-            buttons.push(shot.into_any_element());
-        }
-        buttons.push(first.into_any_element());
-        // Stopped: started again as it was.
-        if !running {
-            let busy = self.state.busy();
-            buttons.push(
-                Button::new(if busy { "Starting…" } else { "Start Screen" })
-                    .id("start-screen")
-                    .min_width(96.0)
-                    .enabled(!busy && !disconnected)
-                    .on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
-                        if p.host_lifecycle {
-                            if let Some(id) = p.state.screen_id().cloned() {
-                                cx.emit(ScreenPaneEvent::StartRequested(id));
-                            }
-                        } else {
-                            p.start_screen(cx);
-                        }
-                    }))
-                    .into_any_element(),
-            );
-        }
-        header_bar(face.into_any_element(), buttons)
     }
 
     /// EmptyState-style disconnected host explanation (shared between the Live
@@ -2316,7 +2998,7 @@ impl ScreenPane {
     }
 
     /// The screen as it is now, and Take Control.
-    fn live_tab(&mut self, cx: &mut Cx<Self>) -> Element {
+    fn live_tab(&mut self, layout: PaneChromeLayout, cx: &mut Cx<Self>) -> Element {
         let Some(info) = self.state.info().filter(|i| i.is_running()).cloned() else { return div().into_any_element() };
         let p = theme::palette();
         let has_shot = self.live.read(cx).has_shot();
@@ -2425,6 +3107,9 @@ impl ScreenPane {
                     }
                 }));
         }
+        // Opus #2: let the Live well fill the full height between tabs and the
+        // bottom-pinned caption row so tall narrow tiles (`v-half`, `v-third`)
+        // have zero dead empty void inside the tab frame.
         // (Tab and ⇧Tab on a screen being controlled go to it, as every
         // key: `key` stops them before the window moves the keyboard on.)
         let picture = div()
@@ -2443,6 +3128,12 @@ impl ScreenPane {
             .child(&self.live)
             .children(well_overlay)
             .child(input);
+
+        // Short horizontal tile (`tile-h-third`, `hide_footer_caption`):
+        // Take Control lives on the title/tab row and the well takes the full tab panel height.
+        if layout.hide_footer_caption {
+            return div().size_full().flex().flex_col().child(picture).into_any_element();
+        }
 
         // What is going on, and the control button.
         let now = history::now_ms();
@@ -2463,19 +3154,48 @@ impl ScreenPane {
             status_text.clear();
         }
         let color = if primary_ink && !disconnected { c(p.panel_text) } else { style::secondary_text(&p) };
+        let pane_w_for_caption = self.width.unwrap_or(800.0);
         let status = canvas(move |g, b| {
             if let Some((cmd, suffix)) = &latest_runs {
-                let prefix = "Latest: ";
-                let full: SharedString = format!("{prefix}{cmd}{suffix}").into();
                 let ui = style::ui_font(FontWeight::NORMAL);
                 let mono = style::mono_font(FontWeight::NORMAL);
-                let runs = [
-                    TextRun { len: prefix.len(), font: ui.clone(), color, background_color: None, underline: None, strikethrough: None, size: None },
-                    TextRun { len: cmd.len(), font: mono, color, background_color: None, underline: None, strikethrough: None, size: None },
-                    TextRun { len: suffix.len(), font: ui, color, background_color: None, underline: None, strikethrough: None, size: None },
+                let mono_sz = style::PLAIN_SIZE - 1.0;
+                // Opus #3 / Neon-look #2 / Agy-look #6: never mid-word middle-truncate
+                // a command (`click --na…rm Total'`). Prefer full `Latest: {cmd}  ·  {age}`,
+                // then drop `"Latest: "` if `{cmd}  ·  {age}` fits whole, then drop the
+                // trailing age segment and end-truncate `{cmd}` cleanly at a word/token
+                // boundary (`click --name 'Confirm…'`).
+                let full_with_prefix: SharedString = format!("Latest: {cmd}{suffix}").into();
+                let prefix_runs = [
+                    TextRun { len: "Latest: ".len(), font: ui.clone(), color, background_color: None, underline: None, strikethrough: None, size: None },
+                    TextRun { len: cmd.len(), font: mono.clone(), color, background_color: None, underline: None, strikethrough: None, size: Some(px(mono_sz)) },
+                    TextRun { len: suffix.len(), font: ui.clone(), color, background_color: None, underline: None, strikethrough: None, size: None },
                 ];
-                let t = style::label_runs_fit(g, b.left(), b.center().y, style::Align::Left, full.clone(), style::PLAIN_SIZE, &runs, b.size.width);
-                agent::record(g, agent::Node::label(full, t));
+                let full_w = g.text_system().shape_line(full_with_prefix.clone(), px(style::PLAIN_SIZE), &prefix_runs, None).width;
+                if pane_w_for_caption >= 480.0 && full_w <= b.size.width {
+                    let t = style::label_runs(g, b.left(), b.center().y, style::Align::Left, full_with_prefix.clone(), style::PLAIN_SIZE, &prefix_runs);
+                    agent::record(g, agent::Node::label(full_with_prefix, t));
+                    return;
+                }
+                let compact_full: SharedString = format!("{cmd}{suffix}").into();
+                let compact_full_runs = [
+                    TextRun { len: cmd.len(), font: mono.clone(), color, background_color: None, underline: None, strikethrough: None, size: Some(px(mono_sz)) },
+                    TextRun { len: suffix.len(), font: ui.clone(), color, background_color: None, underline: None, strikethrough: None, size: None },
+                ];
+                let compact_full_w = g.text_system().shape_line(compact_full.clone(), px(style::PLAIN_SIZE), &compact_full_runs, None).width;
+                if compact_full_w <= b.size.width {
+                    let t = style::label_runs(g, b.left(), b.center().y, style::Align::Left, compact_full, style::PLAIN_SIZE, &compact_full_runs);
+                    agent::record(g, agent::Node::label(full_with_prefix, t));
+                    return;
+                }
+                let short_cmd = truncate_command_clean(g, cmd, mono_sz, &mono, b.size.width);
+                let cmd_only: SharedString = short_cmd.clone().into();
+                let cmd_runs = [TextRun { len: short_cmd.len(), font: mono, color, background_color: None, underline: None, strikethrough: None, size: Some(px(mono_sz)) }];
+                let t = style::label_runs_fit(g, b.left(), b.center().y, style::Align::Left, cmd_only, style::PLAIN_SIZE, &cmd_runs, b.size.width);
+                if short_cmd != cmd.as_str() {
+                    g.note_cut(full_with_prefix.clone(), t);
+                }
+                agent::record(g, agent::Node::label(full_with_prefix, t));
                 return;
             }
             if status_text.is_empty() {
@@ -2496,7 +3216,9 @@ impl ScreenPane {
         } else {
             "Take Control"
         };
-        let control = Button::new(control_label).id("take-control").min_width(140.0).pushed(controlling).enabled(can_control).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+        // Opus #6: draw `Stop Controlling` as a normal regular-weight button
+        // (no `.pushed(controlling)` double state).
+        let control = Button::new(control_label).id("take-control").min_width(140.0).enabled(can_control).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
             if p.state.controlling() || p.state.control_pending {
                 p.stop_controlling(cx);
             } else {
@@ -2512,23 +3234,26 @@ impl ScreenPane {
             let at = cx.mouse_position();
             p.menu_at(menu, at, cx);
         }));
+        let live_gap = if layout.outer_gap < m::SPACING { layout.outer_gap } else { m::SPACING };
         div()
             .size_full()
             .flex()
             .flex_col()
-            .gap(px(m::SPACING))
+            .gap(px(live_gap))
             .child(picture)
             .child(div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).flex_shrink_0().child(status).children(offer_move.then_some(give)).child(control))
             .into_any_element()
     }
 
     /// A key on the picture being controlled: to the screen, but for the
-    /// one that stops controlling (⌘K, respecting keyboard-profile overrides).
+    /// one that stops controlling (⌘K, respecting keyboard-profile overrides
+    /// and physical command-key provenance in raw terminal mode — Astra #25 / Neon #2).
     fn key(&mut self, k: Keystroke, pressed: bool, held: bool, cx: &mut Cx<Self>) {
         if !self.state.controlling() {
             return;
         }
-        if pressed && is_control_shortcut(&k, self.raw_shortcuts) {
+        let physical_cmd = self.raw_command_check.as_ref().is_none_or(|f| f(&k));
+        if pressed && is_control_shortcut_with_command(&k, self.raw_shortcuts, physical_cmd) {
             return;
         }
         cx.stop_propagation();
@@ -2537,9 +3262,15 @@ impl ScreenPane {
 
     fn told(&mut self, msg: PaneMsg, cx: &mut Cx<Self>) {
         match msg {
+            PaneMsg::LiveSized => {
+                if let Some(cb) = self.live_scale_cb.clone() {
+                    cb(cx);
+                }
+            }
             PaneMsg::LiveFrameReady => {
                 self.live_frame_queued.store(false, Ordering::Release);
-                if let Some((watch, conn_gen, shot)) = self.pending_live.lock().unwrap_or_else(|e| e.into_inner()).take()
+                let pending = self.pending_live.lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some((watch, conn_gen, shot)) = pending
                     && self.watching.as_ref().is_some_and(|(_, id, _, _)| *id == watch)
                     && self.live_gen.accept_frame(watch, conn_gen)
                 {
@@ -2559,6 +3290,10 @@ impl ScreenPane {
                         let shape = self.state.info().and_then(|i| i.size).map(|(w, h)| (w as f32, h as f32));
                         self.live.update(cx, |w, _| w.set_shape(shape));
                         cx.invalidate();
+                    }
+                    if self.pending_take_control && self.state.shown_tab() == Tab::Live {
+                        self.pending_take_control = false;
+                        self.take_control(cx);
                     }
                 }
                 return;
@@ -2583,6 +3318,10 @@ impl ScreenPane {
                 }
                 if !had_shot || prev_size != self.state.live_pixel_size {
                     cx.invalidate();
+                }
+                if self.pending_take_control && self.state.shown_tab() == Tab::Live {
+                    self.pending_take_control = false;
+                    self.take_control(cx);
                 }
                 return;
             }
@@ -2739,11 +3478,11 @@ impl ScreenPane {
                     self.alert(&format!("The screen couldn't be started: {e}"), cx);
                 }
             },
-            PaneMsg::Stopped(id, r) => {
+            PaneMsg::Stopped(id, source, expected_started, r) => {
                 if let Err(e) = r {
                     self.alert(&e, cx);
                 } else {
-                    if self.state.on_stopped_reply(&id) {
+                    if self.state.on_stopped_reply(&id, &source, expected_started) {
                         cx.emit(ScreenPaneEvent::Controlling(id.clone(), false));
                     }
                     cx.emit(ScreenPaneEvent::Stopped(id));
@@ -2766,11 +3505,11 @@ impl ScreenPane {
                     cx.emit(ScreenPaneEvent::RenameFailed(id));
                 }
             },
-            PaneMsg::Cleared(id, r) => {
+            PaneMsg::Cleared(id, source, r) => {
                 if let Err(e) = r {
                     self.alert(&e, cx);
                 } else {
-                    if self.state.screen_id() == Some(&id) {
+                    if self.state.matches_captured_session(&id, &source, None) {
                         self.replay = None;
                     }
                     cx.emit(ScreenPaneEvent::Cleared(id));
@@ -2798,6 +3537,9 @@ impl View for ScreenPane {
         self.sync_history(cx);
         let running = info.is_running();
         let pane_w = self.width.unwrap_or_else(|| f32::from(cx.viewport_size().width));
+        let pane_h = self.height.unwrap_or_else(|| f32::from(cx.viewport_size().height));
+        let shown = self.state.shown_tab();
+        let layout = plan_pane_chrome(pane_w, pane_h, running && shown == Tab::Live);
         // The tab's area: inside the pane's inset, then the tab view's.
         let area_w = (pane_w - 4.0 * m::WINDOW_INSET).max(120.0);
         if let Some(replay) = &self.replay {
@@ -2809,10 +3551,9 @@ impl View for ScreenPane {
                 }
             });
         }
-        let header = self.header(cx);
         let tabs = self.state.tabs();
+        let tab_strs: Vec<&str> = tabs.iter().map(|t| t.label()).collect();
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
-        let shown = self.state.shown_tab();
         let i = tabs.iter().position(|t| *t == shown).unwrap_or(0);
         let show_disconnected_history = matches!(shown, Tab::History | Tab::Stats)
             && should_show_disconnected_for_history(
@@ -2826,7 +3567,7 @@ impl View for ScreenPane {
             self.disconnected_panel(&info, false, cx)
         } else {
             match (shown, &self.replay) {
-                (Tab::Live, _) => self.live_tab(cx),
+                (Tab::Live, _) => self.live_tab(layout, cx),
                 (Tab::History, Some(replay)) => replay.element(),
                 (Tab::Stats, Some(replay)) => stats::view(replay, running, area_w, &self.stats_scroll, cx),
                 (Tab::Passwords, _) => match &info.capabilities.passwords {
@@ -2849,13 +3590,186 @@ impl View for ScreenPane {
                 (_, None) => div().into_any_element(),
             }
         };
+        let tab_count = tabs.len();
         let tab_view = TabView::new("screen-tabs", labels, i).on_select(cx.listener(move |p: &mut ScreenPane, i: &usize, cx| {
             if let Some(tab) = tabs.get(*i) {
                 p.set_tab(*tab, cx);
             }
         }));
-        div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(header).child(div().flex_1().min_h_0().child(tab_view.child(content))).into_any_element()
+        if layout.compact_inline_tabs && shown == Tab::Live {
+            // Opus #7 / Neon-look #12 / Astra #22 (`tile-h-third`): merge title,
+            // compact inline status (or control refusal note), and `[Take Control] [Screen ▾]`
+            // onto the TabView's top strip right of the tabs, with uniform 6 pt margin on
+            // all four sides of the Live well inside `fill_page`.
+            let mut pages: Vec<Element> = Vec::with_capacity(tab_count);
+            let mut live_el = Some(div().size_full().p(px(COMPACT_WELL_PAD)).child(content).into_any_element());
+            for idx in 0..tab_count {
+                if idx == i {
+                    pages.push(live_el.take().unwrap());
+                } else {
+                    pages.push(div().into_any_element());
+                }
+            }
+            let tab_body = tab_view.pages(pages).fill_page(i).into_any_element();
+            let tab_outer_w = (self.width.unwrap_or(960.0) - 2.0 * m::WINDOW_INSET).max(200.0);
+            let tabs_right = tab_view_tabs_right_edge(&tab_strs, tab_outer_w);
+            let inline_bar = self.compact_inline_bar(&info, cx);
+            return div()
+                .size_full()
+                .px(px(m::WINDOW_INSET))
+                .pt(px(6.0))
+                .pb(px(6.0))
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .relative()
+                        .flex()
+                        .flex_col()
+                        .child(div().flex_1().min_h_0().child(tab_body))
+                        .child(div().absolute().top_0().left(px(tabs_right + 14.0)).right_0().h(px(olo_kit::widgets::TAB_HEIGHT)).child(inline_bar)),
+                )
+                .into_any_element();
+        }
+        let header = self.header(layout, cx);
+        let tab_body = if layout.hide_footer_caption && shown == Tab::Live {
+            let mut pages: Vec<Element> = Vec::with_capacity(tab_count);
+            let mut live_el = Some(div().size_full().p(px(COMPACT_WELL_PAD)).child(content).into_any_element());
+            for idx in 0..tab_count {
+                if idx == i {
+                    pages.push(live_el.take().unwrap());
+                } else {
+                    pages.push(div().into_any_element());
+                }
+            }
+            tab_view.pages(pages).fill_page(i).into_any_element()
+        } else {
+            tab_view.child(content).into_any_element()
+        };
+        div().size_full().px(px(m::WINDOW_INSET)).py(px(layout.outer_py)).flex().flex_col().gap(px(layout.outer_gap)).child(header).child(div().flex_1().min_h_0().child(tab_body)).into_any_element()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompactStatusTone {
+    Running,
+    Control,
+    Warning,
+    Error,
+    Muted,
+}
+
+/// Exact right edge of the last rendered tab in `TabView::places` (matching
+/// `crates/kit/src/widgets/tabs.rs` `FIRST = 8.0`, `pad_pref = 20.0 / 14.0`,
+/// `least = 12.0 / 6.0`, `gap = 2.0 / 3.0`) so `compact_inline_bar` clears the
+/// `Passwords` tab's bottom-right foot by a full 14 pt on wide tiles (Opus #4 / Neon-look #1).
+fn tab_view_tabs_right_edge(tab_strs: &[&str], outer_w: f32) -> f32 {
+    const TAB_FIRST: f32 = 8.0;
+    let platinum = theme::palette().theme == "platinum";
+    let (pad_pref, least, gap) = if platinum { (14.0_f32, 6.0_f32, 3.0_f32) } else { (20.0_f32, 12.0_f32, 2.0_f32) };
+    let bold = style::ui_font(FontWeight::BOLD);
+    let names: Vec<f32> = tab_strs.iter().map(|t| f32::from(style::text_width(olo_kit::words::of_text(t), style::PLAIN_SIZE, bold.clone()))).collect();
+    let n = names.len().max(1) as f32;
+    let room = (outer_w - 2.0 * TAB_FIRST - gap * (n - 1.0)).max(0.0);
+    let sum_names: f32 = names.iter().sum();
+    let pad = ((room - sum_names) / (2.0 * n)).clamp(least, pad_pref);
+    let widths_sum: f32 = names.iter().map(|w| w + 2.0 * pad).sum();
+    (TAB_FIRST + widths_sum.min(room) + gap * (n - 1.0)).ceil()
+}
+
+/// End-truncate a monospace command string cleanly at a word/token boundary
+/// without ever slicing words in the middle (Opus #3 / Neon-look #2).
+fn truncate_command_clean(g: &mut Painter, cmd: &str, font_size: f32, font: &olo_kit::Font, max_w: Pixels) -> String {
+    let measure = |s: &str| {
+        let runs = [TextRun { len: s.len(), font: font.clone(), color: olo_kit::Hsla::black(), background_color: None, underline: None, strikethrough: None, size: Some(px(font_size)) }];
+        g.text_system().shape_line(SharedString::from(s.to_owned()), px(style::PLAIN_SIZE), &runs, None).width
+    };
+    if measure(cmd) <= max_w {
+        return cmd.to_owned();
+    }
+    // Try progressively shorter prefixes ending cleanly at whitespace/token boundaries first.
+    let mut best: Option<String> = None;
+    let mut last_space = 0usize;
+    for (idx, ch) in cmd.char_indices() {
+        if ch.is_whitespace() && idx > last_space {
+            let trimmed = cmd[..idx].trim_end_matches(|c: char| c.is_whitespace() || matches!(c, '&' | '·' | ',' | ':'));
+            if !trimmed.is_empty() {
+                let candidate = format!("{trimmed}…");
+                if measure(&candidate) <= max_w {
+                    best = Some(candidate);
+                } else {
+                    break;
+                }
+            }
+            last_space = idx;
+        }
+    }
+    if let Some(b) = best {
+        return b;
+    }
+    // Single very long token: truncate cleanly from the end on a char boundary.
+    let mut cut = 0usize;
+    for (idx, _) in cmd.char_indices().skip(1) {
+        let candidate = format!("{}…", &cmd[..idx]);
+        if measure(&candidate) <= max_w {
+            cut = idx;
+        } else {
+            break;
+        }
+    }
+    if cut > 0 { format!("{}…", &cmd[..cut]) } else { "…".to_owned() }
+}
+
+/// Analytical Live preview fit scale (`drawn_width / logical_screen_width`)
+/// matching [`ScreenPane::body`], [`TabView`], and [`PictureWell::paint`] so
+/// host status bars report the exact zoom percentage on the same frame after
+/// any window resize or tile change (Opus #1 / Neon-look #1).
+fn analytical_live_fit_scale(pane_w: f32, pane_h: f32, hide_header_actions: bool, sw: f32, sh: f32) -> Option<f32> {
+    if pane_w <= 0.0 || pane_h <= 0.0 || sw <= 0.0 || sh <= 0.0 {
+        return None;
+    }
+    let layout = plan_pane_chrome(pane_w, pane_h, true);
+    let tab_h = olo_kit::widgets::TAB_HEIGHT;
+    let frame_pts = 2.0_f32;
+    let (well_w, well_h) = if layout.compact_inline_tabs {
+        let tab_outer_w = (pane_w - 2.0 * m::WINDOW_INSET).max(1.0);
+        let tab_outer_h = (pane_h - 12.0).max(1.0);
+        let w = (tab_outer_w - 2.0 * frame_pts - 2.0 * COMPACT_WELL_PAD).max(1.0);
+        let h = (tab_outer_h - tab_h - 2.0 * frame_pts - 2.0 * COMPACT_WELL_PAD).max(1.0);
+        (w, h)
+    } else if layout.hide_footer_caption {
+        let tab_outer_w = (pane_w - 2.0 * m::WINDOW_INSET).max(1.0);
+        let tab_outer_h = (pane_h - 2.0 * layout.outer_py - COMPACT_HEADER_H - layout.outer_gap).max(1.0);
+        let w = (tab_outer_w - 2.0 * frame_pts - 2.0 * COMPACT_WELL_PAD).max(1.0);
+        let h = (tab_outer_h - tab_h - 2.0 * frame_pts - 2.0 * COMPACT_WELL_PAD).max(1.0);
+        (w, h)
+    } else {
+        let header_h = if hide_header_actions {
+            HEADER_H
+        } else if layout.wrap_buttons {
+            HEADER_H + HEADER_BTN_GAP + m::CONTROL_HEIGHT
+        } else if layout.hide_subtitle {
+            COMPACT_HEADER_H
+        } else {
+            HEADER_H
+        };
+        let live_gap = if layout.outer_gap < m::SPACING { layout.outer_gap } else { m::SPACING };
+        let w = (pane_w - 4.0 * m::WINDOW_INSET).max(1.0);
+        let tab_content_h = (pane_h - 2.0 * layout.outer_py - header_h - layout.outer_gap - tab_h - 2.0 * m::WINDOW_INSET).max(1.0);
+        let h = (tab_content_h - live_gap - m::CONTROL_HEIGHT).max(1.0);
+        (w, h)
+    };
+    let inner_w = (well_w - 4.0).max(1.0);
+    let inner_h = (well_h - 4.0).max(1.0);
+    let pad = if inner_h < 130.0 { m::TIGHT } else { m::SPACING };
+    let rw = (inner_w - 2.0 * pad).max(1.0);
+    let rh = (inner_h - 2.0 * pad).max(1.0);
+    let aspect = sw / sh;
+    let pw = if rw / rh > aspect { rh * aspect } else { rw };
+    let ratio = pw / sw;
+    (ratio.is_finite() && ratio > 0.0).then_some(ratio)
 }
 
 /// Whether `Tab::History` / `Tab::Stats` should render the disconnected panel
@@ -3302,13 +4216,22 @@ mod tests {
     }
 
     #[test]
-    fn astra_f1_control_shortcut_matches_directly() {
+    fn astra_f1_neon_r2_f1_control_shortcut_matches_normal_and_raw_terminal_mode() {
         let plain_a = keystroke("a", Modifiers::default());
         assert!(!is_control_shortcut(&plain_a, false));
-        let cmd_k = keystroke("k", Modifiers { control: true, ..Default::default() });
-        assert!(is_control_shortcut(&cmd_k, false));
-        let shift_cmd_k = keystroke("k", Modifiers { control: true, shift: true, ..Default::default() });
-        assert!(!is_control_shortcut(&shift_cmd_k, false));
+        assert!(!is_control_shortcut(&plain_a, true));
+        let ctrl_k = keystroke("k", Modifiers { control: true, ..Default::default() });
+        let shift_ctrl_k = keystroke("k", Modifiers { control: true, shift: true, ..Default::default() });
+        // Normal window (Agent Screens): ⌘K arrives as Ctrl+K (no Shift).
+        assert!(is_control_shortcut(&ctrl_k, false));
+        assert!(!is_control_shortcut(&shift_ctrl_k, false));
+        // Terminal window (Rex, `raw = true`) on Mac/BeOS profile: ⌘K arrives with Shift added,
+        // while ordinary left Ctrl+K (`shift: false`) MUST pass through to the controlled screen!
+        let p = keys::profile();
+        if p.command_key != olo_protocol::CommandKey::Control {
+            assert!(is_control_shortcut(&shift_ctrl_k, true), "⌘K (Ctrl+Shift+K in raw mode) must toggle Take Control");
+            assert!(!is_control_shortcut(&ctrl_k, true), "plain Ctrl+K must pass through in raw mode");
+        }
     }
 
     #[test]
@@ -3338,10 +4261,17 @@ mod tests {
         assert!(!pane.on_started_reply(a.id(), Some(a.info())));
         assert_eq!(pane.tab(), Tab::History);
 
-        // Late Stopped(B) arriving while controlling B releases B's control cleanly.
+        // Late Stopped(B) arriving for matching source releases B's control cleanly,
+        // while a delayed Stopped(B) from an OLD source instance MUST NOT stop/release
+        // a replacement session under the same ScreenId (Astra #14).
+        let b_dyn: Arc<dyn ScreenSource> = b.clone();
         assert_eq!(pane.take_control(), Ok(ControlAcquire::Acquired));
         assert!(pane.controlling());
-        assert!(pane.on_stopped_reply(b.id()));
+        let old_b: Arc<dyn ScreenSource> = MockSource::local_running("screen-b");
+        assert!(!pane.on_stopped_reply(b.id(), &old_b, None), "delayed stop reply from replaced source must be ignored");
+        assert!(pane.controlling(), "replacement session must keep control");
+        assert_eq!(pane.info().unwrap().state, ScreenState::Running);
+        assert!(pane.on_stopped_reply(b.id(), &b_dyn, None));
         assert!(!pane.controlling());
         assert_eq!(pane.info().unwrap().state, ScreenState::Stopped);
     }
@@ -3608,13 +4538,13 @@ mod tests {
         assert!(pane.latest_action_is_current(&act3, 3));
         let (cmd, suf) = pane.live_latest_runs(Some(&act3), now).expect("loading footer must show known latest");
         assert_eq!(cmd, "click 810 420");
-        assert_eq!(suf, " · 1 min ago");
+        assert_eq!(suf, "  ·  1 min ago");
 
         // Agy-review R1 #7: `header_subtitle` uptime & `live_latest_runs` / `"Last seen"` relative times
         // format through `olo_kit::ago::age` (scheduling `holds_until` wakeups while keeping `now_ms` deterministic).
         let syn_act = history::Action { at: 4_000, ms: 50, kind: "click".into(), args: vec!["10".into(), "20".into()], result: None, error: None };
-        assert_eq!(pane.live_latest_runs(Some(&syn_act), 10_000).unwrap().1, " · just now");
-        assert_eq!(pane.live_latest_runs(Some(&syn_act), 70_050).unwrap().1, " · 1 min ago");
+        assert_eq!(pane.live_latest_runs(Some(&syn_act), 10_000).unwrap().1, "  ·  just now");
+        assert_eq!(pane.live_latest_runs(Some(&syn_act), 70_050).unwrap().1, "  ·  1 min ago");
         let up_fmt = |a: Duration| format!("up {}", stats::span(a.as_millis() as u64));
         assert_eq!(olo_kit::ago::until_change(Duration::from_secs(9), &up_fmt, &up_fmt(Duration::from_secs(9))), Duration::from_secs(1));
         assert_eq!(olo_kit::ago::until_change(Duration::from_secs(61), &up_fmt, &up_fmt(Duration::from_secs(61))), Duration::from_secs(59));
@@ -3627,7 +4557,7 @@ mod tests {
         pane.update_info(disc);
         let (cmd_d, suf_d) = pane.live_latest_runs(Some(&act3), now).expect("disconnected footer must show last known action");
         assert_eq!(cmd_d, "click 810 420");
-        assert_eq!(suf_d, " · 1 min ago");
+        assert_eq!(suf_d, "  ·  1 min ago");
         assert_eq!(pane.live_latest_runs(None, now), None);
 
         // B.9 (#30): once host metadata advances (`last_used_ms` OR `actions` count) beyond the
@@ -3694,10 +4624,12 @@ mod tests {
         pane.set_source(Some(replacement.clone()));
         assert!(!pane.matches_captured_session(local.id(), &captured, local.session_started()), "stale Stop dialog must not match replacement source under same ScreenId");
 
-        // B.3 (#4): shared `capture_stop_expectations` sends Some(0) for known-empty screens
-        // and fails closed on remote running screens without `started`.
+        // B.3 (#4) & Astra #10: shared `capture_stop_expectations` sends Some(0)
+        // for verified-empty screens (`Some(0)`), fails closed on local unknown
+        // history (`None` with no timestamp) and remote running screens without `started`.
         assert_eq!(capture_stop_expectations(false, Some(1000), None, None, Some(0)).unwrap(), (Some(1000), Some(0)));
-        assert_eq!(capture_stop_expectations(true, Some(1000), None, None, None).unwrap(), (Some(1000), Some(0)));
+        assert_eq!(capture_stop_expectations(true, Some(1000), None, None, Some(0)).unwrap(), (Some(1000), Some(0)));
+        assert!(capture_stop_expectations(true, Some(1000), None, None, None).is_err(), "local Stop with unknown history count must fail closed (Astra #10)");
         assert_eq!(capture_stop_expectations(false, Some(1000), Some(5000), Some(9000), Some(3)).unwrap(), (Some(1000), Some(9000)));
         assert!(capture_stop_expectations(false, None, None, None, Some(0)).is_err(), "remote Stop without started must fail closed");
 
@@ -3730,5 +4662,81 @@ mod tests {
         // Offline with already-loaded cached actions (or genuinely empty loaded history) stays readable!
         assert!(!should_show_disconnected_for_history(true, Some((true, false, false))));
         assert!(!should_show_disconnected_for_history(true, Some((true, true, false))));
+    }
+
+    #[test]
+    fn opus_r2_short_narrow_chrome_plan_analytical_zoom_and_strict_stop() {
+        // Short horizontal third (`tile-h-third`: 1240 x 210 pt pane): merges title/status/controls
+        // onto TabView's top strip with uniform 6 pt well margins (Opus #7).
+        let h_third = plan_pane_chrome(1240.0, 210.0, true);
+        assert!(h_third.hide_subtitle);
+        assert!(h_third.hide_footer_caption);
+        assert!(h_third.compact_inline_tabs);
+        assert!(!h_third.wrap_buttons);
+        let well_h_third = 210.0 - 4.0 - 6.0 - 4.0 - olo_kit::widgets::TAB_HEIGHT - 4.0 - 2.0 * COMPACT_WELL_PAD;
+        assert!(well_h_third >= 130.0, "tile-h-third Live well should be >= 130 pt, got {well_h_third}");
+
+        // Horizontal half (`tile-h-half`: 1000 x 275 pt pane): keeps full header & footer.
+        let h_half = plan_pane_chrome(1000.0, 275.0, true);
+        assert!(!h_half.hide_subtitle);
+        assert!(!h_half.hide_footer_caption);
+        assert!(!h_half.compact_inline_tabs);
+        assert!(!h_half.wrap_buttons);
+
+        // Quarter tile (`640 x 400`): single header row (`[Take Screenshot…] [Screen ▾]`), no wrap.
+        let quarter = plan_pane_chrome(640.0, 400.0, true);
+        assert!(!quarter.wrap_buttons);
+
+        // Narrow vertical third (`tile-v-third`: 426 x 700 pt pane): wraps buttons unless host hides them.
+        let v_third = plan_pane_chrome(426.0, 700.0, true);
+        assert!(!v_third.hide_subtitle);
+        assert!(!v_third.hide_footer_caption);
+        assert!(v_third.wrap_buttons);
+
+        // Opus #1 / Neon-look #1: analytical zoom scale tracks tile dimensions immediately.
+        let s_full = analytical_live_fit_scale(960.0, 620.0, false, 1440.0, 900.0).unwrap();
+        let s_vhalf = analytical_live_fit_scale(640.0, 620.0, false, 1440.0, 900.0).unwrap();
+        let s_vthird = analytical_live_fit_scale(426.0, 620.0, true, 1440.0, 900.0).unwrap();
+        let s_hhalf = analytical_live_fit_scale(1000.0, 275.0, false, 1440.0, 900.0).unwrap();
+        assert!(s_full > s_vhalf && s_vhalf > s_vthird, "narrower tiles must decrease zoom scale: full={s_full} vhalf={s_vhalf} vthird={s_vthird}");
+        assert!(s_hhalf < s_full, "shorter h-half tile must shrink zoom scale: hhalf={s_hhalf} full={s_full}");
+
+        // Astra #6 / Neon #2: strict Stop expectations fail closed when local history is unreadable/unverified.
+        assert!(capture_stop_expectations_strict(true, Some(1000), None, None, None, false).is_err());
+        assert!(capture_stop_expectations_strict(true, Some(1000), None, None, Some(1), false).is_err());
+        assert_eq!(capture_stop_expectations_strict(true, Some(1000), None, None, Some(0), true).unwrap(), (Some(1000), Some(0)));
+        assert_eq!(capture_stop_expectations_strict(true, Some(1000), None, Some(5000), Some(2), false).unwrap(), (Some(1000), Some(5000)));
+    }
+
+    #[test]
+    fn r3_polish_astra_f25_neon_f2_control_shortcut_raw_mode_and_custom_bindings() {
+        use olo_protocol::{Chord, CommandKey};
+
+        // 1. Mac/BeOS raw mode translates `Command+K` to `Ctrl+Shift+K` (`requires_physical_command = true`):
+        //    physical Left `Ctrl+Shift+K` (`physical_command_held = false`) MUST pass through,
+        //    while physical `⌘K` (`physical_command_held = true`) MUST toggle control!
+        let mac_cmd_k = Chord { key: keys::evdev("k"), ctrl: false, cmd: true, alt: false, shift: false };
+        let resolved_mac = chord_app_side_detailed(&mac_cmd_k, CommandKey::Command, true).expect("resolve Mac raw Cmd+K");
+        assert!(resolved_mac.requires_physical_command);
+        assert!(resolved_mac.shortcut.shift && resolved_mac.shortcut.command);
+
+        let k_ctrl_shift = Keystroke { key: "k".into(), key_char: None, modifiers: Modifiers { control: true, shift: true, ..Modifiers::default() } };
+        assert!(!match_resolved_control_shortcuts(std::slice::from_ref(&resolved_mac), &k_ctrl_shift, false), "Left Ctrl+Shift+K on Mac/BeOS raw mode must NOT be swallowed");
+        assert!(match_resolved_control_shortcuts(std::slice::from_ref(&resolved_mac), &k_ctrl_shift, true), "Physical Command+K on Mac/BeOS raw mode MUST match");
+
+        // 2. Custom non-command binding (e.g. `Alt+K` or `F9`) does NOT require physical Command
+        //    and MUST match even when `physical_command_held = false`!
+        let alt_k = Chord { key: keys::evdev("k"), ctrl: false, cmd: false, alt: true, shift: false };
+        let resolved_alt = chord_app_side_detailed(&alt_k, CommandKey::Command, true).expect("resolve custom Alt+K");
+        assert!(!resolved_alt.requires_physical_command);
+        let k_alt = Keystroke { key: "k".into(), key_char: None, modifiers: Modifiers { alt: true, ..Modifiers::default() } };
+        assert!(match_resolved_control_shortcuts(&[resolved_alt], &k_alt, false), "custom non-command Alt+K binding must match without physical Command");
+
+        // 3. Linux/Control-primary profile (`Ctrl+K`): does NOT set `requires_physical_command`.
+        let linux_ctrl_k = Chord { key: keys::evdev("k"), ctrl: true, cmd: false, alt: false, shift: false };
+        let resolved_linux = chord_app_side_detailed(&linux_ctrl_k, CommandKey::Control, true).expect("resolve Linux Ctrl+K");
+        assert!(!resolved_linux.requires_physical_command);
+        let k_ctrl = Keystroke { key: "k".into(), key_char: None, modifiers: Modifiers { control: true, ..Modifiers::default() } };
+        assert!(match_resolved_control_shortcuts(&[resolved_linux], &k_ctrl, false), "Linux Ctrl+K must match");
     }
 }

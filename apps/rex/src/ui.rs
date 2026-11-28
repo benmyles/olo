@@ -93,6 +93,11 @@ pub struct SavedWorkspaceState {
     pub session_index: usize,
     pub sidebar_collapsed: bool,
     pub sidebar_width: f32,
+    /// Screen currently shown in Rex's embedded `ScreenPane` (never restores Take Control).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_screen: Option<olo_screen_pane::ScreenId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_screen_tab: Option<olo_screen_pane::Tab>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -521,6 +526,10 @@ fn handle_hub_notice(notice: HubNotice) {
             // initial `Screens` tab before opening the window.
             olo_kit::proxy().send(OpenHostOnApp { host_key, tab: crate::host::tab_named("screens") });
         }
+        HubNotice::ScreensChanged => {
+            broadcast_to_role(WinRole::Workspace, || WinMsg::ScreensMetaChanged);
+            host_changed();
+        }
     }
 }
 
@@ -549,7 +558,7 @@ pub fn open_demo_carry() {
 }
 
 /// Switch the demo workspace to Activity sidebar with deterministic native nested subagents
-/// (`OLO_REX_DEMO_ACTIVITY=1|collapsed|child|transcript|follow|find|nomatch`) for headless visual QA.
+/// (`OLO_REX_DEMO_ACTIVITY=1|collapsed|child|transcript|follow|find|nomatch|screens|screens-empty|screens-selected|screens-collapsed|screens-collapsed-urgent|screens-filter|screens-type-filter|screens-control`) for headless visual QA.
 pub fn open_demo_activity(mode: &str) {
     let hub = the_hub().clone();
     {
@@ -567,8 +576,38 @@ pub fn open_demo_activity(mode: &str) {
         }
     }
     crate::activity_watch::apply_demo_activity_mode(mode);
-    if matches!(mode, "find" | "nomatch") {
-        broadcast_to_role(WinRole::Workspace, || WinMsg::Command("terminal.find".into()));
+    match mode {
+        "find" | "nomatch" => {
+            broadcast_to_role(WinRole::Workspace, || WinMsg::Command("terminal.find".into()));
+        }
+        "screens-collapsed" => {
+            let mut mgr = crate::activity_watch::manager().lock().unwrap_or_else(|e| e.into_inner());
+            mgr.folded.insert(BlockKey { host_key: "dev-box".into(), session_id: "dev-main".into(), block_id: "dev-lead".into() });
+            mgr.folded.insert(BlockKey { host_key: "staging".into(), session_id: "stg-main".into(), block_id: "stg-qa".into() });
+        }
+        "screens-collapsed-urgent" => {
+            let mut mgr = crate::activity_watch::manager().lock().unwrap_or_else(|e| e.into_inner());
+            mgr.folded.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-sub-1".into() });
+            mgr.folded.insert(BlockKey { host_key: "dev-box".into(), session_id: "dev-main".into(), block_id: "dev-lead".into() });
+            mgr.folded.insert(BlockKey { host_key: "staging".into(), session_id: "stg-main".into(), block_id: "stg-qa".into() });
+        }
+        "screens-selected" | "screens-control" => {
+            let take = mode == "screens-control";
+            broadcast_to_role(WinRole::Workspace, move || WinMsg::OpenScreen {
+                id: olo_screen_pane::ScreenId::host("dev-box", "dev-box", "verify-1"),
+                tab: Some(olo_screen_pane::Tab::Live),
+                take_control: take,
+                expected_host_instance_id: None,
+                expected_started: None,
+            });
+        }
+        "screens-filter" => {
+            broadcast_to_role(WinRole::Workspace, || WinMsg::SetActivitySearch("verify".into()));
+        }
+        "screens-type-filter" => {
+            broadcast_to_role(WinRole::Workspace, || WinMsg::SetActivityTypeFilter(ActivityTypeFilter::Screens));
+        }
+        _ => {}
     }
     activity_changed();
 }
@@ -819,6 +858,49 @@ pub fn notification_event(event: olo_kit::notify::NoteEvent) {
     let target = app().attention.event(event);
     if let Some((target, token)) = target {
         show_target(target, token);
+    }
+}
+
+/// Open a remote host's screen live inside Rex's workspace window (used by the
+/// Host window's Screens tab "Look at Screen" button and `host.screen:KEY:look:NAME`).
+/// Pins `(host_key, host_instance_id, expected_started)` (Astra #4), verifies
+/// live streaming capability and screen presence, and reports failures directly
+/// on the Host window's `screen_failed` row (Neon #12).
+fn open_host_screen_live_in_rex(hub: &Arc<RexHub>, host_key: &str, host_instance_id: u64, host_label: &str, name: &str, expected_started: Option<u64>) {
+    let check = {
+        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        let host = st.hosts.get(host_key);
+        let label = host.map(|h| h.label.clone()).unwrap_or_else(|| host_label.to_owned());
+        if host_instance_id != 0 && host.is_none_or(|h| h.host_instance_id != host_instance_id) {
+            Err(format!("“{label}” changed before this screen could open."))
+        } else {
+            match st.host_screens.get(host_key) {
+                Some(live) if host_instance_id != 0 && live.host_instance_id != host_instance_id => Err(format!("“{label}” changed before this screen could open.")),
+                Some(live) if !crate::activity_screens::host_supports_live_stream(live) => Err(format!("Update Olo’s helper on “{label}” to view screens live in Rex.")),
+                Some(live) => match live.screens.iter().find(|s| s.name == name && s.state != olo_rex_link::screen_wire::HostScreenState::Archived) {
+                    None => Err(format!("Screen “{name}” is no longer available on “{label}”.")),
+                    Some(sc) if expected_started.is_some() && sc.started != expected_started => Err(format!("Screen “{name}” restarted on “{label}”. Please try again.")),
+                    Some(sc) => Ok((label, live.host_instance_id, sc.started)),
+                },
+                None => Err(format!("Update Olo’s helper on “{label}” to view screens live in Rex.")),
+            }
+        }
+    };
+    let (label, inst_id, started) = match check {
+        Ok(v) => v,
+        Err(why) => {
+            let what = olo_kit::tr!("Couldn’t open {}", name).to_string();
+            crate::host::screen_failed(host_key, host_instance_id, name, &what, &why);
+            return;
+        }
+    };
+    let id = olo_screen_pane::ScreenId::host(host_key, label, name);
+    if workspace().is_none() {
+        open_workspace_window(None);
+    }
+    if let Some(w) = workspace() {
+        w.messenger().send(WinMsg::OpenScreen { id, tab: Some(olo_screen_pane::Tab::Live), take_control: false, expected_host_instance_id: Some(inst_id), expected_started: started });
+        w.messenger().send(WinMsg::Raise);
     }
 }
 
@@ -1120,32 +1202,58 @@ pub enum WinMsg {
     TreeMenuClosed,
     /// Switch to a specific Rex window (parent or nested child subagent tab).
     SelectWindow(String, String, String),
-    /// Stop a native Rex child-tab subagent (and optionally its descendants).
+    /// Stop a native Rex child-tab subagent (and optionally its descendants),
+    /// pinned to the `(host_instance_id, conn_id)` captured when the menu built (Astra #1).
     StopSubagent {
         host_key: String,
+        host_pin: Option<(u64, u64)>,
         session_id: String,
         window_id: String,
         force: bool,
         tree: bool,
     },
-    /// Confirm stopping running subagents under a parent tab with a native kit alert.
+    /// Confirm stopping running subagents under a parent tab with a native kit alert,
+    /// pinned to the `(host_instance_id, conn_id)` captured when the menu built (Astra #1).
     ConfirmStopSubagents {
         host_key: String,
+        host_pin: Option<(u64, u64)>,
         session_id: String,
         children: Vec<RunningChild>,
     },
     ActivityChanged,
+    ScreensMetaChanged,
     ToggleActivityFold(BlockKey),
     SetActivityTypeFilter(ActivityTypeFilter),
     SetActivityStateFilter(ActivityStateFilter),
+    SetActivitySearch(String),
     ClearActivityFilters,
     OpenPaneTranscript(BlockKey, String),
+    OpenScreen {
+        id: olo_screen_pane::ScreenId,
+        tab: Option<olo_screen_pane::Tab>,
+        take_control: bool,
+        expected_host_instance_id: Option<u64>,
+        expected_started: Option<u64>,
+    },
+    OpenScreenMenu(Point<Pixels>),
+    CloseScreen,
+    ScreenStopConfirm(crate::activity_screens::ActivityScreenItem),
+    ScreenStart(crate::activity_screens::ActivityScreenItem),
+    ConfirmStopMinder {
+        host_key: String,
+        host_pin: Option<(u64, u64)>,
+        session_id: String,
+        window_id: String,
+        title: String,
+        with_agents: bool,
+    },
+    SetContextMenuRow(Option<String>),
     TranscriptDo(crate::transcript_view::TranscriptDo),
     SidebarMoved,
     CloseWindow,
 }
 
-/// Filter by agent harness or a specific native subagent role/title.
+/// Filter by agent harness, screens, or a specific native subagent role/title.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum ActivityTypeFilter {
     #[default]
@@ -1154,6 +1262,7 @@ pub enum ActivityTypeFilter {
     Codex,
     Agy,
     Shell,
+    Screens,
     SubagentType(String),
 }
 
@@ -1165,6 +1274,7 @@ impl ActivityTypeFilter {
             Self::Codex => "Codex".into(),
             Self::Agy => "Antigravity".into(),
             Self::Shell => "Shell".into(),
+            Self::Screens => olo_kit::words::tr("Screens").to_owned(),
             Self::SubagentType(name) => name.clone(),
         }
     }
@@ -1176,6 +1286,7 @@ impl ActivityTypeFilter {
             "codex" => Self::Codex,
             "agy" | "antigravity" => Self::Agy,
             "shell" => Self::Shell,
+            "screen" | "screens" => Self::Screens,
             _ => Self::SubagentType(s.trim().to_owned()),
         }
     }
@@ -1219,6 +1330,60 @@ impl ActivityStateFilter {
     }
 }
 
+/// Active embedded Agent Screen view displayed in Rex's center area instead of
+/// the terminal panes.
+#[derive(Clone)]
+enum BoundScreenSource {
+    Local(Arc<olo_screen_pane::LocalScreenSource>),
+    Remote(Arc<olo_screen_pane::StreamScreenSource>),
+    Demo(Arc<crate::activity_screens::DemoPaneSource>),
+}
+
+impl BoundScreenSource {
+    fn as_dyn(&self) -> Arc<dyn olo_screen_pane::ScreenSource> {
+        match self {
+            Self::Local(s) => s.clone(),
+            Self::Remote(s) => s.clone(),
+            Self::Demo(s) => s.clone(),
+        }
+    }
+
+    fn set_info(&self, info: olo_screen_pane::ScreenInfo, started: Option<u64>) {
+        match self {
+            Self::Local(s) => {
+                s.set_session_started(started);
+                s.set_info(info);
+            }
+            Self::Remote(s) => {
+                s.set_session_started(started);
+                s.set_info(info);
+            }
+            Self::Demo(_) => {}
+        }
+    }
+
+    fn set_probed_caps(&self, caps: olo_screen_pane::HostCapabilities) {
+        if let Self::Remote(s) = self {
+            s.set_probed_caps(caps);
+        }
+    }
+}
+
+struct ActiveScreenState {
+    id: olo_screen_pane::ScreenId,
+    tab: olo_screen_pane::Tab,
+    controlling: bool,
+    /// One-shot pending `Take Control` requested from the row's context menu while
+    /// a remote screen's initial live frame is still arriving (cleared immediately
+    /// on first eligible frame, deactivation, refusal, tab change, or rebind).
+    pending_take_control: bool,
+    bound_started: Option<u64>,
+    bound_host_conn: u64,
+    bound_host_instance_id: u64,
+    bound_caps: Option<olo_screen_pane::HostCapabilities>,
+    source: Option<BoundScreenSource>,
+}
+
 /// One window of Olo Rex (either a main Workspace window or a secondary dialog panel).
 pub struct RexWindow {
     pub id: WinId,
@@ -1254,6 +1419,12 @@ pub struct RexWindow {
     activity_search_field: Option<Child<TextField>>,
     activity_type_filter: ActivityTypeFilter,
     activity_state_filter: ActivityStateFilter,
+    active_screen: Option<ActiveScreenState>,
+    screen_pane: Option<Child<olo_screen_pane::ScreenPane>>,
+    resolved_screens_cache: Option<(u64, u64, Arc<crate::activity_screens::ResolvedActivityScreens>)>,
+    pending_restored_screen: Option<(olo_screen_pane::ScreenId, olo_screen_pane::Tab)>,
+    context_menu_row: Option<String>,
+    sidebar_row_bounds: Rc<std::cell::RefCell<HashMap<String, Bounds<Pixels>>>>,
     open_tree_tab: Option<usize>,
     pub panes_view: Option<Child<PanesView>>,
     pub overlay: Option<ActiveOverlay>,
@@ -1358,6 +1529,1093 @@ impl RexWindow {
         self.retrying = false;
         self.problem = None;
         self.notice.clear();
+    }
+
+    fn screen_controlling(&self) -> bool {
+        self.active_screen.as_ref().is_some_and(|s| s.controlling)
+    }
+
+    /// Resolve the local Rex Unix socket path for `h` from cached state ONLY
+    /// (zero UI-thread filesystem `stat()`/`exists()` calls — Neon #11.3).
+    fn resolved_local_socket(h: &crate::hub::HostRuntime) -> Option<String> {
+        if let Some(olo_rex_client::RexEndpoint::Unix(p)) = &h.endpoint {
+            return Some(p.to_string_lossy().into_owned());
+        }
+        if let Some(path) = h.endpoint_raw.strip_prefix("unix://")
+            && !path.is_empty()
+        {
+            return Some(path.to_owned());
+        }
+        if h.endpoint_raw.starts_with('/') {
+            return Some(h.endpoint_raw.clone());
+        }
+        olo_rex_client::local_socket_candidates().into_iter().next().map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// Resolve all local and remote screens against rendered live blocks in `HubState`.
+    ///
+    /// - Uses actual `HostRuntime::is_local` instead of key `"local"` (Astra #15).
+    /// - Resolves the local Unix socket path (Astra #16).
+    /// - Maps every split pane inside a child subagent tab onto that subagent's
+    ///   rendered primary block ID so screens owned by a split pane inside a child
+    ///   tab are never orphaned (Astra #25).
+    fn resolve_screens_from_hub(st: &crate::hub::HubState) -> crate::activity_screens::ResolvedActivityScreens {
+        let mut live_blocks = HashSet::new();
+        let mut child_block_alias: HashMap<BlockKey, BlockKey> = HashMap::new();
+        let mut local_host_keys = HashSet::new();
+        let mut host_labels = HashMap::new();
+        let mut host_disconnected = HashMap::new();
+        let mut local_socket: Option<String> = None;
+        for hk in &st.host_order {
+            let Some(h) = st.hosts.get(hk) else { continue };
+            host_labels.insert(h.key.clone(), h.label.clone());
+            host_disconnected.insert(h.key.clone(), !h.is_local && h.conn_state != HostConnState::Connected);
+            if h.is_local {
+                local_host_keys.insert(h.key.clone());
+                local_socket = Self::resolved_local_socket(h);
+            }
+            for s in &h.session_summaries {
+                let Some(v) = h.sessions.get(&s.session_id) else { continue };
+                let live_wins: HashSet<String> = v.windows.iter().map(|w| w.window_id.clone()).collect();
+                for w in &v.windows {
+                    if st.subagents.is_child_window(&h.key, &v.session_id, &w.window_id, &live_wins) {
+                        if let Some(sub) = st.subagents.by_window(&h.key, &v.session_id, &w.window_id) {
+                            let primary_bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: sub.block_id.clone() };
+                            live_blocks.insert(primary_bk.clone());
+                            for b in w.all_blocks() {
+                                let blk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
+                                if blk != primary_bk {
+                                    live_blocks.insert(blk.clone());
+                                    child_block_alias.insert(blk, primary_bk.clone());
+                                }
+                            }
+                        }
+                    } else {
+                        for b in w.all_blocks() {
+                            live_blocks.insert(BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() });
+                        }
+                    }
+                }
+            }
+        }
+        let mut resolved = crate::activity_screens::resolve_activity_screens(
+            &st.host_order,
+            &local_host_keys,
+            &host_labels,
+            &host_disconnected,
+            local_socket.as_deref(),
+            &live_blocks,
+            &st.desktop_screens,
+            &st.desktop_screen_owners,
+            &st.host_screens,
+        );
+        // Remap any screens attributed to a secondary split pane inside a child
+        // subagent tab onto the child subagent's rendered primary block (Astra #25).
+        if !child_block_alias.is_empty() {
+            let mut moved: Vec<(BlockKey, Vec<crate::activity_screens::ActivityScreenItem>)> = Vec::new();
+            for (alias_bk, primary_bk) in &child_block_alias {
+                if let Some(mut items) = resolved.by_owner.remove(alias_bk) {
+                    for it in &mut items {
+                        it.owner_bk = Some(primary_bk.clone());
+                        if let Some(by_id_it) = resolved.by_id.get_mut(&it.id) {
+                            by_id_it.owner_bk = Some(primary_bk.clone());
+                        }
+                    }
+                    moved.push((primary_bk.clone(), items));
+                }
+            }
+            for (primary_bk, items) in moved {
+                let list = resolved.by_owner.entry(primary_bk).or_default();
+                list.extend(items);
+                list.sort_by(|a, b| {
+                    let rank = |s: olo_screen_pane::ScreenState| match s {
+                        olo_screen_pane::ScreenState::Running => 0u8,
+                        olo_screen_pane::ScreenState::Stopped => 1u8,
+                        olo_screen_pane::ScreenState::Archived => 2u8,
+                    };
+                    rank(a.state).cmp(&rank(b.state)).then_with(|| b.last_used_ms.cmp(&a.last_used_ms)).then_with(|| a.id.name.cmp(&b.id.name))
+                });
+            }
+        }
+        resolved
+    }
+
+    /// Return a cached `Arc<ResolvedActivityScreens>` keyed in O(1) by
+    /// `(st.screens_rev, st.topology_rev)` — zero terminal walks on cache hit,
+    /// and catches `parent_window_id` / session / host / endpoint changes (Astra #25).
+    fn resolved_screens_cached(&mut self, st: &crate::hub::HubState) -> Arc<crate::activity_screens::ResolvedActivityScreens> {
+        let srev = st.screens_rev;
+        let trev = st.topology_rev;
+        if let Some((cs, ct, ref cached)) = self.resolved_screens_cache
+            && cs == srev
+            && ct == trev
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(Self::resolve_screens_from_hub(st));
+        self.resolved_screens_cache = Some((srev, trev, fresh.clone()));
+        fresh
+    }
+
+    /// Look up a verified screen item (either resolved in Activity or a verified
+    /// non-archived stopped screen in raw hub state), NEVER fabricating a running
+    /// screen with unknown generation (Astra #9).
+    fn lookup_verified_screen(
+        st: &crate::hub::HubState,
+        resolved: &crate::activity_screens::ResolvedActivityScreens,
+        id: &olo_screen_pane::ScreenId,
+    ) -> Option<crate::activity_screens::ActivityScreenItem> {
+        if let Some(item) = resolved.by_id.get(id) {
+            return Some(item.clone());
+        }
+        match &id.location {
+            olo_screen_pane::ScreenLocation::Local => {
+                let sc = st.desktop_screens.iter().find(|s| s.name == id.name)?;
+                if sc.state == olo_rex_link::screen_wire::HostScreenState::Archived {
+                    return None;
+                }
+                let state = match sc.state {
+                    olo_rex_link::screen_wire::HostScreenState::Running => olo_screen_pane::ScreenState::Running,
+                    olo_rex_link::screen_wire::HostScreenState::Stopped => olo_screen_pane::ScreenState::Stopped,
+                    olo_rex_link::screen_wire::HostScreenState::Archived => return None,
+                };
+                let size = (sc.width > 0 && sc.height > 0).then_some((sc.width as i32, sc.height as i32));
+                Some(crate::activity_screens::ActivityScreenItem {
+                    id: id.clone(),
+                    run_host_key: "local".to_owned(),
+                    host_instance_id: 0,
+                    conn_id: 0,
+                    run_host_label: "This computer".to_owned(),
+                    section_host_key: "local".to_owned(),
+                    display_title: sc.title.as_deref().filter(|t| !t.trim().is_empty()).unwrap_or(&sc.name).to_owned(),
+                    title: sc.title.clone(),
+                    state,
+                    size,
+                    scale: if sc.scale.is_finite() && sc.scale > 0.0 { sc.scale } else { 1.0 },
+                    sound: sc.sound,
+                    pid: sc.pid,
+                    started: sc.started,
+                    last_used_ms: sc.last_used,
+                    actions: sc.actions,
+                    controlled: sc.controlled,
+                    host_disconnected: false,
+                    disconnected_at_ms: None,
+                    capabilities: olo_screen_pane::PaneCapabilities::local(&sc.name),
+                    owner_bk: None,
+                    depth: 0,
+                    is_last: false,
+                    guides: Vec::new(),
+                })
+            }
+            olo_screen_pane::ScreenLocation::Host { host_id, host_label } => {
+                let host = st.hosts.get(host_id)?;
+                let live = st.host_screens.get(host_id)?;
+                let sc = live.screens.iter().find(|s| s.name == id.name)?;
+                if sc.state == olo_rex_link::screen_wire::HostScreenState::Archived {
+                    return None;
+                }
+                let state = match sc.state {
+                    olo_rex_link::screen_wire::HostScreenState::Running => olo_screen_pane::ScreenState::Running,
+                    olo_rex_link::screen_wire::HostScreenState::Stopped => olo_screen_pane::ScreenState::Stopped,
+                    olo_rex_link::screen_wire::HostScreenState::Archived => return None,
+                };
+                let disconnected = host.conn_state != HostConnState::Connected || live.conn_state != olo_screen_pane::rex_sock::RexHostConn::Connected;
+                let caps = crate::activity_screens::pane_capabilities_for_host(live, disconnected);
+                let size = (sc.width > 0 && sc.height > 0).then_some((sc.width as i32, sc.height as i32));
+                Some(crate::activity_screens::ActivityScreenItem {
+                    id: id.clone(),
+                    run_host_key: host_id.clone(),
+                    host_instance_id: live.host_instance_id,
+                    conn_id: live.conn_id,
+                    run_host_label: if host.label.is_empty() { host_label.clone() } else { host.label.clone() },
+                    section_host_key: host_id.clone(),
+                    display_title: sc.title.as_deref().filter(|t| !t.trim().is_empty()).unwrap_or(&sc.name).to_owned(),
+                    title: sc.title.clone(),
+                    state,
+                    size,
+                    scale: if sc.scale.is_finite() && sc.scale > 0.0 { sc.scale } else { 1.0 },
+                    sound: sc.sound,
+                    pid: sc.pid,
+                    started: sc.started,
+                    last_used_ms: sc.last_used,
+                    actions: sc.actions,
+                    controlled: sc.controlled,
+                    host_disconnected: disconnected,
+                    disconnected_at_ms: if disconnected { live.disconnected_at } else { None },
+                    capabilities: caps,
+                    owner_bk: None,
+                    depth: 0,
+                    is_last: false,
+                    guides: Vec::new(),
+                })
+            }
+        }
+    }
+
+    fn build_screen_source(&mut self, item: &crate::activity_screens::ActivityScreenItem, show_location: bool) -> Option<(BoundScreenSource, u64, u64, Option<olo_screen_pane::HostCapabilities>)> {
+        let info = item.to_screen_info(show_location);
+        if crate::server::demo_mode() {
+            return Some((BoundScreenSource::Demo(Arc::new(crate::activity_screens::DemoPaneSource::new(info))), 1, item.host_instance_id, None));
+        }
+        match &item.id.location {
+            olo_screen_pane::ScreenLocation::Local => {
+                let src = Arc::new(olo_screen_pane::LocalScreenSource::new(info));
+                src.set_session_started(item.started);
+                Some((BoundScreenSource::Local(src), 0, 0, None))
+            }
+            olo_screen_pane::ScreenLocation::Host { host_id, .. } => {
+                let hub = the_hub().clone();
+                let (conn_id, host_inst_id, probed_caps) = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let host = st.hosts.get(host_id)?;
+                    let live = st.host_screens.get(host_id)?;
+                    // Astra #4: verify the selected host instance instead of silently
+                    // substituting a replacement host that reused the same key.
+                    if item.host_instance_id != 0 && (host.host_instance_id != item.host_instance_id || live.host_instance_id != item.host_instance_id) {
+                        return None;
+                    }
+                    let conn = host.screens_conn_id;
+                    let inst = live.host_instance_id;
+                    let caps = crate::activity_screens::host_capabilities_for_live(live);
+                    (conn, inst, caps)
+                };
+                // Only use `HostProtocolCache::fixed` once capabilities have actually
+                // been probed; otherwise use `HostProtocolCache::new()` so `--protocol`
+                // probing works cleanly.
+                let cache = match probed_caps.clone() {
+                    Some(caps) => Arc::new(olo_screen_pane::HostProtocolCache::fixed(caps)),
+                    None => Arc::new(olo_screen_pane::HostProtocolCache::new()),
+                };
+                let opener =
+                    Arc::new(crate::activity_screens::HubStreamOpener::new(hub.screens_service(), hub.rt_handle(), host_id, host_inst_id, (conn_id != 0).then_some(conn_id), item.started, item.pid));
+                let src = Arc::new(olo_screen_pane::StreamScreenSource::with_host_cache(info, opener, cache));
+                src.set_session_started(item.started);
+                Some((BoundScreenSource::Remote(src), conn_id, host_inst_id, probed_caps))
+            }
+        }
+    }
+
+    fn ensure_screen_pane(&mut self, initial_tab: olo_screen_pane::Tab, cx: &mut olo_kit::Cx<Self>) {
+        if self.screen_pane.is_some() {
+            return;
+        }
+        let win_id = self.id;
+        let pane = cx.new_view(move |cx| {
+            let mut p = olo_screen_pane::ScreenPane::new(initial_tab, cx);
+            p.set_raw_shortcuts(true);
+            // Astra #25 / Neon #2: share Rex's physical command-key check with
+            // `ScreenPane::key` so Left `Ctrl+Shift+K` passes through on Mac/BeOS.
+            p.set_physical_command_check(keymap::command_held);
+            // Opus #13: refresh host status-bar zoom % once whenever PictureWell
+            // paints at a new drawn width (exact match to rendered rectangle).
+            p.on_live_scale_changed(move |_| {
+                if let Some(slot) = wins().map.get(&win_id) {
+                    slot.handle.messenger().send(WinMsg::Redraw);
+                }
+            });
+            // Opus Minor: Rex's status bar shows `W × H · N%`, so drop the duplicate
+            // `· 1440 × 900` segment from Rex's embedded pane header subtitle.
+            p.set_show_header_size(false, cx);
+            p
+        });
+        cx.subscribe(&pane, |w: &mut Self, ev: &olo_screen_pane::ScreenPaneEvent, cx| match ev {
+            olo_screen_pane::ScreenPaneEvent::Controlling(id, on) => {
+                if let Some(st) = &mut w.active_screen
+                    && &st.id == id
+                {
+                    st.controlling = *on;
+                    // Clear one-shot pending intent on grant OR refusal/release (Astra #4 / Neon #3).
+                    st.pending_take_control = false;
+                    cx.invalidate();
+                }
+            }
+            olo_screen_pane::ScreenPaneEvent::TabChanged(tab) => {
+                if let Some(st) = &mut w.active_screen {
+                    st.tab = *tab;
+                    if *tab != olo_screen_pane::Tab::Live {
+                        st.pending_take_control = false;
+                    }
+                }
+                cx.invalidate();
+            }
+            olo_screen_pane::ScreenPaneEvent::OpenHost(hk) => {
+                let hub = the_hub().clone();
+                open_host_with_tab(&hub, hk, Some(3));
+            }
+            olo_screen_pane::ScreenPaneEvent::Renamed(id, title) => {
+                if crate::server::demo_mode() {
+                    let hub = the_hub().clone();
+                    let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    match &id.location {
+                        olo_screen_pane::ScreenLocation::Local => {
+                            if let Some(sc) = st.desktop_screens.iter_mut().find(|s| s.name == id.name) {
+                                sc.title = title.clone();
+                            }
+                        }
+                        olo_screen_pane::ScreenLocation::Host { host_id, .. } => {
+                            if let Some(live) = st.host_screens.get_mut(host_id)
+                                && let Some(sc) = live.screens.iter_mut().find(|s| s.name == id.name)
+                            {
+                                sc.title = title.clone();
+                            }
+                        }
+                    }
+                    st.screens_rev = st.screens_rev.wrapping_add(1);
+                }
+                cx.invalidate();
+            }
+            olo_screen_pane::ScreenPaneEvent::Started(_)
+            | olo_screen_pane::ScreenPaneEvent::Stopped(_)
+            | olo_screen_pane::ScreenPaneEvent::Cleared(_)
+            | olo_screen_pane::ScreenPaneEvent::Used(_, _)
+            | olo_screen_pane::ScreenPaneEvent::RenameFailed(_)
+            | olo_screen_pane::ScreenPaneEvent::StartRequested(_)
+            | olo_screen_pane::ScreenPaneEvent::StopRequested(_) => {
+                cx.invalidate();
+            }
+        });
+        self.screen_pane = Some(pane);
+    }
+
+    fn open_screen(
+        &mut self,
+        id: olo_screen_pane::ScreenId,
+        tab: Option<olo_screen_pane::Tab>,
+        take_control: bool,
+        expected_host_instance_id: Option<u64>,
+        expected_started: Option<u64>,
+        cx: &mut olo_kit::Cx<Self>,
+    ) {
+        // Astra #21: keep screen view local to this workspace window instead of
+        // closing the process-wide transcript viewer in another window.
+        self.pending_restored_screen = None;
+        self.find_open = false;
+        self.dismiss_overlay(cx);
+
+        let (item_opt, show_location) = {
+            let hub = the_hub().clone();
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let resolved = self.resolved_screens_cached(&st);
+            let show_loc = st.hosts.values().any(|h| !h.is_local);
+            let item = Self::lookup_verified_screen(&st, &resolved, &id);
+            (item, show_loc)
+        };
+        let Some(item) = item_opt else {
+            // Never fabricate a running screen with unknown generation.
+            if self.active_screen.as_ref().is_some_and(|s| s.id == id) {
+                self.close_screen(cx);
+            }
+            return;
+        };
+        // Astra #4: if the caller pinned a host instance or screen generation
+        // (e.g. from a context menu or Host ▸ Look click), reject mismatches
+        // cleanly instead of retargeting or arming Take Control on a replacement.
+        if let Some(want_inst) = expected_host_instance_id
+            && want_inst != 0
+            && item.host_instance_id != want_inst
+        {
+            return;
+        }
+        if let Some(want_started) = expected_started
+            && item.started != Some(want_started)
+        {
+            return;
+        }
+
+        let chosen_tab = tab.unwrap_or(if item.is_running() { olo_screen_pane::Tab::Live } else { olo_screen_pane::Tab::History });
+        self.ensure_screen_pane(chosen_tab, cx);
+        let already_same = self.active_screen.as_ref().is_some_and(|s| s.id == item.id && s.bound_started == item.started && s.bound_host_instance_id == item.host_instance_id);
+        let eligible_for_ctrl = take_control && item.is_running() && !item.host_disconnected && chosen_tab == olo_screen_pane::Tab::Live;
+        let can_try_now = eligible_for_ctrl && self.window_active;
+        // Neon #7: if `Take Control` was requested while `!self.window_active`
+        // (e.g. `OLO_REX_DEMO_ACTIVITY=screens-control` or right-click menu in an
+        // inactive window), arm `pending_take_control` so `window_activated(true)`
+        // flushes it once via `request_control_when_ready`.
+        let arm_for_activation = eligible_for_ctrl && !self.window_active;
+        if already_same {
+            let info = item.to_screen_info(show_location);
+            let mut controlling_now = false;
+            if let Some(st) = &self.active_screen
+                && let Some(src) = &st.source
+            {
+                src.set_info(info.clone(), item.started);
+            }
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| {
+                    p.update_info(info, cx);
+                    if let Some(t) = tab {
+                        p.set_tab(t, cx);
+                    }
+                    p.set_visible(true, cx);
+                    if can_try_now {
+                        p.request_control_when_ready(cx);
+                    }
+                });
+                controlling_now = pane.read(cx).controlling();
+            }
+            if let Some(st) = &mut self.active_screen {
+                if let Some(t) = tab {
+                    st.tab = t;
+                }
+                st.controlling = controlling_now;
+                st.pending_take_control = arm_for_activation && !controlling_now;
+            }
+        } else {
+            let Some((source, bound_host_conn, bound_host_instance_id, bound_caps)) = self.build_screen_source(&item, show_location) else {
+                return;
+            };
+            let pane_src = source.as_dyn();
+            let mut controlling_now = false;
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| {
+                    p.set_source(Some(pane_src), cx);
+                    p.set_tab(chosen_tab, cx);
+                    p.set_visible(true, cx);
+                    if can_try_now {
+                        p.request_control_when_ready(cx);
+                    }
+                });
+                controlling_now = pane.read(cx).controlling();
+            }
+            self.active_screen = Some(ActiveScreenState {
+                id: item.id.clone(),
+                tab: chosen_tab,
+                controlling: controlling_now,
+                pending_take_control: arm_for_activation && !controlling_now,
+                bound_started: item.started,
+                bound_host_conn,
+                bound_host_instance_id,
+                bound_caps,
+                source: Some(source),
+            });
+        }
+        if self.side_pane.alone() {
+            self.side_pane.show_rest();
+        }
+        cx.invalidate();
+    }
+
+    /// Retry or expire `pending_restored_screen` once host/desktop discovery and
+    /// session topology arrive (Astra #18 / Neon #10).
+    fn try_restore_pending_screen(&mut self, cx: &mut olo_kit::Cx<Self>) -> bool {
+        let Some((want_id, want_tab)) = self.pending_restored_screen.clone() else {
+            return false;
+        };
+        let (found, expired) = {
+            let hub = the_hub().clone();
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let resolved = self.resolved_screens_cached(&st);
+            let exists = Self::lookup_verified_screen(&st, &resolved, &want_id).is_some();
+            let is_expired = if exists {
+                false
+            } else {
+                match &want_id.location {
+                    olo_screen_pane::ScreenLocation::Local => {
+                        let local_ready = st.hosts.values().find(|h| h.is_local).is_none_or(|h| h.conn_state != HostConnState::Connecting && h.sessions.len() >= h.session_summaries.len());
+                        st.desktop_screens_loaded && local_ready
+                    }
+                    olo_screen_pane::ScreenLocation::Host { host_id, .. } => match st.hosts.get(host_id) {
+                        None => true,
+                        Some(h) => {
+                            let snap_ready = st.host_screens.get(host_id).is_some_and(|l| l.has_follow_snapshot);
+                            let sess_ready = h.conn_state == HostConnState::Connected && h.sessions.len() >= h.session_summaries.len();
+                            snap_ready && sess_ready
+                        }
+                    },
+                }
+            };
+            (exists, is_expired)
+        };
+        if found {
+            self.pending_restored_screen = None;
+            self.open_screen(want_id, Some(want_tab), false, None, None, cx);
+            return true;
+        }
+        if expired {
+            self.pending_restored_screen = None;
+        }
+        false
+    }
+
+    fn sync_active_screen_info(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        if self.try_restore_pending_screen(cx) {
+            return;
+        }
+
+        let Some(cur_id) = self.active_screen.as_ref().map(|s| s.id.clone()) else { return };
+        let (item_opt, show_loc, cur_host_conn, cur_host_inst, cur_host_caps) = {
+            let hub = the_hub().clone();
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let resolved = self.resolved_screens_cached(&st);
+            let show_loc = st.hosts.values().any(|h| !h.is_local);
+            let (conn, inst, caps) = match cur_id.location.host_id() {
+                Some(hk) => (
+                    st.hosts.get(hk).map_or(0, |h| h.screens_conn_id),
+                    st.host_screens.get(hk).map_or(0, |l| l.host_instance_id),
+                    st.host_screens.get(hk).and_then(crate::activity_screens::host_capabilities_for_live),
+                ),
+                None => (0, 0, None),
+            };
+            // Reconcile against BOTH Activity's resolved inventory AND verified
+            // raw stopped screens; if host was removed or screen was deleted /
+            // archived, close the pane cleanly (Astra #9 / Neon #6).
+            let item = Self::lookup_verified_screen(&st, &resolved, &cur_id);
+            (item, show_loc, conn, inst, caps)
+        };
+        let Some(item) = item_opt else {
+            self.close_screen(cx);
+            return;
+        };
+        // Neon #3: when background `ensure_protocol` finishes (`bound_caps: None -> Some(caps)`)
+        // on the EXACT same `(bound_started, bound_host_conn, bound_host_instance_id)`, update
+        // `HostProtocolCache` and `ScreenInfo` in place without tearing down the live stream or
+        // dropping Take Control!
+        let caps_only_discovered = self.active_screen.as_ref().is_some_and(|s| {
+            s.bound_started == item.started
+                && !cur_id.is_local()
+                && s.bound_host_conn == cur_host_conn
+                && s.bound_host_instance_id == cur_host_inst
+                && s.bound_caps.is_none()
+                && cur_host_caps.is_some()
+        });
+        let host_instance_changed = self.active_screen.as_ref().is_some_and(|s| !cur_id.is_local() && s.bound_host_instance_id != cur_host_inst);
+        let need_rebind = !caps_only_discovered
+            && self.active_screen.as_ref().is_some_and(|s| {
+                s.bound_started != item.started || (!cur_id.is_local() && (s.bound_host_conn != cur_host_conn || s.bound_host_instance_id != cur_host_inst || s.bound_caps != cur_host_caps))
+            });
+        if need_rebind {
+            let Some((source, bound_host_conn, bound_host_instance_id, bound_caps)) = self.build_screen_source(&item, show_loc) else {
+                self.close_screen(cx);
+                return;
+            };
+            if let Some(pane) = &self.screen_pane {
+                let pane_src = source.as_dyn();
+                // Astra #16: drop cached Replay when a host instance is replaced
+                // under the same host key so the old host's history is never shown
+                // under the new host, while keeping cached Replay across reconnects
+                // to the same host instance.
+                if host_instance_changed {
+                    pane.update(cx, |p, cx| p.set_source_fresh(Some(pane_src), cx));
+                } else {
+                    pane.update(cx, |p, cx| p.set_source(Some(pane_src), cx));
+                }
+            }
+            if let Some(st) = &mut self.active_screen {
+                st.bound_started = item.started;
+                st.bound_host_conn = bound_host_conn;
+                st.bound_host_instance_id = bound_host_instance_id;
+                st.bound_caps = bound_caps;
+                st.controlling = false;
+                st.pending_take_control = false;
+                st.source = Some(source);
+            }
+        } else {
+            let info = item.to_screen_info(show_loc);
+            if let Some(st) = &mut self.active_screen {
+                if !item.is_running() || item.host_disconnected {
+                    st.controlling = false;
+                    st.pending_take_control = false;
+                }
+                if caps_only_discovered && let Some(caps) = cur_host_caps.clone() {
+                    if let Some(src) = &st.source {
+                        src.set_probed_caps(caps);
+                    }
+                    st.bound_caps = cur_host_caps;
+                }
+                if let Some(src) = &st.source {
+                    src.set_info(info.clone(), item.started);
+                }
+            }
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| p.update_info(info, cx));
+            }
+        }
+    }
+
+    /// Leave the embedded Agent Screen pane: releases Take Control and ends its
+    /// live/history streams immediately so host `olo-rex-link` sees EOF at once.
+    fn close_screen(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        if let Some(st) = self.active_screen.take() {
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| {
+                    p.stop_all(cx);
+                    p.set_source(None, cx);
+                });
+            } else if st.controlling
+                && let Some(src) = st.source
+            {
+                let _ = src.as_dyn().set_controlled(false);
+            }
+            cx.invalidate();
+        }
+    }
+
+    /// Centralized exit from the embedded screen view (and any pending reload
+    /// restore) for all navigation commands, notifications, and pane jumps
+    /// (Astra #10 / Neon #4).
+    fn exit_screen_for_navigation(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        self.pending_restored_screen = None;
+        self.close_screen(cx);
+    }
+
+    /// Whether `cmd` is a Rex navigation/app shortcut retained while an embedded
+    /// screen holds Take Control (Astra #11 / Neon #4).
+    fn is_retained_screen_shortcut(cmd: &str) -> bool {
+        matches!(
+            cmd,
+            "window.new"
+                | "window.close"
+                | "window.next"
+                | "window.previous"
+                | "app.toggle_sidebar"
+                | "app.view_sessions"
+                | "app.view_activity"
+                | "app.hosts"
+                | "app.settings"
+                | "app.new_window"
+                | "app.quit"
+                | "quit"
+                | "close"
+                | "session.new"
+                | "agent.jump_next_blocked"
+        ) || cmd.starts_with("window.select_")
+    }
+
+    /// Capture-phase key router when an Agent Screen pane is active with Take
+    /// Control on.
+    ///
+    /// Rex keeps only its own window/tab/app navigation shortcuts (plus
+    /// `screen.control` ⌘K/⇧⌘K to release control); Olo's Command Palette is
+    /// already intercepted by `app_server`. Every other key passes down to
+    /// `ScreenPane`, which forwards it to the controlled screen.
+    fn capture_screen_key(&mut self, e: &KeyDownEvent, cx: &mut olo_kit::Cx<Self>) {
+        if self.role != WinRole::Workspace || !self.screen_controlling() {
+            return;
+        }
+        let k = &e.keystroke;
+        // 1. Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+PageUp / Ctrl+PageDown: switch Rex tabs.
+        let step = olo_kit::tab_step(k);
+        if step != 0 && self.resolve_active_session().is_some_and(|(_, s)| s.windows.len() > 1) {
+            self.command(if step > 0 { "window.next" } else { "window.previous" }, cx);
+            cx.stop_propagation();
+            return;
+        }
+        // 2. Rex's own window/tab/app shortcuts (dispatched via `self.command` so
+        //    `"close"` / `"quit"` actually execute — Astra #11 / Neon #4).
+        if keymap::command_held(k) || own_plain_shortcut(k) {
+            let menus = self.build_menu_bar();
+            olo_kit::menu::menus_beginning(cx, menus);
+            if let Some(cmd) = olo_kit::menu::shortcut_command(cx, k)
+                && Self::is_retained_screen_shortcut(&cmd)
+            {
+                self.command(&cmd, cx);
+                cx.stop_propagation();
+                return;
+            }
+        }
+        // 3. `screen.control` (⌘K / ⇧⌘K or custom non-command override like Alt+K / F9):
+        //    evaluated OUTSIDE the `keymap::command_held(k)` gate with physical-command
+        //    distinction (so Left `Ctrl+Shift+K` passes through on Mac/BeOS while custom
+        //    overrides still toggle control), and skipped while editing a text field
+        //    inside ScreenPane (Astra #25 / Neon #2).
+        let editing_pane_text = self.screen_pane.as_ref().is_some_and(|p| p.read(cx).is_editing_text(cx));
+        if !editing_pane_text && olo_screen_pane::is_control_shortcut_with_command(k, true, keymap::command_held(k)) {
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| {
+                    p.run_command("control", cx);
+                });
+            }
+            cx.stop_propagation();
+        }
+    }
+
+    fn confirm_stop_screen(&mut self, item: crate::activity_screens::ActivityScreenItem, cx: &mut olo_kit::Cx<Self>) {
+        if let Err(reason) = item.can_stop_from_menu() {
+            olo_kit::widgets::open_alert(cx, "Stop Screen", "stop", &reason, &["OK"], |_, _| {});
+            return;
+        }
+        let is_local = item.id.is_local();
+        // Astra #6 / Neon #2: fail closed immediately when local history could not
+        // be verified (`last_used_ms == None && actions == None`); reserve `Some(0)`
+        // strictly for verified-empty history (`actions == Some(0)`).
+        let (expected_started, expected_last_used) = match olo_screen_pane::capture_stop_expectations_strict(is_local, item.started, None, item.last_used_ms, item.actions, item.actions == Some(0)) {
+            Ok(v) => v,
+            Err(msg) => {
+                olo_kit::widgets::open_alert(cx, "Stop Screen", "stop", &msg, &["OK"], |_, _| {});
+                return;
+            }
+        };
+        let show_location = !is_local || the_hub().state.lock().unwrap_or_else(|e| e.into_inner()).hosts.values().any(|h| !h.is_local);
+        let where_str = match &item.id.location {
+            olo_screen_pane::ScreenLocation::Host { host_label, .. } => format!(" on {host_label}"),
+            olo_screen_pane::ScreenLocation::Local if show_location => " on this computer".to_owned(),
+            olo_screen_pane::ScreenLocation::Local => String::new(),
+        };
+        let message = format!(
+            "Stop the screen “{}”{where_str}? The agent’s programs on it are closed, and anything it hasn’t saved is lost. The screen is kept, with its history: Start Screen starts it again.",
+            item.display_title
+        );
+        let id = item.id.clone();
+        let host_key = item.run_host_key.clone();
+        let host_instance_id = item.host_instance_id;
+        // Pin the row's remote connection ID (falling back to live hub only if unset)
+        // so a stale Stop dialog never detaches control on a newer connection (Astra #1, #9).
+        let conn_id = if is_local {
+            None
+        } else if item.conn_id != 0 {
+            Some(item.conn_id)
+        } else {
+            the_hub().state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).map(|h| h.screens_conn_id).filter(|&c| c != 0)
+        };
+        let pinned_conn_u64 = conn_id.unwrap_or(0);
+        let name = item.id.name.clone();
+        let win_id = self.id;
+        let me = cx.view_ref();
+        olo_kit::widgets::open_alert(cx, "Stop Screen", "warning", &message, &["Cancel", "Stop Screen"], move |choice, cx| {
+            if *choice != Some(1) {
+                return;
+            }
+            if crate::server::demo_mode() {
+                let hub = the_hub().clone();
+                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                match &id.location {
+                    olo_screen_pane::ScreenLocation::Local => {
+                        if let Some(sc) = st.desktop_screens.iter_mut().find(|s| s.name == name) {
+                            sc.state = olo_rex_link::screen_wire::HostScreenState::Stopped;
+                        }
+                    }
+                    olo_screen_pane::ScreenLocation::Host { host_id, .. } => {
+                        if let Some(live) = st.host_screens.get_mut(host_id)
+                            && let Some(sc) = live.screens.iter_mut().find(|s| s.name == name)
+                        {
+                            sc.state = olo_rex_link::screen_wire::HostScreenState::Stopped;
+                        }
+                    }
+                }
+                st.screens_rev = st.screens_rev.wrapping_add(1);
+                drop(st);
+                broadcast_to_role(WinRole::Workspace, || WinMsg::ScreensMetaChanged);
+                return;
+            }
+            // Astra #15 / Neon #4 / Astra #9: detach control synchronously ONLY
+            // when the active pane still matches `(id, expected_started,
+            // host_instance_id, pinned_conn_u64)` so a stale sidebar Stop dialog
+            // never detaches control on a newer connection! And propagate any
+            // `release_control_and_wait` timeout error before stopping (Astra #3).
+            let id_c = id.clone();
+            let host_key_c = host_key.clone();
+            let name_c = name.clone();
+            me.update(cx, move |w, cx| {
+                let mut ctrl_release: Option<(Arc<dyn olo_screen_pane::ScreenSource>, Vec<olo_protocol::SyntheticEvent>)> = None;
+                let mut fallback_src: Option<Arc<dyn olo_screen_pane::ScreenSource>> = None;
+                if let Some(st) = &mut w.active_screen
+                    && st.id == id_c
+                    && st.bound_started == expected_started
+                    && st.bound_host_instance_id == host_instance_id
+                    && (id_c.is_local() || (pinned_conn_u64 != 0 && st.bound_host_conn == pinned_conn_u64))
+                {
+                    st.controlling = false;
+                    st.pending_take_control = false;
+                    fallback_src = st.source.as_ref().map(BoundScreenSource::as_dyn);
+                    if let Some(pane) = &w.screen_pane {
+                        ctrl_release = pane.update(cx, |p, cx| p.detach_control_for_stop(&id_c, expected_started, cx));
+                    }
+                    cx.invalidate();
+                }
+                let hub = the_hub().clone();
+                std::thread::spawn(move || {
+                    let release_res = if let Some((src, up)) = ctrl_release {
+                        src.release_control_and_wait(up)
+                    } else if let Some(src) = fallback_src {
+                        src.release_control_and_wait(Vec::new())
+                    } else {
+                        Ok(())
+                    };
+                    let res = match release_res {
+                        Err(err) => Err(err),
+                        Ok(()) if id_c.is_local() => olo_screen_pane::screens::stop_if_expected(&name_c, expected_started, expected_last_used),
+                        Ok(()) => hub.rt_handle().block_on(hub.screens_service().stop_screen_for_host_instance_expected_pinned(
+                            &host_key_c,
+                            host_instance_id,
+                            conn_id,
+                            &name_c,
+                            expected_started,
+                            expected_last_used,
+                        )),
+                    };
+                    // Never hold `wins()` across `Feedback::start(win_id)`.
+                    if let Err(err) = res {
+                        let fb = Feedback::start(win_id);
+                        fb.problem(&format!("Couldn’t stop “{name_c}”."), err);
+                    }
+                });
+            });
+        });
+    }
+
+    fn start_screen_from_menu(&mut self, item: crate::activity_screens::ActivityScreenItem, _cx: &mut olo_kit::Cx<Self>) {
+        if item.is_running() || item.host_disconnected {
+            return;
+        }
+        let id = item.id.clone();
+        let host_key = item.run_host_key.clone();
+        let host_instance_id = item.host_instance_id;
+        let name = item.id.name.clone();
+        let win_id = self.id;
+        if crate::server::demo_mode() {
+            let hub = the_hub().clone();
+            let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            match &id.location {
+                olo_screen_pane::ScreenLocation::Local => {
+                    if let Some(sc) = st.desktop_screens.iter_mut().find(|s| s.name == name) {
+                        sc.state = olo_rex_link::screen_wire::HostScreenState::Running;
+                        sc.width = 1440;
+                        sc.height = 900;
+                    }
+                }
+                olo_screen_pane::ScreenLocation::Host { host_id, .. } => {
+                    if let Some(live) = st.host_screens.get_mut(host_id)
+                        && let Some(sc) = live.screens.iter_mut().find(|s| s.name == name)
+                    {
+                        sc.state = olo_rex_link::screen_wire::HostScreenState::Running;
+                        sc.width = 1440;
+                        sc.height = 900;
+                    }
+                }
+            }
+            st.screens_rev = st.screens_rev.wrapping_add(1);
+            drop(st);
+            broadcast_to_role(WinRole::Workspace, || WinMsg::ScreensMetaChanged);
+            return;
+        }
+        let hub = the_hub().clone();
+        std::thread::spawn(move || {
+            let res = if id.is_local() {
+                let opts = olo_screen_pane::screens::kept(&name).unwrap_or_default();
+                olo_screen_pane::screens::start(&name, &opts).map(|_| ())
+            } else {
+                // Pins `host_instance_id`, sends `["start", name, "--keep"]`, and
+                // validates returned screen identity (Astra #3, #8 / Neon #2).
+                hub.rt_handle().block_on(hub.screens_service().start_screen_for_host_instance(&host_key, host_instance_id, &name)).map(|_| ())
+            };
+            if let Err(err) = res {
+                let fb = Feedback::start(win_id);
+                fb.problem(&format!("Couldn’t start “{name}”."), err);
+            }
+        });
+    }
+
+    /// Shared height of the screen breadcrumb strip (Neon #11.1): `9 pt` top +
+    /// `24 pt` control row + `9 pt` bottom = `42 pt`, aligning the breadcrumb text
+    /// baseline and 24 pt buttons to the exact pixel with the sidebar's `pt(9)`
+    /// `SearchField` beside it.
+    const SCREEN_BREADCRUMB_H: f32 = 42.0;
+
+    /// Top breadcrumb strip (`40 pt`, matching `ScreenPane`'s `16 pt` outer inset
+    /// and the sidebar's top search band) rendered directly above the embedded
+    /// `ScreenPane`:
+    /// - Left: clickable ancestor breadcrumb trail (`Lead › builder-1`)
+    /// - Right: `Open in Agent Screens` (folded into `ScreenPane`'s `Screen ▾`
+    ///   menu when narrow rather than renamed) and `Show Terminal`, uniform 24 pt
+    ///   buttons with 8 pt gap (Opus #1, #2, #3 / Neon #12).
+    fn render_screen_breadcrumb_strip(&self, screen_id: &olo_screen_pane::ScreenId, resolved: &crate::activity_screens::ResolvedActivityScreens, avail_w: f32, cx: &mut olo_kit::Cx<Self>) -> Element {
+        enum CrumbTarget {
+            Window(String, String, String),
+            Block(BlockKey),
+            Host(String),
+            Plain,
+        }
+
+        let (ancestors, owner_bk) = {
+            let st = the_hub().state.lock().unwrap_or_else(|e| e.into_inner());
+            let item = resolved.by_id.get(screen_id);
+            let owner = item.and_then(|i| i.owner_bk.clone());
+            let mut crumbs: Vec<(String, String, CrumbTarget)> = Vec::new();
+            if let Some(ref bk) = owner {
+                // Walk up from owning pane through any subagent parents to the top-level tab.
+                if let Some(h) = st.hosts.get(&bk.host_key)
+                    && let Some(sess) = h.sessions.get(&bk.session_id)
+                {
+                    let names = crate::hub::session_tab_names(&st, &bk.host_key, sess);
+                    let live: HashSet<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+                    if let Some(sub) = st.subagents.by_block(&bk.host_key, Some(&bk.session_id), &bk.block_id) {
+                        crumbs.push((format!("blk-{}", bk.block_id), sub.display_title(), CrumbTarget::Block(bk.clone())));
+                        let mut cur = sub.parent_window_id.clone();
+                        let mut seen = HashSet::new();
+                        seen.insert(sub.window_id.clone());
+                        while seen.insert(cur.clone()) {
+                            if let Some(p_sub) = st.subagents.by_window(&bk.host_key, &bk.session_id, &cur) {
+                                let next = p_sub.parent_window_id.clone();
+                                crumbs.push((format!("win-{cur}"), p_sub.display_title(), CrumbTarget::Window(bk.host_key.clone(), bk.session_id.clone(), cur.clone())));
+                                if live.contains(&next) {
+                                    cur = next;
+                                    continue;
+                                }
+                                break;
+                            } else if let Some(widx) = sess.windows.iter().position(|w| w.window_id == cur) {
+                                let t = names.get(widx).cloned().unwrap_or_else(|| "Tab".into());
+                                crumbs.push((format!("win-{cur}"), t, CrumbTarget::Window(bk.host_key.clone(), bk.session_id.clone(), cur.clone())));
+                                break;
+                            } else {
+                                break;
+                            }
+                        }
+                        crumbs.reverse();
+                    } else if let Some(widx) = sess.windows.iter().position(|w| w.all_blocks().any(|b| b.block_id == bk.block_id)) {
+                        let t = names.get(widx).cloned().unwrap_or_else(|| "Tab".into());
+                        crumbs.push((format!("blk-{}", bk.block_id), t, CrumbTarget::Block(bk.clone())));
+                    }
+                }
+            } else {
+                // Standalone screen: show its host as clickable leading breadcrumb,
+                // ONLY targeting an actual `is_local` host for desktop screens so an
+                // SSH home server keyed `"local"` is never mis-selected (Astra #19 / Neon #5).
+                match &screen_id.location {
+                    olo_screen_pane::ScreenLocation::Local => {
+                        if let Some(local_hk) = st.host_order.iter().find(|k| st.hosts.get(*k).is_some_and(|h| h.is_local)) {
+                            let lbl = st.hosts.get(local_hk).map(|h| h.label.clone()).unwrap_or_else(|| "This computer".to_owned());
+                            crumbs.push((format!("host-{local_hk}"), lbl, CrumbTarget::Host(local_hk.clone())));
+                        } else {
+                            crumbs.push(("desktop".to_owned(), "This computer".to_owned(), CrumbTarget::Plain));
+                        }
+                    }
+                    olo_screen_pane::ScreenLocation::Host { host_id, host_label } => {
+                        let lbl = st.hosts.get(host_id).map(|h| h.label.clone()).unwrap_or_else(|| host_label.clone());
+                        crumbs.push((format!("host-{host_id}"), lbl, CrumbTarget::Host(host_id.clone())));
+                    }
+                }
+            }
+            (crumbs, owner)
+        };
+
+        let head_bg = canvas(|g, b| {
+            let p = theme::palette();
+            style::fill_rect(g, b, style::c(p.panel_background));
+            let edge = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.14)) } else { style::shade(&p, p.panel_background, 1.28) };
+            style::hline_above(g, b.left(), b.right(), b.bottom(), edge);
+        })
+        .paint_key(915)
+        .absolute()
+        .inset_0();
+
+        const SEP_W: f32 = 16.0;
+        let hdr_h = Self::SCREEN_BREADCRUMB_H;
+        let row_h = m::CONTROL_HEIGHT;
+        let mut crumb = div().flex_1().min_w_0().flex().flex_row().items_center();
+        let n_ancestors = ancestors.len();
+        for (idx, (seg_key, label, target)) in ancestors.into_iter().enumerate() {
+            let is_last_crumb = idx + 1 == n_ancestors;
+            let clickable = !matches!(target, CrumbTarget::Plain);
+            let nav = match target {
+                CrumbTarget::Window(hk, sid, wid) => Some(cx.msg(WinMsg::SelectWindow(hk, sid, wid))),
+                CrumbTarget::Block(bk) => Some(cx.msg(WinMsg::FocusBlock(bk))),
+                CrumbTarget::Host(hk) => Some(cx.msg(WinMsg::SelectHost(hk))),
+                CrumbTarget::Plain => None,
+            };
+            let link_label = label.clone();
+            let link_w = f32::from(style::text_width(label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil().min(160.0);
+            let mut seg = canvas(move |g, b| {
+                let hovered = clickable && g.node_state::<std::cell::Cell<bool>>().get();
+                let p = theme::palette();
+                if hovered {
+                    let dark = p.mode == olo_theme::ThemeMode::Dark;
+                    let pill = Bounds::from_corners(point(b.left() - px(5.0), b.top()), point(b.right() + px(5.0), b.bottom()));
+                    let snapped = style::snap(g, pill);
+                    let fill_c = if dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.08)) } else { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.35)) };
+                    let shine = if dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.22)) } else { style::c(p.shine) };
+                    let shadow = if dark { style::c(olo_theme::mix(p.panel_background, [0, 0, 0, 255], 0.45)) } else { style::c(olo_theme::mix(p.panel_background, [0, 0, 0, 255], 0.24)) };
+                    style::fill_rect(g, snapped, fill_c);
+                    style::bevel(g, snapped, shine, shadow);
+                }
+                let ink = if hovered || is_last_crumb { style::c(p.panel_text) } else { style::secondary_text(&p) };
+                style::label_fit(g, b.left(), b.center().y, style::Align::Left, link_label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, b.size.width);
+                if clickable {
+                    g.agent(agent::Node::button(format!("Switch to {link_label}"), b));
+                } else {
+                    g.agent(agent::Node::label(link_label.clone(), b));
+                }
+            })
+            .id(olo_kit::SharedString::from(format!("rex-scr-crumb-{seg_key}")))
+            .w(px(link_w))
+            .h(px(row_h))
+            .flex_shrink_0();
+            if let Some(nav) = nav {
+                seg = seg
+                    .cursor(CursorStyle::PointingHand)
+                    .on_hover(|over: &bool, cx| {
+                        let cell = cx.node_state::<std::cell::Cell<bool>>();
+                        if cell.get() != *over {
+                            cell.set(*over);
+                            cx.repaint();
+                        }
+                    })
+                    .on_mouse_down(MouseButton::Left, move |_, cx| {
+                        nav(&(), cx);
+                        cx.stop_propagation();
+                    });
+            }
+            crumb = crumb.child(seg);
+            if !is_last_crumb {
+                let sep = canvas(|g, b| {
+                    let p = theme::palette();
+                    style::label(g, b.center().x, b.center().y, style::Align::Center, "›", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                })
+                .paint_key(916)
+                .w(px(SEP_W))
+                .h(px(row_h))
+                .flex_shrink_0();
+                crumb = crumb.child(sep);
+            }
+        }
+
+        let open_id = screen_id.clone();
+        let win_id = self.id;
+        // Keep full label `"Open in Agent Screens"` — never rename to `"Agent Screens"`;
+        // on narrow panes (`avail_w < 460 pt`, e.g. `tile-v-third`), fold it into
+        // `Screen ▾` and move `Screen ▾` up into this breadcrumb bar right of
+        // `Show Terminal` (eliminating the wrapped button row above tabs — Opus #3).
+        let show_open_in_strip = avail_w >= 460.0;
+        let open_btn = show_open_in_strip.then(|| {
+            Button::new(olo_kit::words::tr("Open in Agent Screens").to_owned()).id("rex-screen-open-app").min_width(0.0).on_click(move |_, _| {
+                if let Err(err) = crate::activity_screens::open_in_agent_screens(&open_id) {
+                    Feedback::start(win_id).problem("Couldn’t open Agent Screens.", err);
+                }
+            })
+        });
+        let show_term_cb = match owner_bk {
+            Some(bk) => cx.msg(WinMsg::FocusBlock(bk)),
+            None => cx.msg(WinMsg::CloseScreen),
+        };
+        let term_btn = Button::new(olo_kit::words::tr("Show Terminal").to_owned()).id("rex-screen-show-terminal").min_width(0.0).on_click(move |_, cx| show_term_cb(&(), cx));
+        let screen_menu_btn = (!show_open_in_strip).then(|| {
+            Button::new(olo_kit::words::tr("Screen").to_owned())
+                .id("rex-screen-crumb-menu")
+                .menu()
+                .min_width(0.0)
+                .on_click(cx.msg_with(|ev: &olo_kit::ClickEvent| WinMsg::OpenScreenMenu(ev.position())))
+        });
+
+        // Match ScreenPane's exact `m::WINDOW_INSET` (16 pt) outer padding so the
+        // leading breadcrumb aligns flush with the monitor icon/tab card and
+        // rightmost button aligns flush with the tab card right edge; `pt(9)` +
+        // `24 pt` controls + `pb(9)` matches the sidebar SearchField's exact
+        // vertical band so baselines and control tops align to 0 px (Opus Minor).
+        div()
+            .relative()
+            .w_full()
+            .h(px(hdr_h))
+            .flex_shrink_0()
+            .px(px(m::WINDOW_INSET))
+            .pt(px(9.0))
+            .pb(px(9.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(8.0))
+            .child(head_bg)
+            .child(crumb)
+            .child(div().flex_shrink_0().flex().flex_row().items_center().gap(px(8.0)).children(open_btn).child(term_btn).children(screen_menu_btn))
+            .into_any_element()
     }
 
     fn feedback_line(&mut self, cx: &mut olo_kit::Cx<Self>) -> Option<Element> {
@@ -1473,7 +2731,7 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let activity_search_field = widgets::text_field(cx, |f| f.name("Filter Activity").hint("Filter agents & commands…"));
+        let activity_search_field = widgets::text_field(cx, |f| f.name("Filter Activity").hint("Filter agents & screens…"));
         cx.subscribe(&activity_search_field, |_w: &mut Self, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Changed | TextFieldEvent::Entered => cx.invalidate(),
             TextFieldEvent::Typed(_) => {}
@@ -1508,6 +2766,11 @@ impl RexWindow {
             }
         }
 
+        let pending_restored_screen = restored.as_ref().and_then(|r| r.active_screen.clone().map(|id| (id, r.active_screen_tab.unwrap_or_default())));
+        if pending_restored_screen.is_some() {
+            cx.send(WinMsg::ScreensMetaChanged);
+        }
+
         Self {
             id,
             role: WinRole::Workspace,
@@ -1525,6 +2788,12 @@ impl RexWindow {
             activity_search_field: Some(activity_search_field),
             activity_type_filter: ActivityTypeFilter::All,
             activity_state_filter: ActivityStateFilter::All,
+            active_screen: None,
+            screen_pane: None,
+            resolved_screens_cache: None,
+            pending_restored_screen,
+            context_menu_row: None,
+            sidebar_row_bounds: Rc::new(std::cell::RefCell::new(HashMap::new())),
             open_tree_tab: None,
             created_session: None,
             qr_url: None,
@@ -1763,6 +3032,12 @@ impl RexWindow {
             activity_search_field: None,
             activity_type_filter: ActivityTypeFilter::All,
             activity_state_filter: ActivityStateFilter::All,
+            active_screen: None,
+            screen_pane: None,
+            resolved_screens_cache: None,
+            pending_restored_screen: None,
+            context_menu_row: None,
+            sidebar_row_bounds: Rc::new(std::cell::RefCell::new(HashMap::new())),
             open_tree_tab: None,
             created_session: None,
             qr_url: None,
@@ -1848,7 +3123,48 @@ impl RexWindow {
         Some(crate::hub::silent_said(&host.label, host.is_local, st.host_silent(&focused.host_key)?))
     }
 
-    fn where_it_is(&mut self) -> String {
+    fn where_it_is(&mut self, resolved_opt: Option<&Arc<crate::activity_screens::ResolvedActivityScreens>>, cx: &olo_kit::Cx<Self>) -> String {
+        if let Some(scr_id) = self.active_screen.as_ref().map(|s| s.id.clone()) {
+            let hub = the_hub().clone();
+            let (place, item_opt) = {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                let resolved = match resolved_opt {
+                    Some(r) => r.clone(),
+                    None => self.resolved_screens_cached(&st),
+                };
+                let place = match &scr_id.location {
+                    olo_screen_pane::ScreenLocation::Local => olo_kit::words::tr("This computer").to_owned(),
+                    olo_screen_pane::ScreenLocation::Host { host_id, host_label } => st.hosts.get(host_id).map(|h| h.label.clone()).unwrap_or_else(|| host_label.clone()),
+                };
+                (place, Self::lookup_verified_screen(&st, &resolved, &scr_id))
+            };
+            let mut parts: Vec<String> = Vec::with_capacity(3);
+            parts.push(place);
+            if let Some(item) = item_opt {
+                if item.host_disconnected {
+                    parts.push(olo_kit::words::tr("Disconnected").to_owned());
+                } else if item.is_running() {
+                    if let Some((w, h)) = item.size
+                        && w > 0
+                        && h > 0
+                    {
+                        parts.push(format!("{w} × {h}"));
+                    }
+                    // Show Live fit scale (non-redundant info) instead of repeating
+                    // "You have control" (Opus #5 & #12).
+                    if let Some(pane) = &self.screen_pane
+                        && pane.read(cx).shown_tab() == olo_screen_pane::Tab::Live
+                        && let Some(ratio) = pane.read(cx).live_fit_scale()
+                    {
+                        let pct = (ratio * 100.0).round().clamp(1.0, 400.0) as u32;
+                        parts.push(format!("{pct}%"));
+                    }
+                } else {
+                    parts.push(olo_kit::words::tr("Stopped").to_owned());
+                }
+            }
+            return parts.join(" · ");
+        }
         if let Some(tr) = crate::activity_watch::active_transcript() {
             let g = tr.lock().unwrap_or_else(|e| e.into_inner());
             return g.target.status_bar_text(g.last_timestamp());
@@ -2206,12 +3522,14 @@ impl RexWindow {
                 cx.invalidate();
             }
             "pane.view:transcript" => {
+                self.exit_screen_for_navigation(cx);
                 if let Some(bk) = self.focused_block_key() {
                     let title = pane_name(&hub, &bk);
                     crate::activity_watch::open_pane_transcript(&hub, &bk, title);
                 }
             }
             "pane.view:terminal" => {
+                self.exit_screen_for_navigation(cx);
                 crate::activity_watch::close_viewer();
             }
             c if c.starts_with("activity.open.transcript:") => {
@@ -2225,6 +3543,7 @@ impl RexWindow {
                         .map(|e| (BlockKey { host_key: e.host_key.clone(), session_id: e.session_id.clone(), block_id: e.block_id.clone() }, e.display_title()))
                 };
                 if let Some((bk, title)) = found {
+                    self.exit_screen_for_navigation(cx);
                     self.jump_to(JumpTarget::Pane(bk.clone()), cx);
                     crate::activity_watch::open_pane_transcript(&hub, &bk, title);
                 }
@@ -2240,6 +3559,7 @@ impl RexWindow {
                     })
                 };
                 if let Some(bk) = found {
+                    self.exit_screen_for_navigation(cx);
                     crate::activity_watch::close_viewer();
                     self.jump_to(JumpTarget::Pane(bk), cx);
                 }
@@ -2440,7 +3760,16 @@ impl RexWindow {
                                 .and_then(|r| r.started);
                             crate::host::stop_screen(&hub, &shown.key, shown.host_instance_id, name, expected_started);
                         } else {
-                            crate::host::look_at_screen(&hub, name);
+                            let expected_started = hub
+                                .state
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .hosts
+                                .get(key)
+                                .and_then(|h| h.screens.as_ref())
+                                .and_then(|s| s.rows.iter().find(|r| r.name == name && r.running))
+                                .and_then(|r| r.started);
+                            open_host_screen_live_in_rex(&hub, &shown.key, shown.host_instance_id, &shown.name, name, expected_started);
                         }
                     }
                 }
@@ -2515,8 +3844,12 @@ impl RexWindow {
             "app.pair_device" => open_or_raise_panel(WinRole::Access),
             "app.diagnostics" => open_or_raise_panel(WinRole::Diagnostics),
             "app.new_window" => open_workspace_window(None),
-            "app.close_window" => cx.request_close(),
+            "app.close_window" => {
+                self.exit_screen_for_navigation(cx);
+                cx.request_close();
+            }
             "app.quit" => {
+                self.exit_screen_for_navigation(cx);
                 shutdown_app();
                 olo_kit::quit();
             }
@@ -2526,7 +3859,10 @@ impl RexWindow {
             // Hosts and Ports' one button does, for agents.)
             c if c.starts_with("host.disconnect:") => hub.disconnect_host(c.trim_start_matches("host.disconnect:")),
             c if c.starts_with("host.connect:") => hub.connect_host(c.trim_start_matches("host.connect:")),
-            "session.new" => hub.create_session(&self.active_host, None, None, Feedback::start(self.id).again(WinMsg::CreateSession(self.active_host.clone(), None))),
+            "session.new" => {
+                self.exit_screen_for_navigation(cx);
+                hub.create_session(&self.active_host, None, None, Feedback::start(self.id).again(WinMsg::CreateSession(self.active_host.clone(), None)));
+            }
             "session.close" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
                     hub.close_session(&hk, &sess.session_id, Feedback::start(self.id));
@@ -2556,6 +3892,7 @@ impl RexWindow {
                 }
             }
             "window.new" => {
+                self.exit_screen_for_navigation(cx);
                 if let Some((hk, sess)) = self.resolve_active_session() {
                     request_new_tab(&hub, self.id, &hk, &sess.session_id);
                 } else {
@@ -2563,6 +3900,7 @@ impl RexWindow {
                 }
             }
             "window.close" => {
+                self.exit_screen_for_navigation(cx);
                 if let Some((hk, sess)) = self.resolve_active_session()
                     && let Some(w) = sess.active_window()
                 {
@@ -2570,6 +3908,7 @@ impl RexWindow {
                 }
             }
             "window.next" | "window.previous" => {
+                self.exit_screen_for_navigation(cx);
                 if let Some((hk, sess)) = self.resolve_active_session() {
                     let (live, top_indices, root_id) = {
                         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -2586,6 +3925,7 @@ impl RexWindow {
                 }
             }
             a if a.starts_with("window.select_") => {
+                self.exit_screen_for_navigation(cx);
                 if let Ok(n) = a.trim_start_matches("window.select_").parse::<usize>()
                     && n >= 1
                     && let Some((hk, sess)) = self.resolve_active_session()
@@ -2932,6 +4272,7 @@ impl RexWindow {
                         .map(|(bk, _)| bk.clone())
                 };
                 if let Some(bk) = found {
+                    self.exit_screen_for_navigation(cx);
                     self.jump_to(JumpTarget::Pane(bk), cx);
                 }
             }
@@ -3039,6 +4380,56 @@ impl RexWindow {
             }
             return;
         }
+
+        // Guard embedded Agent Screen BEFORE Copy Mode, custom keymaps, menu-bar
+        // terminal shortcuts, and Shift-scroll so hidden-terminal actions (`⌘V`,
+        // `⌘F`, `⌘K`, Copy Mode, splits) NEVER fire behind a visible screen
+        // (Astra #6 / Neon #4).
+        if self.active_screen.is_some() {
+            let k = &e.keystroke;
+            if self.screen_controlling() {
+                return;
+            }
+            // Ctrl+Tab / Ctrl+PageUp/Down: switch Rex tabs.
+            let step = olo_kit::tab_step(k);
+            if step != 0 && self.resolve_active_session().is_some_and(|(_, s)| s.windows.len() > 1) {
+                self.command(if step > 0 { "window.next" } else { "window.previous" }, cx);
+                cx.stop_propagation();
+                return;
+            }
+            // `screen.control` (⌘K / ⇧⌘K or custom non-command binding like Alt+K / F9):
+            // evaluated OUTSIDE `keymap::command_held(k)` with physical-command
+            // distinction so custom bindings work and Left `Ctrl+Shift+K` isn't treated
+            // as `⌘K`, while skipping when typing inside a ScreenPane text field (Astra #25 / Neon #2).
+            let editing_pane_text = self.screen_pane.as_ref().is_some_and(|p| p.read(cx).is_editing_text(cx));
+            if !editing_pane_text && olo_screen_pane::is_control_shortcut_with_command(k, true, keymap::command_held(k)) {
+                if let Some(pane) = &self.screen_pane {
+                    pane.update(cx, |p, cx| {
+                        p.run_command("control", cx);
+                    });
+                }
+                cx.stop_propagation();
+                return;
+            }
+            // Allow enabled non-terminal Rex menu shortcuts (terminal-only items are
+            // disabled in `build_menu_bar` while `active_screen.is_some()`).
+            if keymap::command_held(k) || own_plain_shortcut(k) {
+                let menus = self.build_menu_bar();
+                olo_kit::menu::menus_beginning(cx, menus);
+                if olo_kit::menu::shortcut_command(cx, k).is_some() {
+                    return;
+                }
+            }
+            if k.key == "escape" && !self.find_open {
+                self.close_screen(cx);
+                self.focus.focus(cx);
+            }
+            cx.stop_propagation();
+            return;
+        }
+
+        // User is actively typing into the terminal: cancel any stale pending reload restore (Neon #10).
+        self.pending_restored_screen = None;
 
         // Check Copy Mode first!
         if let Some(bk) = self.focused_block_key() {
@@ -3314,9 +4705,13 @@ impl RexWindow {
             .submenu(pick("Light Colors", olo_theme::ThemeMode::Light))
             .submenu(pick("Dark Colors", olo_theme::ThemeMode::Dark));
         // The pane the keyboard is in, and what of it the menus say.
+        // While an embedded Agent Screen is visible, disable terminal-only menu
+        // items (Edit ▸ Paste, Paste Password…, Find…, Clear Scrollback, Pane ▸
+        // Split/Close) so they never act on the hidden terminal (Astra #6 / Neon #4).
+        let screen_visible = self.active_screen.is_some();
         let focused = self.focused_block_key();
-        let pane = focused.is_some();
-        let block = focused.as_ref().and_then(|key| hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned());
+        let pane = !screen_visible && focused.is_some();
+        let block = if screen_visible { None } else { focused.as_ref().and_then(|key| hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned()) };
         let help = self.focused_block_key().map(|bk| hub.help(&bk)).unwrap_or_default();
         let (keep_going, selected, copying, found) = block.as_ref().map_or((false, false, false, false), |block| {
             let g = block.lock().unwrap_or_else(|e| e.into_inner());
@@ -3324,7 +4719,7 @@ impl RexWindow {
         });
         let session = self.resolve_active_session().map(|(_, s)| s);
         let window = session.as_ref().and_then(|s| s.active_window().or_else(|| s.windows.first()).map(|w| (w.zoomed_block_id.is_some(), w.all_blocks().count())));
-        let (zoomed, panes) = window.unwrap_or((false, 0));
+        let (zoomed, panes) = if screen_visible { (false, 0) } else { window.unwrap_or((false, 0)) };
         let tab = window.is_some();
         // The session's tabs by name, the first nine with their keys
         // (⌘1 to ⌘9), as Terminal's Tabs menu.
@@ -3451,7 +4846,7 @@ impl RexWindow {
                 .item("Split to Fit", "pane.split_best_fit")
                 .enabled(pane)
                 .item("New Floating Terminal", "layer.new_floating")
-                .enabled(tab)
+                .enabled(pane)
                 .separator()
                 .submenu(
                     Menu::new("Focus")
@@ -3469,7 +4864,7 @@ impl RexWindow {
                 .enabled(zoomed || panes > 1)
                 .item("Type in All Panes", "pane.broadcast_toggle")
                 .checked(broadcast_on)
-                .enabled(panes > 1 || broadcast_on)
+                .enabled(pane && (panes > 1 || broadcast_on))
                 .separator()
                 // (The files of the pane's folder, on this computer or its host.)
                 .item("Quick Look", "files.quick_look")
@@ -3485,6 +4880,7 @@ impl RexWindow {
                 .separator()
                 .item("Keep It Going", "agent.keep_going_toggle")
                 .checked(keep_going)
+                .enabled(pane)
                 .item("Auto Approve", "agent.auto_approve_toggle")
                 .checked(help.auto_approve)
                 .enabled(pane)
@@ -3585,26 +4981,36 @@ impl RexWindow {
             self.focus.focus(cx);
         }
 
+        let tr_active = crate::activity_watch::active_transcript();
         if self.window_active {
-            let content_visible = !matches!(self.side_pane.panes(f32::from(viewport.width), 460.0), SidePanes::Pane) && self.overlay.is_none();
-            let pane = if content_visible { self.focused_block_key() } else { None };
-            if let Some(key) = &pane {
-                let block = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned();
-                if let Some(block) = block {
-                    let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
-                    if b.unread {
-                        b.unread = false;
-                        b.unread_cleared_at = Some(Instant::now());
+            // Astra #13 / Neon #8.1: when an embedded Agent Screen (or transcript)
+            // occupies the center area, the underlying terminal is hidden — never
+            // clear its unread flag or register it as frontmost for notification
+            // suppression!
+            if self.active_screen.is_some() {
+                app().attention.hide(self.id);
+                hub.hide_window_front_pane(self.id);
+            } else {
+                let content_visible = !matches!(self.side_pane.panes(f32::from(viewport.width), 460.0), SidePanes::Pane) && self.overlay.is_none() && tr_active.is_none();
+                let pane = if content_visible { self.focused_block_key() } else { None };
+                if let Some(key) = &pane {
+                    let block = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned();
+                    if let Some(block) = block {
+                        let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+                        if b.unread {
+                            b.unread = false;
+                            b.unread_cleared_at = Some(Instant::now());
+                        }
                     }
                 }
+                hub.set_window_front_pane(self.id, pane.clone());
+                let front = match pane {
+                    Some(p) => Target::Pane(p),
+                    None if content_visible && let Some((host, session)) = &sess_info => Target::Session { host_key: host.clone(), session_id: session.session_id.clone() },
+                    None => Target::Host(self.active_host.clone()),
+                };
+                app().attention.showing(self.id, front);
             }
-            hub.set_window_front_pane(self.id, pane.clone());
-            let front = match pane {
-                Some(p) => Target::Pane(p),
-                None if content_visible && let Some((host, session)) = &sess_info => Target::Session { host_key: host.clone(), session_id: session.session_id.clone() },
-                None => Target::Host(self.active_host.clone()),
-            };
-            app().attention.showing(self.id, front);
         }
         // Sync Deskbar + window tab unread badge!
         let has_unread = {
@@ -3676,7 +5082,10 @@ impl RexWindow {
                     accum_block(BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: row.entry.block_id.clone() });
                 }
                 let label = names.get(w_idx).cloned().unwrap_or_default();
-                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(widgets::agent_marks::icon("terminal", marks_of(tab_act, &tab_help, false)));
+                // Opus Minor: when a tab has a waiting/error badge, suppress the
+                // secondary blue Keep It Going dot so the two badges don't blur at 1×.
+                let icon_help = if matches!(tab_act, AgentActivity::Blocked | AgentActivity::Error) { crate::agent::Help { keep_going: false, ..tab_help.clone() } } else { tab_help.clone() };
+                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(widgets::agent_marks::icon("terminal", marks_of(tab_act, &icon_help, false)));
                 let what = match tab_act {
                     AgentActivity::Blocked => Some(olo_kit::words::tr("Waiting for approval").to_string()),
                     AgentActivity::Working => Some(olo_kit::words::tr("Working").to_string()),
@@ -3697,11 +5106,25 @@ impl RexWindow {
             }
         }
 
-        let tr_active = crate::activity_watch::active_transcript();
+        let active_screen_id = self.active_screen.as_ref().map(|s| s.id.clone());
+        // If narrow-window mode hid the center pane behind the sidebar while a
+        // screen was open, release control and end the stream immediately.
+        if matches!(side_layout, SidePanes::Pane) && active_screen_id.is_some() {
+            self.close_screen(cx);
+        }
+        let active_screen_id = self.active_screen.as_ref().map(|s| s.id.clone());
+        // Astra #25: read the O(1)-cached resolved screen inventory ONCE per render
+        // and share it across the breadcrumb, sidebar, and status bar.
+        let need_resolved = active_screen_id.is_some() || (!matches!(side_layout, SidePanes::Rest) && settings.sidebar_mode == SidebarMode::Activity);
+        let resolved_screens_once = need_resolved.then(|| {
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            self.resolved_screens_cached(&st)
+        });
         // When the active tab is a native child subagent tab, build a native
         // STRIP_ROW (26 pt) breadcrumb header (`parent › child › Current` + right-aligned
         // `harness · model · effort`) so the main view always says where you are.
         let child_header: Option<Element> = if tr_active.is_none()
+            && active_screen_id.is_none()
             && let Some((ref hk, ref sess)) = sess_info
             && let Some(active_wid) = sess.active_window_id.as_deref()
         {
@@ -3837,7 +5260,82 @@ impl RexWindow {
         if tr_active.is_none() {
             self.last_transcript_ptr = 0;
         }
-        let panes_el = if let Some(tr_sess) = tr_active {
+        let panes_el = if let Some(ref scr_id) = active_screen_id
+            && self.screen_pane.is_some()
+        {
+            let center_w = (total_w - side_w - if is_side_strip && strip_el.is_some() { widgets::STRIP_SIDE_WIDTH } else { 0.0 }).max(200.0);
+            let vp_h = f32::from(cx.viewport_size().height);
+            let hide_status_now = self.problem.is_none() && vp_h < 300.0;
+            let top_chrome_h = 26.0 + if !is_side_strip && strip_el.is_some() { widgets::STRIP_HEIGHT } else { 0.0 } + if hide_status_now { 0.0 } else { 22.0 };
+            let center_h = (vp_h - top_chrome_h).max(120.0);
+            // Opus #1 & Neon #11.1: share exact `SCREEN_BREADCRUMB_H` (40 pt) so
+            // `ScreenPane::set_size` receives the true available height!
+            let show_breadcrumb = center_h >= 330.0;
+            let pane_h = if show_breadcrumb { (center_h - Self::SCREEN_BREADCRUMB_H).max(100.0) } else { center_h };
+            let narrow_breadcrumb_menu = show_breadcrumb && center_w < 460.0;
+            let resolved = resolved_screens_once.clone().unwrap_or_else(|| {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                self.resolved_screens_cached(&st)
+            });
+            let owner_bk_for_overflow = resolved.by_id.get(scr_id).and_then(|it| it.owner_bk.clone());
+            if let Some(pane) = &self.screen_pane {
+                let scr_id_cb = scr_id.clone();
+                let win_id_cb = self.id;
+                let owner_cb = owner_bk_for_overflow.clone();
+                pane.update(cx, |p, cx| {
+                    p.set_size(center_w, pane_h, cx);
+                    // Opus #3: in `v-third` (`show_breadcrumb && center_w < 460`),
+                    // `Screen ▾` lives in the breadcrumb bar beside `Show Terminal`,
+                    // so hide the redundant wrapped button row in ScreenPane's header.
+                    p.set_hide_header_actions(narrow_breadcrumb_menu, cx);
+                    if !show_breadcrumb {
+                        let actions = vec![
+                            (olo_kit::SharedString::from(olo_kit::words::tr("Open in Agent Screens")), olo_kit::SharedString::from("open_app")),
+                            (olo_kit::SharedString::from(olo_kit::words::tr("Show Terminal")), olo_kit::SharedString::from("show_terminal")),
+                        ];
+                        p.set_host_overflow(
+                            actions,
+                            move |cmd, _| match cmd {
+                                "open_app" => {
+                                    if let Err(why) = crate::activity_screens::open_in_agent_screens(&scr_id_cb) {
+                                        Feedback::start(win_id_cb).problem("Couldn’t open Agent Screens.", why);
+                                    }
+                                }
+                                "show_terminal" => {
+                                    if let Some(slot) = wins().map.get(&win_id_cb) {
+                                        if let Some(bk) = owner_cb.clone() {
+                                            slot.handle.messenger().send(WinMsg::FocusBlock(bk));
+                                        } else {
+                                            slot.handle.messenger().send(WinMsg::CloseScreen);
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            },
+                            cx,
+                        );
+                    } else if center_w < 460.0 {
+                        let actions = vec![(olo_kit::SharedString::from(olo_kit::words::tr("Open in Agent Screens")), olo_kit::SharedString::from("open_app"))];
+                        p.set_host_overflow(
+                            actions,
+                            move |cmd, _| {
+                                if cmd == "open_app"
+                                    && let Err(why) = crate::activity_screens::open_in_agent_screens(&scr_id_cb)
+                                {
+                                    Feedback::start(win_id_cb).problem("Couldn’t open Agent Screens.", why);
+                                }
+                            },
+                            cx,
+                        );
+                    } else {
+                        p.clear_host_overflow(cx);
+                    }
+                });
+            }
+            let top_strip = show_breadcrumb.then(|| self.render_screen_breadcrumb_strip(scr_id, &resolved, center_w, cx));
+            let pane_ref = self.screen_pane.as_ref().unwrap();
+            div().flex_1().min_w_0().min_h_0().w_full().flex().flex_col().children(top_strip).child(div().flex_1().min_w_0().min_h_0().w_full().child(pane_ref))
+        } else if let Some(tr_sess) = tr_active {
             let ptr = Arc::as_ptr(&tr_sess) as usize;
             let tr_changed = ptr != self.last_transcript_ptr;
             if tr_changed {
@@ -3981,10 +5479,10 @@ impl RexWindow {
         let mut body_row = div().relative().flex_1().min_w_0().min_h_0().w_full().flex().flex_row();
         match side_layout {
             SidePanes::Both(w) => {
-                body_row = body_row.child(self.render_sidebar(w, cx)).child(center);
+                body_row = body_row.child(self.render_sidebar(w, resolved_screens_once.as_ref(), cx)).child(center);
             }
             SidePanes::Pane => {
-                body_row = body_row.child(self.render_sidebar(total_w, cx));
+                body_row = body_row.child(self.render_sidebar(total_w, resolved_screens_once.as_ref(), cx));
             }
             SidePanes::Rest => {
                 body_row = body_row.child(center);
@@ -3999,8 +5497,16 @@ impl RexWindow {
         }
 
         // Overlays layered above the workspace!
-        let mut root =
-            div().relative().size_full().flex().flex_col().track_focus(&self.focus).on_key_down(cx.listener(|w, e: &KeyDownEvent, cx| w.handle_terminal_key(e, cx))).child(menu_bar).child(body_row);
+        let mut root = div()
+            .relative()
+            .size_full()
+            .flex()
+            .flex_col()
+            .track_focus(&self.focus)
+            .capture_key_down(cx.listener(|w, e: &KeyDownEvent, cx| w.capture_screen_key(e, cx)))
+            .on_key_down(cx.listener(|w, e: &KeyDownEvent, cx| w.handle_terminal_key(e, cx)))
+            .child(menu_bar)
+            .child(body_row);
 
         // The status bar is always there, as Tracker's is: where the
         // window is (its host, its session) while there is nothing to
@@ -4011,7 +5517,7 @@ impl RexWindow {
         const STATUS_ROW_H: f32 = 18.0;
         let line = match self.feedback_line(cx) {
             Some(line) => line,
-            None => div().child(StringView::new(self.where_it_is()).size(style::SMALL_SIZE).height(STATUS_ROW_H).dim(true).cut(true)).into_any_element(),
+            None => div().child(StringView::new(self.where_it_is(resolved_screens_once.as_ref(), cx)).size(style::SMALL_SIZE).height(STATUS_ROW_H).dim(true).cut(true)).into_any_element(),
         };
         let silent = self.silent_host();
         let tr_visible = !matches!(side_layout, SidePanes::Pane);
@@ -4160,79 +5666,85 @@ impl RexWindow {
                 )
             }
         });
-        root = root.child(
-            div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
-                div()
-                    .relative()
-                    .w_full()
-                    .min_h(px(STATUS_ROW_H + 2.0))
-                    .px(px(m::SPACING))
-                    // Symmetric 1 pt vertical padding inside the 20 pt status bar; when an
-                    // error banner is open, optical 12 pt above icon/headline (9 pt + line slack)
-                    // and 12 pt below the sunken detail well.
-                    .pt(px(if self.problem.is_some() { 9.0 } else { 1.0 }))
-                    .pb(px(if self.problem.is_some() { m::SPACING } else { 1.0 }))
-                    .child(canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(1).absolute().inset_0())
-                    // What the bar says stays where it is; a host that
-                    // is silent is said at the bar's far end, with the
-                    // light a waiting host has in the sidebar, in the
-                    // words' own colour (the folder and the size are
-                    // facts, and dimmer: this is a state). The two
-                    // design reviews, 2026-11-22: as a fourth fact at
-                    // the front it was too quiet, and pushed the others
-                    // along with each second.
-                    .child(
-                        div()
-                            .relative()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(m::SPACING))
-                            .child(div().flex_1().min_w_0().child(line))
-                            .children(transfer.map(|t| transfer_said(t, self.id)))
-                            .children(transcript_tail_status)
-                            .children(silent.map(|said| {
-                                div()
-                                    .flex_shrink_0()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    // (The sidebar's light and its gap, in the
-                                    // proportion of the bar's smaller words:
-                                    // seven points and five, of eight and six.)
-                                    .gap(px((m::TIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
-                                    .child(crate::panels::light_of(crate::panels::Light::Waiting, (crate::panels::LIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
-                                    .child(StringView::new(said).size(style::SMALL_SIZE).height(m::LABEL_ROW))
-                            }))
-                            // What the host has of Olo's, at the very end: three
-                            // marks, each on or off (its typing helper, its
-                            // bridge, the skill for agents), with what each
-                            // means for its tip.
-                            .children(has.map(|has| {
-                                // (A click on one: the window where it is
-                                // put on the host or taken off. The host's
-                                // own for its helper and the bridge; the
-                                // account's for the skill, which is a row
-                                // there.)
-                                let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has, open: &Rc<dyn Fn(&String, &mut WindowCx)>| {
-                                    let (open, host) = (open.clone(), marks_host.clone());
-                                    widgets::Indicator::new(name, mark).on(has.on).says(has.said).on_click(move |cx| open(&host, cx))
-                                };
-                                let marks = [
-                                    Some(mark("Typing helper", widgets::Mark::Keyboard, has.helper, &open_host_window)),
-                                    has.bridge.map(|bridge| mark("Olo’s bridge", widgets::Mark::Bridge, bridge, &open_host_window)),
-                                    has.skill.map(|skill| mark("Skill for agents", widgets::Mark::Book, skill, &open_account_window)),
-                                ];
-                                // (Their tips clear of the bar's rule and of
-                                // the band over it: the separator the bar
-                                // begins with, six points. Clear of the rule
-                                // alone, a tip stood a point over the band's
-                                // edge: Gemini's review.)
-                                widgets::indicators(marks.into_iter().flatten().collect(), 6.0)
-                            })),
-                    ),
-            ),
-        );
+        // On a short horizontal third while viewing an embedded ScreenPane (with no error
+        // banner), omit the redundant bottom status bar so ScreenPane's Live/History tabs
+        // and Take Control footer fit without clipping (host & size are in the pane header).
+        let hide_status_for_compact_screen = active_screen_id.is_some() && self.problem.is_none() && f32::from(cx.viewport_size().height) < 300.0;
+        if !hide_status_for_compact_screen {
+            root = root.child(
+                div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
+                    div()
+                        .relative()
+                        .w_full()
+                        .min_h(px(STATUS_ROW_H + 2.0))
+                        .px(px(m::SPACING))
+                        // Symmetric 1 pt vertical padding inside the 20 pt status bar; when an
+                        // error banner is open, optical 12 pt above icon/headline (9 pt + line slack)
+                        // and 12 pt below the sunken detail well.
+                        .pt(px(if self.problem.is_some() { 9.0 } else { 1.0 }))
+                        .pb(px(if self.problem.is_some() { m::SPACING } else { 1.0 }))
+                        .child(canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(1).absolute().inset_0())
+                        // What the bar says stays where it is; a host that
+                        // is silent is said at the bar's far end, with the
+                        // light a waiting host has in the sidebar, in the
+                        // words' own colour (the folder and the size are
+                        // facts, and dimmer: this is a state). The two
+                        // design reviews, 2026-11-22: as a fourth fact at
+                        // the front it was too quiet, and pushed the others
+                        // along with each second.
+                        .child(
+                            div()
+                                .relative()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(m::SPACING))
+                                .child(div().flex_1().min_w_0().child(line))
+                                .children(transfer.map(|t| transfer_said(t, self.id)))
+                                .children(transcript_tail_status)
+                                .children(silent.map(|said| {
+                                    div()
+                                        .flex_shrink_0()
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        // (The sidebar's light and its gap, in the
+                                        // proportion of the bar's smaller words:
+                                        // seven points and five, of eight and six.)
+                                        .gap(px((m::TIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
+                                        .child(crate::panels::light_of(crate::panels::Light::Waiting, (crate::panels::LIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
+                                        .child(StringView::new(said).size(style::SMALL_SIZE).height(m::LABEL_ROW))
+                                }))
+                                // What the host has of Olo's, at the very end: three
+                                // marks, each on or off (its typing helper, its
+                                // bridge, the skill for agents), with what each
+                                // means for its tip.
+                                .children(has.map(|has| {
+                                    // (A click on one: the window where it is
+                                    // put on the host or taken off. The host's
+                                    // own for its helper and the bridge; the
+                                    // account's for the skill, which is a row
+                                    // there.)
+                                    let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has, open: &Rc<dyn Fn(&String, &mut WindowCx)>| {
+                                        let (open, host) = (open.clone(), marks_host.clone());
+                                        widgets::Indicator::new(name, mark).on(has.on).says(has.said).on_click(move |cx| open(&host, cx))
+                                    };
+                                    let marks = [
+                                        Some(mark("Typing helper", widgets::Mark::Keyboard, has.helper, &open_host_window)),
+                                        has.bridge.map(|bridge| mark("Olo’s bridge", widgets::Mark::Bridge, bridge, &open_host_window)),
+                                        has.skill.map(|skill| mark("Skill for agents", widgets::Mark::Book, skill, &open_account_window)),
+                                    ];
+                                    // (Their tips clear of the bar's rule and of
+                                    // the band over it: the separator the bar
+                                    // begins with, six points. Clear of the rule
+                                    // alone, a tip stood a point over the band's
+                                    // edge: Gemini's review.)
+                                    widgets::indicators(marks.into_iter().flatten().collect(), 6.0)
+                                })),
+                        ),
+                ),
+            );
+        }
 
         // Mode pill (Copy Mode or Key Mode) anchored bottom-left.
         let mode_pill_text = self
@@ -4275,13 +5787,18 @@ impl RexWindow {
         root
     }
 
-    fn render_sidebar(&mut self, width: f32, cx: &mut olo_kit::Cx<Self>) -> Element {
+    fn render_sidebar(&mut self, width: f32, resolved_once: Option<&Arc<crate::activity_screens::ResolvedActivityScreens>>, cx: &mut olo_kit::Cx<Self>) -> Element {
         let hub = the_hub().clone();
-        // (The pane this window shows: Activity's selected row.)
-        let shown = self.focused_block_key();
-        let (mode, hosts_snap, activity_rows, blocked_n, native_agent_json) = {
+        // (The pane this window shows: Activity's selected row. While a screen
+        // is shown, that screen row is selected instead of a terminal row.)
+        let active_screen_id = self.active_screen.as_ref().map(|s| s.id.clone());
+        let active_screen_controlling = self.screen_controlling();
+        let shown = if active_screen_id.is_some() { None } else { self.focused_block_key() };
+        let (mode, hosts_snap, activity_rows, standalone_screens, standalone_desktop, blocked_n, native_agent_json) = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let mode = st.settings.sidebar_mode;
+            // Astra #25: reuse the single per-render resolved inventory.
+            let resolved_screens = if mode == SidebarMode::Activity { Some(resolved_once.cloned().unwrap_or_else(|| self.resolved_screens_cached(&st))) } else { None };
             let mut hosts_snap = Vec::new();
             let mut activity_rows = Vec::new();
             let mut blocked_total = 0usize;
@@ -4314,17 +5831,13 @@ impl RexWindow {
                                     }
                                 }
                             }
-                            if is_child {
+                            if is_child || mode != SidebarMode::Activity {
                                 continue;
                             }
                             let descendants = st.subagents.descendants_tree(&h.key, &v.session_id, &w.window_id, &live);
                             let mut children_items: Vec<NativeChildItem> = Vec::with_capacity(descendants.len());
                             for (d_idx, trow) in descendants.iter().enumerate() {
                                 let child_bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: trow.entry.block_id.clone() };
-                                // (A command of the asker's own says nothing of itself as an
-                                // agent does: it runs for as long as it is a child at all, with
-                                // no mark of an agent at work, and what it runs is what is said
-                                // of it.)
                                 let command = !trow.entry.cli.is_agent();
                                 let (act, running, detail) = if command {
                                     (AgentActivity::Idle, true, trow.entry.what())
@@ -4339,19 +5852,32 @@ impl RexWindow {
                                 } else {
                                     (AgentActivity::Idle, false, trow.entry.what())
                                 };
-                                let has_children = descendants.get(d_idx + 1).is_some_and(|next| next.depth > trow.depth);
+                                let child_screens = resolved_screens.as_ref().and_then(|r| r.by_owner.get(&child_bk)).cloned().unwrap_or_default();
+                                let has_children = descendants.get(d_idx + 1).is_some_and(|next| next.depth > trow.depth) || !child_screens.is_empty();
                                 let help = crate::hub::help_of(&child_bk);
-                                children_items.push(NativeChildItem { row: trow.clone(), bk: child_bk, act, detail, running, command, help, has_children });
+                                children_items.push(NativeChildItem {
+                                    row: trow.clone(),
+                                    bk: child_bk,
+                                    act,
+                                    detail,
+                                    running,
+                                    command,
+                                    help,
+                                    has_children,
+                                    screens: child_screens,
+                                    ancestor_only: false,
+                                });
                             }
 
                             let agents_here = w
                                 .all_blocks()
                                 .filter(|b| {
                                     let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
-                                    st.blocks.get(&bk).is_some_and(|br| {
-                                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                        g.agent_activity != AgentActivity::Idle || g.runs_agent() || st.settings.activity_include_idle
-                                    })
+                                    resolved_screens.as_ref().is_some_and(|r| r.by_owner.contains_key(&bk))
+                                        || st.blocks.get(&bk).is_some_and(|br| {
+                                            let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                            g.agent_activity != AgentActivity::Idle || g.runs_agent() || st.settings.activity_include_idle
+                                        })
                                 })
                                 .count();
                             let mut attached_children = false;
@@ -4384,7 +5910,10 @@ impl RexWindow {
                                     let g = br.lock().unwrap_or_else(|e| e.into_inner());
                                     let running = g.runs_agent();
                                     let attach_here = !attached_children && child_target_bid.as_deref() == Some(b.block_id.as_str());
-                                    if g.agent_activity != AgentActivity::Idle || running || st.settings.activity_include_idle || attach_here {
+                                    let own_screens = resolved_screens.as_ref().and_then(|r| r.by_owner.get(&bk)).cloned().unwrap_or_default();
+                                    // Visibility guarantee (design §5): if a live top-level pane owns a screen,
+                                    // Activity forces that pane row to show so owned screens are never orphaned.
+                                    if g.agent_activity != AgentActivity::Idle || running || st.settings.activity_include_idle || attach_here || !own_screens.is_empty() {
                                         let process = g.process.as_ref();
                                         let program = g.program_title();
                                         let home = process.and_then(|p| p.home.clone()).or_else(|| h.is_local.then(crate::hub::local_home).flatten());
@@ -4406,7 +5935,19 @@ impl RexWindow {
                                         } else {
                                             Vec::new()
                                         };
-                                        activity_rows.push(ActivityRow { bk, host: h.label.clone(), title: label, detail, act: g.agent_activity, help, running, parent_agent, children: kids });
+                                        activity_rows.push(ActivityRow {
+                                            bk,
+                                            host_key: h.key.clone(),
+                                            host: h.label.clone(),
+                                            title: label,
+                                            detail,
+                                            act: g.agent_activity,
+                                            help,
+                                            running,
+                                            parent_agent,
+                                            screens: own_screens,
+                                            children: kids,
+                                        });
                                     }
                                 }
                             }
@@ -4418,8 +5959,10 @@ impl RexWindow {
                 let silent = st.host_silent(&h.key).map(crate::hub::silent_tip);
                 hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
             }
-            let agent_json = serde_json::to_string(&st.subagents.entries).unwrap_or_default();
-            (mode, hosts_snap, activity_rows, blocked_total, agent_json)
+            let agent_json = if mode == SidebarMode::Activity { serde_json::to_string(&st.subagents.entries).unwrap_or_default() } else { String::new() };
+            let standalone = resolved_screens.as_ref().map(|r| r.standalone_by_host.clone()).unwrap_or_default();
+            let standalone_desk = resolved_screens.map(|r| r.standalone_desktop.clone()).unwrap_or_default();
+            (mode, hosts_snap, activity_rows, standalone, standalone_desk, blocked_total, agent_json)
         };
 
         let back = canvas(|g, b| {
@@ -4466,17 +6009,10 @@ impl RexWindow {
             .w_full()
             .h(px(widgets::STRIP_HEIGHT))
             .flex_shrink_0()
-            // (In the middle of its band, between the menu bar's rule
-            // and the band's own, which is its last point: to the device
-            // pixel, the odd one over it. Set on the tabs' words' line it
-            // stood three points over the band's rule and twelve under
-            // the menu bar; and a point high of the middle after that,
-            // five over it and four under, measured in its picture.)
-            .pt(px({
-                let scale = cx.scale_factor();
-                let free = (widgets::STRIP_HEIGHT - 1.0 - m::CONTROL_HEIGHT) * scale;
-                (free / 2.0).ceil() / scale
-            }))
+            // Opus Minor: align `Sessions | Activity` labels closely with the
+            // `olo-rex / server-logs` tab labels on the same 34 pt strip while
+            // keeping a clean 2 pt gap above the bottom rule (`7 + 24 + 2 + 1 = 34`).
+            .pt(px(7.0))
             .px(px(m::SPACING))
             .flex()
             .flex_row()
@@ -4485,6 +6021,7 @@ impl RexWindow {
             .child(segments);
 
         let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
+        let host_order_labels: Vec<(String, String)> = hosts_snap.iter().map(|(hk, hl, ..)| (hk.clone(), hl.clone())).collect();
         if mode == SidebarMode::Sessions {
             for (hk, hlabel, conn, sessions, silent) in hosts_snap {
                 let connected = conn == HostConnState::Connected;
@@ -4601,38 +6138,68 @@ impl RexWindow {
 
         let mut total_activity_entities = 0usize;
         let mut matched_activity_entities = 0usize;
-        let mut filtered_items: Vec<(ActivityRow, Vec<NativeChildItem>, usize, usize, usize, bool, bool)> = Vec::new();
+        type FilteredActivityGroup = (ActivityRow, Vec<crate::activity_screens::ActivityScreenItem>, Vec<NativeChildItem>, usize, usize, usize, usize, bool, bool);
+        let mut filtered_items: Vec<FilteredActivityGroup> = Vec::new();
+        let mut filtered_standalone: HashMap<String, Vec<crate::activity_screens::ActivityScreenItem>> = HashMap::new();
+        let mut filtered_standalone_desktop: Vec<crate::activity_screens::ActivityScreenItem> = Vec::new();
         let mut dyn_names: Vec<String> = Vec::new();
         if mode == SidebarMode::Activity {
             for row in &activity_rows {
-                total_activity_entities += 1 + row.children.len();
+                let child_screens_total: usize = row.children.iter().map(|c| c.screens.len()).sum();
+                total_activity_entities += 1 + row.screens.len() + row.children.len() + child_screens_total;
                 for child in &row.children {
                     let n = child.row.entry.role.as_deref().filter(|r| !r.trim().is_empty()).unwrap_or(child.row.entry.title.as_str()).trim();
                     if !n.is_empty()
-                        && !matches!(n.to_ascii_lowercase().as_str(), "claude" | "codex" | "agy" | "antigravity" | "shell" | "subagent")
+                        && !matches!(n.to_ascii_lowercase().as_str(), "claude" | "codex" | "agy" | "antigravity" | "shell" | "subagent" | "screen" | "screens")
                         && !dyn_names.iter().any(|x| x.eq_ignore_ascii_case(n))
                     {
                         dyn_names.push(n.to_owned());
                     }
                 }
             }
+            for (hk, list) in &standalone_screens {
+                total_activity_entities += list.len();
+                let hlabel = host_order_labels.iter().find(|(k, _)| k == hk).map_or(hk.as_str(), |(_, l)| l.as_str());
+                let kept: Vec<crate::activity_screens::ActivityScreenItem> =
+                    list.iter().filter(|s| screen_matches_filter(s, hlabel, None, &query_terms, &self.activity_type_filter, self.activity_state_filter)).cloned().collect();
+                matched_activity_entities += kept.len();
+                if !kept.is_empty() {
+                    filtered_standalone.insert(hk.clone(), kept);
+                }
+            }
+            // Astra #19 / Neon #5: count and filter standalone desktop screens
+            // separately against `"This computer"` when no `is_local` Rex host exists.
+            if !standalone_desktop.is_empty() {
+                total_activity_entities += standalone_desktop.len();
+                filtered_standalone_desktop =
+                    standalone_desktop.iter().filter(|s| screen_matches_filter(s, "This computer", None, &query_terms, &self.activity_type_filter, self.activity_state_filter)).cloned().collect();
+                matched_activity_entities += filtered_standalone_desktop.len();
+            }
             for row in activity_rows {
                 if let Some(fm) = filter_activity_entry(&row, &query_now, &self.activity_type_filter, self.activity_state_filter) {
                     let total_c = fm.subs.len();
+                    let total_screens = fm.screens.len() + fm.subs.iter().map(|s| s.screens.len()).sum::<usize>();
                     let failed_c = fm.subs.iter().filter(|s| s.act == AgentActivity::Error).count();
                     let waiting_c = fm.subs.iter().filter(|s| s.act == AgentActivity::Blocked).count();
                     if fm.parent_matched {
                         matched_activity_entities += 1;
                     }
-                    matched_activity_entities += fm.subs.len();
-                    filtered_items.push((row, fm.subs, total_c, failed_c, waiting_c, fm.force_expand, fm.parent_matched));
+                    matched_activity_entities += fm.screens.len();
+                    for s in &fm.subs {
+                        if !s.ancestor_only {
+                            matched_activity_entities += 1;
+                        }
+                        matched_activity_entities += s.screens.len();
+                    }
+                    filtered_items.push((row, fm.screens, fm.subs, total_c, total_screens, failed_c, waiting_c, fm.force_expand, fm.parent_matched));
                 }
             }
         }
 
         // Pinned Activity Search & Filter bar (below Sessions|Activity header, above scroller).
         let activity_filter_bar = (mode == SidebarMode::Activity).then(|| {
-            let mut type_options: Vec<ActivityTypeFilter> = vec![ActivityTypeFilter::All, ActivityTypeFilter::Claude, ActivityTypeFilter::Codex, ActivityTypeFilter::Agy, ActivityTypeFilter::Shell];
+            let mut type_options: Vec<ActivityTypeFilter> =
+                vec![ActivityTypeFilter::All, ActivityTypeFilter::Claude, ActivityTypeFilter::Codex, ActivityTypeFilter::Agy, ActivityTypeFilter::Shell, ActivityTypeFilter::Screens];
             dyn_names.sort_by_key(|s| s.to_ascii_lowercase());
             for dn in dyn_names {
                 type_options.push(ActivityTypeFilter::SubagentType(dn));
@@ -4668,16 +6235,25 @@ impl RexWindow {
 
             let active_bar = filter_active.then(|| {
                 let count_text = olo_kit::tr!("{} of {} shown", matched_activity_entities, total_activity_entities).to_string();
+                let count_key = style::key(("act-filter-count", &count_text));
+                let count_label = canvas(move |g, b| {
+                    let p = theme::palette();
+                    let baseline = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+                    let r = style::label_on_baseline(g, b.left(), baseline, style::Align::Left, count_text.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
+                    g.agent(agent::Node::label(count_text.clone(), r));
+                })
+                .paint_key(count_key)
+                .w_full()
+                .h(px(m::CONTROL_HEIGHT));
                 let clear_cb = cx.msg(WinMsg::ClearActivityFilters);
                 div()
                     .w_full()
-                    .pt(px(2.0))
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(px(m::TIGHT))
-                    .child(div().flex_1().min_w_0().child(StringView::new(count_text).size(style::SMALL_SIZE).dim(true).cut(true).height(m::CONTROL_HEIGHT)))
-                    .child(Button::new(olo_kit::words::tr("Show All").to_owned()).small().id("rex-act-clear-filter").min_width(0.0).on_click(move |_, cx| clear_cb(&(), cx)))
+                    .child(div().flex_1().min_w_0().child(count_label))
+                    .child(Button::new(olo_kit::words::tr("Show All").to_owned()).id("rex-act-clear-filter").min_width(0.0).on_click(move |_, cx| clear_cb(&(), cx)))
             });
 
             let filter_bg = canvas(|g, b| {
@@ -4689,12 +6265,13 @@ impl RexWindow {
             .absolute()
             .inset_0();
 
+            // Opus Minor: crisp 9 / 6 / 6 / 9 pt vertical rhythm in filter bar.
             div()
                 .relative()
                 .w_full()
                 .flex_shrink_0()
                 .px(px(m::SPACING))
-                .pt(px(8.0))
+                .pt(px(9.0))
                 .pb(px(9.0))
                 .flex()
                 .flex_col()
@@ -4706,13 +6283,18 @@ impl RexWindow {
         });
 
         if mode == SidebarMode::Activity {
-            if filtered_items.is_empty() {
+            let mut active_bounds_keys: HashSet<String> = HashSet::new();
+            let any_visible = !filtered_items.is_empty() || !filtered_standalone.is_empty() || !filtered_standalone_desktop.is_empty();
+            let any_screens = filtered_items.iter().any(|(_, ds, subs, ..)| !ds.is_empty() || subs.iter().any(|c| !c.screens.is_empty()))
+                || !filtered_standalone.is_empty()
+                || !filtered_standalone_desktop.is_empty();
+            if !any_visible {
                 if filter_active {
                     let clear_cb = cx.msg(WinMsg::ClearActivityFilters);
                     let empty_msg = if !query_now.trim().is_empty() {
-                        olo_kit::tr!("No agents match “{}”.", query_now.trim()).to_string()
+                        olo_kit::tr!("No agents or screens match “{}”.", query_now.trim()).to_string()
                     } else {
-                        olo_kit::words::tr("No matching agents or subagents.").to_owned()
+                        olo_kit::words::tr("No matching agents or screens.").to_owned()
                     };
                     list = list.child(
                         div()
@@ -4732,270 +6314,552 @@ impl RexWindow {
             }
             let active_view = crate::activity_watch::active_view_target();
             let win_id = self.id;
-            // Group Activity rows by host under clean section headers (aligned
-            // flush with the sidebar filter controls above).
+            // Group Activity rows and standalone running screens by host in
+            // canonical `host_order` under clean section headers (aligned flush
+            // with the sidebar filter controls above).
             let mut rows = div().w_full().flex_shrink_0().flex().flex_col().agent("Group", "activity-subagents").agent_value(native_agent_json);
-            let mut last_host: Option<String> = None;
-            for (row, subs, total_children, failed_children, waiting_children, force_expand, parent_matched) in filtered_items {
-                if last_host.as_deref() != Some(row.host.as_str()) {
-                    let host_name = row.host.clone();
-                    let top_pad = if last_host.is_some() { 10.0 } else { 0.0 };
-                    rows = rows.child(div().w_full().pt(px(top_pad)).pb(px(6.0)).pr(px(m::TIGHT)).child(StringView::new(host_name).bold(true).size(style::SMALL_SIZE).dim(true).height(14.0)));
-                    last_host = Some(row.host.clone());
+            let mut items_by_host: HashMap<String, Vec<_>> = HashMap::new();
+            for entry in filtered_items {
+                items_by_host.entry(entry.0.host_key.clone()).or_default().push(entry);
+            }
+            let mut rendered_any_host = false;
+            for (hk, host_label) in &host_order_labels {
+                let host_agents = items_by_host.remove(hk).unwrap_or_default();
+                let host_standalones = filtered_standalone.remove(hk).unwrap_or_default();
+                if host_agents.is_empty() && host_standalones.is_empty() {
+                    continue;
                 }
-                let has_children = total_children > 0;
-                let expanded = has_children && (force_expand || !crate::activity_watch::is_folded(&row.bk));
-                let ancestor_only = filter_active && !parent_matched;
-                let bk_jump = row.bk.clone();
-                let bk_fold = row.bk.clone();
-                let bk_menu = row.bk.clone();
-                let row_title = row.title.clone();
-                let row_help = row.help.clone();
-                let viewing_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &row.bk);
-                let active_in_collapsed = has_children && !expanded && subs.iter().any(|c| shown.as_ref() == Some(&c.bk));
-                let selected = !ancestor_only && (shown.as_ref() == Some(&row.bk) || active_in_collapsed);
-                let icon_act = if has_children && !expanded { subs.iter().fold(row.act, |a, c| higher_activity(a, c.act)) } else { row.act };
-                let running_kids: Vec<RunningChild> = subs
-                    .iter()
-                    .filter(|c| c.command || matches!(c.act, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
-                    .map(|c| RunningChild { window_id: c.row.entry.window_id.clone(), name: c.row.entry.display_title(), command: c.command, minder: c.row.entry.is_shared_minder() })
-                    .collect();
-                let parent_el = sidebar_activity_row(
-                    row,
-                    icon_act,
-                    selected,
-                    ancestor_only,
-                    has_children,
-                    expanded,
-                    total_children,
-                    failed_children,
-                    waiting_children,
-                    &query_terms,
-                    width - 2.0 * m::SPACING,
-                    cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone())),
-                    cx.msg_with(move |_: &()| WinMsg::ToggleActivityFold(bk_fold.clone())),
-                )
-                .on_mouse_down(MouseButton::Right, move |e, cx| {
-                    let bk = bk_menu.clone();
-                    let title = row_title.clone();
-                    let running_for_menu = running_kids.clone();
-                    // Keep It Going and Auto Approve for the row's own pane, as
-                    // its tab's menu along the top has them and a child's row
-                    // here did already (Ben, 2026-11-27: "i should be able to
-                    // right click any agent in the activity list to toggle
-                    // keep going and auto approve").
-                    let mut menu = Menu::new("")
-                        .item("Show Transcript", "row.transcript")
-                        .checked(viewing_tr)
-                        .item("Show Terminal", "row.terminal")
-                        .checked(!viewing_tr)
-                        .separator()
-                        .item("Keep It Going", "row.keep_going")
-                        .checked(row_help.keep_going)
-                        .item("Auto Approve", "row.auto_approve")
-                        .checked(row_help.auto_approve);
-                    if has_children {
-                        let stop_label = stop_children_label(&running_for_menu);
-                        menu = menu
-                            .separator()
-                            .item(if expanded { "Collapse Subagents" } else { "Expand Subagents" }, "row.toggle_fold")
-                            // (What folds apart from what stops: a slip of a row from the one is not the other.)
-                            .separator()
-                            .item(stop_label, "row.stop_all")
-                            .enabled(!running_for_menu.is_empty());
-                    }
-                    menu::resolve(std::slice::from_mut(&mut menu), true);
-                    menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
-                        "row.transcript" => {
-                            if let Some(slot) = wins().map.get(&win_id) {
-                                slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title.clone()));
-                            }
-                        }
-                        "row.terminal" => {
-                            if let Some(slot) = wins().map.get(&win_id) {
-                                slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
-                            }
-                        }
-                        "row.keep_going" => {
-                            the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
-                        }
-                        "row.auto_approve" => {
-                            toggle_auto_approve(the_hub(), &bk, &title);
-                        }
-                        "row.toggle_fold" => {
-                            if let Some(slot) = wins().map.get(&win_id) {
-                                slot.handle.messenger().send(WinMsg::ToggleActivityFold(bk.clone()));
-                            }
-                        }
-                        "row.stop_all" if !running_for_menu.is_empty() => {
-                            if let Some(slot) = wins().map.get(&win_id) {
-                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: bk.host_key.clone(), session_id: bk.session_id.clone(), children: running_for_menu.clone() });
-                            }
-                        }
-                        _ => {}
-                    });
-                    cx.stop_propagation();
-                });
-                rows = rows.child(parent_el);
+                let host_pin = capture_live_host_pin(the_hub(), hk);
+                let top_pad = if rendered_any_host { 10.0 } else { 0.0 };
+                rows = rows.child(div().w_full().pt(px(top_pad)).pb(px(6.0)).pr(px(m::TIGHT)).child(StringView::new(host_label.clone()).bold(true).size(style::SMALL_SIZE).dim(true).height(14.0)));
+                rendered_any_host = true;
 
-                if expanded {
-                    let mut folded_depth: Option<usize> = None;
-                    for (c_idx, child) in subs.iter().enumerate() {
-                        if folded_depth.is_some_and(|fd| child.row.depth > fd) {
-                            continue;
-                        }
-                        folded_depth = None;
-                        let child_has_kids = child.has_children;
-                        let sub_kids: &[NativeChildItem] = if child_has_kids {
-                            let end = subs[c_idx + 1..].iter().position(|n| n.row.depth <= child.row.depth).map_or(subs.len(), |off| c_idx + 1 + off);
-                            &subs[c_idx + 1..end]
+                for (row, direct_screens, subs, total_children, total_screens, failed_children, waiting_children, force_expand, parent_matched) in host_agents {
+                    let has_children = total_children > 0 || total_screens > 0;
+                    let expanded = has_children && (force_expand || !crate::activity_watch::is_folded(&row.bk));
+                    let ancestor_only = filter_active && !parent_matched;
+                    let bk_jump = row.bk.clone();
+                    let bk_fold = row.bk.clone();
+                    let bk_menu = row.bk.clone();
+                    let row_title = row.title.clone();
+                    let row_help = row.help.clone();
+                    let viewing_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &row.bk);
+                    let screen_in_collapsed = has_children
+                        && !expanded
+                        && active_screen_id.as_ref().is_some_and(|aid| direct_screens.iter().any(|s| &s.id == aid) || subs.iter().any(|c| c.screens.iter().any(|s| &s.id == aid)));
+                    let active_in_collapsed = has_children && !expanded && (subs.iter().any(|c| shown.as_ref() == Some(&c.bk)) || screen_in_collapsed);
+                    let selected = !ancestor_only && (shown.as_ref() == Some(&row.bk) || active_in_collapsed);
+                    // Opus #8: when collapsed with hidden urgent children, elevate the
+                    // parent's icon badge to its most urgent hidden child (Error > Blocked).
+                    let icon_act = if !ancestor_only && has_children && !expanded {
+                        let hidden_urg = if failed_children > 0 {
+                            AgentActivity::Error
+                        } else if waiting_children > 0 {
+                            AgentActivity::Blocked
                         } else {
-                            &[]
+                            AgentActivity::Idle
                         };
-                        let child_expanded = child_has_kids && (force_expand || !crate::activity_watch::is_folded(&child.bk));
-                        if child_has_kids && !child_expanded {
-                            folded_depth = Some(child.row.depth);
-                        }
-                        let sub_total = sub_kids.len();
-                        let sub_failed = sub_kids.iter().filter(|k| k.act == AgentActivity::Error).count();
-                        let sub_waiting = sub_kids.iter().filter(|k| k.act == AgentActivity::Blocked).count();
-                        let active_in_folded_child = child_has_kids && !child_expanded && sub_kids.iter().any(|k| shown.as_ref() == Some(&k.bk));
-                        let child_icon_act = if child_has_kids && !child_expanded { sub_kids.iter().fold(child.act, |a, k| higher_activity(a, k.act)) } else { child.act };
-
-                        let child_bk_click = child.bk.clone();
-                        let child_bk_fold = child.bk.clone();
-                        let child_bk_menu = child.bk.clone();
-                        let child_wid_menu = child.row.entry.window_id.clone();
-                        // (A minder of several agents: stopped alone, its agents go on
-                        // under this tab with nobody answering for them; stopped with
-                        // them, they are stopped first, each with what is under it.)
-                        let child_minds = child.row.entry.is_shared_minder();
-                        let child_title = child.row.entry.display_title();
-                        let child_help = child.help.clone();
-                        let viewing_child_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &child.bk);
-                        let sub_selected = shown.as_ref() == Some(&child.bk) || active_in_folded_child;
-                        let tip_key = format!("rex-sub-{}", child.row.entry.id);
-                        let tip_text = format!("{} ({}) — Click to open terminal", child_title, child.row.entry.what());
-                        olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
-                        let sub_el = olo_kit::tip::on_row(
-                            sidebar_native_child_row(
-                                child.clone(),
-                                child_icon_act,
-                                sub_selected,
-                                child_expanded,
-                                (sub_total, sub_failed, sub_waiting),
-                                &query_terms,
-                                width - 2.0 * m::SPACING,
-                                cx.msg_with(move |_: &()| WinMsg::FocusBlock(child_bk_click.clone())),
-                                cx.msg_with(move |_: &()| WinMsg::ToggleActivityFold(child_bk_fold.clone())),
-                            )
-                            .on_mouse_down(MouseButton::Right, move |e, cx| {
-                                let bk = child_bk_menu.clone();
-                                let wid = child_wid_menu.clone();
-                                let title = child_title.clone();
-                                let minds = child_minds;
-                                // (Whether a minder has agents to stop with it: by who minds them,
-                                // as they will be found when it is asked, not by the rows shown.)
-                                let child_has_agents = minds && the_hub().minder_and_its_agents(&bk.host_key, &bk.session_id, &wid).len() > 1;
-                                // (In the order its parent's row and a tab's menu have them.)
-                                let mut menu = Menu::new("")
-                                    .item("Show Transcript", "sub.transcript")
-                                    .checked(viewing_child_tr)
-                                    .item("Show Terminal", "sub.terminal")
-                                    .checked(!viewing_child_tr)
-                                    .separator()
-                                    .item("Keep It Going", "sub.keep_going")
-                                    .checked(child_help.keep_going)
-                                    .item("Auto Approve", "sub.auto_approve")
-                                    .checked(child_help.auto_approve)
-                                    .separator();
-                                // (What folds first and apart, then what stops, as its parent's row has them: it stood between the
-                                // two Stops, which act at once.)
-                                if child_has_kids {
-                                    menu = menu.item(if child_expanded { "Collapse Children" } else { "Expand Children" }, "sub.toggle_fold").separator();
-                                }
-                                menu = menu.item("Stop Subagent", "sub.stop");
-                                // (A minder's children are the agents it minds. Its own words for the
-                                // two, "Stop Minder" and "Stop Minder & Its Agents", wait for a minder
-                                // in the demo and the reviewers' look at it: TODO.)
-                                if (child_minds && child_has_agents) || (!child_minds && child_has_kids) {
-                                    menu = menu.item("Stop Subagent & Children", "sub.stop_tree");
-                                }
-                                menu = menu.item("Force Close Tab", "sub.force_stop");
-                                menu::resolve(std::slice::from_mut(&mut menu), true);
-                                menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
-                                    "sub.terminal" => {
-                                        if let Some(slot) = wins().map.get(&win_id) {
-                                            slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
-                                        }
-                                    }
-                                    "sub.transcript" => {
+                        higher_activity(row.act, hidden_urg)
+                    } else {
+                        row.act
+                    };
+                    let running_kids: Vec<RunningChild> = subs
+                        .iter()
+                        .filter(|c| c.command || matches!(c.act, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
+                        .map(|c| RunningChild { window_id: c.row.entry.window_id.clone(), name: c.row.entry.display_title(), command: c.command, minder: c.row.entry.is_shared_minder() })
+                        .collect();
+                    let has_sub_children = total_children > 0;
+                    let parent_menu_key = format!("row:{}:{}:{}", row.bk.host_key, row.bk.session_id, row.bk.block_id);
+                    active_bounds_keys.insert(parent_menu_key.clone());
+                    let parent_menu_target = self.context_menu_row.as_deref() == Some(parent_menu_key.as_str());
+                    let parent_tip_key = format!("rex-act-row-{}-{}-{}", row.bk.host_key, row.bk.session_id, row.bk.block_id);
+                    let mut parent_tip_text = if row.detail.is_empty() { row_title.clone() } else { format!("{row_title} — {}", row.detail) };
+                    if row_help.keep_going {
+                        parent_tip_text.push_str(" · Keep It Going");
+                    }
+                    olo_kit::tip::retext(cx, parent_tip_key.clone(), parent_tip_text.clone());
+                    let parent_bounds = self.sidebar_row_bounds.clone();
+                    let parent_bounds_menu = self.sidebar_row_bounds.clone();
+                    let parent_bounds_key = parent_menu_key.clone();
+                    let parent_bounds_key_menu = parent_menu_key.clone();
+                    let parent_el = olo_kit::tip::on_row(
+                        sidebar_activity_row(
+                            row,
+                            icon_act,
+                            selected,
+                            parent_menu_target,
+                            ancestor_only,
+                            has_children,
+                            expanded,
+                            total_children,
+                            total_screens,
+                            failed_children,
+                            waiting_children,
+                            &query_terms,
+                            width - 2.0 * m::SPACING,
+                            parent_bounds,
+                            parent_bounds_key,
+                            cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone())),
+                            cx.msg_with(move |_: &()| WinMsg::ToggleActivityFold(bk_fold.clone())),
+                        )
+                        .on_mouse_down(MouseButton::Right, move |e, cx| {
+                            let bk = bk_menu.clone();
+                            let title = row_title.clone();
+                            let running_for_menu = running_kids.clone();
+                            let mut menu = Menu::new("")
+                                .item("Show Transcript", "row.transcript")
+                                .checked(viewing_tr)
+                                .item("Show Terminal", "row.terminal")
+                                .checked(!viewing_tr)
+                                .separator()
+                                .item("Keep It Going  ↻", "row.keep_going")
+                                .checked(row_help.keep_going)
+                                .item("Auto Approve", "row.auto_approve")
+                                .checked(row_help.auto_approve);
+                            if has_children {
+                                let fold_word = match (has_sub_children, total_screens > 0, expanded) {
+                                    (true, _, true) => "Collapse Subagents",
+                                    (true, _, false) => "Expand Subagents",
+                                    (false, true, true) => "Collapse Screens",
+                                    (false, true, false) => "Expand Screens",
+                                    _ => "Collapse",
+                                };
+                                menu = menu.separator().item(fold_word, "row.toggle_fold");
+                            }
+                            if has_sub_children {
+                                let stop_label = stop_children_label(&running_for_menu);
+                                menu = menu.separator().item(stop_label, "row.stop_all").enabled(!running_for_menu.is_empty());
+                            }
+                            menu::resolve(std::slice::from_mut(&mut menu), true);
+                            if let Some(slot) = wins().map.get(&win_id) {
+                                slot.handle.messenger().send(WinMsg::SetContextMenuRow(Some(parent_menu_key.clone())));
+                            }
+                            let menu_at = parent_bounds_menu.borrow().get(&parent_bounds_key_menu).copied().map_or(e.position, |b| point(e.position.x.max(b.left() + px(12.0)), b.bottom() + px(2.0)));
+                            menu::context_menu_then(
+                                cx,
+                                menu,
+                                menu_at,
+                                move |cmd, _| match cmd {
+                                    "row.transcript" => {
                                         if let Some(slot) = wins().map.get(&win_id) {
                                             slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title.clone()));
                                         }
                                     }
-                                    "sub.keep_going" => {
+                                    "row.terminal" => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
+                                        }
+                                    }
+                                    "row.keep_going" => {
                                         the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
                                     }
-                                    "sub.auto_approve" => {
+                                    "row.auto_approve" => {
                                         toggle_auto_approve(the_hub(), &bk, &title);
                                     }
-                                    "sub.toggle_fold" => {
+                                    "row.toggle_fold" => {
                                         if let Some(slot) = wins().map.get(&win_id) {
                                             slot.handle.messenger().send(WinMsg::ToggleActivityFold(bk.clone()));
                                         }
                                     }
-                                    "sub.stop" => {
+                                    "row.stop_all" if !running_for_menu.is_empty() => {
                                         if let Some(slot) = wins().map.get(&win_id) {
-                                            slot.handle.messenger().send(WinMsg::StopSubagent {
+                                            slot.handle.messenger().send(WinMsg::ConfirmStopSubagents {
                                                 host_key: bk.host_key.clone(),
+                                                host_pin,
                                                 session_id: bk.session_id.clone(),
-                                                window_id: wid.clone(),
-                                                force: false,
-                                                tree: false,
-                                            });
-                                        }
-                                    }
-                                    // (The service never stops a minder's agents with it: here they
-                                    // are what was asked for. Which they are is the hub's to say, by
-                                    // who minds each, and they are stopped before it, one after the
-                                    // other: `RexHub::minder_and_its_agents`.)
-                                    "sub.stop_tree" if minds => {
-                                        let hub = the_hub();
-                                        hub.stop_subagents_in_order(&bk.host_key, &bk.session_id, hub.minder_and_its_agents(&bk.host_key, &bk.session_id, &wid));
-                                    }
-                                    "sub.stop_tree" => {
-                                        if let Some(slot) = wins().map.get(&win_id) {
-                                            slot.handle.messenger().send(WinMsg::StopSubagent {
-                                                host_key: bk.host_key.clone(),
-                                                session_id: bk.session_id.clone(),
-                                                window_id: wid.clone(),
-                                                force: false,
-                                                tree: true,
-                                            });
-                                        }
-                                    }
-                                    "sub.force_stop" => {
-                                        if let Some(slot) = wins().map.get(&win_id) {
-                                            slot.handle.messenger().send(WinMsg::StopSubagent {
-                                                host_key: bk.host_key.clone(),
-                                                session_id: bk.session_id.clone(),
-                                                window_id: wid.clone(),
-                                                force: true,
-                                                tree: false,
+                                                children: running_for_menu.clone(),
                                             });
                                         }
                                     }
                                     _ => {}
-                                });
-                                cx.stop_propagation();
-                            }),
-                            tip_key,
-                            tip_text,
-                        );
-                        rows = rows.child(sub_el);
+                                },
+                                move |_| {
+                                    if let Some(slot) = wins().map.get(&win_id) {
+                                        slot.handle.messenger().send(WinMsg::SetContextMenuRow(None));
+                                    }
+                                },
+                            );
+                            cx.stop_propagation();
+                        }),
+                        parent_tip_key,
+                        parent_tip_text,
+                    );
+                    rows = rows.child(parent_el);
+
+                    if expanded {
+                        // 1. Direct screens of this top-level agent appear FIRST,
+                        //    immediately below the agent and before its child subagents.
+                        let direct_len = direct_screens.len();
+                        for (s_idx, mut scr) in direct_screens.into_iter().enumerate() {
+                            scr.depth = 1;
+                            scr.is_last = s_idx + 1 == direct_len && subs.is_empty();
+                            scr.guides = Vec::new();
+                            let is_sel = active_screen_id.as_ref() == Some(&scr.id);
+                            let you_ctrl = is_sel && active_screen_controlling;
+                            let scr_menu_key = format!("scr:{}", scr.id.key());
+                            active_bounds_keys.insert(scr_menu_key.clone());
+                            let scr_menu_target = self.context_menu_row.as_deref() == Some(scr_menu_key.as_str());
+                            rows = rows.child(render_activity_screen_row_with_menu(
+                                scr,
+                                is_sel,
+                                scr_menu_target,
+                                you_ctrl,
+                                filter_active,
+                                &query_terms,
+                                width - 2.0 * m::SPACING,
+                                self.sidebar_row_bounds.clone(),
+                                win_id,
+                                cx,
+                            ));
+                        }
+
+                        // 2. Child & grandchild subagents, each with its own screens
+                        //    immediately beneath it before its child subagents.
+                        let mut folded_depth: Option<usize> = None;
+                        for (c_idx, child) in subs.iter().enumerate() {
+                            if folded_depth.is_some_and(|fd| child.row.depth > fd) {
+                                continue;
+                            }
+                            folded_depth = None;
+                            let sub_end = subs[c_idx + 1..].iter().position(|n| n.row.depth <= child.row.depth).map_or(subs.len(), |off| c_idx + 1 + off);
+                            let sub_kids: &[NativeChildItem] = &subs[c_idx + 1..sub_end];
+                            let child_has_sub_kids = !sub_kids.is_empty();
+                            let child_has_kids = child_has_sub_kids || !child.screens.is_empty();
+                            let child_expanded = child_has_kids && (force_expand || !crate::activity_watch::is_folded(&child.bk));
+                            if child_has_kids && !child_expanded {
+                                folded_depth = Some(child.row.depth);
+                            }
+                            let sub_total = sub_kids.len();
+                            let sub_screens_total = child.screens.len() + sub_kids.iter().map(|k| k.screens.len()).sum::<usize>();
+                            let sub_failed = sub_kids.iter().filter(|k| k.act == AgentActivity::Error).count();
+                            let sub_waiting = sub_kids.iter().filter(|k| k.act == AgentActivity::Blocked).count();
+                            let active_scr_in_folded = child_has_kids
+                                && !child_expanded
+                                && active_screen_id.as_ref().is_some_and(|aid| child.screens.iter().any(|s| &s.id == aid) || sub_kids.iter().any(|k| k.screens.iter().any(|s| &s.id == aid)));
+                            let active_in_folded_child = child_has_kids && !child_expanded && (sub_kids.iter().any(|k| shown.as_ref() == Some(&k.bk)) || active_scr_in_folded);
+                            // Opus #8: when a child parent (e.g. `API Audit`) is collapsed with
+                            // urgent descendants, elevate its icon badge to Error > Blocked!
+                            let child_icon_act = if !child.ancestor_only && child_has_kids && !child_expanded {
+                                let hidden_urg = if sub_failed > 0 {
+                                    AgentActivity::Error
+                                } else if sub_waiting > 0 {
+                                    AgentActivity::Blocked
+                                } else {
+                                    AgentActivity::Idle
+                                };
+                                higher_activity(child.act, hidden_urg)
+                            } else {
+                                child.act
+                            };
+
+                            // Recompute exact `is_last` & ancestor `guides` against the filtered `subs` list
+                            // so filtered trees never draw dangling vertical guide lines.
+                            let mut child_for_draw = child.clone();
+                            child_for_draw.has_children = child_has_kids;
+                            let (c_is_last, c_guides) = recompute_sub_guides(&subs, c_idx);
+                            child_for_draw.row.is_last = c_is_last;
+                            child_for_draw.row.guides = c_guides.clone();
+
+                            let child_bk_click = child.bk.clone();
+                            let child_bk_fold = child.bk.clone();
+                            let child_bk_menu = child.bk.clone();
+                            let child_wid_menu = child.row.entry.window_id.clone();
+                            let child_minds = child.row.entry.is_shared_minder();
+                            let child_title = child.row.entry.display_title();
+                            let child_help = child.help.clone();
+                            let viewing_child_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &child.bk);
+                            let sub_selected = !child.ancestor_only && (shown.as_ref() == Some(&child.bk) || active_in_folded_child);
+                            let sub_menu_key = format!("sub:{}", child.row.entry.id);
+                            active_bounds_keys.insert(sub_menu_key.clone());
+                            let sub_menu_target = self.context_menu_row.as_deref() == Some(sub_menu_key.as_str());
+                            let tip_key = format!("rex-sub-{}", child.row.entry.id);
+                            let mut tip_text = format!("{} ({}) — Click to open terminal", child_title, child.row.entry.what());
+                            if child_help.keep_going {
+                                tip_text.push_str(" · Keep It Going");
+                            }
+                            olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
+                            let sub_bounds = self.sidebar_row_bounds.clone();
+                            let sub_bounds_menu = self.sidebar_row_bounds.clone();
+                            let sub_bounds_key = sub_menu_key.clone();
+                            let sub_bounds_key_menu = sub_menu_key.clone();
+                            let sub_el = olo_kit::tip::on_row(
+                                sidebar_native_child_row(
+                                    child_for_draw,
+                                    child_icon_act,
+                                    sub_selected,
+                                    sub_menu_target,
+                                    child_expanded,
+                                    (sub_total, sub_screens_total, sub_failed, sub_waiting),
+                                    &query_terms,
+                                    width - 2.0 * m::SPACING,
+                                    sub_bounds,
+                                    sub_bounds_key,
+                                    cx.msg_with(move |_: &()| WinMsg::FocusBlock(child_bk_click.clone())),
+                                    cx.msg_with(move |_: &()| WinMsg::ToggleActivityFold(child_bk_fold.clone())),
+                                )
+                                .on_mouse_down(MouseButton::Right, move |e, cx| {
+                                    let bk = child_bk_menu.clone();
+                                    let wid = child_wid_menu.clone();
+                                    let title = child_title.clone();
+                                    let minds = child_minds;
+                                    let child_has_agents = minds && the_hub().minder_and_its_agents(&bk.host_key, &bk.session_id, &wid).len() > 1;
+                                    let mut menu = Menu::new("")
+                                        .item("Show Transcript", "sub.transcript")
+                                        .checked(viewing_child_tr)
+                                        .item("Show Terminal", "sub.terminal")
+                                        .checked(!viewing_child_tr)
+                                        .separator()
+                                        .item("Keep It Going  ↻", "sub.keep_going")
+                                        .checked(child_help.keep_going)
+                                        .item("Auto Approve", "sub.auto_approve")
+                                        .checked(child_help.auto_approve)
+                                        .separator();
+                                    if child_has_kids {
+                                        let fold_word = match (child_has_sub_kids, child_expanded) {
+                                            (true, true) => "Collapse Subagents",
+                                            (true, false) => "Expand Subagents",
+                                            (false, true) => "Collapse Screens",
+                                            (false, false) => "Expand Screens",
+                                        };
+                                        menu = menu.item(fold_word, "sub.toggle_fold").separator();
+                                    }
+                                    menu = menu.item(if minds { "Stop Minder…" } else { "Stop Subagent" }, "sub.stop");
+                                    if (minds && child_has_agents) || (!minds && child_has_sub_kids) {
+                                        menu = menu.item(if minds { "Stop Minder & Its Subagents…" } else { "Stop Subagent & Children" }, "sub.stop_tree");
+                                    }
+                                    menu = menu.separator().item("Force Close Tab", "sub.force_stop");
+                                    menu::resolve(std::slice::from_mut(&mut menu), true);
+                                    if let Some(slot) = wins().map.get(&win_id) {
+                                        slot.handle.messenger().send(WinMsg::SetContextMenuRow(Some(sub_menu_key.clone())));
+                                    }
+                                    let menu_at =
+                                        sub_bounds_menu.borrow().get(&sub_bounds_key_menu).copied().map_or(e.position, |b| point(e.position.x.max(b.left() + px(12.0)), b.bottom() + px(2.0)));
+                                    menu::context_menu_then(
+                                        cx,
+                                        menu,
+                                        menu_at,
+                                        move |cmd, _| match cmd {
+                                            "sub.terminal" => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
+                                                }
+                                            }
+                                            "sub.transcript" => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title.clone()));
+                                                }
+                                            }
+                                            "sub.keep_going" => {
+                                                the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
+                                            }
+                                            "sub.auto_approve" => {
+                                                toggle_auto_approve(the_hub(), &bk, &title);
+                                            }
+                                            "sub.toggle_fold" => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::ToggleActivityFold(bk.clone()));
+                                                }
+                                            }
+                                            "sub.stop" if minds => {
+                                                // Astra #1: use `host_pin` captured with the row when building
+                                                // the menu (never re-reading a replacement host at click time).
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::ConfirmStopMinder {
+                                                        host_key: bk.host_key.clone(),
+                                                        host_pin,
+                                                        session_id: bk.session_id.clone(),
+                                                        window_id: wid.clone(),
+                                                        title: title.clone(),
+                                                        with_agents: false,
+                                                    });
+                                                }
+                                            }
+                                            "sub.stop" => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::StopSubagent {
+                                                        host_key: bk.host_key.clone(),
+                                                        host_pin,
+                                                        session_id: bk.session_id.clone(),
+                                                        window_id: wid.clone(),
+                                                        force: false,
+                                                        tree: false,
+                                                    });
+                                                }
+                                            }
+                                            "sub.stop_tree" if minds => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::ConfirmStopMinder {
+                                                        host_key: bk.host_key.clone(),
+                                                        host_pin,
+                                                        session_id: bk.session_id.clone(),
+                                                        window_id: wid.clone(),
+                                                        title: title.clone(),
+                                                        with_agents: true,
+                                                    });
+                                                }
+                                            }
+                                            "sub.stop_tree" => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::StopSubagent {
+                                                        host_key: bk.host_key.clone(),
+                                                        host_pin,
+                                                        session_id: bk.session_id.clone(),
+                                                        window_id: wid.clone(),
+                                                        force: false,
+                                                        tree: true,
+                                                    });
+                                                }
+                                            }
+                                            "sub.force_stop" => {
+                                                if let Some(slot) = wins().map.get(&win_id) {
+                                                    slot.handle.messenger().send(WinMsg::StopSubagent {
+                                                        host_key: bk.host_key.clone(),
+                                                        host_pin,
+                                                        session_id: bk.session_id.clone(),
+                                                        window_id: wid.clone(),
+                                                        force: true,
+                                                        tree: false,
+                                                    });
+                                                }
+                                            }
+                                            _ => {}
+                                        },
+                                        move |_| {
+                                            if let Some(slot) = wins().map.get(&win_id) {
+                                                slot.handle.messenger().send(WinMsg::SetContextMenuRow(None));
+                                            }
+                                        },
+                                    );
+                                    cx.stop_propagation();
+                                }),
+                                tip_key,
+                                tip_text,
+                            );
+                            rows = rows.child(sub_el);
+
+                            // Nested screens owned by this child/grandchild subagent appear
+                            // immediately below it (before any deeper subagent children).
+                            if child_expanded && !child.screens.is_empty() {
+                                let scr_depth = (child.row.depth + 1).clamp(1, 4);
+                                let mut scr_guides = c_guides;
+                                let want_len = scr_depth.saturating_sub(1);
+                                while scr_guides.len() < want_len {
+                                    scr_guides.push(!c_is_last);
+                                }
+                                scr_guides.truncate(want_len);
+                                // Neon #11.2: only assign `!c_is_last` to the new guide slot when
+                                // `scr_depth` actually increased past `child.row.depth` (not when
+                                // clamped at depth 4, which would overwrite depth 3's guide).
+                                if scr_depth > child.row.depth
+                                    && let Some(last_g) = scr_guides.last_mut()
+                                {
+                                    *last_g = !c_is_last;
+                                }
+                                let n_scr = child.screens.len();
+                                for (s_idx, mut scr) in child.screens.iter().cloned().enumerate() {
+                                    scr.depth = scr_depth;
+                                    scr.is_last = s_idx + 1 == n_scr && !child_has_sub_kids;
+                                    scr.guides = scr_guides.clone();
+                                    let is_sel = active_screen_id.as_ref() == Some(&scr.id);
+                                    let you_ctrl = is_sel && active_screen_controlling;
+                                    let scr_menu_key = format!("scr:{}", scr.id.key());
+                                    active_bounds_keys.insert(scr_menu_key.clone());
+                                    let scr_menu_target = self.context_menu_row.as_deref() == Some(scr_menu_key.as_str());
+                                    rows = rows.child(render_activity_screen_row_with_menu(
+                                        scr,
+                                        is_sel,
+                                        scr_menu_target,
+                                        you_ctrl,
+                                        filter_active,
+                                        &query_terms,
+                                        width - 2.0 * m::SPACING,
+                                        self.sidebar_row_bounds.clone(),
+                                        win_id,
+                                        cx,
+                                    ));
+                                }
+                            }
+                        }
                     }
                 }
+
+                // Standalone running screens appear at depth 0 after this host's agents.
+                for mut scr in host_standalones {
+                    scr.depth = 0;
+                    scr.is_last = true;
+                    scr.guides = Vec::new();
+                    let is_sel = active_screen_id.as_ref() == Some(&scr.id);
+                    let you_ctrl = is_sel && active_screen_controlling;
+                    let scr_menu_key = format!("scr:{}", scr.id.key());
+                    active_bounds_keys.insert(scr_menu_key.clone());
+                    let scr_menu_target = self.context_menu_row.as_deref() == Some(scr_menu_key.as_str());
+                    rows = rows.child(render_activity_screen_row_with_menu(
+                        scr,
+                        is_sel,
+                        scr_menu_target,
+                        you_ctrl,
+                        filter_active,
+                        &query_terms,
+                        width - 2.0 * m::SPACING,
+                        self.sidebar_row_bounds.clone(),
+                        win_id,
+                        cx,
+                    ));
+                }
+            }
+            // Astra #19 / Neon #5: when no `is_local` Rex server exists, render standalone
+            // desktop screens under their own `"This computer"` section so they neither
+            // merge into an SSH home `"local"` host nor disappear.
+            if !filtered_standalone_desktop.is_empty() {
+                let top_pad = if rendered_any_host { 10.0 } else { 0.0 };
+                rows = rows.child(
+                    div()
+                        .w_full()
+                        .pt(px(top_pad))
+                        .pb(px(6.0))
+                        .pr(px(m::TIGHT))
+                        .child(StringView::new(olo_kit::words::tr("This computer").to_owned()).bold(true).size(style::SMALL_SIZE).dim(true).height(14.0)),
+                );
+                for mut scr in filtered_standalone_desktop {
+                    scr.depth = 0;
+                    scr.is_last = true;
+                    scr.guides = Vec::new();
+                    let is_sel = active_screen_id.as_ref() == Some(&scr.id);
+                    let you_ctrl = is_sel && active_screen_controlling;
+                    let scr_menu_key = format!("scr:{}", scr.id.key());
+                    active_bounds_keys.insert(scr_menu_key.clone());
+                    let scr_menu_target = self.context_menu_row.as_deref() == Some(scr_menu_key.as_str());
+                    rows = rows.child(render_activity_screen_row_with_menu(
+                        scr,
+                        is_sel,
+                        scr_menu_target,
+                        you_ctrl,
+                        filter_active,
+                        &query_terms,
+                        width - 2.0 * m::SPACING,
+                        self.sidebar_row_bounds.clone(),
+                        win_id,
+                        cx,
+                    ));
+                }
+            }
+            // Astra #26: prune retired row bounds entries so the map never grows unbounded.
+            self.sidebar_row_bounds.borrow_mut().retain(|k, _| active_bounds_keys.contains(k));
+            // Opus #10, #16 / Neon-look #11: align flush with section headers (12 pt = `pl(0)`
+            // inside `list`'s 12 pt padding), 12 pt below the last row, with a bold primary-ink
+            // title cleanly distinguished from the secondary body copy 6 pt below.
+            if !filter_active && any_visible && !any_screens {
+                rows = rows.child(
+                    div()
+                        .w_full()
+                        .pt(px(12.0))
+                        .pb(px(4.0))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.0))
+                        .child(StringView::new(olo_kit::words::tr("No screens running").to_owned()).bold(true).size(style::SMALL_SIZE).height(15.0))
+                        .child(StringView::new(olo_kit::words::tr("Screens appear here when an agent opens one.").to_owned()).size(style::SMALL_SIZE).dim(true).wrap(true)),
+                );
             }
             list = list.child(rows);
         }
@@ -5395,7 +7259,8 @@ impl RexWindow {
                     }
                 }
                 let (lines, list) = (self.host_screen_lines.clone(), self.host_screens_list.clone());
-                let screens = crate::host_panel::screens_section(cx, &list, &lines, &stands, &shown, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone())));
+                let can_live_stream = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_screens.get(&shown.key).is_some_and(crate::activity_screens::host_supports_live_stream);
+                let screens = crate::host_panel::screens_section(cx, &list, &lines, &stands, &shown, can_live_stream, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone())));
                 let tweaks = crate::server::for_tweaks(crate::server::current);
                 div().w_full().child(crate::host_panel::render_host_panel(
                     &stands,
@@ -5642,6 +7507,7 @@ impl View for RexWindow {
                 }
             }
             WinMsg::ShowTarget(target, token) => {
+                self.exit_screen_for_navigation(cx);
                 self.pending_focus = None;
                 self.overlay = None;
                 self.find_open = false;
@@ -5675,10 +7541,16 @@ impl View for RexWindow {
                 }
             }
             WinMsg::CreateSession(hk, dir) => {
+                // Astra #27: close any embedded screen (and clear pending restore)
+                // so the new session's terminal is never hidden behind the old picture.
+                self.exit_screen_for_navigation(cx);
                 let again = WinMsg::CreateSession(hk.clone(), dir.clone());
                 the_hub().create_session(&hk, None, dir, Feedback::start(self.id).again(again));
             }
             WinMsg::Redraw => {
+                if self.pending_restored_screen.is_some() {
+                    self.try_restore_pending_screen(cx);
+                }
                 let visuals = &mut cx.window_state::<PaneVisuals>().0;
                 if !visuals.is_empty() {
                     let hub = the_hub().clone();
@@ -5774,7 +7646,7 @@ impl View for RexWindow {
                 olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
             }
             WinMsg::PasteText(bk, connection, txt) => {
-                if self.focused_block_key().as_ref() == Some(&bk) {
+                if self.active_screen.is_none() && self.focused_block_key().as_ref() == Some(&bk) {
                     let hub = the_hub().clone();
                     let (is_local, bracketed) = {
                         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -5796,7 +7668,7 @@ impl View for RexWindow {
                 }
             }
             WinMsg::PasteImage(bk, mime, bytes) => {
-                if self.focused_block_key().as_ref() == Some(&bk) {
+                if self.active_screen.is_none() && self.focused_block_key().as_ref() == Some(&bk) {
                     let feedback = Feedback::start(self.id);
                     // (Written on a worker: a picture is megabytes.)
                     std::thread::spawn(move || match pasted_image_file(&mime, &bytes) {
@@ -5807,10 +7679,16 @@ impl View for RexWindow {
             }
             WinMsg::FocusBlock(bk) => {
                 crate::activity_watch::close_viewer();
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
                 self.jump_to(JumpTarget::Pane(bk), cx);
                 cx.activate_window();
             }
             WinMsg::ActivityChanged => {
+                cx.invalidate();
+            }
+            WinMsg::ScreensMetaChanged => {
+                self.sync_active_screen_info(cx);
                 cx.invalidate();
             }
             WinMsg::ToggleActivityFold(bk) => {
@@ -5825,6 +7703,12 @@ impl View for RexWindow {
                 self.activity_state_filter = sf;
                 cx.invalidate();
             }
+            WinMsg::SetActivitySearch(query) => {
+                if let Some(f) = &self.activity_search_field {
+                    f.update(cx, |tf, cx| tf.set_text(query, cx));
+                }
+                cx.invalidate();
+            }
             WinMsg::ClearActivityFilters => {
                 if let Some(f) = &self.activity_search_field {
                     f.update(cx, |tf, cx| tf.set_text(String::new(), cx));
@@ -5833,6 +7717,64 @@ impl View for RexWindow {
                 self.activity_state_filter = ActivityStateFilter::All;
                 cx.invalidate();
             }
+            WinMsg::OpenScreen { id, tab, take_control, expected_host_instance_id, expected_started } => {
+                self.open_screen(id, tab, take_control, expected_host_instance_id, expected_started, cx);
+            }
+            WinMsg::OpenScreenMenu(at) => {
+                if let Some(pane) = &self.screen_pane {
+                    pane.update(cx, |p, cx| p.open_screen_menu_at(at, cx));
+                }
+            }
+            WinMsg::CloseScreen => {
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
+                self.focus.focus(cx);
+            }
+            WinMsg::ScreenStopConfirm(item) => {
+                self.confirm_stop_screen(item, cx);
+            }
+            WinMsg::ScreenStart(item) => {
+                self.start_screen_from_menu(item, cx);
+            }
+            WinMsg::ConfirmStopMinder { host_key, host_pin, session_id, window_id, title, with_agents } => {
+                let hub = the_hub().clone();
+                // Astra #1 & #5: require a valid live `(host_instance_id, conn_id)`
+                // pin captured with the row (never wildcard `(0, 0)`), verify it
+                // before opening the alert, and carry it into every stop dispatch.
+                let Some(pin) = host_pin else { return };
+                if !hub.host_matches_pin(&host_key, pin.0, pin.1) {
+                    return;
+                }
+                let targets = if with_agents { hub.minder_and_its_agents(&host_key, &session_id, &window_id) } else { vec![window_id.clone()] };
+                let agents_n = targets.len().saturating_sub(1);
+                let (alert_title, msg, btn) = if with_agents && agents_n > 0 {
+                    (
+                        "Stop Minder and Its Subagents",
+                        format!(
+                            "Stop “{title}” and its {}?\n\nThis interrupts the minded subagents first, then stops the minder. Their tabs will close.",
+                            olo_kit::words::count(agents_n as u64, "1 subagent", "{n} subagents")
+                        ),
+                        "Stop Minder & Its Subagents",
+                    )
+                } else {
+                    ("Stop Minder", format!("Stop “{title}”?\n\nThis interrupts the minder and closes its tab. Any subagents it minds continue under their parent tab."), "Stop Minder")
+                };
+                olo_kit::widgets::open_alert(cx, alert_title, "warning", &msg, &[btn, "Cancel"], move |choice, _| {
+                    if *choice == Some(0) {
+                        if with_agents {
+                            hub.stop_subagents_in_order_pinned(&host_key, Some(pin), &session_id, targets.clone());
+                        } else {
+                            hub.stop_subagent_pinned(&host_key, Some(pin), &session_id, &window_id, false, false);
+                        }
+                    }
+                });
+            }
+            WinMsg::SetContextMenuRow(row_key) => {
+                if self.context_menu_row != row_key {
+                    self.context_menu_row = row_key;
+                    cx.invalidate();
+                }
+            }
             WinMsg::TreeMenuClosed => {
                 if self.open_tree_tab.take().is_some() {
                     cx.invalidate();
@@ -5840,6 +7782,8 @@ impl View for RexWindow {
             }
             WinMsg::SelectWindow(hk, sid, wid) => {
                 crate::activity_watch::close_viewer();
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
                 self.active_host = hk.clone();
                 self.active_session = Some(sid.clone());
                 the_hub().select_window(&hk, &sid, &wid);
@@ -5849,12 +7793,21 @@ impl View for RexWindow {
                 self.focus.focus(cx);
                 cx.invalidate();
             }
-            WinMsg::StopSubagent { host_key, session_id, window_id, force, tree } => {
-                the_hub().stop_subagent(&host_key, &session_id, &window_id, force, tree);
+            WinMsg::StopSubagent { host_key, host_pin, session_id, window_id, force, tree } => {
+                // Astra #1: require live host pin captured with the menu/row.
+                let Some(pin) = host_pin else { return };
+                if !the_hub().host_matches_pin(&host_key, pin.0, pin.1) {
+                    return;
+                }
+                the_hub().stop_subagent_pinned(&host_key, Some(pin), &session_id, &window_id, force, tree);
                 cx.invalidate();
             }
-            WinMsg::ConfirmStopSubagents { host_key, session_id, children } => {
+            WinMsg::ConfirmStopSubagents { host_key, host_pin, session_id, children } => {
                 if children.is_empty() {
+                    return;
+                }
+                let Some(pin) = host_pin else { return };
+                if !the_hub().host_matches_pin(&host_key, pin.0, pin.1) {
                     return;
                 }
                 let names: Vec<&str> = children.iter().map(|c| c.name.as_str()).collect();
@@ -5894,12 +7847,14 @@ impl View for RexWindow {
                 olo_kit::widgets::open_alert(cx, named, "warning", &msg, &[btn, "Cancel"], move |choice, _| {
                     if *choice == Some(0) {
                         // (One after the other, minders last: `stop_order`.)
-                        hub.stop_subagents_in_order(&host_key, &session_id, running_wids.clone());
+                        hub.stop_subagents_in_order_pinned(&host_key, Some(pin), &session_id, running_wids.clone());
                     }
                 });
             }
             WinMsg::OpenPaneTranscript(bk, title) => {
                 let hub = the_hub().clone();
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
                 self.jump_to(JumpTarget::Pane(bk.clone()), cx);
                 crate::activity_watch::open_pane_transcript(&hub, &bk, title);
                 if self.side_pane.alone() {
@@ -6010,6 +7965,8 @@ impl View for RexWindow {
             WinMsg::ConfirmOverlay => self.confirm_overlay(cx),
             WinMsg::DismissOverlay => self.dismiss_overlay(cx),
             WinMsg::TabChanged => {
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
                 self.dismiss_overlay(cx);
                 self.find_open = false;
                 self.clear_feedback();
@@ -6018,6 +7975,8 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::SelectHost(hk) => {
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
                 self.dismiss_overlay(cx);
                 self.find_open = false;
                 self.clear_feedback();
@@ -6029,6 +7988,8 @@ impl View for RexWindow {
                 }
             }
             WinMsg::SelectSession(hk, sid) => {
+                self.pending_restored_screen = None;
+                self.close_screen(cx);
                 self.dismiss_overlay(cx);
                 self.clear_feedback();
                 self.pending_focus = None;
@@ -6433,7 +8394,9 @@ impl View for RexWindow {
                     HostDo::ScreensDefault(on_host) => crate::host::screens_default(&hub, on_host),
                     HostDo::ScreensCancel => crate::host::cancel_screens(&hub),
                     HostDo::ScreenStop { host_key, host_instance_id, name, expected_started } => crate::host::stop_screen(&hub, &host_key, host_instance_id, &name, expected_started),
-                    HostDo::ScreenLook(name) => crate::host::look_at_screen(&hub, &name),
+                    HostDo::ScreenLook { host_key, host_instance_id, host_label, name, expected_started } => {
+                        open_host_screen_live_in_rex(&hub, &host_key, host_instance_id, &host_label, &name, expected_started);
+                    }
                     // (Its copy here, in Tracker; or the host's own folder
                     // here, made if nothing came from it yet.)
                     HostDo::ShowKept(there) => {
@@ -6653,6 +8616,7 @@ impl View for RexWindow {
                 menu::resolve(std::slice::from_mut(&mut menu), true);
                 let hub = the_hub().clone();
                 let window = self.id;
+                let tab_host_pin = capture_live_host_pin(&hub, &hk);
                 menu::context_menu(cx, menu, at, move |cmd, _| match cmd {
                     "window.rename" => {
                         if let Some(slot) = wins().map.get(&window) {
@@ -6677,7 +8641,12 @@ impl View for RexWindow {
                     }
                     "sub.stop_all" if !running_kids.is_empty() => {
                         if let Some(slot) = wins().map.get(&window) {
-                            slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sess.session_id.clone(), children: running_kids.clone() });
+                            slot.handle.messenger().send(WinMsg::ConfirmStopSubagents {
+                                host_key: hk.clone(),
+                                host_pin: tab_host_pin,
+                                session_id: sess.session_id.clone(),
+                                children: running_kids.clone(),
+                            });
                         }
                     }
                     _ if cmd.starts_with("agent.keep_going_toggle#") => {
@@ -6775,6 +8744,7 @@ impl View for RexWindow {
                 cx.invalidate();
                 let window = self.id;
                 let sid = sess.session_id.clone();
+                let tree_host_pin = capture_live_host_pin(&hub_ref, &hk);
                 let corner = if is_side { olo_kit::Corner::TopRight } else { olo_kit::Corner::BottomLeft };
                 menu::popup_then(
                     cx,
@@ -6788,7 +8758,7 @@ impl View for RexWindow {
                             }
                         } else if cmd == "sub.stop_all" && !running_kids.is_empty() {
                             if let Some(slot) = wins().map.get(&window) {
-                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sid.clone(), children: running_kids.clone() });
+                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), host_pin: tree_host_pin, session_id: sid.clone(), children: running_kids.clone() });
                             }
                         }
                     },
@@ -6830,7 +8800,10 @@ impl View for RexWindow {
                 st.settings.save();
                 cx.invalidate();
             }
-            WinMsg::CloseWindow => cx.request_close(),
+            WinMsg::CloseWindow => {
+                self.close_screen(cx);
+                cx.request_close();
+            }
         }
     }
 
@@ -6839,8 +8812,12 @@ impl View for RexWindow {
             return true;
         }
         match command {
-            "close" => cx.request_close(),
+            "close" => {
+                self.close_screen(cx);
+                cx.request_close();
+            }
             "quit" => {
+                self.close_screen(cx);
                 shutdown_app();
                 olo_kit::quit();
             }
@@ -6856,8 +8833,33 @@ impl View for RexWindow {
             if let Some(hub) = HUB.get() {
                 hub.hide_window_front_pane(self.id);
             }
+            // Release Take Control and any pending take-control attempt immediately
+            // when the window loses focus so a background or hidden Rex window never
+            // holds or later grabs control of a screen.
+            if let Some(st) = &mut self.active_screen {
+                st.controlling = false;
+                st.pending_take_control = false;
+                if let Some(pane) = &self.screen_pane {
+                    pane.update(cx, |p, cx| p.stop_controlling(cx));
+                }
+            }
+        } else if let Some(st) = &mut self.active_screen
+            && st.pending_take_control
+        {
+            // Neon #7: flush one-shot Take Control armed while `!self.window_active`
+            // (e.g. `OLO_REX_DEMO_ACTIVITY=screens-control` or context menu on an
+            // unfocused workspace) once the window activates.
+            st.pending_take_control = false;
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| p.request_control_when_ready(cx));
+                st.controlling = pane.read(cx).controlling();
+            }
         }
         cx.invalidate();
+    }
+
+    fn window_closing(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        self.close_screen(cx);
     }
 
     fn takes_drops(&self) -> bool {
@@ -6865,6 +8867,14 @@ impl View for RexWindow {
     }
 
     fn drop_over(&mut self, offer: Option<&DropOffer>, _: Point<Pixels>, cx: &mut olo_kit::Cx<Self>) -> Option<DropAccept> {
+        // Never accept terminal file/text drops while an embedded screen is open (Astra #6).
+        if self.active_screen.is_some() {
+            if self.dropping {
+                self.dropping = false;
+                cx.invalidate();
+            }
+            return None;
+        }
         let accepted = offer.filter(|o| o.copy).and_then(|o| {
             let mime = if o.types.iter().any(|t| t == "text/uri-list") {
                 Some("text/uri-list")
@@ -6882,6 +8892,10 @@ impl View for RexWindow {
 
     fn dropped(&mut self, d: Dropped, cx: &mut olo_kit::Cx<Self>) {
         self.dropping = false;
+        if self.active_screen.is_some() {
+            cx.invalidate();
+            return;
+        }
         if let Some(bk) = self.focused_block_key() {
             if d.mime == "text/uri-list" {
                 the_hub().upload_files(&bk, d.paths(), Feedback::start(self.id));
@@ -6895,16 +8909,35 @@ impl View for RexWindow {
         cx.invalidate();
     }
 
-    fn save_state(&mut self, _: &mut olo_kit::Cx<Self>) -> Option<String> {
+    fn save_state(&mut self, cx: &mut olo_kit::Cx<Self>) -> Option<String> {
         if self.role != WinRole::Workspace {
             return None;
         }
+        // Release Take Control before in-place upgrade re-exec so local `.control`
+        // files and remote control leases are never orphaned across `exec` (Astra #5).
+        if let Some(st) = &mut self.active_screen {
+            st.controlling = false;
+            st.pending_take_control = false;
+            if let Some(pane) = &self.screen_pane {
+                pane.update(cx, |p, cx| p.stop_controlling(cx));
+            }
+        }
+        let (active_screen, active_screen_tab) = match (&self.active_screen, &self.screen_pane) {
+            (Some(st), Some(pane)) => (Some(st.id.clone()), Some(pane.read(cx).tab())),
+            (Some(st), None) => (Some(st.id.clone()), Some(st.tab)),
+            (None, _) => match &self.pending_restored_screen {
+                Some((id, tab)) => (Some(id.clone()), Some(*tab)),
+                None => (None, None),
+            },
+        };
         let saved = SavedWorkspaceState {
             active_host: self.active_host.clone(),
             active_session: self.active_session.clone(),
             session_index: self.session_index,
             sidebar_collapsed: self.side_pane.collapsed(),
             sidebar_width: self.side_pane.width(),
+            active_screen,
+            active_screen_tab,
         };
         serde_json::to_string(&saved).ok()
     }
@@ -6940,6 +8973,14 @@ impl Drop for RexWindow {
         if self.role == WinRole::RunApprove {
             // Closing the alert window denies the pending command.
             the_run_approvals().clone().deny_front();
+        }
+        // Belt-and-suspenders: if the workspace window drops without `window_closing`,
+        // release Take Control on any still-bound screen source immediately.
+        if let Some(st) = self.active_screen.take()
+            && st.controlling
+            && let Some(src) = st.source
+        {
+            let _ = src.as_dyn().set_controlled(false);
         }
         self.cancel_preview();
         app().attention.hide(self.id);
@@ -8252,12 +10293,55 @@ fn fit_query_snippet(text: &str, terms: &[String], room: f32, size: f32) -> Stri
     if fits(&prefixed) { prefixed } else { fit_words_line(&prefixed, room, size) }
 }
 
+/// Capture the live `(host_instance_id, screens_conn_id)` pin for `host_key`
+/// when rendering a row or building a context menu (Astra #1). Returns `None`
+/// for missing hosts or disconnected remote hosts (`screens_conn_id == 0`) so
+/// a stale menu never acquires a replacement host's identity or `(0, 0)` wildcard.
+fn capture_live_host_pin(hub: &Arc<crate::hub::RexHub>, host_key: &str) -> Option<(u64, u64)> {
+    hub.host_live_pin(host_key)
+}
+
+/// Strip dangling trailing connectors (`&`, `·`, `-`, `–`, `,`, `/`, `:`) and
+/// whitespace before appending `…` when a label must be shortened to `max_w`
+/// (Opus #19: `"Billing Checkout Flow &…"` -> `"Billing Checkout Flow…"`).
+fn fit_clean_ellipsis(text: &str, size: f32, font: &olo_kit::Font, max_w: Pixels) -> String {
+    if style::text_width(text.to_owned(), size, font.clone()) <= max_w {
+        return text.to_owned();
+    }
+    let ell_w = style::text_width("…".to_owned(), size, font.clone());
+    let room = (max_w - ell_w).max(px(0.0));
+    let mut end = 0usize;
+    for (idx, ch) in text.char_indices() {
+        let next = idx + ch.len_utf8();
+        if style::text_width(text[..next].to_owned(), size, font.clone()) <= room {
+            end = next;
+        } else {
+            break;
+        }
+    }
+    let cleaned = trim_dangling_ellipsis_prefix(&text[..end]);
+    if cleaned.is_empty() { "…".to_owned() } else { format!("{cleaned}…") }
+}
+
+fn trim_dangling_ellipsis_prefix(prefix: &str) -> &str {
+    let mut s = prefix.trim_end();
+    loop {
+        let next = s.trim_end_matches(|c: char| c.is_whitespace() || matches!(c, '&' | '·' | '-' | '–' | ',' | '/' | ':')).trim_end();
+        if next.len() == s.len() {
+            return s;
+        }
+        s = next;
+    }
+}
+
 /// Paint a single-line label, highlighting any case-insensitive matches of `terms`
 /// with the same warm yellow Find-highlight role used in Transcript view.
 #[allow(clippy::too_many_arguments)]
 fn paint_query_label(g: &mut olo_kit::Painter, x: Pixels, y_center: Pixels, text: &str, size: f32, weight: FontWeight, ink: olo_kit::Hsla, max_w: Pixels, terms: &[String], p: &olo_theme::Palette) {
+    let font = style::ui_font(weight);
     if terms.is_empty() || text.is_empty() {
-        style::label_fit(g, x, y_center, style::Align::Left, text.to_owned(), size, style::ui_font(weight), ink, max_w);
+        let fitted = if text.is_empty() { String::new() } else { fit_clean_ellipsis(text, size, &font, max_w) };
+        style::label_fit(g, x, y_center, style::Align::Left, fitted, size, font, ink, max_w);
         return;
     }
     let lower = text.to_ascii_lowercase();
@@ -8277,7 +10361,8 @@ fn paint_query_label(g: &mut olo_kit::Painter, x: Pixels, y_center: Pixels, text
         }
     }
     if spans.is_empty() {
-        style::label_fit(g, x, y_center, style::Align::Left, text.to_owned(), size, style::ui_font(weight), ink, max_w);
+        let fitted = fit_clean_ellipsis(text, size, &font, max_w);
+        style::label_fit(g, x, y_center, style::Align::Left, fitted, size, font, ink, max_w);
         return;
     }
     spans.sort_unstable();
@@ -8291,16 +10376,34 @@ fn paint_query_label(g: &mut olo_kit::Painter, x: Pixels, y_center: Pixels, text
             merged.push((s, e));
         }
     }
-    let font = style::ui_font(weight);
-    let hl_bg = style::c(olo_theme::mix(p.hue(olo_theme::Hue::Yellow), p.panel_background, if p.mode == olo_theme::ThemeMode::Dark { 0.36 } else { 0.45 }));
-    let hl_ink = style::c(p.panel_text);
+    // Warm gold fill paired with dark ink in BOTH light and dark mode (Opus #10:
+    // dark-mode gold darkened ~15% and 1.5 pt horizontal pill padding around matches).
+    let hl_bg = if p.mode == olo_theme::ThemeMode::Dark { style::c([0xc9, 0xa7, 0x36, 0xff]) } else { style::c([0xf6, 0xd8, 0x62, 0xff]) };
+    let hl_ink = style::c([0x18, 0x16, 0x12, 0xff]);
+    let baseline = style::baseline_at(g, y_center, size);
+    let hl_top = baseline - px(size * 0.85);
+    let hl_bot = baseline + px(size * 0.25);
+    let total_w = style::text_width(text.to_owned(), size, font.clone());
+    let ell_w = style::text_width("…".to_owned(), size, font.clone());
+    let clip_right = if total_w > max_w { x + (max_w - ell_w).max(px(0.0)) } else { x + max_w };
+    for &(s, e) in &merged {
+        let sx = x + style::text_width(text[..s].to_owned(), size, font.clone());
+        let ex = x + style::text_width(text[..e].to_owned(), size, font.clone());
+        if sx < clip_right {
+            let rx0 = (sx - px(1.0)).max(x - px(1.0));
+            let rx1 = (ex + px(1.0)).min(clip_right);
+            if rx1 > rx0 {
+                style::fill_rect(g, style::snap(g, Bounds::from_corners(point(rx0, hl_top), point(rx1, hl_bot))), hl_bg);
+            }
+        }
+    }
     let mut runs = Vec::new();
     let mut cur = 0usize;
     for (s, e) in merged {
         if s > cur {
             runs.push(olo_kit::TextRun { len: s - cur, font: font.clone(), color: ink, background_color: None, underline: None, strikethrough: None, size: None });
         }
-        runs.push(olo_kit::TextRun { len: e - s, font: font.clone(), color: hl_ink, background_color: Some(hl_bg), underline: None, strikethrough: None, size: None });
+        runs.push(olo_kit::TextRun { len: e - s, font: font.clone(), color: hl_ink, background_color: None, underline: None, strikethrough: None, size: None });
         cur = e;
     }
     if cur < text.len() {
@@ -8768,72 +10871,128 @@ fn render_child_breadcrumb_header(
     bar
 }
 
+/// Strip the leading `<cli> · ` prefix from an agent detail string when rendering
+/// Extract the leading harness/CLI prefix from a row detail (`"claude · ..."` -> `Some("claude")`).
+fn detail_cli_prefix(detail: &str) -> Option<&str> {
+    detail.split_once(" · ").map(|(pfx, _)| pfx.trim()).filter(|s| !s.is_empty())
+}
+
+/// Paint line 2 of a collapsed agent row: optional `<cli> · ` in secondary text
+/// followed by `<rollup>` (bold Waiting-orange / failure-red when urgent, else
+/// secondary text — no truncated activity text after the rollup, Opus #6).
+#[allow(clippy::too_many_arguments)]
+fn paint_collapsed_sub_line(g: &mut olo_kit::Painter, left_x: Pixels, y_center: Pixels, cli_prefix: Option<&str>, rollup: &str, urg: u8, sub_max: Pixels, p: &olo_theme::Palette) {
+    let quiet = style::secondary_text(p);
+    let rollup_ink = match urg {
+        2 => style::c(p.failure),
+        1 => crate::transcript_view::waiting_chrome_color(p),
+        _ => quiet,
+    };
+    let rollup_w = if urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
+    if let Some(pfx) = cli_prefix.filter(|s| !s.is_empty()) {
+        let head = format!("{pfx} · ");
+        let full = format!("{head}{rollup}");
+        let runs = vec![
+            olo_kit::TextRun { len: head.len(), font: style::ui_font(FontWeight::NORMAL), color: quiet, background_color: None, underline: None, strikethrough: None, size: None },
+            olo_kit::TextRun { len: rollup.len(), font: style::ui_font(rollup_w), color: rollup_ink, background_color: None, underline: None, strikethrough: None, size: None },
+        ];
+        style::label_runs_fit(g, left_x, y_center, style::Align::Left, olo_kit::SharedString::from(full), style::SMALL_SIZE, &runs, sub_max);
+    } else {
+        style::label_fit(g, left_x, y_center, style::Align::Left, rollup.to_owned(), style::SMALL_SIZE, style::ui_font(rollup_w), rollup_ink, sub_max);
+    }
+}
+
+/// Compact single-line height for non-matching context-only filter ancestors (Opus #8).
+const ANCESTOR_ROW_H: f32 = 22.0;
+
 #[allow(clippy::too_many_arguments)]
 fn sidebar_activity_row(
     row: ActivityRow,
     icon_act: AgentActivity,
     selected: bool,
+    menu_target: bool,
     ancestor_only: bool,
     has_children: bool,
     expanded: bool,
     total_children: usize,
+    total_screens: usize,
     failed_children: usize,
     waiting_children: usize,
     query_terms: &[String],
     width: f32,
+    row_bounds_map: Rc<std::cell::RefCell<HashMap<String, Bounds<Pixels>>>>,
+    row_bounds_key: String,
     on_click: impl Fn(&(), &mut WindowCx) + 'static,
     on_toggle_fold: impl Fn(&(), &mut WindowCx) + 'static,
 ) -> Element {
-    let ActivityRow { title, detail, act, help, running, .. } = row;
-    let state = if ancestor_only { None } else { activity_state_word(act, running) };
+    let ActivityRow { title, detail, act, help, running, parent_agent, .. } = row;
+    let own_state = if ancestor_only { None } else { activity_state_word(act, running) };
     let left = ACTIVITY_FOLD_W + ROW_ICON + m::TIGHT;
-    // When collapsed with hidden children, move the rollup count into line 1's status slot
-    // (replacing "Working") so line 2 keeps the entire column width for the subtitle.
-    let collapsed_status: Option<(String, u8)> = if has_children && !expanded {
-        if failed_children > 0 && waiting_children > 0 {
-            Some((format!("{waiting_children} waiting · {failed_children} failed"), 2))
-        } else if failed_children > 0 {
-            Some((format!("{failed_children} failed"), 2))
-        } else if waiting_children > 0 {
-            Some((format!("{waiting_children} waiting"), 1))
-        } else if total_children > 0 {
-            Some((format!("{total_children} subagent{}", if total_children == 1 { "" } else { "s" }), 0))
-        } else {
-            None
-        }
+    let sub_room = (width - left - 8.0).max(48.0);
+    // Opus #8: when collapsed with urgent hidden children (`failed_children > 0 || waiting_children > 0`),
+    // place the urgent rollup (`1 waiting` / `1 failed`) in the right-hand status slot on line 1
+    // and keep line 2 showing the agent's normal activity detail! Neutral rollups (`4 screens`,
+    // `1 subagent · 4 screens`) stay on line 2 as `<cli> · <rollup>`.
+    let urgent_collapsed_status: Option<(String, u8)> = if !ancestor_only && has_children && !expanded && (failed_children > 0 || waiting_children > 0) {
+        crate::activity_screens::format_collapsed_rollup(total_children, total_screens, failed_children, waiting_children)
     } else {
         None
     };
-    let sub_room = (width - left - 8.0).max(48.0);
-    let sub_line = if detail.is_empty() {
+    let cli_prefix_owned: Option<String> = detail_cli_prefix(&detail).map(str::to_owned).or_else(|| parent_agent.map(|h| if h == "agy" { "antigravity".to_owned() } else { h }));
+    let collapsed_rollup: Option<(Option<String>, String, u8)> = if !ancestor_only && has_children && !expanded && urgent_collapsed_status.is_none() {
+        crate::activity_screens::fit_collapsed_rollup_line(cli_prefix_owned.as_deref(), total_children, total_screens, failed_children, waiting_children, sub_room, style::SMALL_SIZE)
+    } else {
+        None
+    };
+    let sub_line = if ancestor_only || detail.is_empty() || collapsed_rollup.is_some() {
         String::new()
     } else if query_terms.is_empty() {
         fit_clean_line(&detail, sub_room, style::SMALL_SIZE)
     } else {
         fit_query_snippet(&detail, query_terms, sub_room, style::SMALL_SIZE)
     };
-    let height = ACTIVITY_ROW;
+    let height = if ancestor_only { ANCESTOR_ROW_H } else { ACTIVITY_ROW };
     let terms_owned: Vec<String> = query_terms.to_vec();
     let key = style::key((
-        (&title, &sub_line, act as u8, icon_act as u8, &help, running),
-        (selected, ancestor_only, has_children, expanded, total_children, failed_children, waiting_children, &terms_owned),
+        (&title, &sub_line, &collapsed_rollup, &urgent_collapsed_status, act as u8, icon_act as u8, &help, running),
+        (selected, menu_target, ancestor_only, has_children, expanded, total_children, total_screens, failed_children, waiting_children, &terms_owned),
     ));
     let words = activity_row_words(act, running, &help);
     let on_toggle_fold = Rc::new(on_toggle_fold);
 
     let row_canvas = canvas(move |g, b| {
+        row_bounds_map.borrow_mut().insert(row_bounds_key.clone(), b);
         let p = theme::palette();
         let dark = p.mode == olo_theme::ThemeMode::Dark;
         let ground = if selected { style::c(style::selection_ground(&p, p.panel_background, false)) } else { style::c(p.panel_background) };
         if selected {
             style::fill_rect(g, b, ground);
         }
+        if menu_target {
+            // Opus #11 / Neon-look #1: inset 2 pt vertically and 1 pt horizontally so
+            // the target outline never merges with an adjacent selected row's fill.
+            let outline_r = style::snap(g, Bounds::from_corners(point(b.left() + px(1.0), b.top() + px(2.0)), point(b.right() - px(1.0), b.bottom() - px(2.0))));
+            g.paint_quad(olo_kit::outline(outline_r, style::c(p.keyboard_navigation), olo_kit::BorderStyle::Solid));
+        }
         let (ink, quiet, muted) = (style::c(p.panel_text), style::secondary_text(&p), style::disabled_text(&p));
         let title_ink = if ancestor_only { quiet } else { ink };
-        let baseline = style::baseline_at(g, b.top() + px(12.0), style::PLAIN_SIZE);
+        let line1_y = if ancestor_only { b.center().y } else { b.top() + px(12.0) };
+        let baseline = style::baseline_at(g, line1_y, style::PLAIN_SIZE);
         let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
         let icon_b = style::snap_centred(g, point(b.left() + px(ACTIVITY_FOLD_W + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
-        if ancestor_only || icon_act == AgentActivity::Done {
+        if ancestor_only {
+            // Opus Minor: dimmed context ancestors paint their coloured icon at 60%
+            // opacity so a grey unlit icon ALWAYS means Stopped.
+            g.with_element_opacity(Some(0.60), |g| {
+                if icon_act == AgentActivity::Done {
+                    icons::paint(g, icon_b, "terminal");
+                } else {
+                    widgets::strip::drawn_on(ground, || {
+                        widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(icon_act, &crate::agent::Help::default(), running));
+                    });
+                }
+            });
+        } else if icon_act == AgentActivity::Done {
             icons::paint(g, icon_b, "terminal");
         } else {
             widgets::strip::drawn_on(ground, || {
@@ -8849,7 +11008,10 @@ fn sidebar_activity_row(
             } else {
                 style::shade(&p, if selected { sel_rgba } else { p.panel_background }, 1.32)
             };
-            style::vline(g, guide_x, icon_b.bottom() + px(2.0), b.bottom(), guide_c);
+            let stem_top = (icon_b.bottom() + px(2.0)).min(b.bottom());
+            if b.bottom() - stem_top >= px(2.0) {
+                style::vline(g, guide_x, stem_top, b.bottom(), guide_c);
+            }
         }
 
         let right_edge = b.right() - px(8.0);
@@ -8858,21 +11020,14 @@ fn sidebar_activity_row(
             widgets::agent_marks::auto_approve_mark(g, point(right - px(4.5), name_mid), 9.0, ground);
             right -= px(9.0 + m::MARK_GAP);
         }
-        if !ancestor_only && help.keep_going {
-            widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), name_mid), 9.0, ground);
-            right -= px(8.0 + m::MARK_GAP);
-        }
         let left_x = b.left() + px(left);
-        if let Some((text, urg)) = &collapsed_status {
-            let color = match *urg {
-                2 => style::c(p.failure),
-                1 => crate::transcript_view::waiting_chrome_color(&p),
-                _ => quiet,
-            };
-            let weight = if *urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
-            let at = style::label_on_baseline(g, right, baseline, style::Align::Right, text.clone(), style::SMALL_SIZE, style::ui_font(weight), color);
+        if let Some((ref uword, urg)) = urgent_collapsed_status
+            && !own_state.as_ref().is_some_and(|(_, u)| u.is_some())
+        {
+            let color = if urg >= 2 { style::c(p.failure) } else { crate::transcript_view::waiting_chrome_color(&p) };
+            let at = style::label_on_baseline(g, right, baseline, style::Align::Right, uword.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), color);
             right = at.left();
-        } else if let Some((word, urgent)) = state {
+        } else if let Some((word, urgent)) = own_state {
             let color = match urgent {
                 Some(_) if act == AgentActivity::Error => style::c(p.failure),
                 Some(_) => crate::transcript_view::waiting_chrome_color(&p),
@@ -8883,12 +11038,27 @@ fn sidebar_activity_row(
             let at = style::label_on_baseline(g, right, baseline, style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(weight), color);
             right = at.left();
         }
-        let title_weight = if ancestor_only { FontWeight::MEDIUM } else { FontWeight::BOLD };
-        paint_query_label(g, left_x, b.top() + px(12.0), &title, style::PLAIN_SIZE, title_weight, title_ink, (right - px(10.0) - left_x).max(px(24.0)), &terms_owned, &p);
+        let title_gap = if right < right_edge { px(8.0) } else { px(0.0) };
+        let title_weight = if ancestor_only { FontWeight::NORMAL } else { FontWeight::BOLD };
+        // Opus #11 & Agy-look Check #3: crisp secondary-size `↻` with strong
+        // light/dark contrast so it remains readable at 1×.
+        let show_loop = !ancestor_only && help.keep_going;
+        let loop_reserve = if show_loop { px(14.0) } else { px(0.0) };
+        let title_max = (right - title_gap - loop_reserve - left_x).max(px(24.0));
+        paint_query_label(g, left_x, line1_y, &title, style::PLAIN_SIZE, title_weight, title_ink, title_max, &terms_owned, &p);
+        if show_loop {
+            let tw = style::text_width(title.clone(), style::PLAIN_SIZE, style::ui_font(title_weight)).min(title_max);
+            let loop_ink = if dark { quiet } else { style::c(olo_theme::readable(p.panel_text, p.panel_background, 5.2)) };
+            style::label_on_baseline(g, left_x + tw + px(4.0), baseline, style::Align::Left, "↻", style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), loop_ink);
+        }
 
-        if !sub_line.is_empty() {
+        if !ancestor_only {
             let sub_max = (right_edge - left_x).max(px(24.0));
-            paint_query_label(g, left_x, b.top() + px(26.0), &sub_line, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
+            if let Some((ref pfx, ref rtext, urg)) = collapsed_rollup {
+                paint_collapsed_sub_line(g, left_x, b.top() + px(26.0), pfx.as_deref(), rtext, urg, sub_max, &p);
+            } else if !sub_line.is_empty() {
+                paint_query_label(g, left_x, b.top() + px(26.0), &sub_line, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
+            }
         }
         g.agent(agent::Node {
             role: "ListItem",
@@ -8913,11 +11083,12 @@ fn sidebar_activity_row(
     if has_children {
         let fold_cb = on_toggle_fold.clone();
         let fold_label = if expanded { "Collapse subagents" } else { "Expand subagents" };
-        let latch_key = style::key(("act-fold-btn", expanded, selected));
+        let latch_key = style::key(("act-fold-btn", expanded, selected, ancestor_only));
         let latch_btn = canvas(move |g, b| {
             let p = theme::palette();
             let quiet = style::secondary_text(&p);
-            let baseline = style::baseline_at(g, b.top() + px(12.0), style::PLAIN_SIZE);
+            let line1_y = if ancestor_only { b.center().y } else { b.top() + px(12.0) };
+            let baseline = style::baseline_at(g, line1_y, style::PLAIN_SIZE);
             let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
             crate::transcript_view::paint_disclosure(g, point(b.left() + px(11.0), name_mid), expanded, quiet);
             g.agent(agent::Node { role: "Button", name: Some(fold_label.into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
@@ -8951,6 +11122,10 @@ struct NativeChildItem {
     command: bool,
     help: crate::agent::Help,
     has_children: bool,
+    /// Screens controlled directly by this child/grandchild subagent.
+    screens: Vec<crate::activity_screens::ActivityScreenItem>,
+    /// True when shown only as a muted ancestor on the way to a matched child or screen.
+    ancestor_only: bool,
 }
 
 /// A child of a tab that stopping its children would stop: its tab, its
@@ -9064,10 +11239,13 @@ fn sidebar_native_child_row(
     child: NativeChildItem,
     icon_act: AgentActivity,
     selected: bool,
+    menu_target: bool,
     expanded: bool,
-    (sub_total, sub_failed, sub_waiting): (usize, usize, usize),
+    (sub_total, sub_screens, sub_failed, sub_waiting): (usize, usize, usize, usize),
     query_terms: &[String],
     width: f32,
+    row_bounds_map: Rc<std::cell::RefCell<HashMap<String, Bounds<Pixels>>>>,
+    row_bounds_key: String,
     on_click: impl Fn(&(), &mut WindowCx) + 'static,
     on_toggle_fold: impl Fn(&(), &mut WindowCx) + 'static,
 ) -> Element {
@@ -9082,28 +11260,29 @@ fn sidebar_native_child_row(
     let left = ACTIVITY_FOLD_W + indent + ROW_ICON + m::TIGHT;
     let title = child.row.entry.display_title();
     let command = child.command;
-    // (A command of the asker's own runs; it is no agent at work or at rest.)
-    let state = if command { Some(("Running", None)) } else { activity_state_word(child.act, child.running) };
+    let ancestor_only = child.ancestor_only;
+    // Opus #1: drop redundant "Working"/"Running" words; keep Waiting, Failed, Done.
+    let own_state = if ancestor_only || command { None } else { activity_state_word(child.act, child.running) };
     let has_children = child.has_children;
 
-    let collapsed_status: Option<(String, u8)> = if has_children && !expanded {
-        if sub_failed > 0 && sub_waiting > 0 {
-            Some((format!("{sub_waiting} waiting · {sub_failed} failed"), 2))
-        } else if sub_failed > 0 {
-            Some((format!("{sub_failed} failed"), 2))
-        } else if sub_waiting > 0 {
-            Some((format!("{sub_waiting} waiting"), 1))
-        } else if sub_total > 0 {
-            Some((format!("{sub_total} subagent{}", if sub_total == 1 { "" } else { "s" }), 0))
-        } else {
-            None
-        }
+    let desc_room = (width - left - 8.0).max(48.0);
+    let cli_word = child.row.entry.cli.chrome_name();
+    // Opus #8: for a collapsed parent with urgent hidden children (e.g. `API Audit` ->
+    // `1 waiting`), put the bold urgent rollup in the right-hand status slot on line 1
+    // and keep line 2 showing the parent's live activity detail (`claude · Checking…`)!
+    let urgent_collapsed_status: Option<(String, u8)> = if !ancestor_only && has_children && !expanded && (sub_failed > 0 || sub_waiting > 0) {
+        crate::activity_screens::format_collapsed_rollup(sub_total, sub_screens, sub_failed, sub_waiting)
+    } else {
+        None
+    };
+    let collapsed_rollup: Option<(Option<String>, String, u8)> = if !ancestor_only && has_children && !expanded && urgent_collapsed_status.is_none() {
+        let pfx = if command { None } else { Some(cli_word) };
+        crate::activity_screens::fit_collapsed_rollup_line(pfx, sub_total, sub_screens, sub_failed, sub_waiting, desc_room, style::SMALL_SIZE)
     } else {
         None
     };
 
-    let desc_room = (width - left - 8.0).max(48.0);
-    let desc = if child.detail.is_empty() {
+    let desc = if ancestor_only || child.detail.is_empty() || collapsed_rollup.is_some() {
         String::new()
     } else if !query_terms.is_empty() {
         fit_query_snippet(&child.detail, query_terms, desc_room, style::SMALL_SIZE)
@@ -9113,22 +11292,23 @@ fn sidebar_native_child_row(
         fit_clean_line(&child.detail, desc_room, style::SMALL_SIZE)
     };
 
+    let row_h = if ancestor_only { ANCESTOR_ROW_H } else { SUB_ROW_H };
     let terms_owned: Vec<String> = query_terms.to_vec();
     let guides = child.row.guides.clone();
     let is_last = child.row.is_last;
     let act = child.act;
     let running = child.running;
     let help = child.help;
-    let cli_word = child.row.entry.cli.chrome_name();
-    let state_val = state.map(|(w, _)| w).unwrap_or("Idle");
+    let state_val = urgent_collapsed_status.as_ref().map(|(w, _)| w.as_str()).or_else(|| own_state.map(|(w, _)| w)).unwrap_or(if command || running { "Working" } else { "Idle" });
     let agent_val = format!("{cli_word}; {state_val}");
     let key = style::key((
-        (&child.row.entry.id, &title, &desc, act as u8, icon_act as u8, running, command, &help),
-        (depth, is_last, has_children, expanded, sub_total, sub_failed, sub_waiting, &guides, selected, &terms_owned),
+        (&child.row.entry.id, &title, &desc, &collapsed_rollup, &urgent_collapsed_status, act as u8, icon_act as u8, running, command, ancestor_only, &help),
+        (depth, is_last, has_children, expanded, sub_total, sub_screens, sub_failed, sub_waiting, &guides, selected, menu_target, &terms_owned),
     ));
 
     let title_for_fold = title.clone();
     let row_canvas = canvas(move |g, b| {
+        row_bounds_map.borrow_mut().insert(row_bounds_key.clone(), b);
         let p = theme::palette();
         let dark = p.mode == olo_theme::ThemeMode::Dark;
         let sel_rgba = style::selection_ground(&p, p.panel_background, false);
@@ -9136,8 +11316,14 @@ fn sidebar_native_child_row(
         if selected {
             style::fill_rect(g, b, ground);
         }
+        if menu_target {
+            // Opus #11 / Neon-look #1: inset 2 pt vertically and 1 pt horizontally.
+            let outline_r = style::snap(g, Bounds::from_corners(point(b.left() + px(1.0), b.top() + px(2.0)), point(b.right() - px(1.0), b.bottom() - px(2.0))));
+            g.paint_quad(olo_kit::outline(outline_r, style::c(p.keyboard_navigation), olo_kit::BorderStyle::Solid));
+        }
         let (ink, quiet, muted) = (style::c(p.panel_text), style::secondary_text(&p), style::disabled_text(&p));
-        let baseline1 = style::baseline_at(g, b.top() + px(11.5), style::PLAIN_SIZE);
+        let line1_y = if ancestor_only { b.center().y } else { b.top() + px(11.5) };
+        let baseline1 = style::baseline_at(g, line1_y, style::PLAIN_SIZE);
         let name_mid = baseline1 - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
         let icon_b = style::snap_centred(g, point(b.left() + px(ACTIVITY_FOLD_W + indent + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
 
@@ -9158,15 +11344,17 @@ fn sidebar_native_child_row(
         // Own connector elbow from direct parent's icon center into this row's icon.
         let parent_x = style::snap_coord(g, b.left() + px(ACTIVITY_FOLD_W + ((depth - 1) as f32) * CHILD_INDENT + ROW_ICON / 2.0));
         if has_children {
-            // Break the vertical trunk cleanly 2.5 pt above and below the disclosure triangle
-            // centred on `parent_x` so the guide line never passes through ▾ / ▸.
-            let gap_top = (name_mid - px(7.0)).max(b.top());
-            if gap_top > b.top() {
+            // Neon-look #3: descend the parent trunk cleanly down to a tight 5 pt
+            // collar around the disclosure triangle (never stopping mid-air above
+            // the row!) and continue cleanly beneath when `!is_last`.
+            let clear = px(5.0);
+            let gap_top = (name_mid - clear).max(b.top());
+            if gap_top - b.top() >= px(1.5) {
                 style::vline(g, parent_x, b.top(), gap_top, guide_c);
             }
             if !is_last {
-                let gap_bot = (name_mid + px(7.0)).min(b.bottom());
-                if b.bottom() > gap_bot {
+                let gap_bot = (name_mid + clear).min(b.bottom());
+                if b.bottom() - gap_bot >= px(2.0) {
                     style::vline(g, parent_x, gap_bot, b.bottom(), guide_c);
                 }
             }
@@ -9179,10 +11367,25 @@ fn sidebar_native_child_row(
         // Downward stem connecting to nested grandchildren directly beneath this child's icon.
         if has_children && expanded {
             let own_x = style::snap_coord(g, icon_b.center().x);
-            style::vline(g, own_x, icon_b.bottom() + px(2.0), b.bottom(), guide_c);
+            let stem_top = (icon_b.bottom() + px(2.0)).min(b.bottom());
+            if b.bottom() - stem_top >= px(2.0) {
+                style::vline(g, own_x, stem_top, b.bottom(), guide_c);
+            }
         }
 
-        if icon_act == AgentActivity::Done {
+        if ancestor_only {
+            // Opus Minor: dimmed filter ancestors paint their coloured icon at 60%
+            // opacity so grey icons exclusively mean Stopped.
+            g.with_element_opacity(Some(0.60), |g| {
+                if icon_act == AgentActivity::Done {
+                    icons::paint(g, icon_b, "terminal");
+                } else {
+                    widgets::strip::drawn_on(ground, || {
+                        widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(icon_act, &crate::agent::Help::default(), running && !command));
+                    });
+                }
+            });
+        } else if icon_act == AgentActivity::Done {
             icons::paint(g, icon_b, "terminal");
         } else {
             // (No agent's mark on a command of the asker's own: a terminal,
@@ -9195,24 +11398,17 @@ fn sidebar_native_child_row(
 
         let right_edge = b.right() - px(8.0);
         let mut right = right_edge;
-        if help.auto_approve {
+        if !ancestor_only && help.auto_approve {
             widgets::agent_marks::auto_approve_mark(g, point(right - px(4.5), name_mid), 9.0, ground);
             right -= px(9.0 + m::MARK_GAP);
         }
-        if help.keep_going {
-            widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), name_mid), 9.0, ground);
-            right -= px(8.0 + m::MARK_GAP);
-        }
-        if let Some((text, urg)) = &collapsed_status {
-            let color = match *urg {
-                2 => style::c(p.failure),
-                1 => crate::transcript_view::waiting_chrome_color(&p),
-                _ => quiet,
-            };
-            let weight = if *urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
-            let at = style::label_on_baseline(g, right, baseline1, style::Align::Right, text.clone(), style::SMALL_SIZE, style::ui_font(weight), color);
+        if let Some((ref uword, urg)) = urgent_collapsed_status
+            && !own_state.as_ref().is_some_and(|(_, u)| u.is_some())
+        {
+            let state_color = if urg >= 2 { style::c(p.failure) } else { crate::transcript_view::waiting_chrome_color(&p) };
+            let at = style::label_on_baseline(g, right, baseline1, style::Align::Right, uword.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), state_color);
             right = at.left();
-        } else if let Some((word, urgent)) = state {
+        } else if let Some((word, urgent)) = own_state {
             let state_color = match urgent {
                 Some(_) if act == AgentActivity::Error => style::c(p.failure),
                 Some(_) => crate::transcript_view::waiting_chrome_color(&p),
@@ -9224,11 +11420,28 @@ fn sidebar_native_child_row(
             right = at.left();
         }
         let left_x = b.left() + px(left);
-        paint_query_label(g, left_x, b.top() + px(11.5), &title, style::PLAIN_SIZE, FontWeight::MEDIUM, ink, (right - px(8.0) - left_x).max(px(24.0)), &terms_owned, &p);
+        let title_ink = if ancestor_only { quiet } else { ink };
+        // Opus #7: keep all nested child titles regular weight so tree depth hierarchy
+        // stays clear (urgent state is already carried by orange badge + bold status word).
+        let title_weight = FontWeight::NORMAL;
+        let title_gap = if right < right_edge { px(8.0) } else { px(0.0) };
+        let show_loop = !ancestor_only && help.keep_going;
+        let loop_reserve = if show_loop { px(14.0) } else { px(0.0) };
+        let title_max = (right - title_gap - loop_reserve - left_x).max(px(24.0));
+        paint_query_label(g, left_x, line1_y, &title, style::PLAIN_SIZE, title_weight, title_ink, title_max, &terms_owned, &p);
+        if show_loop {
+            let tw = style::text_width(title.clone(), style::PLAIN_SIZE, style::ui_font(title_weight)).min(title_max);
+            let loop_ink = if dark { quiet } else { style::c(olo_theme::readable(p.panel_text, p.panel_background, 5.2)) };
+            style::label_on_baseline(g, left_x + tw + px(4.0), baseline1, style::Align::Left, "↻", style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), loop_ink);
+        }
 
-        if !desc.is_empty() {
+        if !ancestor_only {
             let sub_max = (right_edge - left_x).max(px(24.0));
-            paint_query_label(g, left_x, b.top() + px(25.5), &desc, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
+            if let Some((ref pfx, ref rtext, urg)) = collapsed_rollup {
+                paint_collapsed_sub_line(g, left_x, b.top() + px(25.5), pfx.as_deref(), rtext, urg, sub_max, &p);
+            } else if !desc.is_empty() {
+                paint_query_label(g, left_x, b.top() + px(25.5), &desc, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
+            }
         }
 
         g.agent(agent::Node {
@@ -9250,17 +11463,23 @@ fn sidebar_native_child_row(
         cx.stop_propagation();
     });
 
-    let mut wrapper = div().relative().w_full().h(px(SUB_ROW_H)).child(row_canvas);
+    let mut wrapper = div().relative().w_full().h(px(row_h)).child(row_canvas);
     if has_children {
         let latch_x = ACTIVITY_FOLD_W + ((depth - 1) as f32) * CHILD_INDENT + ROW_ICON / 2.0;
         let fold_label = format!("{} {}", if expanded { "Collapse" } else { "Expand" }, title_for_fold);
-        let latch_key = style::key(("act-sub-fold", &child.row.entry.id, expanded, selected));
+        let latch_key = style::key(("act-sub-fold", &child.row.entry.id, expanded, selected, ancestor_only));
         let latch_btn = canvas(move |g, b| {
             let p = theme::palette();
             let quiet = style::secondary_text(&p);
-            let baseline = style::baseline_at(g, b.top() + px(11.5), style::PLAIN_SIZE);
+            let line1_y = if ancestor_only { b.center().y } else { b.top() + px(11.5) };
+            let baseline = style::baseline_at(g, line1_y, style::PLAIN_SIZE);
             let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-            crate::transcript_view::paint_disclosure(g, point(b.center().x, name_mid), expanded, quiet);
+            // Neon-look #3: align the disclosure triangle center with the exact
+            // pixel center of the parent's vertical trunk (`snap_coord + line/2`).
+            let scale = g.scale_factor();
+            let line_w = style::line_pixels(scale) / scale;
+            let trunk_cx = style::snap_coord(g, b.center().x) + px(line_w / 2.0);
+            crate::transcript_view::paint_disclosure(g, point(trunk_cx, name_mid), expanded, quiet);
             g.agent(agent::Node { role: "Button", name: Some(fold_label.clone().into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
         })
         .paint_key(latch_key)
@@ -9268,7 +11487,7 @@ fn sidebar_native_child_row(
         .left(px((latch_x - 8.0).max(0.0)))
         .top(px(0.0))
         .w(px(16.0))
-        .h(px(SUB_ROW_H))
+        .h(px(row_h))
         .cursor(CursorStyle::PointingHand)
         .on_mouse_down(MouseButton::Left, move |_, cx| {
             on_toggle_fold(&(), cx);
@@ -9293,6 +11512,7 @@ fn activity_title(tab: Option<&str>, agents_in_tab: usize, pane: String) -> Stri
 
 struct ActivityRow {
     bk: BlockKey,
+    host_key: String,
     host: String,
     title: String,
     detail: String,
@@ -9300,7 +11520,319 @@ struct ActivityRow {
     help: crate::agent::Help,
     running: bool,
     parent_agent: Option<String>,
+    /// Screens controlled directly by this top-level pane (rendered before `children`).
+    screens: Vec<crate::activity_screens::ActivityScreenItem>,
     children: Vec<NativeChildItem>,
+}
+
+/// Recompute exact `(is_last, guides)` for visible child `idx` in a filtered
+/// preorder `subs` list so filtered trees never draw dangling vertical guide lines.
+fn recompute_sub_guides(subs: &[NativeChildItem], idx: usize) -> (bool, Vec<bool>) {
+    let depth = subs[idx].row.depth.clamp(1, 4);
+    let has_later_sibling_at = |target_depth: usize, from_idx: usize| -> bool {
+        for item in &subs[from_idx + 1..] {
+            let d = item.row.depth.clamp(1, 4);
+            if d < target_depth {
+                return false;
+            }
+            if d == target_depth {
+                return true;
+            }
+        }
+        false
+    };
+    let is_last = !has_later_sibling_at(depth, idx);
+    let mut guides = Vec::with_capacity(depth.saturating_sub(1));
+    for lvl in 1..depth {
+        guides.push(has_later_sibling_at(lvl, idx));
+    }
+    (is_last, guides)
+}
+
+/// Render a 2-line Agent Screen leaf row in Activity (nested under its controlling
+/// agent at `depth = 1..=4`, or standalone at `depth = 0`) with its context menu
+/// and hover tooltip.
+#[allow(clippy::too_many_arguments)]
+fn render_activity_screen_row_with_menu(
+    item: crate::activity_screens::ActivityScreenItem,
+    selected: bool,
+    menu_target: bool,
+    you_control: bool,
+    filter_active: bool,
+    query_terms: &[String],
+    width: f32,
+    row_bounds_map: Rc<std::cell::RefCell<HashMap<String, Bounds<Pixels>>>>,
+    win_id: WinId,
+    cx: &mut olo_kit::Cx<RexWindow>,
+) -> Element {
+    const CHILD_INDENT: f32 = 15.0;
+    const SUB_ROW_H: f32 = 38.0;
+
+    let depth = item.depth.min(4);
+    let indent = (depth as f32) * CHILD_INDENT;
+    let left = ACTIVITY_FOLD_W + indent + ROW_ICON + m::TIGHT;
+    let title = item.display_title.clone();
+    // Opus #1: drop redundant "Running" word on active screen rows (the 6 pt dot carries it);
+    // keep "Stopped" and "Disconnected" in tertiary grey.
+    let state_word: Option<&'static str> = if item.host_disconnected {
+        Some("Disconnected")
+    } else if item.is_running() {
+        None
+    } else {
+        Some("Stopped")
+    };
+    let state_a11y = state_word.unwrap_or("Running");
+    let running = item.is_running();
+    let disconnected = item.host_disconnected;
+    let sub_parts = crate::activity_screens::screen_subtitle_segments(&item, you_control, None);
+    let sub_room_est = (width - left - 22.0).max(48.0);
+    let sub_line_est = crate::activity_screens::fit_screen_subtitle(&sub_parts, sub_room_est, style::SMALL_SIZE);
+
+    let tip_key = format!("rex-scr-row-{}", item.id.key());
+    let mut tip_parts = vec![title.clone()];
+    if item.is_standalone() {
+        tip_parts.push(olo_kit::words::tr("Standalone").to_owned());
+    }
+    if item.id.is_local() && item.section_host_key != item.run_host_key {
+        tip_parts.push(olo_kit::words::tr("On this computer").to_owned());
+    }
+    if !sub_parts.is_empty() {
+        tip_parts.push(sub_parts.join(" · "));
+    }
+    if let Err(why) = item.can_take_control_from_menu()
+        && running
+        && !disconnected
+    {
+        tip_parts.push(why);
+    }
+    let tip_text = tip_parts.join(" — ");
+    olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
+
+    let id_click = item.id.clone();
+    let id_dbl = item.id.clone();
+    let item_menu = item.clone();
+    let menu_row_key = format!("scr:{}", item.id.key());
+    let guides = item.guides.clone();
+    let is_last = item.is_last;
+    let terms_owned: Vec<String> = query_terms.to_vec();
+    let agent_val = format!("Screen; {state_a11y}; {sub_line_est}");
+    let key = style::key(((&item.id, &title, &sub_parts, running, disconnected, you_control), (filter_active, selected, menu_target, depth, is_last, &guides, &terms_owned)));
+
+    let row_bounds_paint = row_bounds_map.clone();
+    let row_bounds_key_paint = menu_row_key.clone();
+    let row_bounds_menu = row_bounds_map;
+    let row_bounds_key_menu = menu_row_key.clone();
+    let open_cb = cx.msg(WinMsg::OpenScreen { id: id_click, tab: None, take_control: false, expected_host_instance_id: None, expected_started: None });
+    let row_canvas = canvas(move |g, b| {
+        row_bounds_paint.borrow_mut().insert(row_bounds_key_paint.clone(), b);
+        let p = theme::palette();
+        let dark = p.mode == olo_theme::ThemeMode::Dark;
+        let sel_rgba = style::selection_ground(&p, p.panel_background, false);
+        let ground_rgba = if selected { sel_rgba } else { p.panel_background };
+        let ground = style::c(ground_rgba);
+        if selected {
+            style::fill_rect(g, b, ground);
+        }
+        if menu_target {
+            // Opus #11 / Neon-look #1: inset 2 pt vertically and 1 pt horizontally.
+            let outline_r = style::snap(g, Bounds::from_corners(point(b.left() + px(1.0), b.top() + px(2.0)), point(b.right() - px(1.0), b.bottom() - px(2.0))));
+            g.paint_quad(olo_kit::outline(outline_r, style::c(p.keyboard_navigation), olo_kit::BorderStyle::Solid));
+        }
+        let (ink, quiet, muted) = (style::c(p.panel_text), style::secondary_text(&p), style::disabled_text(&p));
+        let baseline1 = style::baseline_at(g, b.top() + px(11.5), style::PLAIN_SIZE);
+        let name_mid = baseline1 - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        let icon_b = style::snap_centred(g, point(b.left() + px(ACTIVITY_FOLD_W + indent + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
+
+        if depth >= 1 {
+            let guide_c = if dark {
+                let base_g = if selected { sel_rgba } else { p.panel_background };
+                style::c(olo_theme::mix(base_g, p.panel_text, if selected { 0.48 } else { 0.34 }))
+            } else {
+                style::shade(&p, if selected { sel_rgba } else { p.panel_background }, 1.32)
+            };
+            for (lvl, &more) in guides.iter().take(depth.saturating_sub(1)).enumerate() {
+                if more {
+                    let gx = style::snap_coord(g, b.left() + px(ACTIVITY_FOLD_W + (lvl as f32) * CHILD_INDENT + ROW_ICON / 2.0));
+                    style::vline(g, gx, b.top(), b.bottom(), guide_c);
+                }
+            }
+            let parent_x = style::snap_coord(g, b.left() + px(ACTIVITY_FOLD_W + ((depth - 1) as f32) * CHILD_INDENT + ROW_ICON / 2.0));
+            let guide_end = if is_last { name_mid } else { b.bottom() };
+            style::vline(g, parent_x, b.top(), guide_end, guide_c);
+            style::hline(g, parent_x, icon_b.left() - px(2.0), name_mid, guide_c);
+        }
+
+        crate::activity_screens::paint_neutral_screen_icon(g, icon_b, ground, running, disconnected, you_control && running && !disconnected);
+
+        let right_edge = b.right() - px(8.0);
+        let mut right = right_edge;
+        if let Some(word) = state_word {
+            let at = style::label_on_baseline(g, right_edge, baseline1, style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), muted);
+            right = at.left();
+        }
+        let left_x = b.left() + px(left);
+        // Opus #9: keep depth-0 standalone screen rows bold in EVERY filter state
+        // (matching top-level root rows), while depth 1+ child screens stay regular.
+        let title_weight = if depth == 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
+        // Neon #5: keep stopped screen titles crisp (matching Done agent rows, stronger than dimmed ancestors).
+        let title_ink = if disconnected { quiet } else { ink };
+        let title_gap = if right < right_edge { px(8.0) } else { px(0.0) };
+        paint_query_label(g, left_x, b.top() + px(11.5), &title, style::PLAIN_SIZE, title_weight, title_ink, (right - title_gap - left_x).max(px(24.0)), &terms_owned, &p);
+
+        if !sub_parts.is_empty() {
+            let sub_max = (right_edge - left_x).max(px(24.0));
+            let fitted = crate::activity_screens::fit_screen_subtitle(&sub_parts, f32::from(sub_max), style::SMALL_SIZE);
+            if !fitted.is_empty() {
+                if you_control && running && !disconnected {
+                    // Opus Minor: crisp >=7.0:1 readable deep blue on light selection fill.
+                    let ctrl_seed = if dark { [0x96, 0xcc, 0xff, 0xff] } else { [0x06, 0x36, 0x82, 0xff] };
+                    let ctrl_ink = style::c(olo_theme::readable(ctrl_seed, ground_rgba, if dark { 5.5 } else { 7.0 }));
+                    paint_query_label(g, left_x, b.top() + px(25.5), &fitted, style::SMALL_SIZE, FontWeight::NORMAL, ctrl_ink, sub_max, &terms_owned, &p);
+                } else {
+                    paint_query_label(g, left_x, b.top() + px(25.5), &fitted, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
+                }
+            }
+        }
+
+        g.agent(agent::Node {
+            role: "ListItem",
+            name: Some(title.clone().into()),
+            value: Some(agent_val.clone().into()),
+            bounds: b,
+            selected: Some(selected),
+            enabled: true,
+            clickable: true,
+            ..Default::default()
+        });
+    })
+    .paint_key(key)
+    .size_full()
+    .cursor(CursorStyle::PointingHand)
+    .on_mouse_down(MouseButton::Left, move |e, cx| {
+        if e.click_count >= 2 {
+            if let Err(why) = crate::activity_screens::open_in_agent_screens(&id_dbl) {
+                Feedback::start(win_id).problem("Couldn’t open Agent Screens.", why);
+            }
+        } else {
+            open_cb(&(), cx);
+        }
+        cx.stop_propagation();
+    })
+    .on_mouse_down(MouseButton::Right, move |e, cx| {
+        let item = item_menu.clone();
+        let can_ctrl = item.can_take_control_from_menu().is_ok();
+        let can_stop = item.can_stop_from_menu().is_ok();
+        let mut menu =
+            Menu::new("").item("Show Screen", "scr.show").checked(selected).item("Take Control", "scr.control").checked(you_control).enabled(can_ctrl).item("Open in Agent Screens", "scr.open_app");
+        if item.owner_bk.is_some() {
+            menu = menu.item("Show Controlling Agent", "scr.show_owner");
+        }
+        menu = menu.separator();
+        if item.is_running() {
+            menu = menu.item("Stop Screen…", "scr.stop").enabled(can_stop);
+        } else {
+            menu = menu.item("Start Screen", "scr.start").enabled(!item.host_disconnected);
+        }
+        menu::resolve(std::slice::from_mut(&mut menu), true);
+        if let Some(slot) = wins().map.get(&win_id) {
+            slot.handle.messenger().send(WinMsg::SetContextMenuRow(Some(menu_row_key.clone())));
+        }
+        // Opus #11: anchor row context menu cleanly below the target row so its subtitle stays visible.
+        let menu_at = row_bounds_menu.borrow().get(&row_bounds_key_menu).copied().map_or(e.position, |b| point(e.position.x.max(b.left() + px(12.0)), b.bottom() + px(2.0)));
+        menu::context_menu_then(
+            cx,
+            menu,
+            menu_at,
+            move |cmd, _| match cmd {
+                "scr.show" => {
+                    if let Some(slot) = wins().map.get(&win_id) {
+                        slot.handle.messenger().send(WinMsg::OpenScreen {
+                            id: item.id.clone(),
+                            tab: None,
+                            take_control: false,
+                            expected_host_instance_id: Some(item.host_instance_id),
+                            expected_started: item.started,
+                        });
+                    }
+                }
+                "scr.control" if can_ctrl => {
+                    if let Some(slot) = wins().map.get(&win_id) {
+                        slot.handle.messenger().send(WinMsg::OpenScreen {
+                            id: item.id.clone(),
+                            tab: Some(olo_screen_pane::Tab::Live),
+                            take_control: true,
+                            expected_host_instance_id: Some(item.host_instance_id),
+                            expected_started: item.started,
+                        });
+                    }
+                }
+                "scr.open_app" => {
+                    if let Err(why) = crate::activity_screens::open_in_agent_screens(&item.id) {
+                        Feedback::start(win_id).problem("Couldn’t open Agent Screens.", why);
+                    }
+                }
+                "scr.stop" if can_stop => {
+                    if let Some(slot) = wins().map.get(&win_id) {
+                        slot.handle.messenger().send(WinMsg::ScreenStopConfirm(item.clone()));
+                    }
+                }
+                "scr.start" if !item.is_running() && !item.host_disconnected => {
+                    if let Some(slot) = wins().map.get(&win_id) {
+                        slot.handle.messenger().send(WinMsg::ScreenStart(item.clone()));
+                    }
+                }
+                "scr.show_owner" => {
+                    if let Some(bk) = item.owner_bk.clone()
+                        && let Some(slot) = wins().map.get(&win_id)
+                    {
+                        slot.handle.messenger().send(WinMsg::FocusBlock(bk));
+                    }
+                }
+                _ => {}
+            },
+            move |_| {
+                if let Some(slot) = wins().map.get(&win_id) {
+                    slot.handle.messenger().send(WinMsg::SetContextMenuRow(None));
+                }
+            },
+        );
+        cx.stop_propagation();
+    });
+
+    olo_kit::tip::on_row(div().relative().w_full().h(px(SUB_ROW_H)).child(row_canvas), tip_key, tip_text)
+}
+
+fn screen_matches_filter(item: &crate::activity_screens::ActivityScreenItem, host_label: &str, owner_title: Option<&str>, terms: &[String], tf: &ActivityTypeFilter, sf: ActivityStateFilter) -> bool {
+    if !matches!(tf, ActivityTypeFilter::All | ActivityTypeFilter::Screens) {
+        return false;
+    }
+    let state_ok = match sf {
+        ActivityStateFilter::All => true,
+        ActivityStateFilter::Active => item.is_running() && !item.host_disconnected,
+        ActivityStateFilter::Working | ActivityStateFilter::Waiting | ActivityStateFilter::Failed | ActivityStateFilter::Done => false,
+    };
+    if !state_ok {
+        return false;
+    }
+    if terms.is_empty() {
+        return true;
+    }
+    let place = if item.is_standalone() {
+        "standalone"
+    } else if item.id.is_local() {
+        "this computer desktop local"
+    } else {
+        "host remote"
+    };
+    let state_w = if item.host_disconnected {
+        "disconnected"
+    } else if item.is_running() {
+        "running"
+    } else {
+        "stopped"
+    };
+    let hay = format!("{} {} {} {} {} {} {} screen", item.display_title, item.id.name, item.run_host_label, host_label, owner_title.unwrap_or(""), place, state_w).to_ascii_lowercase();
+    terms_match(&hay, terms)
 }
 
 fn native_child_matches_type(child: &NativeChildItem, tf: &ActivityTypeFilter) -> bool {
@@ -9312,6 +11844,7 @@ fn native_child_matches_type(child: &NativeChildItem, tf: &ActivityTypeFilter) -
         ActivityTypeFilter::Agy => child.row.entry.cli == AgentCli::Agy,
         // (A command of the asker's own is a program in a shell's place, not an agent.)
         ActivityTypeFilter::Shell => child.command,
+        ActivityTypeFilter::Screens => false,
         ActivityTypeFilter::SubagentType(want) => child.row.entry.role.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(want)) || child.row.entry.title.eq_ignore_ascii_case(want),
     }
 }
@@ -9326,7 +11859,7 @@ fn parent_matches_type(row: &ActivityRow, tf: &ActivityTypeFilter) -> bool {
             parent_agent.is_some_and(|a| a.eq_ignore_ascii_case("agy")) || row.title.to_ascii_lowercase().contains("antigravity") || row.title.to_ascii_lowercase().contains("agy")
         }
         ActivityTypeFilter::Shell => !row.running && parent_agent.is_none(),
-        ActivityTypeFilter::SubagentType(_) => false,
+        ActivityTypeFilter::Screens | ActivityTypeFilter::SubagentType(_) => false,
     }
 }
 
@@ -9346,68 +11879,104 @@ fn terms_match(haystack_lower: &str, terms: &[String]) -> bool {
 }
 
 struct ActivityFilterMatch {
+    screens: Vec<crate::activity_screens::ActivityScreenItem>,
     subs: Vec<NativeChildItem>,
     force_expand: bool,
     parent_matched: bool,
 }
 
-/// Filter a parent Activity row and its native nested subagents by keyword query,
-/// harness/role filter, and live state filter.
-/// Returns `Some(ActivityFilterMatch)` if the parent should appear (either directly
-/// or as a muted ancestor for matching child subagents).
+/// Filter a parent Activity row, its direct screens, and its native nested
+/// subagents (and their screens) by keyword query, type filter, and live state
+/// filter. Returns `Some(ActivityFilterMatch)` if the parent should appear
+/// (either directly or as a muted ancestor opening the way to a matched child
+/// or screen).
 fn filter_activity_entry(row: &ActivityRow, query: &str, tf: &ActivityTypeFilter, sf: ActivityStateFilter) -> Option<ActivityFilterMatch> {
     let terms: Vec<String> = query.split_whitespace().map(|w| w.to_ascii_lowercase()).collect();
     let filter_active = !terms.is_empty() || *tf != ActivityTypeFilter::All || sf != ActivityStateFilter::All;
     if !filter_active {
-        return Some(ActivityFilterMatch { subs: row.children.clone(), force_expand: false, parent_matched: true });
+        return Some(ActivityFilterMatch { screens: row.screens.clone(), subs: row.children.clone(), force_expand: false, parent_matched: true });
     }
 
     let parent_hay = format!("{} {} {} {}", row.host, row.title, row.detail, row.parent_agent.as_deref().unwrap_or("")).to_ascii_lowercase();
     let parent_ok = parent_matches_type(row, tf) && parent_matches_state(row.act, sf) && terms_match(&parent_hay, &terms);
 
-    let matched_subs: Vec<NativeChildItem> = row
-        .children
-        .iter()
-        .filter(|c| {
-            // (A command that runs is active, and in none of an agent's states.)
-            let state_ok = if c.command { matches!(sf, ActivityStateFilter::All | ActivityStateFilter::Active) } else { parent_matches_state(c.act, sf) };
-            if !native_child_matches_type(c, tf) || !state_ok {
-                return false;
-            }
-            if terms.is_empty() {
-                return true;
-            }
-            let state_w = match c.act {
-                _ if c.command => "running",
-                AgentActivity::Working => "working",
-                AgentActivity::Blocked => "waiting blocked",
-                AgentActivity::Done => "done",
-                AgentActivity::Error => "failed error",
-                AgentActivity::Idle => "idle",
-            };
-            let sub_hay = format!(
-                "{} {} {} {} {} {} {} {} {} {}",
-                c.row.entry.display_title(),
-                c.row.entry.role.as_deref().unwrap_or(""),
-                c.row.entry.cli.binary(),
-                c.row.entry.cli.display_name(),
-                c.row.entry.model,
-                c.row.entry.effort,
-                c.detail,
-                state_w,
-                row.host,
-                row.title
-            )
-            .to_ascii_lowercase();
-            terms_match(&sub_hay, &terms)
-        })
-        .cloned()
-        .collect();
+    let matched_direct_screens: Vec<crate::activity_screens::ActivityScreenItem> =
+        row.screens.iter().filter(|s| screen_matches_filter(s, &row.host, Some(&row.title), &terms, tf, sf)).cloned().collect();
 
-    if !matched_subs.is_empty() {
-        Some(ActivityFilterMatch { subs: matched_subs, force_expand: true, parent_matched: parent_ok })
+    // Evaluate each subagent in preorder, preserving any ancestor subagent whose
+    // own screen or descendant subagent matched (marked `ancestor_only = true`).
+    let mut self_matched = vec![false; row.children.len()];
+    let mut sub_screens: Vec<Vec<crate::activity_screens::ActivityScreenItem>> = Vec::with_capacity(row.children.len());
+    for (i, c) in row.children.iter().enumerate() {
+        let child_title = c.row.entry.display_title();
+        let matched_sc: Vec<crate::activity_screens::ActivityScreenItem> = c.screens.iter().filter(|s| screen_matches_filter(s, &row.host, Some(&child_title), &terms, tf, sf)).cloned().collect();
+        sub_screens.push(matched_sc);
+
+        let state_ok = if c.command { matches!(sf, ActivityStateFilter::All | ActivityStateFilter::Active) } else { parent_matches_state(c.act, sf) };
+        if native_child_matches_type(c, tf) && state_ok {
+            if terms.is_empty() {
+                self_matched[i] = true;
+            } else {
+                let state_w = match c.act {
+                    _ if c.command => "running",
+                    AgentActivity::Working => "working",
+                    AgentActivity::Blocked => "waiting blocked",
+                    AgentActivity::Done => "done",
+                    AgentActivity::Error => "failed error",
+                    AgentActivity::Idle => "idle",
+                };
+                let sub_hay = format!(
+                    "{} {} {} {} {} {} {} {} {} {}",
+                    child_title,
+                    c.row.entry.role.as_deref().unwrap_or(""),
+                    c.row.entry.cli.binary(),
+                    c.row.entry.cli.display_name(),
+                    c.row.entry.model,
+                    c.row.entry.effort,
+                    c.detail,
+                    state_w,
+                    row.host,
+                    row.title
+                )
+                .to_ascii_lowercase();
+                self_matched[i] = terms_match(&sub_hay, &terms);
+            }
+        }
+    }
+
+    // Astra #17 / Neon #8: propagate visibility upward through all ancestor depths
+    // in preorder so multi-level trees (`Lead → Minder → Builder → screen`) retain
+    // intermediate ancestors as dimmed context rows (`ancestor_only = true`).
+    let mut keep = vec![false; row.children.len()];
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    for (i, c) in row.children.iter().enumerate() {
+        let d = c.row.depth;
+        while stack.last().is_some_and(|&(_, sd)| sd >= d) {
+            stack.pop();
+        }
+        if self_matched[i] || !sub_screens[i].is_empty() {
+            keep[i] = true;
+            for &(anc_idx, _) in &stack {
+                keep[anc_idx] = true;
+            }
+        }
+        stack.push((i, d));
+    }
+
+    let mut matched_subs: Vec<NativeChildItem> = Vec::new();
+    for (i, c) in row.children.iter().enumerate() {
+        if keep[i] {
+            let mut item = c.clone();
+            item.screens = std::mem::take(&mut sub_screens[i]);
+            item.ancestor_only = !self_matched[i];
+            matched_subs.push(item);
+        }
+    }
+
+    if !matched_direct_screens.is_empty() || !matched_subs.is_empty() {
+        Some(ActivityFilterMatch { screens: matched_direct_screens, subs: matched_subs, force_expand: true, parent_matched: parent_ok })
     } else if parent_ok {
-        Some(ActivityFilterMatch { subs: Vec::new(), force_expand: false, parent_matched: true })
+        Some(ActivityFilterMatch { screens: Vec::new(), subs: Vec::new(), force_expand: false, parent_matched: true })
     } else {
         None
     }
@@ -9415,15 +11984,15 @@ fn filter_activity_entry(row: &ActivityRow, query: &str, tf: &ActivityTypeFilter
 
 /// What an Activity row says its agent is doing, in a word, and the
 /// colour of a state that wants the person (waiting, failed).
-fn activity_state_word(act: AgentActivity, running: bool) -> Option<(&'static str, Option<olo_theme::Rgba>)> {
+fn activity_state_word(act: AgentActivity, _running: bool) -> Option<(&'static str, Option<olo_theme::Rgba>)> {
     let p = theme::palette();
     match act {
         AgentActivity::Blocked => Some(("Waiting", Some(p.hue(olo_theme::Hue::Orange)))),
         AgentActivity::Error => Some(("Failed", Some(p.failure))),
-        AgentActivity::Working => Some(("Working", None)),
         AgentActivity::Done => Some(("Done", None)),
-        AgentActivity::Idle if running => Some(("At rest", None)),
-        AgentActivity::Idle => None,
+        // Default active states ("Working" / "At rest") are carried by the icon mark
+        // so sidebar names get the full row width without truncation (Opus #1).
+        AgentActivity::Working | AgentActivity::Idle => None,
     }
 }
 
@@ -9781,9 +12350,12 @@ mod activity_tests {
             command: cli == AgentCli::Command,
             help: crate::agent::Help::default(),
             has_children: false,
+            screens: Vec::new(),
+            ancestor_only: false,
         };
         let row = ActivityRow {
             bk: BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: "b1".into() },
+            host_key: "local".into(),
             host: "This computer".into(),
             title: "Olo workspace".into(),
             detail: "olo".into(),
@@ -9791,6 +12363,7 @@ mod activity_tests {
             help: crate::agent::Help::default(),
             running: true,
             parent_agent: Some("claude".into()),
+            screens: Vec::new(),
             children: vec![
                 mk_child("c1", "w2", "win-1", 1, AgentCli::Claude, "API Audit", "Auditor", "claude · Checking parser bugs", AgentActivity::Working),
                 mk_child("a1", "w3", "w2", 2, AgentCli::Agy, "Schema Diff", "Reviewer", "agy · Visual QA of 2x shots", AgentActivity::Blocked),
@@ -9811,16 +12384,15 @@ mod activity_tests {
         assert!(exp.force_expand);
         assert!(!exp.parent_matched);
 
-        // Filter to harness ("agy") + keyword ("shots") matches grandchild a1 only.
+        // Filter to harness ("agy") + keyword ("shots") matches grandchild a1 and retains
+        // intermediate parent c1 as dimmed context ancestor (`ancestor_only = true`, Astra #17).
         let agy = filter_activity_entry(&row, "shots", &ActivityTypeFilter::Agy, ActivityStateFilter::All).unwrap();
-        assert_eq!(agy.subs.len(), 1);
-        assert_eq!(agy.subs[0].row.entry.id, "a1");
+        assert_eq!(agy.subs.iter().map(|s| (s.row.entry.id.as_str(), s.ancestor_only)).collect::<Vec<_>>(), vec![("c1", true), ("a1", false)]);
         assert!(!agy.parent_matched);
 
-        // Filter by state (Waiting) keeps parent as ancestor-only because grandchild a1 is Blocked.
+        // Filter by state (Waiting) keeps parent + intermediate parent c1 as ancestors because grandchild a1 is Blocked.
         let wait = filter_activity_entry(&row, "", &ActivityTypeFilter::All, ActivityStateFilter::Waiting).unwrap();
-        assert_eq!(wait.subs.len(), 1);
-        assert_eq!(wait.subs[0].row.entry.id, "a1");
+        assert_eq!(wait.subs.iter().map(|s| (s.row.entry.id.as_str(), s.ancestor_only)).collect::<Vec<_>>(), vec![("c1", true), ("a1", false)]);
         assert!(!wait.parent_matched);
 
         // Unmatched keyword hides the entire parent row.
@@ -9839,6 +12411,359 @@ mod activity_tests {
         assert_eq!(ids(ActivityTypeFilter::All, ActivityStateFilter::Working, ""), ["c1"]);
         assert!(ids(ActivityTypeFilter::All, ActivityStateFilter::Done, "").iter().all(|id| id != "k1"));
         assert_eq!(ids(ActivityTypeFilter::All, ActivityStateFilter::All, "running build.log"), ["k1"]);
+    }
+
+    #[test]
+    fn screen_filter_matches_type_state_title_host_and_place() {
+        let mk_scr = |id: olo_screen_pane::ScreenId, title: &str, state: olo_screen_pane::ScreenState, disconnected: bool, owner: Option<BlockKey>| crate::activity_screens::ActivityScreenItem {
+            id,
+            run_host_key: "dev-box".into(),
+            run_host_label: "dev-box".into(),
+            host_instance_id: 1,
+            conn_id: 1,
+            section_host_key: "dev-box".into(),
+            display_title: title.into(),
+            title: Some(title.into()),
+            state,
+            size: (state == olo_screen_pane::ScreenState::Running).then_some((1440, 900)),
+            scale: 1.0,
+            sound: false,
+            pid: Some(1234),
+            started: Some(1_700_000_000),
+            last_used_ms: Some(1_700_000_000_000),
+            actions: Some(3),
+            controlled: false,
+            host_disconnected: disconnected,
+            disconnected_at_ms: None,
+            capabilities: olo_screen_pane::PaneCapabilities::remote_default(),
+            owner_bk: owner,
+            depth: 1,
+            is_last: true,
+            guides: Vec::new(),
+        };
+        let bk = BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: "b1".into() };
+        let running = mk_scr(olo_screen_pane::ScreenId::host("dev-box", "dev-box", "verify-1"), "Verify Build", olo_screen_pane::ScreenState::Running, false, Some(bk.clone()));
+        let stopped = mk_scr(olo_screen_pane::ScreenId::host("dev-box", "dev-box", "smoke"), "Smoke Pass", olo_screen_pane::ScreenState::Stopped, false, Some(bk.clone()));
+        let disc = mk_scr(olo_screen_pane::ScreenId::host("dev-box", "dev-box", "ghost"), "Ghost", olo_screen_pane::ScreenState::Running, true, Some(bk));
+        let local_desk = mk_scr(olo_screen_pane::ScreenId::local("browser"), "Docs Browser", olo_screen_pane::ScreenState::Running, false, None);
+
+        assert!(screen_matches_filter(&running, "dev-box", Some("builder-1"), &[], &ActivityTypeFilter::Screens, ActivityStateFilter::All));
+        assert!(screen_matches_filter(&running, "dev-box", Some("builder-1"), &[], &ActivityTypeFilter::Screens, ActivityStateFilter::Active));
+        assert!(!screen_matches_filter(&running, "dev-box", Some("builder-1"), &[], &ActivityTypeFilter::Claude, ActivityStateFilter::All));
+        assert!(!screen_matches_filter(&stopped, "dev-box", Some("builder-1"), &[], &ActivityTypeFilter::Screens, ActivityStateFilter::Active));
+        assert!(!screen_matches_filter(&disc, "dev-box", Some("builder-1"), &[], &ActivityTypeFilter::Screens, ActivityStateFilter::Active));
+        assert!(screen_matches_filter(&running, "dev-box", Some("builder-1"), &["verify".into()], &ActivityTypeFilter::All, ActivityStateFilter::All));
+        assert!(screen_matches_filter(&running, "dev-box", Some("builder-1"), &["dev-box".into()], &ActivityTypeFilter::All, ActivityStateFilter::All));
+        assert!(screen_matches_filter(&local_desk, "This computer", None, &["standalone".into()], &ActivityTypeFilter::All, ActivityStateFilter::All));
+    }
+
+    #[test]
+    fn astra_f17_three_level_filter_preserves_intermediate_ancestors() {
+        use crate::subagents::{AgentCli, DesktopPolicy, NativeSubagent, TreeRow};
+        let mk_sub = |id: &str, wid: &str, pwid: &str, depth: usize, title: &str, screens: Vec<crate::activity_screens::ActivityScreenItem>| NativeChildItem {
+            row: TreeRow {
+                entry: NativeSubagent {
+                    id: id.into(),
+                    name: Some(title.to_lowercase()),
+                    host_key: "dev-box".into(),
+                    session_id: "s1".into(),
+                    window_id: wid.into(),
+                    block_id: format!("b-{id}"),
+                    parent_window_id: pwid.into(),
+                    parent_block_id: None,
+                    cli: AgentCli::Codex,
+                    model: "gpt-5.4-codex".into(),
+                    effort: "high".into(),
+                    title: title.into(),
+                    role: None,
+                    cwd: None,
+                    resume_id: None,
+                    cli_session_id: None,
+                    transcript_path: None,
+                    desktop_policy: DesktopPolicy::None,
+                    stream_mode: false,
+                    started_at: 0,
+                    exited_at: None,
+                    exit_code: None,
+                    last_pid: None,
+                    created_rev: 0,
+                    seen_live: true,
+                    exited_by_sync: false,
+                    session_confidence: None,
+                    add_dirs: Vec::new(),
+                    command: Vec::new(),
+                    minds: None,
+                    minded_by: None,
+                    shared_minder: false,
+                },
+                depth,
+                is_last: true,
+                guides: Vec::new(),
+            },
+            bk: BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: format!("b-{id}") },
+            act: AgentActivity::Working,
+            detail: "codex · working".into(),
+            running: true,
+            command: false,
+            help: Default::default(),
+            has_children: false,
+            screens,
+            ancestor_only: false,
+        };
+        let deep_screen = crate::activity_screens::ActivityScreenItem {
+            id: olo_screen_pane::ScreenId::host("dev-box", "dev-box", "verify-1"),
+            run_host_key: "dev-box".into(),
+            run_host_label: "dev-box".into(),
+            host_instance_id: 1,
+            conn_id: 1,
+            section_host_key: "dev-box".into(),
+            display_title: "Verify Build".into(),
+            title: Some("Verify Build".into()),
+            state: olo_screen_pane::ScreenState::Running,
+            size: Some((1440, 900)),
+            scale: 1.0,
+            sound: false,
+            pid: Some(1234),
+            started: Some(1_700_000_000),
+            last_used_ms: Some(1_700_000_000_000),
+            actions: Some(3),
+            controlled: false,
+            host_disconnected: false,
+            disconnected_at_ms: None,
+            capabilities: olo_screen_pane::PaneCapabilities::remote_default(),
+            owner_bk: Some(BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: "b-builder".into() }),
+            depth: 3,
+            is_last: true,
+            guides: Vec::new(),
+        };
+        let row = ActivityRow {
+            bk: BlockKey { host_key: "dev-box".into(), session_id: "s1".into(), block_id: "b-lead".into() },
+            host_key: "dev-box".into(),
+            host: "dev-box".into(),
+            title: "Lead".into(),
+            detail: "claude · coordinating".into(),
+            act: AgentActivity::Working,
+            help: Default::default(),
+            running: true,
+            parent_agent: Some("claude".into()),
+            screens: Vec::new(),
+            children: vec![
+                mk_sub("minder", "w-minder", "w-lead", 1, "Minder", Vec::new()),
+                mk_sub("builder", "w-builder", "w-minder", 2, "Builder", vec![deep_screen]),
+                mk_sub("unrelated", "w-other", "w-lead", 1, "Unrelated", Vec::new()),
+            ],
+        };
+
+        // Under Type = Screens, Lead (ancestor), Minder (depth 1 ancestor), and Builder (depth 2 ancestor)
+        // must all be retained so Verify Build stays attached in its true 3-level tree!
+        let by_type = filter_activity_entry(&row, "", &ActivityTypeFilter::Screens, ActivityStateFilter::All).expect("match");
+        assert!(!by_type.parent_matched);
+        let ids: Vec<(&str, bool, usize)> = by_type.subs.iter().map(|c| (c.row.entry.id.as_str(), c.ancestor_only, c.screens.len())).collect();
+        assert_eq!(ids, vec![("minder", true, 0), ("builder", true, 1)]);
+
+        // Same for keyword search matching only the grandchild's screen.
+        let by_query = filter_activity_entry(&row, "verify", &ActivityTypeFilter::All, ActivityStateFilter::All).expect("match");
+        let q_ids: Vec<(&str, bool, usize)> = by_query.subs.iter().map(|c| (c.row.entry.id.as_str(), c.ancestor_only, c.screens.len())).collect();
+        assert_eq!(q_ids, vec![("minder", true, 0), ("builder", true, 1)]);
+    }
+
+    #[test]
+    fn astra_f11_retained_screen_shortcuts_restrict_window_mutations() {
+        assert!(RexWindow::is_retained_screen_shortcut("quit"));
+        assert!(RexWindow::is_retained_screen_shortcut("close"));
+        assert!(RexWindow::is_retained_screen_shortcut("app.quit"));
+        assert!(RexWindow::is_retained_screen_shortcut("app.toggle_sidebar"));
+        assert!(RexWindow::is_retained_screen_shortcut("window.next"));
+        assert!(RexWindow::is_retained_screen_shortcut("window.previous"));
+        assert!(RexWindow::is_retained_screen_shortcut("window.select_1"));
+        assert!(RexWindow::is_retained_screen_shortcut("window.select_9"));
+        assert!(RexWindow::is_retained_screen_shortcut("agent.jump_next_blocked"));
+
+        // Destructive or terminal-specific window/pane shortcuts must NOT fire while viewing a screen.
+        assert!(!RexWindow::is_retained_screen_shortcut("window.rename"));
+        assert!(!RexWindow::is_retained_screen_shortcut("window.move_left"));
+        assert!(!RexWindow::is_retained_screen_shortcut("window.move_right"));
+        assert!(!RexWindow::is_retained_screen_shortcut("terminal.paste"));
+        assert!(!RexWindow::is_retained_screen_shortcut("pane.split_right"));
+    }
+
+    #[test]
+    fn astra_f25_split_pane_child_owner_remaps_to_primary_block() {
+        use crate::subagents::{AgentCli, DesktopPolicy, NativeSubagent};
+        use olo_rex_client::{BlockInfo, LayerView, SessionView, WindowView};
+        let mut st = crate::hub::HubState::test_empty();
+        let sess = SessionView {
+            revision: 1,
+            session_id: "s1".into(),
+            label: "work".into(),
+            active_window_id: Some("w-lead".into()),
+            windows: vec![
+                WindowView {
+                    window_id: "w-lead".into(),
+                    label: "Lead".into(),
+                    focused_block_id: Some("b-lead".into()),
+                    zoomed_block_id: None,
+                    layers: vec![LayerView {
+                        layer_id: "l1".into(),
+                        kind: "tiled".into(),
+                        bounds: [0.0, 0.0, 1.0, 1.0],
+                        state: None,
+                        layout: None,
+                        blocks: vec![BlockInfo { block_id: "b-lead".into(), label: "Lead".into(), creator_name: "".into(), flavor: "".into(), host_id: "dev".into(), owner: None }],
+                    }],
+                },
+                WindowView {
+                    window_id: "w-child".into(),
+                    label: "Builder".into(),
+                    focused_block_id: Some("b-child-primary".into()),
+                    zoomed_block_id: None,
+                    layers: vec![LayerView {
+                        layer_id: "l2".into(),
+                        kind: "tiled".into(),
+                        bounds: [0.0, 0.0, 1.0, 1.0],
+                        state: None,
+                        layout: None,
+                        blocks: vec![
+                            BlockInfo { block_id: "b-child-primary".into(), label: "Builder".into(), creator_name: "".into(), flavor: "".into(), host_id: "dev".into(), owner: None },
+                            BlockInfo { block_id: "b-child-split".into(), label: "Split".into(), creator_name: "".into(), flavor: "".into(), host_id: "dev".into(), owner: None },
+                        ],
+                    }],
+                },
+            ],
+        };
+        let host = crate::hub::HostRuntime::demo_connected("dev", "Dev", "ssh://dev", vec![sess]);
+        st.hosts.insert("dev".into(), host);
+        st.host_order.push("dev".into());
+        st.subagents.register(NativeSubagent {
+            id: "sa-1".into(),
+            name: Some("builder".into()),
+            host_key: "dev".into(),
+            session_id: "s1".into(),
+            window_id: "w-child".into(),
+            block_id: "b-child-primary".into(),
+            parent_window_id: "w-lead".into(),
+            parent_block_id: Some("b-lead".into()),
+            cli: AgentCli::Codex,
+            model: "gpt-5.4-codex".into(),
+            effort: "high".into(),
+            title: "Builder".into(),
+            role: None,
+            cwd: None,
+            resume_id: None,
+            cli_session_id: None,
+            transcript_path: None,
+            desktop_policy: DesktopPolicy::None,
+            stream_mode: false,
+            started_at: 0,
+            exited_at: None,
+            exit_code: None,
+            last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
+            command: Vec::new(),
+            minds: None,
+            minded_by: None,
+            shared_minder: false,
+        });
+        st.host_screens.insert(
+            "dev".into(),
+            crate::screens_sock::LiveHostScreens {
+                host_instance_id: 1,
+                conn_id: 1,
+                rev: 1,
+                conn_state: olo_screen_pane::rex_sock::RexHostConn::Connected,
+                has_follow_snapshot: true,
+                proto: 1,
+                commands: vec!["follow".into(), "stream".into()],
+                capabilities: vec!["control-ack".into(), "stop-expected".into()],
+                screens: vec![olo_screen_pane::rex_sock::RexScreen {
+                    name: "split-qa".into(),
+                    title: Some("Split QA".into()),
+                    state: olo_screen_pane::rex_sock::HostScreenState::Running,
+                    width: 1440,
+                    height: 900,
+                    scale: 1.0,
+                    sound: false,
+                    pid: Some(100),
+                    started: Some(1_700_000_000),
+                    last_used: Some(1_700_000_000_000),
+                    actions: Some(1),
+                    controlled: false,
+                    owner: Some(olo_screen_pane::rex_sock::OwnerPane { host_key: Some("dev".into()), session_id: "s1".into(), block_id: "b-child-split".into() }),
+                    started_by: None,
+                    controlled_by: None,
+                }],
+                ..Default::default()
+            },
+        );
+        let res = RexWindow::resolve_screens_from_hub(&st);
+        let primary_bk = BlockKey { host_key: "dev".into(), session_id: "s1".into(), block_id: "b-child-primary".into() };
+        let owned = res.by_owner.get(&primary_bk).expect("split pane screen must attach to rendered child primary block");
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].id.name, "split-qa");
+        assert!(res.standalone_by_host.get("dev").is_none_or(|v| v.is_empty()));
+    }
+
+    #[test]
+    fn saved_workspace_state_round_trips_active_screen_and_tab_without_control() {
+        let state = SavedWorkspaceState {
+            active_host: "dev-box".into(),
+            active_session: Some("dev-main".into()),
+            session_index: 0,
+            sidebar_collapsed: false,
+            sidebar_width: 240.0,
+            active_screen: Some(olo_screen_pane::ScreenId::host("dev-box", "dev-box", "verify-1")),
+            active_screen_tab: Some(olo_screen_pane::Tab::History),
+        };
+        let json = serde_json::to_string(&state).expect("serialize");
+        assert!(!json.contains("controlling"), "Take Control must never be persisted across reload");
+        let back: SavedWorkspaceState = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.active_screen, state.active_screen);
+        assert_eq!(back.active_screen_tab, Some(olo_screen_pane::Tab::History));
+    }
+
+    #[test]
+    fn r3_regression_guards_strict_stop_raw_control_shortcut_host_error_and_topology_rev() {
+        // 1. Astra #6 / Neon #2: unreadable/unknown local history MUST fail closed,
+        //    never converting unknown into `expected_last_used = None`!
+        let err_unknown = olo_screen_pane::capture_stop_expectations_strict(true, Some(1_700_000_000), None, None, None, false).unwrap_err();
+        assert!(err_unknown.contains("activity") || err_unknown.contains("history") || err_unknown.contains("verify"), "expected fail-closed error, got: {err_unknown}");
+        // Verified empty local history (`actions == Some(0)`) succeeds with `Some(0)`.
+        let ok_empty = olo_screen_pane::capture_stop_expectations_strict(true, Some(1_700_000_000), None, None, Some(0), true).unwrap();
+        assert_eq!(ok_empty, (Some(1_700_000_000), Some(0)));
+
+        // 2. Neon #1: raw-mode `screen.control` (`⌘K` / `Alt+K` in terminal raw mode)
+        //    matches with Shift added on Mac/BeOS profiles and NEVER swallows plain Ctrl+K!
+        let p = olo_kit::keys::profile();
+        let raw_list = olo_screen_pane::control_shortcuts(true);
+        assert!(!raw_list.is_empty(), "screen.control must resolve in raw mode");
+        if matches!(p.command_key, olo_protocol::CommandKey::Command | olo_protocol::CommandKey::Alt) {
+            let plain_ctrl_k = olo_kit::Keystroke { key: "k".into(), key_char: None, modifiers: olo_kit::Modifiers { control: true, shift: false, alt: false, platform: false, function: false } };
+            assert!(!olo_screen_pane::is_control_shortcut(&plain_ctrl_k, true), "plain Ctrl+K must pass through to controlled screens in raw mode");
+            let shifted_cmd_k = olo_kit::Keystroke { key: "k".into(), key_char: None, modifiers: olo_kit::Modifiers { control: true, shift: true, alt: false, platform: false, function: false } };
+            assert!(olo_screen_pane::is_control_shortcut(&shifted_cmd_k, true), "raw terminal Cmd+K / Alt+K (Ctrl+Shift+K) must match screen.control");
+        }
+
+        // 3. Astra #25: `HubState::bump_topology` advances `topology_rev` in O(1).
+        let mut st = crate::hub::HubState::test_empty();
+        let r0 = st.topology_rev;
+        st.bump_topology();
+        assert_eq!(st.topology_rev, r0.wrapping_add(1));
+
+        // 4. Neon #12: `host::screen_failed` writes directly to the matching Host window
+        //    and ignores stale `host_instance_id`.
+        let _guard = crate::host::TEST_LIVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        crate::host::open("dev-box", "Dev Box", 42);
+        crate::host::screen_failed("dev-box", 99, "qa", "Couldn’t open qa", "stale instance");
+        assert!(crate::host::current().unwrap().screen_failed.is_none(), "stale host_instance_id must not overwrite current Host window error");
+        crate::host::screen_failed("dev-box", 42, "qa", "Couldn’t open qa", "Update Olo’s helper");
+        let sf = crate::host::current().unwrap().screen_failed.expect("matching host_instance_id must record failure on Host window");
+        assert_eq!(sf.0, "qa");
+        assert!(sf.2.contains("Update Olo"));
+        crate::host::close();
     }
 }
 
@@ -10056,5 +12981,15 @@ mod paste_tests {
         assert_eq!(rewrite_local_paths_for_remote("/var/tmp", Some(home), existing), "/var/tmp");
         // Existing rex:// URI stays untouched.
         assert_eq!(rewrite_local_paths_for_remote("rex://local/home/alice/Pictures/shot1.png", Some(home), existing), "rex://local/home/alice/Pictures/shot1.png");
+    }
+
+    #[test]
+    fn r3_polish_opus_f19_dangling_ellipsis_prefix_cleaned() {
+        assert_eq!(trim_dangling_ellipsis_prefix("Billing Checkout Flow &"), "Billing Checkout Flow");
+        assert_eq!(trim_dangling_ellipsis_prefix("Billing Checkout Flow & "), "Billing Checkout Flow");
+        assert_eq!(trim_dangling_ellipsis_prefix("Verify Build · "), "Verify Build");
+        assert_eq!(trim_dangling_ellipsis_prefix("Step 7 — "), "Step 7 —");
+        assert_eq!(trim_dangling_ellipsis_prefix("Step 7 - "), "Step 7");
+        assert_eq!(trim_dangling_ellipsis_prefix("Plain Title"), "Plain Title");
     }
 }

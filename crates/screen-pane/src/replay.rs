@@ -23,11 +23,12 @@ use std::{
 };
 
 use olo_kit::{
-    Child, Cx, Element, FontWeight, IntoElement as _, Messenger, ParentElement as _, SharedString, Styled as _, TextRun, View, WindowCx, agent, canvas, div, metrics as m, point, px,
-    search::{self, Facet, Query, SearchEvent, SearchField, search_field},
+    Child, Cx, Element, FontWeight, IntoElement as _, Messenger, ParentElement as _, PathBuilder, SharedString, Styled as _, TextRun, View, WindowCx, agent, canvas, div, metrics as m, point, px,
+    search::{self, Facet, FilterBar, Query, SearchEvent, SearchField, search_field},
+    size,
     style::{self, c},
     theme,
-    widgets::{Button, Column, ColumnListView, EmptyState, ListModel, MenuField, Slider, StatusBar},
+    widgets::{Button, Column, ColumnListView, ControlState, EmptyState, ListModel, MenuField, Slider, StatusBar, button_face, control},
 };
 use olo_screen_codec::FrameIndex;
 use olo_sync::Mutex;
@@ -142,11 +143,11 @@ const KEYS: [&str; 3] = ["kind", "result", "since"];
 const TRANSPORT_ONE_ROW: f32 = 470.0;
 /// How much of a frame picking the actions to show may take.
 const PICK_BUDGET: Duration = Duration::from_millis(2);
-/// The transport's buttons.
-const STEP_W: f32 = 30.0;
-const PLAY_W: f32 = 64.0;
+/// The transport's buttons (Opus #5: 24×24 square step/play controls and "Follow Live").
+const STEP_W: f32 = 24.0;
+const PLAY_W: f32 = 24.0;
 const SPEED_W: f32 = 58.0;
-const LATEST_W: f32 = 64.0;
+const LATEST_W: f32 = 86.0;
 
 /// Pure tracking of the displayed, requested, and terminally missed frame
 /// across scrubs and history resets so late worker replies can never overwrite
@@ -1066,6 +1067,10 @@ impl Replay {
         self.search.update(cx, |s, cx| s.focus(cx));
     }
 
+    pub(crate) fn is_search_focused(&self, cx: &WindowCx) -> bool {
+        self.search.read(cx).is_focused(cx)
+    }
+
     fn scrub(&mut self, secs: f32, cx: &mut Cx<Self>) {
         let (start, end) = self.range();
         self.selected_oversized = None;
@@ -1104,7 +1109,15 @@ impl Replay {
         }
         let columns = vec![Column::new("Time", 72.0), Column::new("Action", 80.0)];
         let empty = if self.actions.is_empty() { "No actions yet." } else { "No actions match." };
+        let list_focused = self.list.is_focused(cx);
         ColumnListView::new(cx, format!("replay-list-{}", self.id_key), &self.list, columns, self.shown.len(), move |r: &Replay, cell, g| {
+            let p = theme::palette();
+            // Opus #5 / Neon-look #9: match the sidebar's clear unfocused selection tint
+            // in light (and dark) mode so the active History step stands out immediately
+            // even when keyboard focus is outside the table.
+            if cell.selected && !list_focused {
+                style::fill_rect(g, cell.bounds, style::c(style::selection_ground(&p, p.panel_background, false)));
+            }
             let (time, line, after, oversized) = {
                 let Some(a) = r.shown.get(cell.row).and_then(|&i| r.actions.get(i)) else { return };
                 if a.is_oversized() {
@@ -1122,15 +1135,23 @@ impl Replay {
                 cell.text(g, time);
                 return;
             }
-            let p = theme::palette();
-            let font = style::ui_font(FontWeight::NORMAL);
+            // Opus #5 & #7 / Neon-look #7: render commands uniformly in regular
+            // monospace 1 pt below UI size, preserving consistent amber/gold +
+            // dark-ink search match highlights on ALL rows including the selected row!
+            let mono = style::mono_font(FontWeight::NORMAL);
+            let ui_font = style::ui_font(FontWeight::NORMAL);
+            let cmd_size = Some(px(style::PLAIN_SIZE - 1.0));
             let base_color = if !cell.selected && oversized { style::disabled_text(&p) } else { cell.text_color };
-            let mut runs: Vec<TextRun> = if cell.selected {
-                vec![TextRun { len: line.len(), font: font.clone(), color: cell.text_color, background_color: None, underline: None, strikethrough: None, size: None }]
-            } else {
-                let query = r.parsed.clone();
-                search::highlight(&line, &query, &font, base_color, search::mark_color(&p))
-            };
+            let hl_bg = if p.mode == olo_theme::ThemeMode::Dark { c([0xc9, 0xa7, 0x36, 0xff]) } else { c([0xf6, 0xd8, 0x62, 0xff]) };
+            let hl_ink = c([0x18, 0x16, 0x12, 0xff]);
+            let query = r.parsed.clone();
+            let mut runs: Vec<TextRun> = search::highlight(&line, &query, &mono, base_color, hl_bg);
+            for run in &mut runs {
+                run.size = cmd_size;
+                if run.background_color.is_some() {
+                    run.color = hl_ink;
+                }
+            }
             let mut text = line;
             if let Some((after, failed)) = after {
                 let color = if cell.selected {
@@ -1140,7 +1161,7 @@ impl Replay {
                 } else {
                     style::disabled_text(&p)
                 };
-                runs.push(TextRun { len: after.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None });
+                runs.push(TextRun { len: after.len(), font: ui_font, color, background_color: None, underline: None, strikethrough: None, size: None });
                 text.push_str(&after);
             }
             cell.text_runs(g, text, &runs);
@@ -1174,73 +1195,171 @@ impl Replay {
         .into_any_element()
     }
 
+    fn clear_search(&mut self, cx: &mut Cx<Self>) {
+        self.search.update(cx, |s, cx| s.choose("", cx));
+    }
+
     /// Stepping, play, speed, the scrubber and Latest; or the export
     /// under way in the scrubber's place.
-    fn transport(&mut self, width: f32, cx: &mut Cx<Self>) -> Element {
+    fn transport(&mut self, width: f32, disabled: bool, cx: &mut Cx<Self>) -> Element {
         let (start, end) = self.range();
-        let following = self.follow && self.playhead >= end;
+        let following = !disabled && self.follow && self.playhead >= end;
         let running = self.running;
         let two_rows = width < TRANSPORT_ONE_ROW;
         let on = |f: fn(&mut Replay, &mut Cx<Replay>)| cx.listener(move |r: &mut Replay, _: &olo_kit::ClickEvent, cx| f(r, cx));
-        let mut buttons = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .h(px(m::CONTROL_HEIGHT))
-            .gap(px(m::TIGHT))
-            .child(Button::new("◀").id("replay-back").min_width(STEP_W).on_click(on(|r, cx| r.step(-1, cx))))
-            .child(Button::new(if self.playing { "Pause" } else { "Play" }).id("replay-play").min_width(PLAY_W).on_click(on(Replay::play_pause)))
-            .child(Button::new("▶").id("replay-next").min_width(STEP_W).on_click(on(|r, cx| r.step(1, cx))));
+        // Opus #5 & #8: crisp 24×24 square step (|◀ / ▶|) and Play/Pause (▶ / ❚❚)
+        // vector buttons, cleanly disabled when filtering produces 0 results.
+        let playing = !disabled && self.playing;
+        let back_btn = control("replay-back", STEP_W, m::CONTROL_HEIGHT, |g, r, s| {
+            button_face(g, r, s);
+            let p = theme::palette();
+            let ink = if s.enabled { c(p.control_text) } else { style::disabled_text(&p) };
+            let off = if s.pressed { style::hairline(g) } else { px(0.0) };
+            let cx = style::snap_coord(g, r.center().x) + off;
+            let cy = style::snap_coord(g, r.center().y) + off;
+            // Left bar `|` + left-pointing triangle `◀`.
+            let bar = style::snap(g, olo_kit::Bounds::new(point(cx - px(4.5), cy - px(4.0)), size(px(1.5), px(8.0))));
+            style::fill_rect(g, bar, ink);
+            let mut path = PathBuilder::fill();
+            path.move_to(point(cx + px(4.5), cy - px(4.0)));
+            path.line_to(point(cx + px(4.5), cy + px(4.0)));
+            path.line_to(point(cx - px(2.0), cy));
+            path.close();
+            if let Ok(path) = path.build() {
+                g.paint_path(path, ink);
+            }
+        })
+        .look(("replay-back", disabled))
+        .enabled(!disabled)
+        .focusable()
+        .agent("Button", "Previous Action", None)
+        .tip("Previous Action")
+        .on_click(on(|r, cx| r.step(-1, cx)));
+
+        let play_name = if playing { "Pause" } else { "Play" };
+        let play_btn = control("replay-play", PLAY_W, m::CONTROL_HEIGHT, move |g, r, s| {
+            button_face(g, r, s);
+            let p = theme::palette();
+            let ink = if s.enabled { c(p.control_text) } else { style::disabled_text(&p) };
+            let off = if s.pressed { style::hairline(g) } else { px(0.0) };
+            let cx = style::snap_coord(g, r.center().x) + off;
+            let cy = style::snap_coord(g, r.center().y) + off;
+            if playing {
+                let left_bar = style::snap(g, olo_kit::Bounds::new(point(cx - px(3.5), cy - px(4.0)), size(px(2.5), px(8.0))));
+                let right_bar = style::snap(g, olo_kit::Bounds::new(point(cx + px(1.0), cy - px(4.0)), size(px(2.5), px(8.0))));
+                style::fill_rect(g, left_bar, ink);
+                style::fill_rect(g, right_bar, ink);
+            } else {
+                let mut path = PathBuilder::fill();
+                path.move_to(point(cx - px(3.0), cy - px(4.5)));
+                path.line_to(point(cx - px(3.0), cy + px(4.5)));
+                path.line_to(point(cx + px(4.5), cy));
+                path.close();
+                if let Ok(path) = path.build() {
+                    g.paint_path(path, ink);
+                }
+            }
+        })
+        .look(("replay-play", playing, disabled))
+        .enabled(!disabled)
+        .focusable()
+        .agent("Button", play_name, None)
+        .tip(play_name)
+        .on_click(on(Replay::play_pause));
+
+        let next_btn = control("replay-next", STEP_W, m::CONTROL_HEIGHT, |g, r, s| {
+            button_face(g, r, s);
+            let p = theme::palette();
+            let ink = if s.enabled { c(p.control_text) } else { style::disabled_text(&p) };
+            let off = if s.pressed { style::hairline(g) } else { px(0.0) };
+            let cx = style::snap_coord(g, r.center().x) + off;
+            let cy = style::snap_coord(g, r.center().y) + off;
+            // Right-pointing triangle `▶` + right bar `|`.
+            let mut path = PathBuilder::fill();
+            path.move_to(point(cx - px(4.5), cy - px(4.0)));
+            path.line_to(point(cx - px(4.5), cy + px(4.0)));
+            path.line_to(point(cx + px(2.0), cy));
+            path.close();
+            if let Ok(path) = path.build() {
+                g.paint_path(path, ink);
+            }
+            let bar = style::snap(g, olo_kit::Bounds::new(point(cx + px(3.0), cy - px(4.0)), size(px(1.5), px(8.0))));
+            style::fill_rect(g, bar, ink);
+        })
+        .look(("replay-next", disabled))
+        .enabled(!disabled)
+        .focusable()
+        .agent("Button", "Next Action", None)
+        .tip("Next Action")
+        .on_click(on(|r, cx| r.step(1, cx)));
+
+        let mut buttons = div().flex().flex_row().items_center().h(px(m::CONTROL_HEIGHT)).gap(px(m::TIGHT)).child(back_btn).child(play_btn).child(next_btn);
         // The speed where there's room for it.
         let used = 2.0 * STEP_W + PLAY_W + 2.0 * m::TIGHT;
         if used + m::TIGHT + SPEED_W + m::SPACING + LATEST_W <= width {
             let speeds: Vec<SharedString> = SPEEDS.iter().map(|s| SharedString::from(*s)).collect();
-            buttons = buttons.child(div().child(MenuField::new(format!("replay-speed-{}", self.id_key), speeds, self.speed).width(SPEED_W).on_change(cx.listener(|r: &mut Replay, i: &usize, cx| {
-                r.speed = *i;
-                cx.invalidate();
-            }))));
+            buttons = buttons.child(div().child(MenuField::new(format!("replay-speed-{}", self.id_key), speeds, self.speed).width(SPEED_W).enabled(!disabled).on_change(cx.listener(
+                |r: &mut Replay, i: &usize, cx| {
+                    r.speed = *i;
+                    cx.invalidate();
+                },
+            ))));
         }
-        let latest = Button::new(if running { "Live" } else { "Latest" }).id("replay-latest").min_width(LATEST_W).pushed(following).enabled(!following || running).on_click(on(Replay::latest));
+        // Opus #5, #6 & #8: "Follow Live", regular-weight label, disabled on 0 matches.
+        let follow_label: SharedString = SharedString::from(if running { "Follow Live" } else { "Latest" });
+        let follow_enabled = !disabled && (!following || running);
+        let follow_w = (f32::from(style::text_width(follow_label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::CONTROL_PAD).max(LATEST_W).ceil();
+        let follow_label_paint = follow_label.clone();
+        let latest = control("replay-latest", follow_w, m::CONTROL_HEIGHT, move |g, r, s| {
+            button_face(g, r, ControlState { pressed: s.pressed || following, ..s });
+            let p = theme::palette();
+            let ink = if s.enabled { c(p.control_text) } else { style::disabled_text(&p) };
+            let off = if s.pressed && !following { style::hairline(g) } else { px(0.0) };
+            style::label(g, r.center().x + off, r.center().y + off, style::Align::Center, follow_label_paint.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+        })
+        .look((&follow_label, following, disabled))
+        .enabled(follow_enabled)
+        .focusable()
+        .agent("Button", follow_label, None)
+        .on_click(on(Replay::latest));
         // The scrubber and the time; or the export under way.
-        let middle = if let Some((done, cancel)) = &self.exporting {
-            let cancel = cancel.clone();
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(m::SPACING))
+        let middle =
+            if let Some((done, cancel)) = &self.exporting {
+                let cancel = cancel.clone();
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .h(px(m::CONTROL_HEIGHT))
+                    .child(div().flex_1().child(StatusBar::new(*done).label(format!("Exporting… {:.0}%", done * 100.0)).bar_height(6.0)))
+                    .child(Button::new("Cancel").id("replay-cancel-export").min_width(72.0).on_click(move |_, _| cancel.cancel()))
+            } else {
+                let span = end.saturating_sub(start);
+                let time = format!("{} / {}", duration(self.playhead.saturating_sub(start)), duration(span));
+                let widest = format!("{} / {}", duration(span), duration(span));
+                let time_w = style::text_width_app(&widest, style::PLAIN_SIZE, &style::ui_font(FontWeight::NORMAL)).ceil();
+                let total = (span as f32 / 1000.0).max(0.001);
+                let secs = self.playhead.saturating_sub(start) as f32 / 1000.0;
+                let label = canvas(move |g, b| {
+                    let p = theme::palette();
+                    let r = style::label(g, b.right(), b.center().y, style::Align::Right, time.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    agent::record(g, agent::Node::label(time.clone(), r));
+                })
+                .w(px(time_w))
                 .h(px(m::CONTROL_HEIGHT))
-                .child(div().flex_1().child(StatusBar::new(*done).label(format!("Exporting… {:.0}%", done * 100.0)).bar_height(6.0)))
-                .child(Button::new("Cancel").id("replay-cancel-export").min_width(72.0).on_click(move |_, _| cancel.cancel()))
-        } else {
-            let span = end.saturating_sub(start);
-            let time = format!("{} / {}", duration(self.playhead.saturating_sub(start)), duration(span));
-            let widest = format!("{} / {}", duration(span), duration(span));
-            let time_w = style::text_width_app(&widest, style::PLAIN_SIZE, &style::ui_font(FontWeight::NORMAL)).ceil();
-            let total = (span as f32 / 1000.0).max(0.001);
-            let secs = self.playhead.saturating_sub(start) as f32 / 1000.0;
-            let label = canvas(move |g, b| {
-                let p = theme::palette();
-                let r = style::label(g, b.right(), b.center().y, style::Align::Right, time.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-                agent::record(g, agent::Node::label(time.clone(), r));
-            })
-            .w(px(time_w))
-            .h(px(m::CONTROL_HEIGHT))
-            .flex_shrink_0();
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(m::SPACING))
-                .h(px(m::CONTROL_HEIGHT))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(Slider::new(format!("replay-scrub-{}", self.id_key), secs.min(total), 0.0..=total).on_change(cx.listener(|r: &mut Replay, v: &f32, cx| r.scrub(*v, cx)))),
-                )
-                .child(label)
-        };
+                .flex_shrink_0();
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .h(px(m::CONTROL_HEIGHT))
+                    .child(div().flex_1().min_w_0().child(
+                        Slider::new(format!("replay-scrub-{}", self.id_key), secs.min(total), 0.0..=total).enabled(!disabled).on_change(cx.listener(|r: &mut Replay, v: &f32, cx| r.scrub(*v, cx))),
+                    ))
+                    .child(label)
+            };
         if two_rows {
             div().flex().flex_col().gap(px(m::TIGHT)).child(middle).child(div().flex().flex_row().items_center().child(buttons).child(div().flex_1()).child(latest)).into_any_element()
         } else {
@@ -1249,11 +1368,13 @@ impl Replay {
     }
 
     /// The action at the playhead: what was asked, and what came of it.
-    fn detail(&self) -> Element {
-        let action = self.action_at(self.playhead).and_then(|i| self.actions.get(i)).cloned();
+    fn detail(&self, no_matches: bool) -> Element {
+        let action = (!no_matches).then(|| self.action_at(self.playhead).and_then(|i| self.actions.get(i)).cloned()).flatten();
         canvas(move |g, r| {
             let p = theme::palette();
-            let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+            let plain = style::ui_font(FontWeight::NORMAL);
+            let mono = style::mono_font(FontWeight::NORMAL);
+            let cmd_size = style::PLAIN_SIZE - 1.0;
             let (y1, y2) = (r.top() + px(m::LABEL_ROW / 2.0), r.top() + px(m::LABEL_ROW * 1.5));
             // (Cut at its sides; a point more above and below, where a
             // line snapped to the device's pixels at 1.5× starts just
@@ -1261,13 +1382,14 @@ impl Replay {
             let mask = olo_kit::Bounds::from_corners(point(r.left(), r.top() - px(1.0)), point(r.right(), r.bottom() + px(1.0)));
             g.with_content_mask(Some(olo_kit::ContentMask { bounds: mask }), |g| {
                 let Some(a) = &action else {
-                    let t = style::label_fit(g, r.left(), y1, style::Align::Left, "Before the first action.", style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p), r.size.width);
-                    agent::record(g, agent::Node::label("Before the first action.", t));
+                    let msg = if no_matches { "No action selected." } else { "Before the first action." };
+                    let t = style::label_fit(g, r.left(), y1, style::Align::Left, msg, style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p), r.size.width);
+                    agent::record(g, agent::Node::label(msg, t));
                     return;
                 };
                 if a.is_oversized() {
                     let cmd = command(a);
-                    let t = style::label_fit(g, r.left(), y1, style::Align::Left, cmd.clone(), style::PLAIN_SIZE, bold.clone(), style::disabled_text(&p), r.size.width);
+                    let t = style::label_fit(g, r.left(), y1, style::Align::Left, cmd.clone(), cmd_size, mono.clone(), style::disabled_text(&p), r.size.width);
                     agent::record(g, agent::Node::label(cmd, t));
                     let body = "This action exceeded the host’s size limit and can’t be shown here.";
                     let t = style::label_fit(g, r.left(), y2, style::Align::Left, body, style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p), r.size.width);
@@ -1282,7 +1404,8 @@ impl Replay {
                 };
                 let w = style::label(g, r.right(), y1, style::Align::Right, when.clone(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
                 let cmd = command(a);
-                let t = style::label_fit(g, r.left(), y1, style::Align::Left, cmd.clone(), style::PLAIN_SIZE, bold.clone(), c(p.panel_text), (w.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                // Opus #5: command detail title uses regular-weight monospace 1 pt below UI size.
+                let t = style::label_fit(g, r.left(), y1, style::Align::Left, cmd.clone(), cmd_size, mono, c(p.panel_text), (w.left() - px(m::SPACING) - r.left()).max(px(0.0)));
                 agent::record(g, agent::Node { value: Some(when.into()), ..agent::Node::label(cmd, t) });
                 let (text, color) = match (&a.error, outcome(a)) {
                     (Some(e), _) => (format!("✗ Failed: {e}"), c(p.failure)),
@@ -1501,16 +1624,69 @@ impl View for Replay {
         } else {
             format!("{} of {}", style::thousands(self.shown.len()), style::thousands(self.actions.len()))
         };
-        // (Under the search, its first menu's text over the list's first
-        // column's, as Log Viewer has it.)
-        let controls = search::header(cx, &self.search, format!("replay-{}", self.id_key), facets, width).no_clear().count(count).indent(search::list_indent(cx));
-
         // The screen as it was, the action under it, and the transport.
         let list_w = (width * 0.42).clamp(260.0, 440.0).min(width - 240.0).max(200.0);
         let right_w = width - list_w - m::SPACING;
+        // Opus #5: align SearchField right edge flush with the table's right edge
+        // (including scrollbar) and start `Kind: All Actions` flush with the
+        // preview well's left edge whenever the right column fits FilterBar + count.
+        let query_text = self.search.read(cx).text(cx).to_owned();
+        let has_query_text = !query_text.is_empty();
+        // Opus #7 / Neon-look #3: crisp dark-mode clear (`×`) button overlay
+        // directly over SearchField's exact `clear_bounds` (pointer-transparent so
+        // clicks still hit SearchField's own clear button, without touching crates/kit).
+        let dark_clear_overlay = has_query_text.then(|| {
+            canvas(|g, b| {
+                let p = theme::palette();
+                if p.mode != olo_theme::ThemeMode::Dark {
+                    return;
+                }
+                let s = g.scale_factor();
+                let center = point(b.right() - px(m::TEXT_INSET + 6.0), b.center().y);
+                let d = (13.0 * s).round();
+                let min = point(px(((f32::from(center.x) * s - d / 2.0).round()) / s), px(((f32::from(center.y) * s - d / 2.0).round()) / s));
+                let k = olo_kit::Bounds { origin: min, size: size(px(d / s), px(d / s)) };
+                g.paint_quad(olo_kit::fill(k, style::secondary_text(&p)).corner_radii(px(d / (2.0 * s))));
+                let x = olo_kit::Bounds { origin: point(k.left() + px(3.75), k.top() + px(3.75)), size: size(k.size.width - px(7.5), k.size.height - px(7.5)) };
+                let ink = c(p.document_background);
+                g.paint_segment(x.origin, x.bottom_right(), px(1.4), false, ink);
+                g.paint_segment(point(x.right(), x.top()), point(x.left(), x.bottom()), px(1.4), false, ink);
+            })
+            .absolute()
+            .inset_0()
+        });
+        let count_font = style::ui_font(FontWeight::NORMAL);
+        let count_text_w = style::text_width_app(&count, style::PLAIN_SIZE, &count_font).ceil();
+        let bar_natural_w = FilterBar::width(&query_text, &facets);
+        let controls: Element = if right_w >= bar_natural_w + m::SPACING + count_text_w {
+            let count_str = SharedString::from(count);
+            let count_look = style::key(&count_str);
+            let count_el = canvas(move |g, b| {
+                let p = theme::palette();
+                let r = style::label(g, b.right(), b.center().y, style::Align::Right, count_str.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                agent::record(g, agent::Node::label(count_str.clone(), r));
+            })
+            .paint_key(count_look)
+            .w(px(count_text_w))
+            .h(px(m::CONTROL_HEIGHT))
+            .flex_shrink_0();
+            let bar = FilterBar::new(format!("replay-{}", self.id_key), query_text, facets).no_clear().drives(&self.search);
+            div()
+                .w_full()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(div().relative().w(px(list_w)).flex_shrink_0().child(self.search.element()).children(dark_clear_overlay))
+                .child(div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::SPACING)).child(bar).child(div().flex_1()).child(count_el))
+                .into_any_element()
+        } else {
+            search::header(cx, &self.search, format!("replay-{}", self.id_key), facets, width).no_clear().count(count).indent(search::list_indent(cx)).into_any_element()
+        };
         if self.playing {
             self.play_on(right_w, cx);
         }
+        let no_matches = self.shown.is_empty() && !self.actions.is_empty();
         let want = self.frames_index.frame_time(self.playhead);
         let disconnected = self.source.info().capabilities.host_disconnected;
         if let Some(want_at) = self.frame_track.request_for_if_online(want, !disconnected) {
@@ -1539,10 +1715,21 @@ impl View for Replay {
         // goes on, not at the playhead (which waits at the newest).
         let live = self.running && self.follow && self.playhead >= end;
         let t = if live { history::now_ms().max(self.playhead) } else { self.playhead };
-        let overlay = self.overlay(t, live, cx);
+        let overlay = (!no_matches).then(|| self.overlay(t, live, cx));
         let list = self.list_view(cx);
-        let detail = self.detail();
-        let transport = self.transport(right_w, cx);
+        let clear_search_overlay = no_matches.then(|| {
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .pt(px(64.0))
+                .child(Button::new("Clear Search").id("replay-clear-search").min_width(0.0).on_click(cx.listener(|r: &mut Replay, _, cx| r.clear_search(cx))))
+        });
+        let detail = self.detail(no_matches);
+        let transport = self.transport(right_w, no_matches, cx);
         let discontiguous_note = self.export_discontiguous_blocked().then(|| {
             let note = SharedString::from("Update Olo on this host to export non-adjacent actions.");
             canvas(move |g, b| {
@@ -1570,8 +1757,10 @@ impl View for Replay {
                     .gap(px(m::SPACING))
                     // (A list fills a flex column: in a plain box stretched to
                     // its width, its own `size_full` comes out none wide.)
-                    .child(div().w(px(list_w)).flex_shrink_0().flex().flex_col().child(div().flex_1().min_h_0().flex().flex_col().child(list)))
-                    .child(div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).child(div().flex_1().min_h_0().relative().child(&self.well).child(overlay)).child(detail).child(transport)),
+                    .child(div().w(px(list_w)).flex_shrink_0().flex().flex_col().child(div().relative().flex_1().min_h_0().flex().flex_col().child(list).children(clear_search_overlay)))
+                    .child(
+                        div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).child(div().flex_1().min_h_0().relative().child(&self.well).children(overlay)).child(detail).child(transport),
+                    ),
             )
             .into_any_element()
     }

@@ -48,6 +48,18 @@ pub struct Screen {
     pub a11y: Option<String>,
 }
 
+/// On-disk JSON envelope for `{name}.json`: embeds [`Screen`] unchanged (keeping
+/// `Screen`'s public fields source-compatible with external callers) while
+/// persisting `/proc/PID/stat` `start_ticks` for same-runtime PID-reuse checks
+/// (Astra #2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScreenOnDisk {
+    #[serde(flatten)]
+    screen: Screen,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    start_ticks: Option<u64>,
+}
+
 /// Where Chrome keeps its profile on screen `name` (`CHROME_CONFIG_HOME`,
 /// which Chrome, Chromium and olo-chrome all follow): beside the screen's
 /// history. With the person's own, a Chrome started there was handed to
@@ -165,7 +177,7 @@ fn lock_lifecycle_in(dir: &Path, name: &str) -> Result<std::fs::File, String> {
 
 /// Read `/proc/{pid}/stat`'s 22nd field (process start time in clock ticks) to
 /// detect PID reuse when validating `.control` or session identity.
-pub(crate) fn proc_start_ticks(pid: i32) -> Option<u64> {
+pub fn proc_start_ticks(pid: i32) -> Option<u64> {
     started_ticks(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
 }
 
@@ -401,7 +413,10 @@ pub fn controlled(name: &str) -> bool {
     controlled_in(&dir(), name)
 }
 
-fn controlled_in(dir: &Path, name: &str) -> bool {
+/// Whether the person is controlling screen `name` inside runtime directory
+/// `dir` right now (verifies controller PID, executable identity, and
+/// optional start ticks from `NAME.control` / `NAME.control.lock`).
+pub fn controlled_in(dir: &Path, name: &str) -> bool {
     if !valid_name(name) {
         return false;
     }
@@ -508,6 +523,45 @@ fn screen_of(pid: i32) -> Option<String> {
     is_session_of(&cmdline, &environ, &name).then_some(name)
 }
 
+/// Pure runtime-directory + command/env + start-ticks identity check (Astra #2).
+fn session_matches_runtime(cmdline: &[u8], environ: &[u8], rt_screens_dir: &Path, name: &str, actual_ticks: Option<u64>, expected_ticks: Option<u64>) -> bool {
+    if !is_session_of(cmdline, environ, name) {
+        return false;
+    }
+    let runtime_root = rt_screens_dir.parent().unwrap_or(rt_screens_dir);
+    if !listed_in(environ, runtime_root) {
+        return false;
+    }
+    if let Some(expected) = expected_ticks
+        && actual_ticks != Some(expected)
+    {
+        return false;
+    }
+    true
+}
+
+/// Shared session identity check scoped to `rt_screens_dir`: true iff `pid` is
+/// a live `olo-session` (or `tabula-session`) process whose environment
+/// declares `OLO_SCREEN=name` AND `XDG_RUNTIME_DIR` matching `rt_screens_dir`'s
+/// runtime root, and whose `/proc/PID/stat` start ticks match `expected_start_ticks`
+/// when supplied (Astra #2: prevents cross-runtime and same-runtime PID reuse).
+pub fn is_screen_session_alive_in(rt_screens_dir: &Path, pid: i32, name: &str, expected_start_ticks: Option<u64>) -> bool {
+    if pid <= 0 || !valid_name(name) {
+        return false;
+    }
+    let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { return false };
+    let Ok(environ) = std::fs::read(format!("/proc/{pid}/environ")) else { return false };
+    let actual_ticks = expected_start_ticks.and_then(|_| proc_start_ticks(pid));
+    session_matches_runtime(&cmdline, &environ, rt_screens_dir, name, actual_ticks, expected_start_ticks)
+}
+
+/// Shared session identity check in this process's runtime directory: true iff
+/// `pid` is a live `olo-session` (or `tabula-session`) process whose environment
+/// declares `OLO_SCREEN=name` under this runtime directory.
+pub fn is_screen_session_alive(pid: i32, name: &str) -> bool {
+    is_screen_session_alive_in(&dir(), pid, name, None)
+}
+
 /// When a process started, in clock ticks since boot (`/proc/PID/stat`'s
 /// 22nd field, after its name in parentheses, which may hold anything).
 fn started_ticks(stat: &str) -> Option<u64> {
@@ -605,11 +659,23 @@ fn end_strays(name: Option<&str>) {
 }
 
 impl Screen {
+    /// Its session is still running in `rt_screens_dir`: the process listed is
+    /// this screen's session (`is_session_of`), belongs to `rt_screens_dir`'s
+    /// runtime root (`listed_in`), and matches persisted `start_ticks` in
+    /// `{name}.json` when present.
+    pub fn running_in(&self, rt_screens_dir: &Path) -> bool {
+        let persisted_ticks = read_bounded_regular(&rt_screens_dir.join(format!("{}.json", self.name)), 64 * 1024)
+            .and_then(|b| serde_json::from_slice::<ScreenOnDisk>(&b).ok())
+            .filter(|d| d.screen.pid == self.pid && d.screen.started == self.started)
+            .and_then(|d| d.start_ticks);
+        is_screen_session_alive_in(rt_screens_dir, self.pid, &self.name, persisted_ticks)
+    }
+
     /// Its session is still running: the process listed is this
     /// screen's session (`is_session_of`), whatever its command line
     /// says now.
     pub fn running(&self) -> bool {
-        screen_of(self.pid).as_deref() == Some(self.name.as_str())
+        self.running_in(&dir())
     }
 
     /// Still running and reachable: its session alive and its socket
@@ -782,11 +848,11 @@ pub(crate) fn list_in(runtime_screens_dir: &Path) -> Vec<Screen> {
         if fname.ends_with("-settings.json") || fname.ends_with(".owner.json") {
             continue;
         }
-        let Some(screen) = read_bounded_regular(&path, 64 * 1024).and_then(|b| serde_json::from_slice::<Screen>(&b).ok()) else { continue };
+        let Some(disk) = read_bounded_regular(&path, 64 * 1024).and_then(|b| serde_json::from_slice::<ScreenOnDisk>(&b).ok()) else { continue };
         // (Forgotten only once its session has ended: a socket missing a
         // moment, or a command line that changed, isn't that.)
-        if screen.running() {
-            screens.push(screen);
+        if is_screen_session_alive_in(runtime_screens_dir, disk.screen.pid, &disk.screen.name, disk.start_ticks) {
+            screens.push(disk.screen);
         } else {
             let _ = std::fs::remove_file(&path);
         }
@@ -826,14 +892,14 @@ pub(crate) fn inspect_screen_in(runtime_screens_dir: &Path, name: &str) -> Inspe
     if let Err(e) = f.take(64 * 1024 + 1).read_to_end(&mut bytes) {
         return InspectScreen::Error(format!("couldn't read runtime descriptor for screen {name:?}: {e}"));
     }
-    let screen: Screen = match serde_json::from_slice(&bytes) {
+    let disk: ScreenOnDisk = match serde_json::from_slice(&bytes) {
         Ok(s) => s,
         Err(e) => return InspectScreen::Error(format!("runtime descriptor for screen {name:?} is corrupt: {e}")),
     };
-    if screen.name != name {
-        return InspectScreen::Error(format!("runtime descriptor for screen {name:?} names {:?} instead", screen.name));
+    if disk.screen.name != name {
+        return InspectScreen::Error(format!("runtime descriptor for screen {name:?} names {:?} instead", disk.screen.name));
     }
-    if screen.running() { InspectScreen::Running(screen) } else { InspectScreen::Stopped }
+    if is_screen_session_alive_in(runtime_screens_dir, disk.screen.pid, name, disk.start_ticks) { InspectScreen::Running(disk.screen) } else { InspectScreen::Stopped }
 }
 
 /// Look up a single running screen directly from its bounded `NAME.json`
@@ -1250,7 +1316,8 @@ fn publish_started_screen_in(rt_dir: &Path, screen: &Screen) -> Result<(), Strin
     let _ = std::fs::remove_file(rt_dir.join(format!("{}.owner.json", screen.name)));
     let target = rt_dir.join(format!("{}.json", screen.name));
     let tmp = rt_dir.join(format!("{}.tmp", screen.name));
-    std::fs::write(&tmp, serde_json::to_vec_pretty(screen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let on_disk = ScreenOnDisk { screen: screen.clone(), start_ticks: proc_start_ticks(screen.pid) };
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&on_disk).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, target).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -1606,7 +1673,7 @@ fn stop_resolved_screen_locked(rt_dir: &Path, screen: &Screen, expected_started:
             return Ok(());
         }
         PidfdOpen::Opened(_) | PidfdOpen::Unavailable => {
-            if !screen.running() {
+            if !screen.running_in(rt_dir) {
                 cleanup_files();
                 return Ok(());
             }
@@ -1622,7 +1689,7 @@ fn stop_resolved_screen_locked(rt_dir: &Path, screen: &Screen, expected_started:
             }
         }
         PidfdOpen::Unavailable => {
-            if screen.running() {
+            if screen.running_in(rt_dir) {
                 end_sessions(&[screen.pid]);
             }
         }
@@ -1632,7 +1699,7 @@ fn stop_resolved_screen_locked(rt_dir: &Path, screen: &Screen, expected_started:
     // Programs `run` started are in process groups of their own, tied to
     // the screen's display: they end when it goes (Wayland clients exit
     // when their compositor does).
-    if screen.running() {
+    if screen.running_in(rt_dir) {
         // (Listed still, so it isn't forgotten while it runs: stopped again,
         // or by the next start of its name.)
         return Err(format!("screen {name} is still ending"));
@@ -1666,6 +1733,10 @@ pub(crate) fn stop_if_generation_in(rt_dir: &Path, name: &str, expected_started:
 
 pub(crate) fn stop_if_expected_in(rt_dir: &Path, state_root: &Path, name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
     let _life = lock_lifecycle_in(rt_dir, name)?;
+    // Astra #2: acquire the exclusive control lease under the lifecycle lock
+    // BEFORE checking history and hold it through Stop so local Stop cannot
+    // bypass another viewer's Take Control lease or an in-flight CLI action.
+    let _ctrl = try_acquire_control_in(rt_dir, name)?;
     check_expected_last_used(state_root, name, expected_last_used)?;
     stop_locked(rt_dir, name, expected_started)
 }
@@ -2187,7 +2258,7 @@ mod tests {
         // Spawn a real dummy process whose argv[0] ends with `olo-session` and
         // `OLO_SCREEN=qa` so `Screen::running()` validates it identically to a
         // live session.
-        let mut fake_session = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").spawn().expect("spawn dummy session");
+        let mut fake_session = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").env("XDG_RUNTIME_DIR", &dir).spawn().expect("spawn dummy session");
         let sock = rt.join("olo-test.sock");
         let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
         let scr = Screen {
@@ -2473,6 +2544,122 @@ mod tests {
         assert!(!dir_0755.join("qa.owner.json").exists(), "stale owner.json must be removed on start");
         assert!(dir_0755.join("qa.json").is_file(), "new screen.json must be published");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn astra_r2_f2_cross_runtime_and_start_ticks_identity_check() {
+        use std::os::unix::process::CommandExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-astra-f2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt_a = dir.join("run-a").join("olo-screens");
+        let rt_b = dir.join("run-b").join("olo-screens");
+        std::fs::create_dir_all(&rt_a).unwrap();
+        std::fs::create_dir_all(&rt_b).unwrap();
+
+        // Spawn a dummy session belonging strictly to `run-a`.
+        let mut sess =
+            std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "agent").env("XDG_RUNTIME_DIR", dir.join("run-a")).spawn().expect("spawn dummy session");
+        let pid = sess.id() as i32;
+        let ticks = proc_start_ticks(pid).expect("proc_start_ticks for live child");
+
+        // Must match in `rt_a` with matching or absent start_ticks.
+        assert!(is_screen_session_alive_in(&rt_a, pid, "agent", Some(ticks)));
+        assert!(is_screen_session_alive_in(&rt_a, pid, "agent", None));
+
+        // Must REJECT cross-runtime check from `rt_b` (PID reused across runtimes).
+        assert!(!is_screen_session_alive_in(&rt_b, pid, "agent", Some(ticks)));
+        assert!(!is_screen_session_alive_in(&rt_b, pid, "agent", None));
+
+        // Must REJECT same-runtime check with mismatched start_ticks (same-runtime PID reuse).
+        assert!(!is_screen_session_alive_in(&rt_a, pid, "agent", Some(ticks.wrapping_add(1))));
+
+        // And `inspect_screen_in` on `rt_b` holding a stale descriptor pointing at `pid`
+        // must see `Stopped`, never `Running`, and `stop_resolved_screen_locked` must clean
+        // up the stale descriptor without signalling the live process in `rt_a`!
+        let stale_b = Screen {
+            name: "agent".into(),
+            wayland_display: "wayland-b".into(),
+            olo_socket: rt_b.join("olo.sock"),
+            pid,
+            width: 800,
+            height: 600,
+            scale: 1.0,
+            sound: false,
+            started: 1000,
+            bus: None,
+            a11y: None,
+        };
+        std::fs::write(rt_b.join("agent.json"), serde_json::to_vec(&ScreenOnDisk { screen: stale_b.clone(), start_ticks: Some(ticks) }).unwrap()).unwrap();
+        assert!(matches!(inspect_screen_in(&rt_b, "agent"), InspectScreen::Stopped));
+        // Also verify same-runtime descriptor with mismatched `start_ticks` is rejected as Stopped!
+        let stale_a_ticks = Screen {
+            name: "agent".into(),
+            wayland_display: "wayland-a".into(),
+            olo_socket: rt_a.join("olo.sock"),
+            pid,
+            width: 800,
+            height: 600,
+            scale: 1.0,
+            sound: false,
+            started: 1000,
+            bus: None,
+            a11y: None,
+        };
+        std::fs::write(rt_a.join("agent.json"), serde_json::to_vec(&ScreenOnDisk { screen: stale_a_ticks.clone(), start_ticks: Some(ticks.wrapping_add(1)) }).unwrap()).unwrap();
+        assert!(matches!(inspect_screen_in(&rt_a, "agent"), InspectScreen::Stopped));
+        // Matching `start_ticks` in `rt_a` resolves as Running!
+        std::fs::write(rt_a.join("agent.json"), serde_json::to_vec(&ScreenOnDisk { screen: stale_a_ticks, start_ticks: Some(ticks) }).unwrap()).unwrap();
+        assert!(matches!(inspect_screen_in(&rt_a, "agent"), InspectScreen::Running(_)));
+        stop_resolved_screen_locked(&rt_b, &stale_b, Some(1000)).unwrap();
+        assert!(!rt_b.join("agent.json").exists(), "stale cross-runtime descriptor cleaned up");
+        assert!(is_screen_session_alive_in(&rt_a, pid, "agent", Some(ticks)), "live session in run-a must NOT be signalled!");
+
+        let _ = sess.kill();
+        let _ = sess.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn r3_polish_astra_f2_stop_if_expected_refuses_while_control_lock_held() {
+        use std::os::unix::process::CommandExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-r3-f2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt_dir = dir.join("run/olo-screens");
+        let state_root = dir.join("state/screens");
+        std::fs::create_dir_all(&rt_dir).unwrap();
+        std::fs::create_dir_all(&state_root).unwrap();
+
+        let mut sess = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").env("XDG_RUNTIME_DIR", dir.join("run")).spawn().expect("spawn dummy session");
+        let pid = sess.id() as i32;
+        let ticks = proc_start_ticks(pid).expect("proc_start_ticks");
+        let scr = Screen {
+            name: "qa".into(),
+            wayland_display: "wayland-r3".into(),
+            olo_socket: rt_dir.join("olo.sock"),
+            pid,
+            width: 800,
+            height: 600,
+            scale: 1.0,
+            sound: false,
+            started: 1_000,
+            bus: None,
+            a11y: None,
+        };
+        std::fs::write(rt_dir.join("qa.json"), serde_json::to_vec(&ScreenOnDisk { screen: scr, start_ticks: Some(ticks) }).unwrap()).unwrap();
+
+        // While another viewer holds the exclusive control lock, `stop_if_expected_in`
+        // MUST refuse before touching or signalling the running screen.
+        let mut ctrl = try_acquire_control_in(&rt_dir, "qa").expect("acquire control lock");
+        let err = stop_if_expected_in(&rt_dir, &state_root, "qa", Some(1_000), Some(0)).unwrap_err();
+        assert!(err.contains("control") || err.contains("controlling"), "expected control-lease refusal, got: {err}");
+        assert!(is_screen_session_alive_in(&rt_dir, pid, "qa", Some(ticks)), "running screen must stay alive when control lock is held");
+
+        // Once the viewer releases control, `stop_if_expected_in` succeeds cleanly.
+        ctrl.release();
+        stop_if_expected_in(&rt_dir, &state_root, "qa", Some(1_000), Some(0)).expect("stop after control release");
+        let _ = sess.wait();
+        assert!(!rt_dir.join("qa.json").exists(), "screen descriptor removed on stop");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
