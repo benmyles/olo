@@ -22681,16 +22681,17 @@ tested on few computers. **When a kind of hardware gets a new home in
 Olo (a new section here, a new place per-machine data lives), say so in
 that skill**: it is the map a stranger's agent follows.
 
-**Help with Olo's development: Lead ▸ Minder (`agy` Neon 4 `high`) ▸
-Builders & Reviewers** (updated 2026-11-27; `tools/dev/agents` and the
+**Help with Olo's development: Lead ▸ Minder (`agy` Neon 4 `xhigh`) ▸
+Builders & Reviewers** (updated 2026-11-28; `tools/dev/agents` and the
 `olo-agents` and `olo-debug-help` skills in `.claude/skills/`). Every
 helper runs interactively as a native Rex child tab through `olo agent`
 (never the harness Agent tool, never headless print scripts; tmux via
 `OLO_AGENTS_VIA=tmux` only when not in a Rex pane):
 
 - **Minder** (`tools/dev/agents minder start [BRIEF.md]`): ALWAYS
-  Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`,
-  `--effort high`), running directly under the lead tab (`OLO_MINDER`
+  Antigravity (`agy`) **Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`,
+  `--effort xhigh`; Ben, 2026-11-28: all Neon agents always run on
+  `xhigh`), running directly under the lead tab (`OLO_MINDER`
   set, not `OLO_SUBAGENT`). All builders, investigators, and reviewers
   run as child tabs nested under the minder (`Lead ▸ minder ▸
   subagents`). The minder watches all subagents continuously via `olo
@@ -22707,10 +22708,12 @@ helper runs interactively as a native Rex child tab through `olo agent`
   alive, unsticking or restarting it if wedged so the person never has
   to approve or unstick the minder).
 - **Builders** (`tools/dev/agents start [--tree DIR] NAME CRATE
-  BRIEF.md`, `agents resume`): Antigravity (`agy`) **Gemini 4 Neon on
-  `xhigh`** (`gemini-4-neon-xhigh`), up to five at once per checkout,
-  each scoped to its own crate(s) with `OLO_SUBAGENT=<name>` set so it
-  cannot spawn subagents of its own.
+  BRIEF.md`, `agents resume`): **Claude Opus 5.5 on `max`**
+  (`claude-opus-5-5`, `--effort max`, `"autoMemoryEnabled": false` +
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `--disallowed-tools Agent
+  Workflow`; Ben, 2026-11-28), up to four active builders at once
+  across worktrees, each scoped to its own crate(s) with
+  `OLO_SUBAGENT=<name>` set so it cannot spawn subagents of its own.
 - **Second investigator** (`tools/dev/agy-help BRIEF.md`, `agents
   investigate`): Antigravity (`agy`) **Gemini 4 Neon on `xhigh`**, for
   root-causing hard bugs in parallel without editing the working tree.
@@ -22729,10 +22732,10 @@ helper runs interactively as a native Rex child tab through `olo agent`
   `agy-review` (`xhigh`) on the code, screenshots go to both
   `tools/dev/agy-look` (**Gemini 4 Neon on `xhigh`**, pixel-level
   spacing/alignment) and `tools/dev/opus-look` (**Claude Opus 5.5 on
-  `xhigh`**, `claude --model claude-opus-5-5 --effort xhigh
-  --restricted --tools Read,Write`, product/visual design quality).
-  Changes with no visual design work use only the `agy` (`xhigh`) and
-  `codex` (`xhigh`) reviewers.
+  `max`**, `claude --model claude-opus-5-5 --effort max --settings
+  '{"autoMemoryEnabled":false}' --restricted --tools Read,Write`,
+  product/visual design quality). Changes with no visual design work
+  use only the `agy` (`xhigh`) and `codex` (`xhigh`) reviewers.
 - **Subagent right-pane standup board (`tools/dev/agent-board`):**
   Every builder, investigator, and minder opens a right-hand Rex split
   pane (`rex split --split=right --ratio=38 --focus=false --shell=none`)
@@ -22758,7 +22761,7 @@ hardening still shared by `tools/dev/agents`:
 ignored but for `.claude/skills/`). Earlier history: until 2026-11-22
 helpers ran on Codex; from 2026-11-22 to 2026-11-27 builders ran on
 Gemini 4 Neon `xhigh` with Opus 5.5 `max` minders/looks and Astra 6.2
-`max` code reviews, superseded by the Lead ▸ `agy` Neon 4 `high`
+`max` code reviews, superseded by the Lead ▸ `agy` Neon 4 `xhigh`
 minder ▸ `agy` Neon 4 `xhigh` builders + `xhigh` reviewers flow above.
 
 So every helper is its program's own interactive screen in a session

@@ -20,7 +20,7 @@ investigator on it and keep working on your own line meanwhile. Don't
 wait until you've circled for hours, and never settle for a guess. It
 is one of the helpers CLAUDE.md's hierarchy allows: Gemini 4 Neon at
 `xhigh` in the Antigravity CLI (`agy`), running as a native Rex child
-tab under the minder (`agy` Neon 4 `high`, or tmux where there is no
+tab under the minder (`agy` Neon 4 `xhigh`, or tmux where there is no
 Rex pane), never silent. The helper investigates and reports; the work
 stays yours.
 

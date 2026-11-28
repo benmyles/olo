@@ -149,13 +149,14 @@ are universal and non-negotiable:
     include light/dark empty lists, error/stopped states across tabs,
     disabled controls, and dark-mode menus/confirmations in the batch.
 - **Reviewers on every change: Codex Astra 6.2 (`xhigh`), Antigravity
-  Gemini 4 Neon (`xhigh`), and Claude Opus 5.5 (`xhigh`) for visual
-  design work.** (Ben, 2026-11-27: builders get code reviews from a
-  Codex Astra 6.2 on `xhigh` (max 2 rounds) as well as another
-  Antigravity Gemini 4 Neon on `xhigh` (max 2 rounds); any change with
-  visual design work is also reviewed by Claude Opus 5.5 on `xhigh`, so
-  visual changes use all three reviewers while non-visual changes use
-  the Astra and Neon reviewers.)
+  Gemini 4 Neon (`xhigh`), and Claude Opus 5.5 (`max`, auto-memory
+  disabled) for visual design work.** (Ben, 2026-11-27 & 2026-11-28:
+  builders get code reviews from a Codex Astra 6.2 on `xhigh` (max 2
+  rounds) as well as another Antigravity Gemini 4 Neon on `xhigh` (max 2
+  rounds); any change with visual design work is also reviewed by Claude
+  Opus 5.5 on `max` with auto-memory disabled, so visual changes use all
+  three reviewers while non-visual changes use the Astra and Neon
+  reviewers.)
   - **Code review (every change, max 2 rounds each):** run both
     `tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working
     [PATH…]` (Codex Astra 6.2 at `xhigh`) and `tools/dev/agy-review
@@ -174,13 +175,13 @@ are universal and non-negotiable:
     `tools/dev/agy-look --about "WHAT CHANGED" PICTURE.png…` (Gemini 4
     Neon at `xhigh`: pixel-level spacing, alignment, edges) and
     `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
-    PICTURE.png…` (Claude Opus 5.5 at `xhigh`: design quality,
-    hierarchy, rhythm, colour, native feel), alongside the `astra-review`
-    and `agy-review` code reviews. Something new (an app, a window, a
-    widget) goes to visual review early, before it is built out, and
-    again when built. Check each finding against the pictures yourself,
-    fix what is real, and record in the commit what each found and what
-    was done.
+    PICTURE.png…` (Claude Opus 5.5 at `max` with auto-memory disabled:
+    design quality, hierarchy, rhythm, colour, native feel), alongside
+    the `astra-review` and `agy-review` code reviews. Something new (an
+    app, a window, a widget) goes to visual review early, before it is
+    built out, and again when built. Check each finding against the
+    pictures yourself, fix what is real, and record in the commit what
+    each found and what was done.
 - **Two review rounds max by default; escalate to the lead if critical
   issues persist.** Each builder gets at most two rounds of review from
   each required reviewer, batched whole (every state, every scale
@@ -341,16 +342,16 @@ are universal and non-negotiable:
   checklist — driven by `inotify` (0% CPU at rest) and pre-allowed in
   `tools/dev/agents` so subagents update it unasked.
 - **Agent hierarchy through `olo agent`: Lead ▸ Minder (`agy` Neon 4
-  `high`) ▸ Builders & Reviewers.** (Ben, 2026-11-26 & 2026-11-27: all
-  helpers are native Rex subagents via `olo agent` — never the harness
-  Agent tool, never headless print scripts, and tmux only when not in a
-  Rex pane.)
+  `xhigh`) ▸ Builders & Reviewers.** (Ben, 2026-11-26, 2026-11-27 &
+  2026-11-28: all helpers are native Rex subagents via `olo agent` —
+  never the harness Agent tool, never headless print scripts, and tmux
+  only when not in a Rex pane; all Neon agents always run on `xhigh`.)
   - **Lead** (autonomous coordinator): keeps everyone aligned, makes
     architectural decisions, steers workers, reviews and integrates
     finished work, handles escalations from the minder, and authorizes
     additional review rounds when warranted.
-  - **Minder** (ALWAYS **`agy` Gemini 4 Neon on `high`**,
-    `gemini-4-neon-high` / `--effort high`): a single native `olo agent`
+  - **Minder** (ALWAYS **`agy` Gemini 4 Neon on `xhigh`**,
+    `gemini-4-neon-xhigh` / `--effort xhigh`): a single native `olo agent`
     child tab directly under the lead (`tools/dev/agents minder start`,
     following `.claude/skills/olo-agents/minder.md` and
     `minder-rules.md`). All builders, investigators, and reviewers run
@@ -388,25 +389,27 @@ are universal and non-negotiable:
     double-watch the same child.
 - **Builders, investigators, and reviewers: exact models and efforts.**
   Every helper uses one of these exact models and efforts — nothing
-  else (no Fable, no Claude Opus minders, no `max` effort for
-  reviewers/minders):
-  - **Minders:** Antigravity (`agy`), **Gemini 4 Neon on `high`**
-    (`gemini-4-neon-high`, `--effort high`). Always `agy` Neon 4 `high`.
-  - **Builders:** Antigravity (`agy`), **Gemini 4 Neon on `high`**
-    (`gemini-4-neon-high`, `--effort high`; Ben, 2026-11-27: Neon 4
-    builders run on `high`, while reviewers and the lead run on `xhigh`).
+  else (no Fable, no Claude Opus minders; Ben, 2026-11-28: every Neon
+  agent always runs on `xhigh`, and every Claude Opus 5.5 agent always
+  runs on `max` with auto-memory disabled):
+  - **Minders:** Antigravity (`agy`), **Gemini 4 Neon on `xhigh`**
+    (`gemini-4-neon-xhigh`, `--effort xhigh`; Ben, 2026-11-28: all Neon
+    agents always run on `xhigh`).
+  - **Builders:** **Claude Opus 5.5 on `max`** (`claude-opus-5-5`,
+    `--effort max`, with `"autoMemoryEnabled": false` +
+    `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`; Ben, 2026-11-28).
     Started, watched, and steered with `tools/dev/agents` (the
     `olo-agents` skill), **at most four active builders at once** (across
     worktrees), each scoped to its own crate(s) so none clobbers another.
     Builders never start subagents of their own (the tooling refuses via
-    `OLO_SUBAGENT`, and their brief forbids it); they may run
-    `claude`/`codex`/`agy` only when their task is about testing those
-    CLIs. When a builder finishes and clears review, the lead reads the
-    whole diff, runs its tests, inspects any visual changes, and commits
-    it.
+    `OLO_SUBAGENT`, disables `Agent`/`Workflow` tools, and their brief
+    forbids it); they may run `claude`/`codex`/`agy` only when their
+    task is about testing those CLIs. When a builder finishes and clears
+    review, the lead reads the whole diff, runs its tests, inspects any
+    visual changes, and commits it.
   - **Second investigator** (`tools/dev/agy-help BRIEF.md`, the
     `olo-debug-help` skill): Antigravity (`agy`), **Gemini 4 Neon on
-    `high`**, for root-causing hard bugs in parallel.
+    `xhigh`**, for root-causing hard bugs in parallel.
   - **Code reviewers (every change, max 2 rounds each):**
     1. **Codex Astra 6.2 on `xhigh`** (`gpt-6.2-astra`,
        `model_reasoning_effort="xhigh"`) via `tools/dev/astra-review`.
@@ -421,9 +424,10 @@ are universal and non-negotiable:
        for screenshots + `tools/dev/agy-review` for code).
     2. **Codex Astra 6.2 on `xhigh`** (`tools/dev/astra-review` for
        code).
-    3. **Claude Opus 5.5 on `xhigh`** (`claude-opus-5-5`,
-       `--effort xhigh`) via `tools/dev/opus-look` for visual design
-       review of screenshots.
+    3. **Claude Opus 5.5 on `max`** (`claude-opus-5-5`, `--effort max`,
+       with `"autoMemoryEnabled": false` +
+       `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) via `tools/dev/opus-look` for
+       visual design review of screenshots.
     Changes with no visual design work use only the `agy` (`xhigh`) and
     `codex` (`xhigh`) reviewers.
 - **Reliably sending & submitting messages to subagents.**

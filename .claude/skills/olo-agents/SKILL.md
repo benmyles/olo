@@ -1,9 +1,9 @@
 ---
 name: olo-agents
-description: "Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead (xhigh) -> Minder (agy Gemini 4 Neon high) -> Builders & Second Investigator (agy Gemini 4 Neon high, max 4 builders at once), Code Reviewers (Codex Astra 6.2 xhigh + agy Gemini 4 Neon xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 xhigh alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations."
+description: "Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead (agy Neon 4 xhigh) -> Minder (agy Neon 4 xhigh) -> Builders (Claude Opus 5.5 max, auto-memory off, max 4 at once) & Second Investigator (agy Neon 4 xhigh), Code Reviewers (Codex Astra 6.2 xhigh + agy Neon 4 xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 max, auto-memory off, alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations."
 ---
 
-# Subagents: Lead ▸ Minder (`agy` Neon 4 `high`) ▸ Builders & Reviewers
+# Subagents: Lead ▸ Minder (`agy` Neon 4 `xhigh`) ▸ Builders (`Opus 5.5 max`) & Reviewers
 
 Every helper runs as a native Rex child tab through `olo agent` (never the harness Agent tool, never headless print scripts; tmux only where there is no Rex pane).
 
@@ -11,18 +11,18 @@ Every helper runs as a native Rex child tab through `olo agent` (never the harne
 
 ```text
 Lead (autonomous coordinator, agy Gemini 4 Neon at xhigh)
-└── minder  (ALWAYS agy, Gemini 4 Neon at high: gemini-4-neon-high)
-    ├── builders       (agy, Gemini 4 Neon at high: gemini-4-neon-high, max 4 at once)
-    ├── investigator   (agy, Gemini 4 Neon at high: tools/dev/agy-help)
+└── minder  (ALWAYS agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
+    ├── builders       (claude, Opus 5.5 at max, auto-memory off, max 4 at once)
+    ├── investigator   (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
     ├── code review 1  (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
     ├── code review 2  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
     └── visual design  (changes with visual design work use ALL THREE reviewers:
-                        agy-look [Neon 4 xhigh] + opus-look [Opus 5.5 xhigh]
+                        agy-look [Neon 4 xhigh] + opus-look [Opus 5.5 max, auto-memory off]
                         + astra-review [Astra 6.2 xhigh] & agy-review [Neon 4 xhigh])
 ```
 
-- **Minders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`, `--effort high`). Started directly under the lead with `tools/dev/agents minder start [BRIEF.md]`. All builders, investigators, and reviewers run as child tabs under the minder.
-- **Builders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`, `--effort high`; reviewers and the lead run on `xhigh`). **At most four active builders at once** (across worktrees), each scoped to its own crate(s) so none clobbers another. Builders get `OLO_SUBAGENT=<name>` and cannot spawn subagents of their own.
+- **Minders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`, `--effort xhigh`; Ben, 2026-11-28: all Neon agents always run on `xhigh`). Started directly under the lead with `tools/dev/agents minder start [BRIEF.md]`. All builders, investigators, and reviewers run as child tabs under the minder.
+- **Builders:** ALWAYS **Claude Opus 5.5 on `max`** (`claude-opus-5-5`, `--effort max`, `"autoMemoryEnabled": false` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`; Ben, 2026-11-28: all Opus 5.5 agents always run on `max` with auto-memory disabled). **At most four active builders at once** (across worktrees), each scoped to its own crate(s) so none clobbers another. Builders get `OLO_SUBAGENT=<name>` and `--disallowed-tools Agent Workflow` so they cannot spawn subagents of their own.
 - **Code Reviews (non-visual and visual changes, max 2 rounds each):**
   1. **Codex Astra 6.2 on `xhigh`** (`tools/dev/astra-review [--about "..."] [--tree DIR] [--no-wait] --working [PATH…] | FROM..TO [PATH…]`)
   2. **Antigravity Gemini 4 Neon on `xhigh`** (`tools/dev/agy-review [--about "..."] [--tree DIR] [--no-wait] --working [PATH…] | FROM..TO [PATH…]`)
@@ -30,8 +30,8 @@ Lead (autonomous coordinator, agy Gemini 4 Neon at xhigh)
 - **Visual Design Reviews (any change with visual design work — all three reviewers):**
   1. **Antigravity Gemini 4 Neon on `xhigh`**: `tools/dev/agy-look` (pixel-level screenshot review) + `tools/dev/agy-review` (code review)
   2. **Codex Astra 6.2 on `xhigh`**: `tools/dev/astra-review` (code review)
-  3. **Claude Opus 5.5 on `xhigh`**: `tools/dev/opus-look` (product/visual design review of screenshots)
-- **Claude auto-memory always disabled (Ben, 2026-11-28):** Anytime a Claude agent is launched (`claude`, `olo agent start claude`, `tools/dev/opus-look`), ALWAYS set `"autoMemoryEnabled": false` (`--settings '{"autoMemoryEnabled":false}'` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, or `"autoMemoryEnabled": false` in its settings file — `--restricted` ignores `~/.claude/settings.json`). `tools/dev/agents::launch_opus` enforces this automatically.
+  3. **Claude Opus 5.5 on `max`** (auto-memory disabled): `tools/dev/opus-look` (product/visual design review of screenshots)
+- **Claude auto-memory always disabled & Opus 5.5 always `max` (Ben, 2026-11-28):** Anytime a Claude Opus 5.5 agent is launched (`claude`, `olo agent start claude`, builders via `tools/dev/agents start`, or `tools/dev/opus-look`), ALWAYS use `--effort max` AND ALWAYS set `"autoMemoryEnabled": false` (`--settings '{"autoMemoryEnabled":false}'` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, or `"autoMemoryEnabled": false` in its settings file — `--restricted` ignores `~/.claude/settings.json`). `tools/dev/agents` enforces this automatically for both `launch_claude_builder` and `launch_opus`.
 - **Escalation after 2 rounds:** Each builder gets at most 2 review rounds per reviewer by default. If critical outstanding issues remain after 2 rounds, the minder escalates to the lead (`olo agent escalate "..."`) so the lead can decide whether the builder misaligned, whether the design needs rethinking, how to steer it, and whether to authorize additional review rounds.
 
 ## Monitoring the Minder & Active Watches (Mandatory)
@@ -51,11 +51,11 @@ Lead (autonomous coordinator, agy Gemini 4 Neon at xhigh)
 ## Commands (`tools/dev/agents`)
 
 ```sh
-# Lead: start and talk to the minder (agy Neon 4 high)
+# Lead: start and talk to the minder (agy Neon 4 xhigh)
 tools/dev/agents minder start [BRIEF.md] [--name minder]
 tools/dev/agents minder peek|log|say|stop
 
-# Minder: start / resume / steer / approve / stop builders (agy Neon 4 high, max 4 at once)
+# Minder: start / resume / steer / approve / stop builders (Claude Opus 5.5 max, auto-memory off, max 4 at once)
 tools/dev/agents start [--tree DIR] NAME CRATE BRIEF.md
 tools/dev/agents resume NAME [--result FILE] [--session ID] "TEXT…"
 tools/dev/agents list

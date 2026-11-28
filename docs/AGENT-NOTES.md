@@ -4507,19 +4507,23 @@ instead, and set reasoning effort via `-c model_reasoning_effort="<LEVEL>"`.
 Rex's `olo agent start codex` maps `--full-auto` to `-a on-request -s
 workspace-write` automatically unless `-a`/`-s` are specified explicitly.
 
-**Multi-lead isolation & `agy` Neon 4 `high` minder in `tools/dev/agents`**
-(2026-11-27): multiple leads (e.g. `~/src/olo` and `~/src/olo.webv2`)
-share `/var/tmp/olo-agents`. `tools/dev/agents` filters `list`, `room`,
-`watch`, `tidy`, and `sweep_builds` to helpers owned by the caller's
-`olo agent` subtree and checkout root (`is_ours`), skipping non-helper
-files like `tmux.conf`, so another lead's workers never block `room()` or
-get tidied. Under the Lead ▸ Minder (`agy` Neon 4 `high`,
-`tools/dev/agents minder start`, `OLO_MINDER` set) ▸ Builders (`agy` Neon
-4 `xhigh`) + Reviewers (`astra-review` Codex Astra 6.2 `xhigh`,
-`agy-review` Agy Neon 4 `xhigh`, and `opus-look` Claude Opus 5.5 `xhigh`
-for visual changes) flow, all child tabs launched by the minder nest
-cleanly beneath the minder in Rex, and `tools/dev/agents` no longer
-spawns legacy Claude Opus `max` auto-minders. **Lead monitors the minder
+**Multi-lead isolation & `agy` Neon 4 `xhigh` minder in `tools/dev/agents`**
+(2026-11-27, updated 2026-11-28: all Neon agents always run on `xhigh`;
+all Claude Opus 5.5 agents always run on `max` with auto-memory disabled,
+and new builders use Claude Opus 5.5 `max`): multiple leads (e.g.
+`~/src/olo` and `~/src/olo.webv2`) share `/var/tmp/olo-agents`.
+`tools/dev/agents` filters `list`, `room`, `watch`, `tidy`, and
+`sweep_builds` to helpers owned by the caller's `olo agent` subtree and
+checkout root (`is_ours`), skipping non-helper files like `tmux.conf`,
+so another lead's workers never block `room()` or get tidied. Under the
+Lead (`agy` Neon 4 `xhigh`) ▸ Minder (`agy` Neon 4 `xhigh`,
+`tools/dev/agents minder start`, `OLO_MINDER` set) ▸ Builders (Claude
+Opus 5.5 `max`, auto-memory off, max 4 at once) + Reviewers
+(`astra-review` Codex Astra 6.2 `xhigh`, `agy-review` Agy Neon 4
+`xhigh`, and `opus-look` Claude Opus 5.5 `max` w/ auto-memory off for
+visual changes) flow, all child tabs launched by the minder nest cleanly
+beneath the minder in Rex, and `tools/dev/agents` no longer spawns
+legacy Claude Opus `max` auto-minders. **Lead monitors the minder
 continuously:** keep a background `olo agent watch` on the minder itself
 at all times so routine minder approvals (e.g. if the minder wraps a
 batch in `set -e` outside `minder_allow()`) are answered immediately by

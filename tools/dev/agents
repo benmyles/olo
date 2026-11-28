@@ -3,15 +3,18 @@
 (Rex's native subagent support, which needs no desktop), or a tmux session
 where there is no Rex pane.
 
-Hierarchy and exact models / efforts (Ben, 2026-11-27):
+Hierarchy and exact models / efforts (Ben, 2026-11-27 & 2026-11-28):
+  - All Neon (agy) agents ALWAYS run on `xhigh` (`gemini-4-neon-xhigh`).
+  - All Claude Opus 5.5 agents ALWAYS run on `max` (`claude-opus-5-5`, `--effort max`)
+    with auto-memory disabled (`"autoMemoryEnabled": false` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`).
   Lead  (agy, Gemini 4 Neon at xhigh)
-  └── minder  (agy, Gemini 4 Neon at high: gemini-4-neon-high)
-      ├── builders      (agy, Gemini 4 Neon at high: gemini-4-neon-high, max 4 at once)
-      ├── investigator  (agy, Gemini 4 Neon at high: tools/dev/agy-help)
+  └── minder  (agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
+      ├── builders      (claude, Opus 5.5 at max, auto-memory off, max 4 at once)
+      ├── investigator  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
       ├── code review 1 (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
       ├── code review 2 (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
       └── visual design (any visual change uses all three reviewers:
-                         agy-look [Neon 4 xhigh], opus-look [Opus 5.5 xhigh],
+                         agy-look [Neon 4 xhigh], opus-look [Opus 5.5 max, auto-memory off],
                          plus astra-review [Astra 6.2 xhigh] & agy-review [Neon 4 xhigh])
 
 If critical outstanding issues remain after 2 review rounds, the minder
@@ -19,19 +22,20 @@ escalates to the lead to assess alignment / design / steering and optionally
 authorize additional review rounds.
 
   agents minder start [BRIEF.md] [--name NAME]
-                                     start the agy Neon 4 high minder as a child
+                                     start the agy Neon 4 xhigh minder as a child
                                      tab directly under the lead (OLO_MINDER set,
                                      so it can launch/watch/approve/review
                                      builders and reviewers under itself)
   agents start [--tree DIR] NAME CRATE BRIEF.md
-                                     start a builder (agy Neon 4 high) on CRATE
-                                     with the task in BRIEF.md; at most 4 at once
-  agents investigate BRIEF.md [DIR]  start a second investigator (agy Neon 4 high;
+                                     start a builder (Claude Opus 5.5 max,
+                                     auto-memory off) on CRATE with the task in
+                                     BRIEF.md; at most 4 at once
+  agents investigate BRIEF.md [DIR]  start a second investigator (agy Neon 4 xhigh;
                                      tools/dev/agy-help is this)
   agents look [--by gemini|opus] [--about TEXT] [--no-wait] PICTURE…
                                      visual review of screenshots: Neon 4 xhigh
-                                     (tools/dev/agy-look) or Opus 5.5 xhigh
-                                     (--by opus: tools/dev/opus-look)
+                                     (tools/dev/agy-look) or Opus 5.5 max
+                                     (--by opus: tools/dev/opus-look, auto-memory off)
   agents review [--by astra|agy] [--about TEXT] [--tree DIR] [--dry-run] [--no-wait] FROM..TO [PATH…]
   agents review [--by astra|agy] [--about TEXT] [--tree DIR] [--dry-run] [--no-wait] --working [PATH…]
                                      code review: Codex Astra 6.2 at xhigh
@@ -77,21 +81,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 HOME = os.environ.get("OLO_AGENTS_DIR") or "/var/tmp/olo-agents"
 SOCKET = "olo-agents"
 MOST = 4
-# agy code and visual reviewers (and the lead): Gemini 4 Neon at xhigh.
+# All Neon (agy) agents ALWAYS run on xhigh (Ben, 2026-11-28).
 MODEL = "gemini-4-neon-xhigh"
-# Builders and investigators: agy Gemini 4 Neon at high (Ben, 2026-11-27).
-BUILDER_MODEL = "gemini-4-neon-high"
-BUILDER_EFFORT = "high"
-# Minders: ALWAYS agy Gemini 4 Neon at high (Ben, 2026-11-27).
-MINDER_MODEL = "gemini-4-neon-high"
-MINDER_EFFORT = "high"
+# All Claude Opus 5.5 agents ALWAYS run on max with auto-memory disabled (Ben, 2026-11-28).
+OPUS = "claude-opus-5-5"
+OPUS_EFFORT = "max"
+# Builders: Claude Opus 5.5 at max with auto-memory disabled (Ben, 2026-11-28).
+BUILDER_CLI = "claude"
+BUILDER_MODEL = OPUS
+BUILDER_EFFORT = OPUS_EFFORT
+# Minders: ALWAYS agy Gemini 4 Neon at xhigh (Ben, 2026-11-28).
+MINDER_MODEL = "gemini-4-neon-xhigh"
+MINDER_EFFORT = "xhigh"
 MINDER_GUIDE = os.path.join(ROOT, ".claude/skills/olo-agents/minder.md")
 MINDER_RULES = os.path.join(ROOT, ".claude/skills/olo-agents/minder-rules.md")
 BOARD_BIN = os.path.join(ROOT, "tools/dev/agent-board")
-# Visual design reviewer (changes involving visual design work use all three
-# reviewers: agy Neon 4 xhigh, codex Astra 6.2 xhigh, and claude Opus 5.5 xhigh).
-OPUS = "claude-opus-5-5"
-OPUS_EFFORT = "xhigh"
 # Code reviewer in Codex CLI: Astra 6.2 at xhigh (max 2 rounds alongside
 # agy-review at xhigh; Astra is used ONLY for code review).
 ASTRA = "gpt-6.2-astra"
@@ -189,7 +193,7 @@ def allow():
 
 
 def minder_allow():
-    """What the agy Neon 4 high minder may run without asking: read-only
+    """What the agy Neon 4 xhigh minder may run without asking: read-only
     inspection, read-only git, scoped `olo agent` coordination subcommands
     (never `prune`, and never arbitrary `olo agent start` — launches go
     through `tools/dev/agents` wrappers), and the helper/reviewer tools."""
@@ -210,7 +214,7 @@ def settings(folders, commands=True, own=()):
       commands=True     builder / investigator (READING + CARGO + GIT + TOOLS)
       commands="review" agy code reviewer (READING_RO + GIT, write_file in own only, Default mode)
       commands="read"   agy picture look (READING_RO, write_file in own only, Default mode)
-      commands="minder" agy Neon 4 high minder (orchestrates builders & reviewers, write_file in own only, Default mode)
+      commands="minder" agy Neon 4 xhigh minder (orchestrates builders & reviewers, write_file in own only, Default mode)
     """
     own_real = [os.path.realpath(d) for d in own]
     # Never emit a write_file deny on an ancestor of an allowed `own` dir
@@ -1167,7 +1171,7 @@ def session(name, cwd, env, program, native=None, subagent=True):
     """Where one agent's program runs, nothing of the person's screen in
     its reach: a child tab of the caller's Rex tab (`native`: what `olo
     agent start` is asked for, its agent first), or a tmux session of
-    its own (`program`). Under the new Lead ▸ Minder (agy Neon 4 high) ▸
+    its own (`program`). Under the new Lead ▸ Minder (agy Neon 4 xhigh) ▸
     Builders/Reviewers flow, minders run with `subagent=False` and
     `OLO_MINDER=<name>` so they can orchestrate child agents under their
     own tab, while builders/reviewers/investigators run with
@@ -1224,8 +1228,52 @@ def session(name, cwd, env, program, native=None, subagent=True):
 CLAUDE_NO_MEMORY = json.dumps({"autoMemoryEnabled": False}, separators=(",", ":"))
 
 
+def claude_builder_settings(folders, own=()):
+    """Settings JSON for a Claude Opus 5.5 max builder: ALWAYS disables Claude
+    auto-memory (`autoMemoryEnabled: false`), disables the rust-analyzer plugin
+    (Olo builds/checks with jato/cargo), pre-allows Olo's safe builder prefixes,
+    and denies forbidden git/system/subagent commands."""
+    yes = [f"Bash({c}:*)" for c in allow()] + [f"Bash({c})" for c in allow()]
+    yes += [f"Read(//{f.lstrip('/')}/**)" for f in folders]
+    yes += [f"Edit(//{d.lstrip('/')}/**)" for d in own] + [f"Write(//{d.lstrip('/')}/**)" for d in own]
+    deny = [f"Bash({c}:*)" for c in DENY] + [f"Bash({c})" for c in DENY]
+    return {
+        "autoMemoryEnabled": False,
+        "permissions": {"allow": yes, "deny": deny},
+        "enabledPlugins": {"rust-analyzer-lsp@claude-plugins-official": False},
+    }
+
+
+def launch_claude_builder(name, d, cwd, others, target=None, again=None):
+    """Claude Opus 5.5 at max, for a builder: working in `cwd` (and reading
+    `d` and `others`), with auto-memory disabled (`autoMemoryEnabled: false` in
+    settings + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), `Agent`/`Workflow` tools
+    disabled so builders cannot spawn subagents, and `acceptEdits` mode."""
+    folders = list(dict.fromkeys([cwd, d, *others]))
+    settings_path = os.path.join(d, "settings.json")
+    json.dump(claude_builder_settings(folders, own=[d, *others]), open(settings_path, "w"), indent=1)
+    env = ["CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"]
+    if target:
+        env.append(f"CARGO_TARGET_DIR={target}")
+    add = [a for x in folders[1:] for a in ("--add-dir", x)]
+    first = f"Read {d}/brief.md (the rules, then your task) and do what it says."
+    taken_up = []
+    if again:
+        taken_up, first = ["--resume", again[0]], again[1]
+    base = [
+        "claude", "--model", BUILDER_MODEL, "--effort", BUILDER_EFFORT,
+        "--permission-mode", "acceptEdits",
+        "--strict-mcp-config",
+        "--disallowed-tools", "Agent", "Workflow",
+        "--settings", settings_path,
+        *add, *taken_up,
+    ]
+    session(name, cwd, env, [*base, "--", first],
+            native=[*base, "--trust", "--prompt", first])
+
+
 def launch_opus(name, cwd, brief):
-    """Opus 5.5 at xhigh, for a visual design review: the Claude CLI in a
+    """Opus 5.5 at max, for a visual design review: the Claude CLI in a
     child tab here, able to read and write files in `cwd` and to do nothing
     else. Always disables Claude auto-memory explicitly (`--settings` +
     `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) because `--restricted` ignores
@@ -1275,7 +1323,7 @@ def launch_agy_review(name, cwd, tree):
 
 
 def launch_minder(name, d, cwd):
-    """The minder: ALWAYS agy Gemini 4 Neon at high, directly under the lead
+    """The minder: ALWAYS agy Gemini 4 Neon at xhigh, directly under the lead
     (`Lead ▸ minder ▸ builders & reviewers`). Runs with OLO_MINDER set (not
     OLO_SUBAGENT) and Default mode (`"agentMode": ""` + `--no-auto`) +
     `write_file` restricted to `d` (never denying ancestor HOME)."""
@@ -1290,11 +1338,11 @@ def launch_minder(name, d, cwd):
             subagent=False)
 
 
-def launch(name, d, cwd, others, target=None, commands=True, again=None, model=BUILDER_MODEL):
+def launch(name, d, cwd, others, target=None, commands=True, again=None, model=MODEL):
     """An agy of its own in a child tab, working in `cwd` (and reading `d`,
     its folder here, and `others`): started on its brief, with what it may
-    run, and nothing of the person's screen in reach. Builders default to
-    `BUILDER_MODEL` (Neon 4 high); agy reviewers pass `model=MODEL` (xhigh)."""
+    run, and nothing of the person's screen in reach. All Neon agents always
+    run on `MODEL` (Gemini 4 Neon at xhigh)."""
     folders = list(dict.fromkeys([cwd, d, *others]))
     json.dump(settings(folders, commands, own=[d, *others]), open(os.path.join(d, "settings.json"), "w"), indent=1)
     env = [f"CARGO_TARGET_DIR={target}"] if target else []
@@ -1446,7 +1494,7 @@ def _open_initial_board(name, d, role, crate="", task_text="", board_file=None):
 
 
 def start_minder(brief=None, name="minder"):
-    """Start the agy Neon 4 high minder directly under the lead tab."""
+    """Start the agy Neon 4 xhigh minder directly under the lead tab."""
     refuse_nested()
     if os.environ.get("OLO_MINDER"):
         sys.exit("agents: you are already a minder; minders do not start nested minders")
@@ -1516,8 +1564,8 @@ def start(name, crate, brief, tree=None):
         if not is_crate:
             rules = rules.replace(f"- Change files under {crate}/ only", f"- Change {crate} only (it isn't a crate: build nothing of Olo's unless the task says how it is checked)")
         open(os.path.join(d, "brief.md"), "w").write(rules + task + "\n")
-        save_meta(name, {"crate": crate, "package": package, "root": ROOT, "worktree": repo, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
-        launch(name, d, repo, [], os.path.join(d, "target"))
+        save_meta(name, {"cli": BUILDER_CLI, "crate": crate, "package": package, "root": ROOT, "worktree": repo, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
+        launch_claude_builder(name, d, repo, [], os.path.join(d, "target"))
         _open_initial_board(name, d, "Builder", crate, task)
     print(f"agents: {name} started on {crate} ({package}) in {repo}; its folder is {d}")
     print(f"agents: now wait on `olo agent watch --all` or `tools/dev/agents watch` to hear from it")
@@ -2130,7 +2178,7 @@ def list_():
         st = "done" if st == "idle" and finished(n) else st
         st = "starting" if st == "idle" and time.time() - m.get("started", 0) < 30 else st
         on = (
-            "minder (agy neon 4 high)" if m.get("role") == "minder"
+            "minder (agy neon 4 xhigh)" if m.get("role") == "minder"
             else m.get("crate")
             or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"code ({m['review_of']})" if m.get("review_of") else f"a bug ({m.get('work', '?')})")
         )
@@ -2964,7 +3012,10 @@ def resume(name, text, result=None, session=None):
             if not (session and m.get("crate")):
                 sys.exit(f"agents: {name} couldn't be brought back ({(r.stderr or r.stdout).strip()[:300]})" + ("" if session else f"; and its conversation's id isn't known here: `agents resume {name} --session ID …` with it (the service's events.jsonl has it as cli_session_id), or start it anew with a brief that says what it did"))
             d = folder(name)
-            launch(name, d, repo, [], os.path.join(d, "target"), again=(session, text))
+            if m.get("cli") == "claude":
+                launch_claude_builder(name, d, repo, [], os.path.join(d, "target"), again=(session, text))
+            else:
+                launch(name, d, repo, [], os.path.join(d, "target"), again=(session, text), model=MODEL)
             m = meta(name)
             m.update({"seen": "", "seen_state": "", "said_at": told_at, "cli_session": session, "root": ROOT, "worktree": repo})
             m.pop("ended", None)

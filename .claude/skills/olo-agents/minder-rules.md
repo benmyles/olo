@@ -1,4 +1,4 @@
-# Approval & Escalation Rules for the Minder (`agy` Gemini 4 Neon `high`)
+# Approval & Escalation Rules for the Minder (`agy` Gemini 4 Neon `xhigh`)
 
 You mind all Olo subagents nested under your Rex tab (`Lead ▸ minder ▸ builders, investigators & reviewers`). The lead is your parent and receives your escalations via `olo agent escalate "TEXT"`.
 
