@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:47.98px){.from48{display:none}}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".2"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="frame" x1="0" y1="0" x2="32" y2="27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#eceef2"/><stop offset="1" stop-color="#b9bcc6"/></linearGradient>
+<linearGradient id="pane" x1="3" y1="3" x2="29" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f4f5f8"/><stop offset="1" stop-color="#d5d8df"/></linearGradient>
+<linearGradient id="tabg" x1="0" y1="-5" x2="14" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe066"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M8 56.5L40 48.5L44 52L12 60.4Z"/>
+<g transform="matrix(1 -.25 0 1 24.5 16.5)">
+<path class="o" fill="#8d919c" d="M0 0H32V27H0Z" transform="translate(-2.6 -1.95)"/>
+<path class="o" fill="url(#tabg)" d="M0 -4.8H12.6L14.6 0H0Z"/>
+<path class="o" fill="url(#frame)" d="M0 0H32V27H0Z"/>
+<rect x="2.6" y="2.6" width="26.8" height="21.8" fill="#1b1b1f" fill-opacity=".45"/><rect x="3.2" y="3.2" width="25.6" height="20.6" fill="url(#pane)"/>
+<path class="from48" fill="#fff" fill-opacity=".55" d="M3.2 3.2H17L5 23.8H3.2Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".5" d="M.8 26V.8H31"/>
+</g>
+<g transform="matrix(1 -.25 0 1 8 28)">
+<path class="o" fill="#8d919c" d="M0 0H32V27H0Z" transform="translate(-2.6 -1.95)"/>
+<path class="o" fill="url(#tabg)" d="M0 -4.8H12.6L14.6 0H0Z"/>
+<path class="o" fill="url(#frame)" d="M0 0H32V27H0Z"/>
+<rect x="2.6" y="2.6" width="26.8" height="21.8" fill="#1b1b1f" fill-opacity=".45"/><rect x="3.2" y="3.2" width="25.6" height="20.6" fill="url(#pane)"/>
+<path class="from48" fill="#fff" fill-opacity=".55" d="M3.2 3.2H17L5 23.8H3.2Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".5" d="M.8 26V.8H31"/>
+</g>
+</svg>

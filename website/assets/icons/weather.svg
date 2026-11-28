@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:31.98px){.from32{display:none}}@media (max-width:47.98px){.from48{display:none}}</style>
 <defs>
 <radialGradient id="sun" cx="18.93" cy="16.42" r="15.3" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff6b0"/><stop offset="0.5" stop-color="#ffd21a"/><stop offset="1" stop-color="#f2a000"/></radialGradient>
 <linearGradient id="ray" x1="5.16" y1="3.16" x2="39.84" y2="37.84" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>

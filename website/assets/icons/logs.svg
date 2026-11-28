@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:47.98px){.from48{display:none}}</style>
 <defs>
 <radialGradient id="shadow" cx="32" cy="59" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.33) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
 <clipPath id="book"><path d="M3.2 27.4Q3.2 26 4.56 25.66L45.84 15.34Q47.2 15 47.83 16.25L59.57 39.75Q60.2 41 60.2 42.4L60.2 42.6Q60.2 44 58.84 44.34L17.56 54.66Q16.2 55 15.57 53.75L3.83 30.25Q3.2 29 3.2 27.6Z"/></clipPath>

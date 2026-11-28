@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- The User's Guide: a manual standing three-quarter on, its cover in
+     Olo blue with the yellow band that wraps round its spine and Olo's
+     ring under it, the cream page block seen along its top; lit from the
+     top left. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="34" y1="55" x2="35.4" y2="61.6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".34"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="cover" x1="0" y1="0" x2="34" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6aa0ff"/><stop offset=".42" stop-color="#2d66e3"/><stop offset="1" stop-color="#1a3f9e"/></linearGradient>
+<linearGradient id="spine" x1="0" y1="0" x2="0" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3567d4"/><stop offset="1" stop-color="#173783"/></linearGradient>
+<linearGradient id="pages" x1="0" y1="0" x2="34" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fffbf2"/><stop offset="1" stop-color="#e8dcc2"/></linearGradient>
+<linearGradient id="band" x1="0" y1="8" x2="0" y2="16" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe680"/><stop offset="1" stop-color="#ffc400"/></linearGradient>
+<linearGradient id="band-side" x1="0" y1="8" x2="0" y2="16" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f2c637"/><stop offset="1" stop-color="#c99600"/></linearGradient>
+<linearGradient id="gleam" x1="0" y1="0" x2="34" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset=".5" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+<!-- Its shadow on the desk, falling to the bottom right. -->
+<path fill="url(#shadow)" d="M11.5 56.5L52.5 50.5L58 53.8L17 62Z"/>
+<!-- The spine, facing left: 7 deep, the band round it. -->
+<g transform="matrix(-1 -.357 0 1 18.5 13)">
+<path class="o" fill="url(#spine)" d="M0 0H7V46H0Z"/>
+<path fill="url(#band-side)" d="M0 8H7V16H0Z"/>
+<path fill="#000" fill-opacity=".18" d="M0 15.2H7V16H0Z"/>
+</g>
+<!-- The top: the boards' edges, and the page block between them. -->
+<g transform="matrix(1 -.25 -1 -.357 18.5 13)">
+<path class="o" fill="url(#pages)" d="M0 0H34V7H0Z"/>
+<path fill="#1f4bb8" d="M0 0H34V1.1H0ZM0 5.9H34V7H0Z"/>
+<g fill="none" stroke="#c9b994" stroke-width=".45"><path d="M1 2.3H33M1 3.5H33M1 4.7H33"/></g>
+</g>
+<!-- The cover. -->
+<g transform="matrix(1 -.25 0 1 18.5 13)">
+<path class="o" fill="url(#cover)" d="M0 0H32.8Q34 0 34 1.2V44.8Q34 46 32.8 46H0Z"/>
+<path fill="url(#band)" d="M0 8H34V16H0Z"/>
+<path fill="#9a7300" fill-opacity=".45" d="M0 15.2H34V16H0Z"/>
+<!-- Olo's ring. -->
+<circle cx="17" cy="30.5" r="7.2" fill="none" stroke="#fff" stroke-width="3.6"/>
+<path fill="none" stroke="#ffcb00" stroke-width="3.6" d="M17 23.3A7.2 7.2 0 0 1 24.2 30.5"/>
+<!-- A gleam across it, and its lit edges. -->
+<path fill="url(#gleam)" d="M0 0H18L4 46H0Z"/>
+<path class="h" stroke-opacity=".6" stroke-width=".6" d="M.7 45.3V.7H32.6"/>
+</g>
+</svg>

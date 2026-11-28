@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (min-width:32px){.upto24{display:none}}@media (max-width:31.98px){.from32{display:none}}@media (max-width:47.98px){.from48{display:none}}</style>
+<defs>
+<radialGradient id="shadow" cx="26" cy="59.8" r="20" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.03) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="magnet" x1="4" y1="24" x2="14" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7f8ba6"/><stop offset="1" stop-color="#3a4258"/></linearGradient>
+<linearGradient id="basket" x1="12" y1="12" x2="28" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c9d2e4"/><stop offset="1" stop-color="#7582a0"/></linearGradient>
+<linearGradient id="rim" x1="18" y1="8" x2="34" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f8fc"/><stop offset=".5" stop-color="#bcc6da"/><stop offset="1" stop-color="#8490ac"/></linearGradient>
+<radialGradient id="cap" cx="22.6" cy="29.6" r="8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#aab3c8"/><stop offset="1" stop-color="#2b303d"/></radialGradient>
+<radialGradient id="cone" cx="24.4" cy="33" r="20" gradientUnits="userSpaceOnUse" gradientTransform="translate(14.64 0) scale(.4 1)"><stop offset="0" stop-color="#6d7890"/><stop offset=".6" stop-color="#3b4254"/><stop offset="1" stop-color="#232733"/></radialGradient>
+<linearGradient id="wave" x1="40" y1="12" x2="56" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd83a"/><stop offset=".5" stop-color="#ffb21e"/><stop offset="1" stop-color="#f17a06"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="26" cy="59.8" rx="20" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="url(#magnet)" d="M12 23.5L6.4 25.5Q4 26.5 4 29.1L4 37.1Q4 39.7 6.4 40.5L12 42.5Z"/>
+<path class="o" fill="url(#basket)" d="M11 25L24 8.5L27 57.5L11 41Z"/>
+<ellipse class="o" cx="26" cy="33" rx="11.4" ry="25" fill="url(#rim)"/>
+<ellipse cx="26.6" cy="33" rx="9.3" ry="21.8" fill="#1b1b1f"/>
+<ellipse cx="26.9" cy="33" rx="8.6" ry="20.8" fill="url(#cone)"/>
+<ellipse class="from32" cx="24.4" cy="33" rx="4.4" ry="8" fill="#14161c"/>
+<ellipse class="from32" cx="24.1" cy="32.8" rx="3.7" ry="7.2" fill="url(#cap)"/>
+<path class="h from48" stroke-opacity=".6" stroke-width=".5" d="M22.4 15.4A8.6 20.8 0 0 0 19.2 30"/>
+<g class="from32" fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="5.2" d="M42.53 27.5A11 11 0 0 1 42.53 38.5M47.92 22.93A18 18 0 0 1 47.92 43.07M52.97 17.95A25 25 0 0 1 52.97 48.05"/><path stroke="url(#wave)" stroke-width="3.4" d="M42.53 27.5A11 11 0 0 1 42.53 38.5M47.92 22.93A18 18 0 0 1 47.92 43.07M52.97 17.95A25 25 0 0 1 52.97 48.05"/></g>
+<g class="upto24" fill="none" stroke-linecap="round" stroke="#ffb21e" stroke-width="4.4"><path d="M44.02 26.11A13 13 0 0 1 44.02 39.89M51.61 19.48A23 23 0 0 1 51.61 46.52"/></g>
+</svg>

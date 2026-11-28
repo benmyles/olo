@@ -6,6 +6,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Website User's Guide dark spread with live theme tabs (dark)
+
+*11:37* — Dark mode spread with paired dark look tabs and live Figure 5-2 preview.
+
+![Website User's Guide dark spread with live theme tabs (dark)](2026-11-28/113719-website-user-s-guide-dark-spread-with-live-theme.png)
+
+### Website User's Guide lightbox spread and Full Screen bar (light)
+
+*11:37* — OS/2 Warp-inspired 30-page manual with 48pt Olo toolbar, Full Screen toggle, solid backdrop, and caption-aligned enlarge marks.
+
+![Website User's Guide lightbox spread and Full Screen bar (light)](2026-11-28/113717-website-user-s-guide-lightbox-spread-and-full-sc.png)
+
+### Website hero left-aligned with native default frame (light)
+
+*11:37* — Aligned hero copy flush on the Olo logo column with native default button frame and lowered glow crest.
+
+![Website hero left-aligned with native default frame (light)](2026-11-28/113715-website-hero-left-aligned-with-native-default-fr.png)
+
 ### Rex Activity sidebar Agent Screens & embedded ScreenPane (dark)
 
 *09:05* — Dark mode view of Rex Activity sidebar Agent Screens with embedded ScreenPane.

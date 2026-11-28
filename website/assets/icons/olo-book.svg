@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- The Olo Book: a cloth-bound book lying on the desk, seen from above
+     and to the front, its cover a deep red with a gold band and Olo's
+     ring stamped in it, its pages cream along the fore-edge. Lit from the
+     top left; not the blue User's Guide, which stands. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<linearGradient id="shadow" x1="32" y1="50" x2="33" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="cover" x1="8" y1="14" x2="52" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d4424a"/><stop offset=".5" stop-color="#a8222d"/><stop offset="1" stop-color="#7c1520"/></linearGradient>
+<linearGradient id="spine" x1="0" y1="34" x2="0" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#931c27"/><stop offset="1" stop-color="#5e0f18"/></linearGradient>
+<linearGradient id="pages" x1="0" y1="34" x2="0" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#ddcfb2"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe38a"/><stop offset=".55" stop-color="#e9b52c"/><stop offset="1" stop-color="#b8840f"/></linearGradient>
+</defs>
+<path d="M4 46L30 59L62 43L36 31Z" fill="url(#shadow)"/>
+<!-- The spine (front left), cloth; the foot (front right), its pages. -->
+<path class="o" d="M5 30L29 42V51L5 39Z" fill="url(#spine)"/>
+<path class="o" d="M29 42L59 27V36L29 51Z" fill="url(#pages)"/>
+<path d="M30.5 44.6L58 31M30.5 47.4L58 33.8" fill="none" stroke="#c4b48f" stroke-width=".6"/>
+<path d="M29 42L59 27V28.6L29 43.6Z" fill="#7c1520"/>
+<!-- The cover, its gold band, and the ring stamped in it. -->
+<path class="o" d="M5 30L35 15L59 27L29 42Z" fill="url(#cover)"/>
+<path d="M8.84 31.92L38.84 16.92L43.16 19.08L13.16 34.08Z" fill="url(#gold)"/>
+<g transform="matrix(.8 -.4 .8 .4 34.9 29.9)"><circle r="6.2" fill="none" stroke="url(#gold)" stroke-width="2.6"/></g>
+<!-- Its lit edges. -->
+<path d="M6.6 30L35 15.8L57.4 27" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width=".7" stroke-linecap="round"/>
+</svg>

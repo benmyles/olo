@@ -8,7 +8,8 @@ deploys it to Cloudflare (below).
 - **The hero is the desktop** with nothing open yet: Olo's own Dunes
   wallpaper (Classic's, its 21:9 band, light and dark), the mark and
   "Olo" top left (set from Sora as `tools/mkbrand.py` sets it, as Olo's
-  About box shows them), three desktop icons under Deskbar, and the
+  About box shows them), four desktop icons under Deskbar (the User's
+  Guide first), and the
   headline on the windows' grid, in the sky, its foot on the dunes'
   horizon. The wallpaper is never enlarged and never banded: lossless,
   each width resized in floating point and dithered again (below).
@@ -51,6 +52,127 @@ deploys it to Cloudflare (below).
 - **Looks** has each look's picture and, under it, its icons: sixteen of
   them as Olo draws them in each of the six icon sets, Flat too; a look
   chosen brings its own set.
+- **The User's Guide** (below) opens over the desktop as a book, from its
+  icon on the desktop, the hero's button, Deskbar and the About window.
+
+## The User's Guide
+
+*User's Guide to Olo*, a manual in the manner of the boxed software of the
+1990s (IBM's *User's Guide to OS/2 Warp*, the BeOS User's Guide): thirty
+printed pages, two covers and fourteen spreads, in six chapters with their
+edge tabs, running heads and folios, figures and captions, and four kinds of
+box: *Try This*, *Tip*, *Note* and *Shortcuts*.
+
+- `assets/manual.html` is its pages, and a page of its own that any reader
+  reads one page after another: set to read on any screen, and as printed
+  pages (500 points wide or more, with even margins and hard edges) where
+  scripts run and its column, measured as it is, has 532 points or more.
+  What its script does (Read as a Book, page 24's night link) shows only
+  where it runs; without it, page 24 points to Olo's own Night Mode. Its
+  addresses are relative to `assets/`; a picture cut to its point is a link
+  to the whole. `#book` says how many pages the edition has (`data-pages`),
+  and the back cover ends with a mark (`data-end`, its words its own).
+- `assets/manual.js` (with the page) opens it: the first time an entry to it
+  is pointed at or chosen, it fetches `manual.html` and `manual.css` and
+  sets the book in `<dialog id="manual">`, whose window (its bar, arrows,
+  plate and alert) is `site.css`'s, so it opens at once. Fetching the two
+  is one attempt with one deadline (20 s): at the deadline, at Close or
+  Cancel, or on any failure (an answer past 1 MB, read in pieces; one that
+  isn't the whole edition: every page in order, as many as `data-pages`
+  says, to the back cover's end mark) it is dropped whole, at once, its
+  fetch aborted and a stylesheet still coming taken out, and nothing is
+  built after; Try Again asks the server again, past the browser's cache.
+  Meanwhile an Olo alert window says it's opening, Cancel its default (and,
+  after 2.5 s, offers Read as a Web Page beside it); failed, it offers Try
+  Again and Read as a Web Page, the default. Full Screen can't be chosen
+  until there is a book. `#manual`, `#manual/p-N` and `#manual/ch-N` open
+  it at a page or a chapter; turning a page replaces the address, as what
+  turned it says (never a turn that follows Back or Forward, which leaves
+  the address as it found it); closing it goes back from the entry it
+  pushed (marked in `history.state`) or, for an address that came another
+  way, takes the guide's part off it, so it never leaves the site. Closing
+  is tidied at once, so it may be opened again in the same moment (the
+  dialog's own close event, a task later, then does nothing). Full Screen
+  fills the screen with the book (its frame: a `<dialog>` can't itself be
+  the fullscreen element), and Close leaves full screen too, even one still
+  being granted.
+- `assets/manual.md` is the guide for agents, linked from `index.md` and
+  `llms.txt`; Agent view names both.
+
+Two pages open at once where both fit at a size to read (a page 500 points
+wide or more, 24 points under the bar and above the screen's foot, with,
+either side, the page edges, the edge tabs, 24 points clear and a 36 × 72
+arrow 16 from the screen's edge), else one; a page narrower than that (a
+phone) is set again at a reading size, as long as it is, in a stage that
+scrolls between two bars of 44-point controls. A page is a printed page:
+everything on it is in em of a fortieth of its width, so it lays out the
+same at every size, and every page was measured to fit at 500 (a 1235 × 900
+window), 520 (1280 × 800), 594 (1440 × 900) and 680 points. Its pictures
+are the page's own (`assets/img`), at their own size, flush left on the
+measure, each cut to the part its caption is about, on the window's own
+edges between its rows and panes, and to a narrower part on a phone where
+the first doesn't fit (with its own caption where it differs). A figure is
+as wide as its picture (280 points at least), its caption balanced to it
+and, at the caption's end, on the picture's right edge, a mark that opens
+the picture whole: fitted to the screen (never enlarged), framed, its
+figure's number in a bar with Full Screen and Close where the book's are;
+a click on it, or Return, shows it at its own size, from the part the page
+showed (a phone's cut, as far as it was moved) or the place clicked, to
+move round by finger, wheel or arrow keys. The desktop on page 7 is the
+one picture reduced on the page, and its caption says so (the plate's
+doesn't promise its numbered callouts). Bold is kept for menu paths and
+an app or feature at its first mention on a spread. Pages turn as leaves
+do, on the spine, for 0.68 s, lifting no more than 12 points and shading
+the page under them toward the spine (cross-fading in a moment where
+motion is reduced, and on a phone); the bars, tabs and arrows say where
+the book is when the leaf lands. Nothing runs while the book lies open:
+the Deskbar's clock waits while a window is open over the page, and 65 s
+with the guide open, across a minute's turn, ran no timer or frame
+callback, worked out no style and laid nothing out (timers counted by
+wrapping them before the page's scripts run; Chrome's performance
+counters, headless: `--long`, below).
+
+The book is in the top layer, over the page's night light, so at night it
+warms its own pixels, its pictures with the rest (`#mn-warm`, the night
+light's multiply of `#FFB46B` at 80% as a colour matrix), fading as the
+night light does. Its backdrop is solid, the desk out of sight. Its bar has
+Light, Dark and Night of its own, and its buttons are Olo's dark ones in
+every look.
+
+Change its words in both `manual.html` and `manual.md`, as `index.html` and
+`index.md` are kept, and look at every page you change in a spread at the
+smallest size (a 1235 × 900 window), at 1280 × 800 and 1440 × 900 and on a
+phone: a page that runs over its foot is cut. Its copy was written with an
+Antigravity agent (Gemini 4 Neon) from an outline of facts checked in Olo's
+code, and set from that.
+
+Its behaviour is checked in a headless Chrome, which the check starts
+itself (`$CHROME`, else Playwright's `chrome-headless-shell`, else a
+Chromium on the PATH), serving `website/` on a free port of 127.0.0.1:
+
+```sh
+node website/tools/check-manual.mjs          # 94 checks, about four minutes
+node website/tools/check-manual.mjs --long   # and a minute at rest with it open
+node website/tools/check-manual.mjs --only back-during-turn,plate-keyboard
+```
+
+It opens a guide whose answer has no book in it, or only part of one, or
+one cut off at the back cover, says the wrong number of pages or none, is
+past 1 MB, or is a failure the browser cached; whose stylesheet fails or
+never comes; cancels one while it opens; goes Back while the pages come,
+while a page is turning (its animation held) and to a chapter's address;
+opens again from the close event and in the same moment as Close (open,
+and opening); reloads and closes; follows deep links in and out; turns
+fast both ways; Ctrl-clicks a page in the Contents (a new tab); opens a
+picture whole, fitted, and moves round it at its own size from the
+keyboard; swipes on a phone, with a second finger on the bar and across a
+listing; chooses a look; presses the default button in the dark; goes to
+and from Agent view (a row the narrower window keeps, Escape with Deskbar
+folded); reads the guide's own page with and without scripts and at 531,
+532 and 547 points and with a scroll bar's room taken; and fills the
+screen, and closes while full screen is being granted. A name it hasn't
+(`--only`) is an error. Its Chrome runs in a process group of its own, in
+a profile of its own in `/var/tmp`, removed once all of it has stopped.
 
 No framework and no build step for the page itself: `index.html`,
 `assets/site.css` and `assets/site.js`, every handler event-driven:
@@ -69,7 +191,11 @@ in both modes, and cut at their frames below their tabs: `olo-site-*.png`,
 below), the desktop's plate at the widths the page asks for,
 Dunes, DeskCalc's two pictures, the icon sets, each app's Get Info
 picture, the app icons from
-`data/icons/svg`, the mark without its contact shadow, "Olo" as a
+`data/icons/svg` (each with Olo's rule for its sizes in its own style
+sheet, as `crates/xdg/src/svg.rs` draws them: a browser draws every layer
+of a drawing at once, so `fromN` is hidden under N points and `uptoN` from
+the step after N, by the width the drawing is shown at), the mark without
+its contact shadow, "Olo" as a
 vector in the brand's two inks, and the fonts subset to what the page
 writes:
 

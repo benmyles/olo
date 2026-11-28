@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:31.98px){.from32{display:none}}@media (max-width:47.98px){.from48{display:none}}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="panel"><path d="M9 16.5Q9 15 10.45 14.64L43.55 6.36Q45 6 46.34 6.67L52.66 9.83Q54 10.5 54 12L54 48.5Q54 50 52.55 50.36L19.45 58.64Q18 59 16.66 58.33L10.34 55.17Q9 54.5 9 53Z"/></clipPath>
+<linearGradient id="top" x1="12" y1="8" x2="48" y2="16" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1f2f5"/><stop offset="1" stop-color="#cfd2d9"/></linearGradient>
+<linearGradient id="side" x1="9" y1="16" x2="18" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#777b86"/><stop offset="1" stop-color="#4a4d57"/></linearGradient>
+<linearGradient id="front" x1="0" y1="0" x2="36" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d9dbe1"/><stop offset="1" stop-color="#a7aab4"/></linearGradient>
+<linearGradient id="plate" x1="4" y1="4" x2="32" y2="36" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c6c9d1"/><stop offset="1" stop-color="#b0b3bd"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60" rx="24" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#4a4d57" d="M9 16.5Q9 15 10.45 14.64L43.55 6.36Q45 6 46.34 6.67L52.66 9.83Q54 10.5 54 12L54 48.5Q54 50 52.55 50.36L19.45 58.64Q18 59 16.66 58.33L10.34 55.17Q9 54.5 9 53Z"/>
+<g clip-path="url(#panel)">
+<path fill="url(#side)" d="M0 10L18 19L18 64L0 64Z"/>
+<path fill="url(#top)" d="M0 10L18 19L64 7.5L64 0L0 0Z"/>
+<g transform="matrix(1 -.25 0 1 18 19)">
+<path fill="url(#front)" d="M0 0H38V42H0Z"/>
+<rect x="3" y="3.2" width="30" height="33.6" rx="2" fill="#1b1b1f" fill-opacity=".55"/>
+<rect x="3.5" y="3.7" width="29" height="32.6" rx="1.6" fill="url(#plate)"/>
+<g fill="none" stroke-linecap="round"><path stroke="#4c4f59" stroke-width="2.6" d="M7.5 9.5H28.5M7.5 16.5H28.5M7.5 23.5H28.5"/><path stroke="#f03a30" stroke-width="2.6" d="M7.5 9.5H21"/><path stroke="#2fb536" stroke-width="2.6" d="M7.5 16.5H15"/><path stroke="#1f6fe8" stroke-width="2.6" d="M7.5 23.5H23.5"/></g>
+<rect class="o" x="19.6" y="6.6" width="4.4" height="5.8" rx=".8" fill="#ff5247"/>
+<rect class="o" x="13.6" y="13.6" width="4.4" height="5.8" rx=".8" fill="#46cc48"/>
+<rect class="o" x="22.1" y="20.6" width="4.4" height="5.8" rx=".8" fill="#3d8cf5"/>
+<g class="from32"><rect class="o" x="12" y="28.4" width="12" height="5.6" rx="2.8" fill="#3fc640"/><circle cx="21" cy="31.2" r="2.3" fill="#f7f8fa" stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".4"/></g>
+<path class="h from48" stroke-opacity=".6" stroke-width=".4" d="M20.2 7.3H23.4M14.2 14.3H17.4M22.7 21.3H25.9"/>
+</g>
+<path class="h from48" stroke-opacity=".6" stroke-width=".55" d="M18.6 19.1L53.2 10.45M18.3 20V58"/>
+</g>
+</svg>

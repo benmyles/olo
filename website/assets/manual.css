@@ -1,0 +1,642 @@
+/* The User's Guide to Olo: a manual of the boxed-software years, printed
+   on warm uncoated stock and bound like a paperback, opened over the
+   desktop (index.html's <dialog id="manual">, whose window is site.css's)
+   or read on its own page (manual.html). Its pages are fixed printed
+   pages: everything in them is in em of the page's own size (a fortieth of
+   its width), so a page lays out the same at every size, and only its
+   pictures keep their own size, one of their pixels to a device pixel,
+   cut to what their caption names rather than ever being scaled. On a
+   phone a page is set again at a reading size, as long as it is.
+
+   Colours: paper and ink of the manual's own, and each chapter's accent
+   (an ink for its rules and labels, a fill for what carries white type:
+   its edge tab, its opener's band). Type: Sora and Noto Sans, as the site. */
+
+/* ---------- The manual's paper and ink ---------- */
+.manual, .manual-page {
+  --m-paper: #FBF7EE;            /* uncoated book stock */
+  --m-paper-2: #F4EDDE;          /* a callout's tint, a table's band */
+  --m-well: #EFE8D8;             /* behind a picture */
+  --m-ink: #23252B;              /* charcoal */
+  --m-ink-2: #474A52;
+  --m-ink-3: #77705F;            /* running heads, folios, captions' quiet parts */
+  --m-rule: #DCD1BA;
+  --m-frame: #A39883;            /* a figure's keyline */
+  --m-code: #EFE7D5;
+  --m-edge: #EDE4D1;             /* the page block's edges */
+  --m-edge-line: #CDBF9F;
+  --m-gutter: rgba(84, 60, 18, .2);
+  --m-shade: rgba(50, 34, 8, .34);
+  --m-cover: #16181D;            /* the cover's board */
+  --m-cover-ink: #F6F1E6;
+  --m-kbd: #FFFDF7;
+  --m-kbd-edge: #8E8573;
+  /* Chapter accents (ink): cobalt, teal, amber, brick, plum, slate; and
+     their fills, the same colours, for white type. */
+  --c1: #2752C2; --c2: #0B7D84; --c3: #B86E00; --c4: #B4402B; --c5: #6A49AE; --c6: #46566B;
+  --f1: #2752C2; --f2: #0B7D84; --f3: #B86E00; --f4: #B4402B; --f5: #6A49AE; --f6: #46566B;
+  --aspect: .74;                  /* a page's width to its height */
+}
+:root[data-theme="dark"] .manual, :root[data-theme="night"] .manual,
+:root[data-theme="dark"] .manual-page, :root[data-theme="night"] .manual-page {
+  --m-paper: #1A1E26;
+  --m-paper-2: #212732;
+  --m-well: #11151C;
+  --m-ink: #ECE6D8;              /* soft ivory */
+  --m-ink-2: #C8C2B4;
+  --m-ink-3: #9A9486;
+  --m-rule: #333A47;
+  --m-frame: #4B5466;
+  --m-code: #2F3746;
+  --m-edge: #2A303B;
+  --m-edge-line: #12151B;
+  --m-gutter: rgba(0, 0, 0, .5);
+  --m-shade: rgba(0, 0, 0, .55);
+  --m-cover: #0D0F13;
+  --m-cover-ink: #F1ECE1;
+  --m-kbd: #262D39;
+  --m-kbd-edge: #6B7486;
+  /* The inks lighter, to read on the dark; the fills as deep and as
+     saturated as in the light, never greyed. */
+  --c1: #7EA2FF; --c2: #45C2C6; --c3: #EDB04A; --c4: #F08A72; --c5: #B79BF4; --c6: #A5B3C6;
+  --f1: #2B50BE; --f2: #0B7279; --f3: #A3600A; --f4: #A93B27; --f5: #6145A8; --f6: #4A5A70;
+}
+/* At night the window is warmed as the screen is, which greys a cool
+   blue: chapter 1's is bluer, to stay a dusty blue once warmed. */
+/* Its inks brighter, so that warmed, running text reads in the cream that
+   bold, the lede and the chapter's list do (bold by its weight alone). */
+:root[data-theme="night"] .manual, :root[data-theme="night"] .manual-page { --c1: #5C8DFF; --f1: #2D5BE3; --m-ink: #FFF8EC; --m-ink-2: #E2DCCF; --m-ink-3: #B3AC9B; }
+/* A chapter's accent. */
+.book [data-ch="1"], .book[data-ch="1"] { --acc: var(--c1); --acc-fill: var(--f1); }
+.book [data-ch="2"], .book[data-ch="2"] { --acc: var(--c2); --acc-fill: var(--f2); }
+.book [data-ch="3"], .book[data-ch="3"] { --acc: var(--c3); --acc-fill: var(--f3); }
+.book [data-ch="4"], .book[data-ch="4"] { --acc: var(--c4); --acc-fill: var(--f4); }
+.book [data-ch="5"], .book[data-ch="5"] { --acc: var(--c5); --acc-fill: var(--f5); }
+.book [data-ch="6"], .book[data-ch="6"] { --acc: var(--c6); --acc-fill: var(--f6); }
+.book { --acc: var(--c1); --acc-fill: var(--f1); }
+
+/* ---------- A page ---------- */
+/* (The site's focus ring is in its ink: on the paper, the paper's.) */
+.book { --ink: var(--m-ink); position: relative; color: var(--m-ink); font-family: var(--f-text); -webkit-font-smoothing: antialiased; }
+.book .page {
+  --u: calc(var(--pw) / 40);       /* the page's own unit: its margins are in it */
+  position: relative; overflow: hidden;
+  width: var(--pw); height: calc(var(--pw) / var(--aspect));
+  font-size: var(--u);
+  background: var(--m-paper);
+  color: var(--m-ink);
+  text-align: left;
+}
+/* Two pages open: the curve of the paper into the binding, darker at the
+   gutter, a breath of shade at the fore-edge. (One page alone has neither.) */
+.book .page::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.manual .book[data-mode="spread"] .page::before {
+  background:
+    linear-gradient(to var(--to-gutter, right), transparent 86%, var(--m-gutter) 99.4%),
+    linear-gradient(to var(--to-edge, left), transparent 96%, rgba(60, 40, 10, .05));
+}
+.book .recto { --to-gutter: left; --to-edge: right; }
+.book .verso { --to-gutter: right; --to-edge: left; }
+.manual .book[data-mode="spread"] .page.cover::before { background: linear-gradient(to var(--to-gutter, right), transparent 94%, rgba(0, 0, 0, .28)); }
+
+/* The type area: margins wider at the fore-edge than at the gutter. A
+   picture wider than the measure may go a little way into them. */
+.book .pg-body { position: absolute; top: 3.3em; bottom: 3.15em; overflow: clip; overflow-clip-margin: 2em; container-type: inline-size; }
+.book .recto .pg-body { left: 2.7em; right: 3.2em; }
+.book .verso .pg-body { left: 3.2em; right: 2.7em; }
+/* The running head: the chapter on a left page, the section on a right. */
+.book .pg-head {
+  position: absolute; top: 1.05em; margin: 0;
+  font: 600 .68em/1.2 var(--f-text); letter-spacing: .11em; text-transform: uppercase;
+  color: var(--m-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.book .recto .pg-head { left: 3.97em; right: 4.7em; text-align: right; }
+.book .verso .pg-head { left: 4.7em; right: 3.97em; }
+.book .ph-short { display: none; }
+/* The folio, at the fore-edge's foot, with its chapter's mark. */
+.book .pg-folio {
+  position: absolute; bottom: 1.3em; margin: 0; display: flex; align-items: center; gap: .55em;
+  font: 700 .8em/1 var(--f-display); color: var(--m-ink-2); font-variant-numeric: tabular-nums;
+}
+.book .pg-folio::before { content: ""; width: .5em; height: .5em; background: var(--acc); }
+.book .recto .pg-folio { right: 4em; flex-direction: row-reverse; }
+.book .verso .pg-folio { left: 4em; }
+
+/* ---------- Type ---------- */
+.book .pg-body { font-size: .95em; line-height: 1.42; }
+.book p, .book li, .book dd, .book figcaption { text-wrap: pretty; }
+.book p { margin: 0; }
+.book p + p, .book p + ul, .book ul + p, .book p + ol, .book ol + p { margin-top: .45em; }
+/* Bold is for what's on the screen, in weight alone. */
+.book b, .book strong { font-weight: 700; color: inherit; }
+.book h1, .book h2, .book h3, .book h4 { margin: 0; color: var(--m-ink); font-family: var(--f-display); letter-spacing: -.012em; text-wrap: balance; }
+.book h3, .book h2.mh { font-size: 1.36em; line-height: 1.12; font-weight: 750; margin: .85em 0 .4em; padding-top: .4em; border-top: .16em solid var(--acc); }
+.book .pg-body > h3:first-child, .book .pg-body > h2.mh:first-child { margin-top: 0; }
+.book .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; margin: 0; padding: 0; border: 0; }
+.book h4 { font-size: 1.02em; line-height: 1.25; font-weight: 700; margin: .85em 0 .3em; }
+.book a { color: inherit; text-decoration-color: var(--acc); text-decoration-thickness: .08em; text-underline-offset: .18em; }
+.book .nw { white-space: nowrap; }
+/* Chips and keys sit in the line with nothing round them but their own padding. */
+.book code { font: 400 .86em/1 var(--f-mono); background: var(--m-code); border: 0; border-radius: 2px; padding: .1em .25em; margin: 0; white-space: nowrap; color: var(--m-ink); }
+:root[data-theme="dark"] .book code, :root[data-theme="night"] .book code { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09); }
+.book kbd {
+  /* In the text face: its arrows read at this size, as the mono face's don't. */
+  display: inline-block; font: 600 .84em/1 var(--f-text); letter-spacing: .03em; white-space: nowrap;
+  padding: .2em .25em .16em; margin: 0; border: 1px solid var(--m-kbd-edge); border-bottom-width: .14em; border-radius: .26em;
+  background: var(--m-kbd); color: var(--m-ink); vertical-align: .06em;
+}
+/* An arrow sits on the face's maths axis, below a capital's middle: raised to it. */
+.book kbd .ar { display: inline-block; transform: translateY(-.07em); }
+.book .msteps { margin: .5em 0 0; padding: 0; list-style: none; counter-reset: st; display: grid; gap: .35em; }
+.book .msteps li { position: relative; padding-left: 1.6em; counter-increment: st; }
+.book .msteps li::before { content: counter(st) "."; position: absolute; left: 0; top: 0; font: 800 1em/1.5 var(--f-display); color: var(--acc); }
+
+/* ---------- Callouts: a ruled box, its mark, its kind ---------- */
+.book .callout {
+  position: relative; margin: .85em 0 0; padding: .6em .85em .62em 3.15em;
+  background: var(--m-paper-2); border: 1px solid var(--m-rule); border-top: .2em solid var(--acc);
+  font-size: .93em; line-height: 1.4;
+}
+.book .callout .co-icon { position: absolute; left: .62em; top: .5em; width: 1.95em; height: 1.95em; }
+.book .co-title { margin: 0 0 .3em; font: 700 .9em/1.3 var(--f-display); letter-spacing: 0; }
+.book .co-title b { text-transform: uppercase; letter-spacing: .08em; color: var(--acc); margin-right: .5em; font-size: .92em; }
+.book .callout .msteps { margin-top: .2em; gap: .2em; }
+/* Its keys, two to a row, each beside what it does, in reading order. */
+.book .keys-l { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); gap: .32em .55em; margin: .1em 0 0; font-size: .92em; line-height: 1.3; }
+.book .keys-l dt, .book .keys-l dd { margin: 0; align-self: baseline; }
+.book .keys-l dd { padding-right: .8em; }
+.book .keys-l kbd, .book .card kbd { font-size: .96em; }
+
+/* A small table: a rule above, a hairline between rows. */
+.book .mrows, .book .settings { width: 100%; border-collapse: collapse; margin: .55em 0 0; font-size: .9em; line-height: 1.36; border-top: .14em solid var(--m-ink); border-bottom: 1px solid var(--m-rule); }
+.book .mrows th, .book .mrows td, .book .settings th, .book .settings td { padding: .32em 1.25em .32em 0; text-align: left; vertical-align: baseline; border-top: 1px solid var(--m-rule); }
+.book .mrows tr:first-child > *, .book .settings tr:first-child > * { border-top: 0; }
+.book .mrows th, .book .settings th { font-weight: 700; white-space: nowrap; }
+.book .mrows td:last-child, .book .settings td:last-child { width: 100%; }
+.book .mrows td:last-child, .book .settings td:last-child { padding-right: 0; }
+.book .mrows-icons td.ic { width: 1.45em; padding: .26em .5em 0 0; vertical-align: top; }
+.book .mrows-icons td.ic img { display: block; width: 1.45em; height: 1.45em; max-width: none; }
+.book .settings { margin-top: 0; }
+
+/* ---------- Figures: pictures at their own size ---------- */
+.book .mfig { margin: 1em 0 .85em; }
+.book .mfig:first-child { margin-top: 0; }
+.book .mfig:last-child { margin-bottom: 0; }
+.book .mfig + p { margin-top: 0; }
+/* The frame: the picture's own width, or the part of it a caption is
+   about (--cx, --cy, --cw, --ch, in its points), centred on the measure,
+   wider ones going into the margins. */
+.book .fig-pic {
+  --fw: var(--w);
+  position: relative; display: block; box-sizing: content-box; width: var(--fw); max-width: none; margin: 0;
+  border: 1px solid var(--m-frame); background: var(--m-well);
+}
+.book .fig-pic.cut { --fw: var(--cw); }
+.book .fig-pic img { display: block; width: var(--w); height: var(--h); max-width: none; }
+.book .fig-pic.cut a { display: block; width: var(--cw); height: var(--ch); overflow: hidden; cursor: zoom-in; }
+.book .fig-pic.cut img { margin: calc(-1 * var(--cy)) 0 0 calc(-1 * var(--cx)); }
+.book .fig-pic a:focus-visible { outline-offset: -3px; }
+/* A picture cut to its point opens whole: its mark says so. */
+/* A picture cut to its point opens whole: the mark at the right end of
+   its caption, on the measure's edge, centred on the first line. (Out of
+   the picture, it never sits on what the picture shows.) */
+.book .fig-zoom {
+  position: relative; flex: none; width: 16px; height: 16px; box-sizing: border-box; margin-top: calc((1.4em - 16px) / 2);
+  border: 1px solid var(--m-kbd-edge); border-bottom-width: 2px; border-radius: 3px; background: var(--m-kbd); cursor: zoom-in;
+}
+.book .fig-zoom::after {
+  content: ""; position: absolute; inset: 1px 2px 2px; background: var(--m-ink-2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 1h3v3M9 1 5.7 4.3M4 9H1V6M1 9l3.3-3.3'/%3E%3C/svg%3E") center / 8px 8px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 1h3v3M9 1 5.7 4.3M4 9H1V6M1 9l3.3-3.3'/%3E%3C/svg%3E") center / 8px 8px no-repeat;
+}
+.book .fig-zoom:hover::after { background: var(--m-ink); }
+.book figcaption { display: flex; align-items: flex-start; gap: 8px; margin-top: .4em; font-size: .8em; line-height: 1.4; color: var(--m-ink-2); }
+.book figcaption .cap { flex: 1 1 auto; min-width: 0; text-wrap: balance; }
+/* A caption for a phone's cut where it differs. */
+.book .cap-narrow { display: none; }
+.book[data-fit="flow"] .cap-wide { display: none; }
+.book[data-fit="flow"] .cap-narrow { display: inline; }
+.book .fig-n { font-weight: 700; color: var(--m-ink); margin-right: .35em; }
+/* A narrow picture: its caption beside it, from its top. */
+.book .mfig.beside { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; gap: 0 1em; }
+.book .mfig.beside figcaption { margin: -.15em 0 0; }
+/* The command palette with its own margin round it. */
+.book #fig-1-2 .fig-pic { padding: 4px; }
+
+/* The desktop, reduced (the one picture that is), and its numbered discs. */
+.book .plate { position: relative; border: 1px solid var(--m-frame); background: var(--m-well); }
+.book .plate img { display: block; width: 100%; height: auto; }
+/* One disc, on the picture and in its legend: 16 points, the chapter's
+   fill, a white ring and numeral, in every look. */
+.book .disc {
+  width: 16px; height: 16px; box-sizing: border-box; display: grid; place-items: center; border-radius: 50%;
+  font: 700 10px/1 var(--f-display); color: #fff; background: var(--acc-fill); box-shadow: 0 0 0 1.5px #fff;
+  font-variant-numeric: tabular-nums;
+}
+.book .pin { position: absolute; z-index: 1; left: var(--x); top: var(--y); margin: -8px 0 0 -8px; box-shadow: 0 0 0 1.5px #fff, 0 1px 4px rgba(0, 0, 0, .5); }
+.book .legend-m { list-style: none; margin: .5em 0 0; padding: 0; columns: 2; column-gap: 1.3em; font-size: .8em; line-height: 1.32; }
+.book .legend-m li { position: relative; padding-left: calc(16px + .6em); break-inside: avoid; margin-bottom: .2em; }
+.book .legend-m .disc { position: absolute; left: 1.5px; top: .05em; }
+
+/* The seven layouts, drawn (the site's own drawing, set smaller). */
+.book .mfig .layouts { height: auto; padding: .6em 0; border: 1px solid var(--m-frame); }
+.book .mfig .layouts svg { width: 26em; max-width: 100%; margin: 0 auto; }
+
+/* A terminal listing, printed. */
+.book .listing {
+  margin: 0; padding: .75em 1em; overflow: hidden;
+  font: 400 .76em/1.6 var(--f-mono); color: var(--m-ink); white-space: pre;
+  background: var(--m-code); border-left: .3em solid var(--acc);
+}
+.book .listing .p { color: var(--m-ink-3); user-select: none; }
+
+/* Looks: a look's tab chosen shows the look (Figures 5-1 and 5-2). */
+.book .look-fig { margin-top: 1.25em; --tabw: 99px; --ftop: 22px; }
+.book .look-fig:has(input[value="beos"]:checked) { --tabw: 98px; }
+.book .look-fig:has(input[value="aqua"]:checked) { --tabw: 97px; }
+:root[data-theme="dark"] .book .look-fig:has(input[value="classic"]:checked), :root[data-theme="night"] .book .look-fig:has(input[value="classic"]:checked),
+:root[data-theme="dark"] .book .look-fig:has(input[value="platinum"]:checked), :root[data-theme="night"] .book .look-fig:has(input[value="platinum"]:checked),
+:root[data-theme="dark"] .book .look-fig:has(input[value="tokyo-night"]:checked), :root[data-theme="night"] .book .look-fig:has(input[value="tokyo-night"]:checked) { --tabw: 98px; --ftop: 22px; }
+:root[data-theme="dark"] .book .look-fig:has(input[value="beos"]:checked), :root[data-theme="night"] .book .look-fig:has(input[value="beos"]:checked),
+:root[data-theme="dark"] .book .look-fig:has(input[value="amigaos"]:checked), :root[data-theme="night"] .book .look-fig:has(input[value="amigaos"]:checked),
+:root[data-theme="dark"] .book .look-fig:has(input[value="aqua"]:checked), :root[data-theme="night"] .book .look-fig:has(input[value="aqua"]:checked) { --tabw: 99px; --ftop: 21px; }
+/* Right of the window's tab, above its frame, is the desk: the page instead. */
+.book .look-pic::after { content: ""; position: absolute; top: -1px; right: -1px; left: var(--tabw); height: calc(var(--ftop) + 1px); background: var(--m-paper); pointer-events: none; }
+.book .looks-m { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3em; margin: 0; padding: 0; border: 0; min-width: 0; }
+.book .looks-m label { position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: .1em .6em; padding: .35em .45em; border: 1px solid var(--m-rule); background: var(--m-paper); cursor: pointer; }
+.book .looks-m input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
+/* A look's tab, to its own foot (not the frame's edge under it). */
+.book .looks-m .tabpic { grid-row: span 2; width: 96px; height: 25px; overflow: hidden; }
+.book .looks-m .tabpic img { display: block; width: 96px; height: 28px; max-width: none; }
+.book .looks-m b { font: 700 .82em/1.2 var(--f-text); align-self: end; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book .looks-m small { font-size: .72em; line-height: 1.3; color: var(--m-ink-3); align-self: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book .looks-m label:has(input:checked) { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); background: var(--m-paper-2); }
+.book .look-pic.cut a { display: none; }
+.book .look-fig:has(input[value="classic"]:checked) a[data-look="classic"],
+.book .look-fig:has(input[value="platinum"]:checked) a[data-look="platinum"],
+.book .look-fig:has(input[value="beos"]:checked) a[data-look="beos"],
+.book .look-fig:has(input[value="amigaos"]:checked) a[data-look="amigaos"],
+.book .look-fig:has(input[value="aqua"]:checked) a[data-look="aqua"],
+.book .look-fig:has(input[value="tokyo-night"]:checked) a[data-look="tokyo-night"] { display: block; }
+:root:not([data-theme="dark"]):not([data-theme="night"]) .book .look-fig .only-dark { display: none !important; }
+:root[data-theme="dark"] .book .look-fig .only-light, :root[data-theme="night"] .book .look-fig .only-light { display: none !important; }
+.book .look-fig #fig-5-2 { margin-top: .9em; }
+
+/* Two readers: DeskCalc whole, and beside it the tree an agent reads of
+   it, as tall as it, going a little into the margins. */
+.book .readers { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; margin: 0; }
+@container (max-width: 499px) { .book .readers { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 8px; } .book .readers .listing.tree { justify-self: stretch; } .book .tree .ln.side { display: none; } }
+.book .readers .fig-pic { margin: 0; }
+.book .listing.tree { font-size: .76em; line-height: 1.42; padding: .55em .65em; white-space: normal; border-left-width: .25em; }
+.book .tree .ln { display: block; white-space: pre-wrap; overflow-wrap: normal; word-break: normal; padding-left: calc(var(--i, 0) * 1ch + 2ch); text-indent: calc(var(--i, 0) * -1ch - 2ch); }
+.book #fig-6-1 figcaption { margin-top: .5em; }
+
+/* ---------- Chapter openers ---------- */
+/* The band, bleeding to the page's three outer edges: its kicker and
+   title, its ghost numeral, the box-art speed lines under the title (24
+   points clear of it, whatever its length), and the chapter's apps. */
+.book .ob {
+  position: relative; flex: none; height: 16.4em; box-sizing: border-box; isolation: isolate; overflow: hidden; color: #fff; background: var(--acc-fill);
+  display: flex; flex-direction: column;
+  margin: calc(var(--u) * -3.45) calc(var(--u) * -2.7) 1.2em calc(var(--u) * -3.2);
+  padding: 2.3em calc(var(--u) * 2.7) 0 calc(var(--u) * 3.2);
+}
+.book .recto .ob { margin: calc(var(--u) * -3.45) calc(var(--u) * -3.2) 1.2em calc(var(--u) * -2.7); padding: 2.3em calc(var(--u) * 3.2) 0 calc(var(--u) * 2.7); }
+.book .ob::after { content: ""; position: absolute; inset: 0; z-index: -3; background: linear-gradient(160deg, rgba(255, 255, 255, .16), transparent 55%, rgba(0, 0, 0, .2)); }
+.book .ob-kicker { margin: 0; font: 700 .78em/1 var(--f-text); letter-spacing: .2em; text-transform: uppercase; opacity: .9; }
+.book .ob-num { position: absolute; right: .28em; top: .12em; z-index: -1; margin: 0; font: 800 9.4em/1 var(--f-display); letter-spacing: -.06em; color: rgba(255, 255, 255, .17); }
+.book .ob h2 { margin: .5em 0 0; max-width: 11.5em; font: 800 2.05em/1.04 var(--f-display); letter-spacing: -.03em; color: #fff; }
+/* The speed lines fill what's left under the title, clipped to it. */
+.book .ob::before {
+  content: ""; flex: 1 1 auto; min-height: 2.2em; margin: 1.85em calc(var(--u) * -3.4) 0; z-index: -2;
+  background: repeating-linear-gradient(173deg, rgba(255, 255, 255, .2) 0 .3em, transparent .3em .72em);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000); mask-image: linear-gradient(to right, transparent, #000 18%, #000);
+  order: 3;
+}
+.book .ob-icons { position: absolute; left: calc(var(--u) * 3.2); bottom: .95em; z-index: 1; display: flex; gap: .55em; }
+.book .recto .ob-icons { left: calc(var(--u) * 2.7); }
+.book .ob-icons img { width: 2.45em; height: 2.45em; filter: drop-shadow(0 .12em .2em rgba(0, 0, 0, .35)); }
+.book .ob-kicker { order: 1; }
+.book .ob h2 { order: 2; }
+.book .intro { font-size: 1.06em; line-height: 1.5; }
+.book .card-h { margin-top: .6em; }
+.book .in-chapter { margin: 1em 0 0; padding: .6em 0 .1em; border-top: 1px solid var(--m-ink); border-bottom: 1px solid var(--m-rule); }
+.book .in-chapter h4 { margin: 0 0 .3em; font: 700 .7em/1.2 var(--f-text); letter-spacing: .14em; text-transform: uppercase; color: var(--m-ink-3); }
+.book .in-chapter ol { list-style: none; margin: 0; padding: 0; }
+.book .in-chapter li { display: flex; align-items: baseline; gap: .4em; padding: .22em 0; }
+.book .in-chapter li a, .book .toc a { text-decoration: none; }
+.book .in-chapter li a:hover, .book .toc a:hover { text-decoration: underline; text-decoration-color: var(--acc); }
+.book .lead-dots { flex: 1; min-width: 1em; border-bottom: .12em dotted var(--m-ink-3); transform: translateY(-.25em); opacity: .55; }
+.book .in-chapter .pn { font: 700 .92em/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.book .opener .pg-head { display: none; }
+/* The band bleeds to the page's edges: the page clips it, not the type
+   area. The page's box sits at its foot, 24 points above the folio. */
+.book .opener .pg-body { overflow: visible; display: flex; flex-direction: column; }
+.book .opener .pg-body > .callout { margin-top: 2.45em; }
+
+/* ---------- Contents ---------- */
+.book .toc { list-style: none; margin: .2em 0 0; padding: 0; }
+.book .toc > li { display: grid; grid-template-columns: 2.1em minmax(0, 1fr); column-gap: .6em; padding: .44em 0 .4em; border-top: 1px solid var(--m-rule); }
+.book .toc > li:first-child { border-top: 0; }
+.book .toc > li.front { grid-template-columns: minmax(0, 1fr); }
+.book .toc .tn { grid-row: span 3; display: grid; place-items: center; width: 2.1em; height: 2.1em; font: 800 1.05em/1 var(--f-display); color: #fff; background: var(--acc-fill); }
+.book .toc .tt { display: flex; align-items: baseline; gap: .4em; font: 700 1em/1.25 var(--f-display); }
+.book .toc .td { margin: .12em 0 .3em; font-size: .86em; line-height: 1.35; color: var(--m-ink-2); }
+.book .toc .ts { list-style: none; margin: 0; padding: 0; font-size: .8em; line-height: 1.32; }
+.book .toc .ts li { display: flex; align-items: baseline; gap: .35em; color: var(--m-ink); }
+.book .toc .pn { font: 700 .95em/1 var(--f-display); font-variant-numeric: tabular-nums; color: var(--m-ink); }
+
+/* ---------- Quick reference cards ---------- */
+.book .card { border: 1px dashed var(--m-ink-3); padding: .55em .85em .65em; background: var(--m-paper); }
+.book .card h4 { margin: .92em 0 .3em; font: 700 .7em/1.2 var(--f-text); letter-spacing: .14em; text-transform: uppercase; color: var(--acc); }
+.book .card h4:first-child { margin-top: .1em; }
+.book .card table { width: 100%; border-collapse: collapse; font-size: .86em; line-height: 1.3; }
+.book .card td { padding: .15em 0; border-top: 1px dotted var(--m-rule); vertical-align: baseline; }
+.book .card tr:first-child td { border-top: 0; }
+.book .card td:first-child { width: 7.3em; padding-right: .6em; white-space: nowrap; }
+.book .card-cap { margin: 0 0 .55em; }
+
+/* ---------- Index and colophon ---------- */
+/* Three columns, each letter's first entry with the letter beside it in
+   the gutter; a term's pages each a link. */
+.book .index { list-style: none; margin: .1em 0 0 1.45em; padding: 0; columns: 3; column-gap: 1.6em; column-fill: balance; font-size: .76em; line-height: 1.22; }
+.book .index li { position: relative; break-inside: avoid; padding: .07em 0 .07em .9em; text-indent: -.9em; }
+.book .index li.sub { padding-left: 1.8em; }
+.book .index .pn { color: var(--m-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.book .index .pn a { text-decoration: none; }
+.book .index .pn a:hover { text-decoration: underline; text-decoration-color: var(--acc); }
+.book .index .ix-l { position: absolute; left: -1.62em; top: .02em; width: 1.1em; text-indent: 0; text-align: right; font: 700 1.08em/1.15 var(--f-display); color: var(--acc); }
+/* The colophon at the foot of the last page, as books set it. */
+.book .ixpage .pg-body { display: flex; flex-direction: column; }
+.book .colophon { margin: auto 0 .2em; padding-top: .6em; border-top: 1px solid var(--m-ink); font-size: .82em; line-height: 1.42; color: var(--m-ink-2); }
+.book .colophon h3 { border: 0; padding: 0; margin: 0 0 .3em; font-size: 1.1em; }
+.book .colophon img { width: 2.4em; height: 2.4em; float: right; margin: 0 0 .4em .8em; }
+
+/* ---------- Front matter ---------- */
+/* Page 2: the book's name, About This Book under it, and the edition
+   notice on the foot of the page, as an imprint. */
+.book .editionpage .pg-body { display: flex; flex-direction: column; }
+.book .half-title { margin: .4em 0 0; display: flex; align-items: center; gap: .8em; }
+.book .half-title img { width: 3.4em; height: 3.4em; }
+.book .half-title p { margin: 0; font: 800 1.7em/1.05 var(--f-display); letter-spacing: -.03em; }
+.book .half-title small { display: block; margin-top: .3em; font: 400 .5em/1.3 var(--f-text); letter-spacing: .02em; color: var(--m-ink-3); }
+.book .editionpage h2.mh { margin-top: 2.45em; }
+.book .imprint { margin-top: auto; padding-top: 1.2em; font-size: .8em; line-height: 1.42; color: var(--m-ink-2); }
+.book .imprint h2 { margin: 0 0 .35em; font: 700 1em/1.3 var(--f-text); letter-spacing: 0; color: var(--m-ink); }
+.book .imprint p + p { margin-top: .4em; }
+.book .conv { margin: .7em 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0; font-size: .86em; line-height: 1.38; border-top: .14em solid var(--m-ink); }
+.book .conv dt, .book .conv dd { margin: 0; padding: .34em 1.25em .34em 0; border-bottom: 1px solid var(--m-rule); }
+.book .conv dt { font-weight: 700; white-space: nowrap; }
+.book .conv dt img { display: inline-block; width: 1.3em; height: 1.3em; vertical-align: -.3em; margin-right: .35em; }
+.book .signoff { margin-top: 1em; font-family: var(--f-display); }
+.book .signoff b { display: block; font: 800 1.5em/1.1 var(--f-display); letter-spacing: -.02em; margin-top: .15em; }
+
+/* ---------- The covers ---------- */
+/* Box art: the band of speed lines at one height on both covers, so that
+   closed, it runs from the front round the spine to the back. */
+.book .cover { background: var(--m-cover); color: var(--m-cover-ink); }
+.book .cover .pg-body { inset: 0; overflow: hidden; }
+.book .cv { position: absolute; inset: 0; }
+.book .cv-top { position: absolute; left: 0; right: 0; top: 0; padding: 3em 3em 0; }
+.book .cv-band { position: absolute; left: 0; right: 0; top: 18.6em; height: 14em; }
+.book .cv-band svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.book .cv-low { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 3em 3em; }
+.book .cv-kicker { margin: 0; font: 700 .82em/1 var(--f-text); letter-spacing: .22em; text-transform: uppercase; color: #FFCB00; }
+.book .cv h1 { margin: .55em 0 0; color: #fff; font: 800 3.55em/.98 var(--f-display); letter-spacing: -.045em; }
+.book .cv h1 span { display: block; font-size: .5em; letter-spacing: -.02em; font-weight: 700; color: var(--m-cover-ink); opacity: .9; margin-bottom: .2em; }
+.book .cv-olo { display: block; height: .9em; width: auto; max-width: none; }
+.book .cv-sub { margin: .7em 0 0; font: 400 1.08em/1.35 var(--f-display); color: var(--m-cover-ink); opacity: .86; max-width: 21em; }
+/* The tagline and the Inside box one measure (in the page's unit: their type differs). */
+.book .cv-strap, .book .cv-inside { width: min(calc(var(--u) * 23.5), 100%); box-sizing: border-box; }
+.book .cv-strap { margin: 0 0 1.1em; font: 600 .98em/1.4 var(--f-display); color: var(--m-cover-ink); }
+.book .cv-ed { margin: 0; font: 700 .72em/1.3 var(--f-text); letter-spacing: .16em; text-transform: uppercase; color: var(--m-cover-ink); opacity: .7; }
+.book .cv-mark { position: absolute; right: 2.6em; top: 50%; width: 7.2em; height: 7.2em; margin-top: -3.6em; filter: drop-shadow(0 .4em .8em rgba(0, 0, 0, .5)); }
+.book .cv-badge {
+  position: absolute; left: 3em; top: 50%; margin-top: -3.2em; width: 6.4em; height: 6.4em; border-radius: 50%; box-sizing: border-box; padding: .5em;
+  display: grid; place-content: center; text-align: center; transform: rotate(-12deg);
+  background: #FFCB00; color: #1A1400; box-shadow: 0 .3em .9em rgba(0, 0, 0, .45), inset 0 0 0 .22em rgba(255, 255, 255, .35);
+  font: 800 .95em/1.05 var(--f-display); letter-spacing: -.01em;
+}
+.book .cv-badge small { display: block; font: 700 .54em/1.2 var(--f-text); letter-spacing: .1em; text-transform: uppercase; margin-top: .35em; }
+.book .cv-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 1em; }
+.book .cv-inside { margin: 0; padding: .7em .9em; border: 1px solid rgba(255, 255, 255, .35); font-size: .86em; line-height: 1.35; }
+.book .cv-inside h2 { margin: 0 0 .35em; color: #FFCB00; font: 700 .76em/1 var(--f-text); letter-spacing: .2em; text-transform: uppercase; }
+.book .cv ul { margin: 0; padding: 0; list-style: none; }
+/* Its bullets hang, a 1 em indent. */
+.book .cv li { padding-left: 1em; }
+.book .cv li::before { content: "▸"; display: inline-block; width: 1em; margin-left: -1em; color: #FFCB00; }
+.book .cv-pub { margin: 0; text-align: right; font: 600 .78em/1.4 var(--f-text); letter-spacing: .06em; color: var(--m-cover-ink); opacity: .8; }
+.book .cv-pub .logo { display: block; width: 4.4em; height: 1.95em; margin: 0 0 .3em auto; background: url(brand/olo-on-dark.svg) right center / contain no-repeat; }
+/* The back cover: its blurb above the band, what's inside and what it
+   needs below, side by side on one baseline, neither boxed. */
+.book .back .blurb { margin: .9em 0 0; max-width: 33em; font: 400 1.07em/1.5 var(--f-display); color: var(--m-cover-ink); }
+.book .back-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4em; align-items: start; margin-bottom: 1.6em; font-size: .86em; line-height: 1.4; }
+.book .back-cols h2 { margin: 0 0 .5em; color: #FFCB00; font: 700 .8em/1 var(--f-text); letter-spacing: .2em; text-transform: uppercase; }
+.book .back-cols li + li { margin-top: .3em; }
+
+/* =================================================================
+   The book on its own page (assets/manual.html, for any reader)
+   ================================================================= */
+.manual-page { margin: 0; background: var(--desk); }
+.manual-page .mp-head { max-width: 652px; margin: 0 auto; padding: 24px 16px 6px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.manual-page .mp-name { display: flex; align-items: center; gap: 10px; margin: 0; }
+.manual-page .mp-name img { width: 28px; height: 28px; flex: none; }
+.manual-page .mp-name b { font: 700 16px/1.2 var(--f-display); white-space: nowrap; }
+.manual-page .mp-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.manual-page .mp-links .button { white-space: nowrap; padding: 0 8px; font-size: 12.5px; }
+/* (The measure is the page's own width, without a scroll bar: a page of
+   500 points or more from a 548-point window.) */
+.manual-page main { container-type: inline-size; }
+.manual-page .book { --pw: min(100cqw - 32px, 620px); display: grid; justify-content: center; gap: 24px; padding: 14px 0 64px; }
+/* A sheet with a hard edge and a hard shadow, as Olo's windows have. */
+.manual-page .book .page { box-shadow: 0 0 0 1px rgba(20, 22, 28, .55), 3px 3px 0 0 rgba(20, 22, 28, .24); }
+/* One page after another, not facing: the same margins on both sides of each. */
+.manual-page .book[data-fit="fixed"] .recto .pg-body, .manual-page .book[data-fit="fixed"] .verso .pg-body { left: 2.95em; right: 2.95em; }
+.manual-page .book[data-fit="fixed"] .recto .pg-head, .manual-page .book[data-fit="fixed"] .verso .pg-head { left: 4.34em; right: 4.34em; }
+.manual-page .book[data-fit="fixed"] .recto .pg-folio { right: 3.69em; }
+.manual-page .book[data-fit="fixed"] .verso .pg-folio { left: 3.69em; }
+.manual-page .book[data-fit="fixed"] .recto .ob { margin-left: calc(var(--u) * -2.95); margin-right: calc(var(--u) * -2.95); padding-left: calc(var(--u) * 2.95); padding-right: calc(var(--u) * 2.95); }
+.manual-page .book[data-fit="fixed"] .verso .ob { margin-left: calc(var(--u) * -2.95); margin-right: calc(var(--u) * -2.95); padding-left: calc(var(--u) * 2.95); padding-right: calc(var(--u) * 2.95); }
+.manual-page .book[data-fit="fixed"] .ob-icons, .manual-page .book[data-fit="fixed"] .recto .ob-icons { left: calc(var(--u) * 2.95); }
+.manual-page .book .fig-pic.cut a { cursor: pointer; }
+
+/* =================================================================
+   The book on the desktop, in index.html's <dialog id="manual">
+   ================================================================= */
+/* The book holds the keyboard where a button it was on has gone (the
+   arrow keys turn its pages): no ring round the whole of it. */
+.manual .book:focus { outline: none; box-shadow: none; }
+.manual .only-own { display: none; }
+.manual[data-state] .book { visibility: hidden; }
+/* A page turns over its spine, lifting no more than 12 points off the
+   desk: the eye a long way off (32 pages' widths). */
+.manual .book[data-mode="spread"] { width: calc(var(--pw) * 2); height: var(--ph); perspective: calc(var(--pw) * 32); transition: transform .62s cubic-bezier(.3, .1, .2, 1); }
+.manual .book[data-mode="spread"][data-at="front"] { transform: translateX(calc(var(--pw) * -.5)); }
+.manual .book[data-mode="spread"][data-at="back"] { transform: translateX(calc(var(--pw) * .5)); }
+.manual .book .page { position: absolute; top: 0; height: var(--ph); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1); }
+.manual .book[data-mode="spread"] .verso { left: 0; transform-origin: right center; }
+.manual .book[data-mode="spread"] .recto { left: var(--pw); transform-origin: left center; }
+.manual .book .page.is-turning { z-index: 4; backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; }
+.manual .book .page.is-under { z-index: 1; }
+.manual .book .page.is-shown { z-index: 2; }
+.manual .book .turn-shade { position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: 0; }
+.manual .book .verso .turn-shade { background: linear-gradient(to left, rgba(0, 0, 0, .05), var(--m-shade)); }
+.manual .book .recto .turn-shade { background: linear-gradient(to right, rgba(0, 0, 0, .05), var(--m-shade)); }
+.manual .book .recto .turn-shade.under { background: linear-gradient(to right, var(--m-shade), rgba(0, 0, 0, .1) 6%, transparent 34%); }
+.manual .book .verso .turn-shade.under { background: linear-gradient(to left, var(--m-shade), rgba(0, 0, 0, .1) 6%, transparent 34%); }
+
+/* The page block's edges beside the open pages, as tall as the covers: as
+   many pages as are left to read on the right, as have been read on the
+   left; none beyond a closed cover. */
+.manual .book[data-mode="spread"]::before, .manual .book[data-mode="spread"]::after {
+  content: ""; position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: repeating-linear-gradient(to right, var(--m-edge) 0 1px, var(--m-edge-line) 1px 2px);
+  box-shadow: 0 .5em 1.4em -0.4em rgba(0, 0, 0, .6);
+}
+.manual .book[data-mode="spread"]::before { right: 100%; width: var(--stack-l, 0); }
+.manual .book[data-mode="spread"]::after { left: 100%; width: var(--stack-r, 0); }
+.manual .book[data-at="front"]::before, .manual .book[data-at="back"]::after { display: none; }
+/* The whole book's shadow on the desk. */
+.manual .book[data-mode="spread"] .shadow { position: absolute; inset: 1.2em 0 -1.4em; z-index: -1; border-radius: .6em; box-shadow: 0 2.4em 4.4em -1.6em rgba(0, 0, 0, .9); pointer-events: none; }
+.manual .book[data-at="front"] .shadow { left: 50%; }
+.manual .book[data-at="back"] .shadow { right: 50%; }
+
+/* The edge tabs, at the fore-edge of their pages: a chapter not reached
+   yet on the right, one turned past on the left; the open one pulled out
+   6 points, in its colour (the rest a shade back). Each its number and
+   one word, at 9 points or more. */
+.mn-tabs { position: absolute; inset: 0; pointer-events: none; --ink: #F4F6FA; }
+.mn-etab {
+  position: absolute; top: calc(3.6em + var(--i) * 6.42em); width: 2.1em; height: 6em; padding: .55em 0; box-sizing: border-box; pointer-events: auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: .4em; cursor: pointer;
+  border: 0; color: #fff; background: var(--acc-fill); filter: brightness(.84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 .15em .4em rgba(0, 0, 0, .35);
+  transition: transform .2s, filter .15s;
+}
+.mn-etab b { font: 800 .95em/1 var(--f-display); }
+.mn-etab small { font: 700 .74em/1 var(--f-text); letter-spacing: .06em; text-transform: uppercase; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.mn-etab.ix { justify-content: center; }
+.mn-etab.at-r { left: calc(100% + var(--stack-r, 0px)); border-radius: 0 .4em .4em 0; }
+.mn-etab.at-l { right: calc(100% + var(--stack-l, 0px)); border-radius: .4em 0 0 .4em; }
+.mn-etab:hover { filter: none; }
+.mn-etab[aria-current="true"] { filter: none; }
+.mn-etab.at-r[aria-current="true"] { transform: translateX(6px); }
+.mn-etab.at-l[aria-current="true"] { transform: translateX(-6px); }
+/* The index's tab: no chapter's colour, a neutral slate in any look. */
+.mn-etab.ix { background: #555E6C; }
+:root[data-theme="dark"] .mn-etab.ix, :root[data-theme="night"] .mn-etab.ix { background: #475163; }
+
+/* Turning the page by its corner (two pages open: the outer corners). */
+.mn-corner { position: absolute; bottom: 0; z-index: 6; width: 3em; height: 3em; padding: 0; border: 0; background: none; cursor: pointer; }
+.mn-corner.next { right: 0; }
+.mn-corner.prev { left: 0; }
+.mn-corner::after { content: ""; position: absolute; bottom: 0; width: 0; height: 0; transition: width .18s, height .18s; }
+.mn-corner.next::after { right: 0; background: linear-gradient(315deg, transparent 50%, var(--m-paper-2) 50%, var(--m-edge) 100%); box-shadow: -.2em -.2em .5em rgba(0, 0, 0, .25); }
+.mn-corner.prev::after { left: 0; background: linear-gradient(45deg, transparent 50%, var(--m-paper-2) 50%, var(--m-edge) 100%); box-shadow: .2em -.2em .5em rgba(0, 0, 0, .25); }
+.mn-corner:hover::after { width: 2.4em; height: 2.4em; }
+.mn-corner[hidden], .manual[data-mode="single"] .mn-corner { display: none; }
+.manual .book[data-at="front"] .mn-corner.prev, .manual .book[data-at="back"] .mn-corner.next { display: none; }
+
+/* ---------- One page at a time ---------- */
+.manual .book[data-mode="single"] { width: var(--pw); height: var(--ph); perspective: calc(var(--pw) * 32); }
+.manual .book[data-mode="single"] .page { left: 0; transform-origin: left center; }
+.manual[data-mode="single"] .mn-etab { display: none; }
+
+/* ---------- A page set again to read, as long as it is: a phone ---------- */
+/* (The guide's own page sets its pages so on any screen narrower than
+   520 points, or without its script.) */
+.book[data-fit="flow"] .page { font-size: 15.5px; height: auto; display: flex; flex-direction: column; }
+.manual .book[data-fit="flow"] { width: var(--pw); height: auto; }
+.manual .book[data-fit="flow"] .page { position: relative; height: auto; min-height: 0; }
+.book[data-fit="flow"] .pg-head { position: static; flex: none; margin: 14px 18px 0; font-size: 10.5px; text-align: left; }
+.book[data-fit="flow"] .ph-long { display: none; }
+.book[data-fit="flow"] .ph-short { display: inline; }
+.book[data-fit="flow"] .pg-body { position: static; flex: none; padding: 12px 18px 0; overflow: visible; }
+.book[data-fit="flow"] .pg-folio { position: static; flex: none; margin: 24px 18px 14px; padding-top: 9px; border-top: 1px solid var(--m-rule); justify-content: center; flex-direction: row; font-size: 12px; }
+.book[data-fit="flow"] .ob { margin: -12px -18px 18px; padding: 26px 18px 0; height: auto; min-height: 13em; }
+.book[data-fit="flow"] .ob-icons { left: 18px; }
+.book[data-fit="flow"] .ob-num { font-size: 7.5em; }
+.book[data-fit="flow"] .ob h2 { font-size: 1.75em; max-width: 9.5em; }
+.book[data-fit="flow"] .ob::before { min-height: 4.2em; margin-left: -18px; margin-right: -18px; }
+.book[data-fit="flow"] .opener .pg-body > .callout { margin-top: 1.6em; }
+.book[data-fit="flow"] .editionpage h2.mh { margin-top: 1.6em; }
+.book[data-fit="flow"] .imprint { margin-top: 1.6em; }
+/* Pictures wider than the measure pan sideways, at their own size. */
+/* A phone's cut, where it has one: fits its measure, on the picture's own edges. */
+.book[data-fit="flow"] .fig-pic.cut { --fw: var(--pcw, var(--cw)); }
+.book[data-fit="flow"] .fig-pic.cut a { width: var(--pcw, var(--cw)); height: var(--pch, var(--ch)); }
+.book[data-fit="flow"] .fig-pic.cut img { margin: calc(-1 * var(--pcy, var(--cy))) 0 0 calc(-1 * var(--pcx, var(--cx))); }
+.book[data-fit="flow"] .fig-pic { width: auto; max-width: calc(var(--fw) + 2px); box-sizing: border-box; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.book[data-fit="flow"] #fig-1-2 .fig-pic { max-width: calc(var(--fw) + 10px); }
+.book[data-fit="flow"] .mfig.beside { grid-template-columns: minmax(0, 1fr); gap: .45em; }
+.book[data-fit="flow"] .readers { grid-template-columns: minmax(0, 1fr); margin: 0; justify-items: start; }
+.book[data-fit="flow"] .tree .ln.side { display: none; }
+.book[data-fit="flow"] .listing { overflow-x: auto; }
+.book[data-fit="flow"] .legend-m { columns: 1; }
+.book[data-fit="flow"] .index { columns: 2; margin-bottom: 12px; }
+/* The covers, at a size to their width, as long as they are. */
+.book[data-fit="flow"] .cover { font-size: calc(var(--pw) / 26); }
+.book[data-fit="flow"] .cover .pg-body { padding: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+.manual .book[data-fit="flow"] .page.cover { min-height: 100cqh; }
+.book[data-fit="flow"] .cv { flex: 1 1 auto; display: flex; flex-direction: column; }
+.book[data-fit="flow"] .cv-band { flex: none; margin: auto 0; }
+.book[data-fit="flow"] .cv, .book[data-fit="flow"] .cv-top, .book[data-fit="flow"] .cv-band, .book[data-fit="flow"] .cv-low { position: relative; inset: auto; }
+.book[data-fit="flow"] .cv-top { padding: 2.2em 1.6em 1.4em; }
+.book[data-fit="flow"] .cv-band { height: 10em; }
+.book[data-fit="flow"] .cv-low { padding: 1.4em 1.6em 2.2em; }
+.book[data-fit="flow"] .cv-foot { grid-template-columns: 1fr; }
+/* The back cover's foot: its edition and Olo on one baseline. */
+.book[data-fit="flow"] .back .cv-foot { grid-template-columns: minmax(0, 1fr) auto; }
+.book[data-fit="flow"] .cv-strap, .book[data-fit="flow"] .cv-inside { width: auto; }
+.book[data-fit="flow"] .back-cols { grid-template-columns: 1fr; }
+.book[data-fit="flow"] .cv-badge { left: 1.6em; }
+.book[data-fit="flow"] .cv-mark { right: 1.4em; }
+.manual-page .book[data-fit="flow"] .page { height: auto; }
+@media (max-width: 479px) {
+  .book .looks-m { grid-template-columns: minmax(0, 1fr); }
+  .book .keys-l { grid-template-columns: max-content minmax(0, 1fr); }
+}
+
+/* Moving less: pages change at once, crossing over in a moment. */
+@media (prefers-reduced-motion: reduce) {
+  .manual .book[data-mode="spread"] { transition: none; }
+  .mn-corner::after, .mn-etab { transition: none; }
+}
+
+/* ---------- The landing pass ---------- */
+/* A figure flush left as wide as its picture (280 points at least): its
+   caption wraps to it, and the mark at its end sits on its right edge.
+   (A narrow one keeps its caption beside it.) */
+.book .mfig:not(.beside):has(> .fig-pic) { width: fit-content; min-width: min(280px, 100%); max-width: 100%; }
+.book .mfig:not(.beside):has(> .fig-pic) > figcaption { contain: inline-size; }
+/* Figure 5-2's mark: the chosen look's, as its picture is. */
+.book .look-fig .fig-zoom[data-look] { display: none; }
+/* The looks on page 23, reached by the keyboard: the ring round the look. */
+.book .looks-m label:has(input:focus-visible) { outline: 1px dotted var(--m-ink); outline-offset: 2px; box-shadow: 0 0 0 3px rgba(13, 110, 253, .35); }
+/* One page alone turns on its left edge: the leaf's shadow falls from there. */
+.manual .book[data-mode="single"] .verso .turn-shade.under { background: linear-gradient(to right, var(--m-shade), rgba(0, 0, 0, .1) 6%, transparent 34%); }
+/* Code in running text a faint tint (the keys keep their boxes). */
+.manual, .manual-page { --m-code-run: #F5EFE2; }
+:root[data-theme="dark"] .manual, :root[data-theme="night"] .manual,
+:root[data-theme="dark"] .manual-page, :root[data-theme="night"] .manual-page { --m-code-run: #232933; }
+.book p code, .book li code { background: var(--m-code-run); }
+:root[data-theme="dark"] .book p code, :root[data-theme="night"] .book p code,
+:root[data-theme="dark"] .book li code, :root[data-theme="night"] .book li code { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+/* A phone's cover: as much backdrop above it as below. */
+.manual[data-fit="flow"] .mn-stage:has(.page.cover.is-shown) { padding-bottom: 8px; }
+
+/* The guide's own page: what its script does shown only where it runs (and
+   the book's own words, for its bar, only in the book); its covers' art
+   to their edges; its header's default, Read as a Book, last, and on a
+   phone first, the width of the screen, the other two side by side under
+   it, each a finger's height. */
+.manual-page .only-book { display: none; }
+:root:not(.js) .manual-page .needs-js { display: none !important; }
+:root.js .manual-page .no-js { display: none !important; }
+.manual-page .book[data-fit="fixed"] .cover .pg-body { left: 0; right: 0; }
+@media (max-width: 560px) {
+  .manual-page .mp-head { padding-top: 16px; }
+  .manual-page .mp-links { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; width: 100%; }
+  .manual-page .mp-links .button { min-height: 44px; padding: 0 10px; font-size: 14px; justify-content: center; }
+  .manual-page .mp-links .mp-book { grid-column: 1 / -1; order: -1; }
+}

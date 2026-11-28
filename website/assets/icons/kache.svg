@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:31.98px){.from32{display:none}}@media (max-width:47.98px){.from48{display:none}}</style>
 <defs>
 <radialGradient id="shadow" cx="32" cy="60" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
 <clipPath id="crate"><path d="M7 25.2Q7 24 8.16 23.71L35.84 16.79Q37 16.5 38.07 17.04L55.93 25.96Q57 26.5 57 27.7L57 47.3Q57 48.5 55.84 48.79L28.16 55.71Q27 56 25.93 55.46L8.07 46.54Q7 46 7 44.8Z"/></clipPath>

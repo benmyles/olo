@@ -40,10 +40,16 @@
     date.textContent = dateFmt.format(now);
     time.textContent = timeFmt.format(now);
     clearTimeout(tick);
-    if (!document.hidden) tick = setTimeout(clock, 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 20);
+    if (!document.hidden && !$("dialog[open]")) tick = setTimeout(clock, 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 20);
   }
   clock();
-  document.addEventListener("visibilitychange", function () { if (document.hidden) clearTimeout(tick); else clock(); });
+  // Still while the page is hidden, or a window is open over it (the
+  // guide, an app's Get Info: the Deskbar is under it); set again after.
+  function covered() { return document.hidden || !!$("dialog[open]"); }
+  document.addEventListener("visibilitychange", function () { if (covered()) clearTimeout(tick); else clock(); });
+  if (window.MutationObserver) $$("dialog").forEach(function (d) {
+    new MutationObserver(function () { if (covered()) clearTimeout(tick); else clock(); }).observe(d, { attributes: true, attributeFilter: ["open"] });
+  });
 
   /* ---------- This page, measured as it loaded (the About window says it) ---------- */
   var seen = Object.create(null), bytes = 0, files = 0;
@@ -71,15 +77,21 @@
   function folded() { var f = bar.dataset.folded; return f === "true" || (f === "auto" && (!wide.matches || pastHero)); }
   function showFold() {
     var f = folded();
+    // Folding with the keyboard on something in it that folding hides: the
+    // keyboard to the fold button, which stays.
+    var a = document.activeElement;
+    var lost = f && !bar.classList.contains("is-folded") && a && bar.contains(a) && !fold.contains(a);
     bar.classList.toggle("is-folded", f);
+    if (lost && !a.getClientRects().length) fold.focus({ preventScroll: true });
     fold.setAttribute("aria-expanded", String(!f));
     fold.setAttribute("aria-label", f ? "Unfold Deskbar" : "Fold Deskbar");
     fold.title = fold.getAttribute("aria-label");
   }
   fold.addEventListener("click", function () { bar.dataset.folded = folded() ? "false" : "true"; showFold(); });
   wide.addEventListener("change", function () { bar.dataset.folded = "auto"; showFold(); });
-  $$(".db-apps a, .db-mark").forEach(function (a) { a.addEventListener("click", function () { if (!wide.matches || pastHero) { bar.dataset.folded = "auto"; showFold(); } }); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && bar.dataset.folded === "false") { bar.dataset.folded = "auto"; showFold(); fold.focus(); } });
+  $$(".db-apps a, .db-guide, .db-mark").forEach(function (a) { a.addEventListener("click", function () { if (!wide.matches || pastHero) { bar.dataset.folded = "auto"; showFold(); } }); });
+  // (Not while a window is open over the page: Escape is its, to close it.)
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && bar.dataset.folded === "false" && !$("dialog[open]")) { bar.dataset.folded = "auto"; showFold(); fold.focus(); } });
   showFold();
 
   /* ---------- The window in front: its tab yellow, its name bold in the Deskbar ---------- */
@@ -104,10 +116,10 @@
     // (the fold line, just above them, passes under its bottom edge).
     new IntersectionObserver(function (entries) {
       var e = entries[0];
-      pastHero = !e.isIntersecting && e.boundingClientRect.top < 368;
+      pastHero = !e.isIntersecting && e.boundingClientRect.top < 402;
       root.classList.toggle("past-hero", pastHero);
       showFold();
-    }, { rootMargin: "-368px 0px 0px 0px" }).observe($("#fold-line"));
+    }, { rootMargin: "-402px 0px 0px 0px" }).observe($("#fold-line"));
   }
 
   /* ---------- A menu bar in every window, its menus working ---------- */
@@ -376,12 +388,24 @@
     if (by && document.getElementById(by)) return document.getElementById(by).textContent;
     return el.textContent;
   }
+  // Where an element is in the page's own tree (from the nearest id), the
+  // same at any width: what a row is, when the tree is made again.
+  function pathOf(el) {
+    var p = [];
+    for (var e = el; e && e !== document.body; e = e.parentElement) {
+      if (e.id) { p.unshift("#" + e.id); break; }
+      var i = 0, s = e;
+      while ((s = s.previousElementSibling)) i++;
+      p.unshift(i);
+    }
+    return p.join(">");
+  }
   var rows = [];
   function line(depth, role, name, el, extra, href) {
     var pad = new Array(depth + 1).join("  ");
     var n = name == null ? "" : ' <span class="n">"' + esc(cut(name)) + '"</span>';
     var body = '<span class="r">' + role + "</span>" + n + (extra ? " " + esc(extra) : "") + '<span class="g">' + where(el) + "</span>";
-    if (href) body = '<a href="' + esc(href) + '">' + body + "</a>";
+    if (href) body = '<a href="' + esc(href) + '" data-of="' + esc(pathOf(el)) + '">' + body + "</a>";
     rows.push(pad + body);
   }
   var LEAF_BLOCKS = "h1,h2,h3,h4,h5,h6,p,pre,figcaption,ol,ul,dl,figure,nav,section,header,div,details,label,img,button,a,input,summary,svg";
@@ -424,20 +448,40 @@
     rows.push('<span class="c"># The page you were reading, as olo-screen tree gives a web page to an agent:</span>');
     rows.push('<span class="c"># each thing\'s role, its name, and where it is on the page, in pixels.</span>');
     rows.push('<span class="c"># The underlined names are links, and work here too.</span>');
+    rows.push('<span class="c"># The User\'s Guide opens as a book (</span><a href="assets/manual.html"><span class="n">assets/manual.html</span></a><span class="c">); for an agent, as Markdown: </span><a href="assets/manual.md"><span class="n">assets/manual.md</span></a><span class="c">.</span>');
     rows.push('<span class="g">$</span> <span class="cmd">olo-screen tree visitor</span>');
     rows.push('window 1 <span class="n">"' + esc(title) + '"</span> (browser) focused');
     rows.push('  <span class="r">Document</span> <span class="n">"' + esc(cut(title)) + '"</span> url="' + esc(location.origin + location.pathname) + '"');
     walk(document.body, 2);
     out.innerHTML = rows.join("\n");
+    var st = $("#av-status");
+    if (st) st.textContent = "olo-screen tree visitor · " + (rows.length - 7) + " things on this page";
   }
+  // Whole lines in its window: the tree fills it to the bar at its foot
+  // (its scroll bar the whole way down), and its lines are spaced so that
+  // as many as fit end on its foot, under its top padding (inside its
+  // border and a sideways scroll bar: the box is border-box).
+  function fitTree() {
+    out.style.lineHeight = "";
+    var cs = getComputedStyle(out), lh = parseFloat(cs.lineHeight), pt = parseFloat(cs.paddingTop);
+    var room = out.clientHeight - pt, n = Math.round(room / lh);
+    if (!(lh > 0) || n < 2) return;
+    out.style.lineHeight = room / n + "px";
+  }
+  var fitting = 0;
+  window.addEventListener("resize", function () {
+    if (root.dataset.view !== "agent" || fitting) return;
+    fitting = requestAnimationFrame(function () { fitting = 0; fitTree(); });
+  });
   var keptY = 0;
   // Read the page where it is (shown for a moment), as the tree says where things are.
   function rebuild() {
     delete root.dataset.view; view.hidden = true;
-    scrollTo(0, keptY);
+    scrollTo({ top: keptY, behavior: "instant" });
     build();
     root.dataset.view = "agent"; view.hidden = false;
-    scrollTo(0, 0);
+    scrollTo({ top: 0, behavior: "instant" });
+    fitTree();
   }
   function agent(on) {
     toggle.checked = on;
@@ -447,20 +491,36 @@
       root.dataset.view = "agent";
       view.hidden = false;
       frontName.textContent = "Terminal";
-      scrollTo(0, 0);
+      // (At once: the page scrolls smoothly otherwise, and a quick close
+      // would read its place halfway.)
+      scrollTo({ top: 0, behavior: "instant" });
+      fitTree();
       $("#agent-back").focus({ preventScroll: true });
     } else {
       delete root.dataset.view;
       view.hidden = true;
-      scrollTo(0, keptY);
+      scrollTo({ top: keptY, behavior: "instant" });
     }
   }
   toggle.addEventListener("change", function () { agent(toggle.checked); });
-  $("#agent-back").addEventListener("click", function () { agent(false); });
+  // Leaving it, the keyboard on its switch in Deskbar, or (Deskbar folded)
+  // on Deskbar's fold button: never on something gone from sight.
+  function leaveAgent() {
+    agent(false);
+    var to = toggle.getClientRects().length ? toggle : fold;
+    to.focus({ preventScroll: true });
+  }
+  // Escape leaves it, as its Back button does (a menu open, or a window, has Escape first: this
+  // runs before the menus' own handler, which would have shut the menu).
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && root.dataset.view === "agent" && !openMenu && !$("dialog[open]") && !e.defaultPrevented) leaveAgent();
+  }, true);
+  $("#agent-back").addEventListener("click", leaveAgent);
   out.addEventListener("click", function (e) {
     var a = e.target.closest("a");
     if (!a) return;
     var href = a.getAttribute("href");
-    if (href && href.charAt(0) === "#") { e.preventDefault(); agent(false); var t = $(href); if (t) t.scrollIntoView(); history.replaceState(null, "", href); }
+    // (The guide's own addresses, #manual…, are manual.js's to open.)
+    if (href && href.charAt(0) === "#" && !/^#manual(\/|$)/.test(href)) { e.preventDefault(); agent(false); var t = $(href); if (t) t.scrollIntoView(); history.replaceState(null, "", href); }
   });
 })();

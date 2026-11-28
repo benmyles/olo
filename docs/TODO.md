@@ -1183,6 +1183,9 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Website User's Guide non-critical follow-ups (Round 3 reviews `astra-d39e272f71`, `opus-shots-manual-r3-curated`, 2026-11-28):**
+  - *Screenshot recaptures outside `website/` (`tools/dev/readme-shots`):* (1) Recapture Figure 2-2 (`Viewer`) showing `Poster.jpg` framed whole and centred. (2) Spread the synthetic Home folder sizes in Figure 2-3 (`DiskUsage`, currently `.local` = 408 of 417 MB) so five or six colour wedges show. (3) Recapture the `DiskUsage` and `Tracker` lightbox plates with their yellow window tabs included, and size `Tracker`'s plate window to its contents (~240 pt height). (4) Give Figure 3-3's live view a larger crop so StyledEdit's text is legible.
+  - *`tools/deploy-website.sh` hardening (Astra R2):* Avoid staging into `website/dist/` during `--check` mode, and isolate `--build` staging from upload runs so concurrent builds/uploads cannot share one `dist/` directory.
 - **Rex & Terminal `Cmd+T` non-critical follow-ups (Round 2 code review `astra-a5f6cd2652`, 2026-11-28; reviewer's words):**
   - *Rex pre-create input buffering (Astra #1):* "Record the pending input destination in the initiating workspace when Cmd+T is accepted. Bind subsequent user input to the returned block once it is ready, and discard that input with feedback if creation fails."
   - *Terminal literal ` (deleted)` directory names (Astra #12):* "Disambiguate the suffix with filesystem identity or link-count information on a worker. Cover a live directory with the literal suffix and a genuinely unlinked directory."

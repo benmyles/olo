@@ -5,6 +5,7 @@
 ## This site
 
 - [The page as Markdown](index.md): everything on olo-desktop.com, for agents
+- [User's Guide to Olo](assets/manual.md): the whole desktop in six chapters (windows and Deskbar, Tracker, Terminal and Rex and coding agents, everyday apps, looks and settings, shortcuts), as Markdown
 
 ## Docs
 

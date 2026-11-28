@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- The guide's Tip: a gauge with a light face in a slate bezel, its
+     needle in the red past the middle: a faster way. Light from the top
+     left; it reads at 16 points as a pale dial with a red hand. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="58.2" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 50.6) scale(1 .13)"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="bezel" x1="0" y1="7" x2="0" y2="57" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c3ccd9"/><stop offset=".5" stop-color="#8794a8"/><stop offset="1" stop-color="#56627a"/></linearGradient>
+<radialGradient id="face" cx="25" cy="22" r="36" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f1f4f8"/><stop offset="1" stop-color="#d3dae5"/></radialGradient>
+<linearGradient id="needle" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff6a4d"/><stop offset="1" stop-color="#d4321b"/></linearGradient>
+</defs>
+<ellipse cx="32" cy="58.2" rx="24" ry="3.1" fill="url(#shadow)"/>
+<circle class="o" cx="32" cy="31" r="26" fill="url(#bezel)"/>
+<circle cx="32" cy="31" r="21" fill="url(#face)" stroke="#45506a" stroke-width="1"/>
+<!-- The scale: green, amber, then red. -->
+<path d="M17.2 40.5A17 17 0 0 1 21.6 18.3" fill="none" stroke="#2fae5a" stroke-width="3.2"/>
+<path d="M21.6 18.3A17 17 0 0 1 42.4 18.3" fill="none" stroke="#f0b323" stroke-width="3.2"/>
+<path d="M42.4 18.3A17 17 0 0 1 46.8 40.5" fill="none" stroke="#e5482b" stroke-width="3.2"/>
+<g stroke="#2a3245" stroke-width="1.4" stroke-linecap="round"><path d="M14.6 35.3l3 -.8M17.8 20.7l2.4 1.8M32 13.8v3M46.2 20.7l-2.4 1.8M49.4 35.3l-3 -.8"/></g>
+<!-- The needle, past the middle, and its hub. -->
+<path class="o" d="M30.4 32.6L44.6 21.4L33.6 35.6Z" fill="url(#needle)"/>
+<circle class="o" cx="32" cy="34" r="3.6" fill="#2a3245"/>
+<circle cx="31" cy="33" r="1.1" fill="#fff" fill-opacity=".7"/>
+<!-- The bezel's light, top left. -->
+<path d="M12.5 24A20.5 20.5 0 0 1 27 9.6" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1.4" stroke-linecap="round"/>
+</svg>

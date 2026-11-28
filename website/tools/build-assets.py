@@ -115,6 +115,9 @@ APP_ICONS = [
     # The page's own: Deskbar's sections, the desktop's icons.
     "desktop", "performance", "themes", "installer", "application",
     "olo", "query", "ai", "document", "software-update", "development",
+    # The User's Guide's: its callouts' and its chapter openers' icons.
+    "idea", "info", "keyboard", "warning", "preferences", "workspaces", "windows",
+    "deskbar", "display", "sound", "notifications",
 ]
 
 
@@ -203,17 +206,47 @@ def pictures():
     for light in ("olo-dunes", "olo-dunes-dark"):
         wallpaper(os.path.join(WALL, light + ".webp"), light.replace("olo-", "wall-"), [1280, 1920, 2880, 3840])
     # DeskCalc, from a screen of Olo's own (website/README.md: how it was taken).
-    webp(os.path.join(ROOT, "website", "tools", "deskcalc.png"), "deskcalc", [552], lossless=True)
-    webp(os.path.join(ROOT, "website", "tools", "deskcalc-dark.png"), "deskcalc-dark", [552], lossless=True)
+    # (At 1x too, 276 wide, made from the 2x by halving it here, once, so
+    # that a 1x screen isn't left to shrink the 2x as it draws.)
+    webp(os.path.join(ROOT, "website", "tools", "deskcalc.png"), "deskcalc", [276, 552], lossless=True)
+    webp(os.path.join(ROOT, "website", "tools", "deskcalc-dark.png"), "deskcalc-dark", [276, 552], lossless=True)
+
+
+# The sizes a drawing's `fromN` and `uptoN` classes name (crates/xdg/src/svg.rs).
+STEPS = [16, 24, 32, 48, 64, 96, 128, 256, 512]
+
+
+def size_sheet(svg):
+    """Olo's per-size rule as media queries on the drawing's own width:
+    `fromN` hidden under N, `uptoN` hidden from the step after N. (By CSS
+    pixels: a browser doesn't tell an <img>'s drawing its screen's scale,
+    so a 2x screen gets the 1x drawing of that size.)"""
+    css = []
+    for i, n in enumerate(STEPS):
+        if n > STEPS[0] and re.search(rf"\bfrom{n}\b", svg):
+            css.append(f"@media (max-width:{n - 0.02}px){{.from{n}{{display:none}}}}")
+        if i + 1 < len(STEPS) and re.search(rf"\bupto{n}\b", svg):
+            css.append(f"@media (min-width:{STEPS[i + 1]}px){{.upto{n}{{display:none}}}}")
+    return "".join(css)
 
 
 def icons():
     os.makedirs(os.path.join(OUT, "icons"), exist_ok=True)
     for name in sorted(set(APP_ICONS)):
         src, out = os.path.join(ICONS, name + ".svg"), os.path.join(OUT, "icons", name + ".svg")
-        if stale(out, src):
+        if stale(out, src, __file__):
             svg = open(src).read()
             svg = re.sub(r"<!--.*?-->\n?", "", svg, flags=re.S)
+            # A browser draws every layer of a drawing at once, the stand-ins
+            # for small sizes over the detail they stand in for: each layer
+            # is shown where Olo's renderer shows it (docs/ICONS.md).
+            sized = size_sheet(svg)
+            if not sized:
+                pass
+            elif "</style>" in svg:
+                svg = svg.replace("</style>", sized + "</style>", 1)
+            else:
+                svg = re.sub(r"(<svg\b[^>]*>)", lambda m: m.group(1) + "\n<style>" + sized + "</style>", svg, count=1)
             open(out, "w").write(svg)
     # The mark for the logo: the drawing without its contact shadow (a logo
     # stands on nothing), as mkbrand's `drawn` takes it.

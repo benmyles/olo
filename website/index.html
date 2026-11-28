@@ -26,6 +26,7 @@
 </script>
 <link rel="stylesheet" href="assets/site.css">
 <script src="assets/site.js" defer></script>
+<script src="assets/manual.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to the page</a>
@@ -60,6 +61,7 @@
       <a href="#looks"><img src="assets/icons/themes.svg" alt="" width="16" height="16">Looks</a>
       <a href="#install"><img src="assets/icons/installer.svg" alt="" width="16" height="16">Install</a>
     </nav>
+    <a class="db-guide" href="assets/manual.html" data-manual><img src="assets/icons/users-guide.svg" alt="" width="16" height="16">User’s Guide</a>
   </div>
 </aside>
 
@@ -70,8 +72,8 @@
   <div class="av-win win" data-menus="terminal">
     <span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Terminal: olo-screen tree<span class="tab-zoom" aria-hidden="true"></span></span>
     <div class="win-body av-body">
-      <button type="button" class="button small av-back" id="agent-back">Back to the page</button>
       <pre class="av-tree" id="av-tree"></pre>
+      <div class="av-tools"><p class="av-status" id="av-status" aria-live="polite"></p><button type="button" class="button small av-back" id="agent-back" title="Back to the page (Esc)">Back to the Page</button></div>
     </div>
   </div>
 </section>
@@ -87,7 +89,8 @@
   </a>
   <span class="fold-line" id="fold-line" aria-hidden="true"></span>
   <nav class="desk-icons" aria-label="Elsewhere">
-    <a href="https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md"><img src="assets/icons/document.svg" alt="" width="48" height="48"><span>The Olo Book</span></a>
+    <a href="assets/manual.html" data-manual><img src="assets/icons/users-guide.svg" alt="" width="48" height="48"><span>User’s Guide</span></a>
+    <a href="https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md"><img src="assets/icons/olo-book.svg" alt="" width="48" height="48"><span>The Olo Book</span></a>
     <a href="https://github.com/benmyles/olo/releases"><img src="assets/icons/software-update.svg" alt="" width="48" height="48"><span>Releases</span></a>
     <a href="https://github.com/benmyles/olo"><img src="assets/icons/development.svg" alt="" width="48" height="48"><span>Source</span></a>
   </nav>
@@ -97,9 +100,10 @@
     <p class="lead">From the Wayland window server to two dozen apps, written in Rust on one shared kit. Fast and light, measured. Made for people and their AI agents alike.</p>
     <div class="hero-actions">
       <a class="button primary" href="#install">Install on Fedora</a>
+      <a class="button guide" href="assets/manual.html" data-manual>User’s Guide</a>
       <a class="button" href="https://github.com/benmyles/olo">Source on GitHub</a>
     </div>
-    <p class="hero-small">Installs beside GNOME, which stays as it is. Under the MIT&nbsp;License.</p>
+    <p class="hero-small">Installs beside GNOME, which stays as it is. Under the&nbsp;MIT&nbsp;License.</p>
   </div>
 </header>
 
@@ -130,7 +134,7 @@
         <li id="n3"><b>The desktop</b> is Tracker's too: your disks, Home and what you keep on&nbsp;it.</li>
         <li id="n4"><b>Deskbar.</b> The Olo menu, the clock with your next events, the tray, live meters, and this workspace's&nbsp;windows.</li>
         <li id="n5"><b>Rex.</b> A coding agent, the agents it started under it, and its transcript, here or on a far&nbsp;host.</li>
-        <li id="n6"><b>Tracker.</b> Spatial folders, Quick Look for pictures, PDFs, video and archives, and any host's folders, at&nbsp;<code>rex://</code> addresses.</li>
+        <li id="n6"><b>Tracker.</b> Spatial folders, Quick Look for pictures, PDFs, video and archives, and any host's folders, at&nbsp;<code>rex://</code>&nbsp;addresses.</li>
       </ol>
     </figcaption>
   </figure>
@@ -181,8 +185,8 @@
     <div class="xray-side">
     <div class="xray-desk">
         <div class="xray-win">
-          <img class="only-light" src="assets/img/deskcalc-552.webp" width="276" height="269" alt="DeskCalc on an Agent Screen, its field showing 8.33333333333333" decoding="async" loading="lazy">
-          <img class="only-dark" src="assets/img/deskcalc-dark-552.webp" width="276" height="269" alt="DeskCalc on an Agent Screen in dark mode, its field showing 8.33333333333333" decoding="async" loading="lazy">
+          <img class="only-light" src="assets/img/deskcalc-276.webp" srcset="assets/img/deskcalc-276.webp 1x, assets/img/deskcalc-552.webp 2x" width="276" height="269" alt="DeskCalc on an Agent Screen, its field showing 8.33333333333333" decoding="async" loading="lazy">
+          <img class="only-dark" src="assets/img/deskcalc-dark-276.webp" srcset="assets/img/deskcalc-dark-276.webp 1x, assets/img/deskcalc-dark-552.webp 2x" width="276" height="269" alt="DeskCalc on an Agent Screen in dark mode, its field showing 8.33333333333333" decoding="async" loading="lazy">
           <svg class="xray-boxes" viewBox="0 0 276 269" aria-hidden="true" id="xray-boxes"></svg>
         </div>
         </div>
@@ -529,6 +533,77 @@
 
 </main>
 
+<!-- The User's Guide, opened as a book over the desktop: its pages are
+     assets/manual.html's, fetched by assets/manual.js the first time. The
+     filter warms it at night (the top layer is over the night light). -->
+<svg class="mn-filters" width="0" height="0" aria-hidden="true" focusable="false"><filter id="mn-warm" color-interpolation-filters="sRGB"><feColorMatrix id="mn-warm-m" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter></svg>
+<dialog class="manual" id="manual" aria-label="User’s Guide to Olo">
+  <div class="mn-frame">
+    <div class="mn-top">
+      <p class="mn-name"><img src="assets/icons/users-guide.svg" alt="" width="24" height="24"><span>User’s Guide to Olo</span></p>
+      <p class="mn-progress" aria-hidden="true"></p>
+      <div class="mn-acts">
+        <div class="mn-tray" role="group" aria-label="Look">
+          <button type="button" data-set-theme="light" aria-pressed="false">Light</button>
+          <button type="button" data-set-theme="dark" aria-pressed="false">Dark</button>
+          <button type="button" data-set-theme="night" aria-pressed="false" title="Dark, and warmer, as Olo’s night light makes the screen">Night</button>
+        </div>
+        <button type="button" class="button small" data-go="contents" title="Contents (T)">Contents</button>
+        <button type="button" class="button small mn-fs" data-fullscreen title="Fill the screen with the book" hidden>Full Screen</button>
+        <button type="button" class="button small" data-close title="Close the guide (Esc)">Close</button>
+      </div>
+    </div>
+    <div class="mn-stage">
+      <div class="mn-wait" tabindex="-1">
+        <div class="mn-alert win" role="alertdialog" aria-labelledby="mn-alert-t" aria-describedby="mn-alert-s">
+          <span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>User’s Guide<span class="tab-zoom" aria-hidden="true"></span></span>
+          <div class="win-body mn-alert-body">
+            <img class="mn-alert-icon" src="assets/icons/users-guide.svg" alt="" width="32" height="32">
+            <div class="mn-alert-text" id="mn-alert-t" role="status">
+              <p class="mn-wait-t" data-for="wait">Opening the User’s Guide…</p>
+              <p class="mn-wait-t" data-for="fail">The User’s Guide couldn’t be opened here.</p>
+            </div>
+            <div class="mn-alert-more" id="mn-alert-s">
+              <div class="mn-well" data-for="wait" aria-hidden="true"><span></span></div>
+              <p class="mn-wait-f" data-for="wait">This is taking longer than usual.</p>
+              <p data-for="fail">Try again, or read it as a web page of its own.</p>
+            </div>
+            <div class="mn-alert-acts">
+              <a class="button mn-wait-f" data-for="wait" href="assets/manual.html" data-own>Read as a Web Page</a>
+              <button type="button" class="button primary" data-for="wait" data-cancel>Cancel</button>
+              <button type="button" class="button" data-for="fail" data-retry>Try Again</button>
+              <a class="button primary" data-for="fail" href="assets/manual.html" data-own>Read as a Web Page</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="mn-arrow prev" data-go="prev" aria-label="Previous page" title="Previous page (←)"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M11 3.5 5.5 9l5.5 5.5"/></svg></button>
+    <button type="button" class="mn-arrow next" data-go="next" aria-label="Next page" title="Next page (→)"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7 3.5 12.5 9 7 14.5"/></svg></button>
+    <div class="mn-bot">
+      <button type="button" class="button" data-go="prev">← Previous</button>
+      <p class="mn-progress" aria-hidden="true"></p>
+      <button type="button" class="button" data-go="next">Next →</button>
+    </div>
+    <p class="mn-live" aria-live="polite"></p>
+    <div class="mn-plate" role="group" aria-label="The whole picture" hidden>
+      <div class="mn-plate-bar">
+        <p class="mn-name"><img src="assets/icons/users-guide.svg" alt="" width="24" height="24"><span>The Whole Picture</span></p>
+        <div class="mn-acts">
+          <button type="button" class="button small mn-fs" data-fullscreen title="Fill the screen with the book" hidden>Full Screen</button>
+          <button type="button" class="button small" data-plate-close title="Close (Esc)">Close</button>
+        </div>
+      </div>
+      <div class="mn-plate-body">
+        <figure class="mn-plate-fig">
+          <div class="mn-plate-view" tabindex="0" role="region" aria-label="The whole picture: the arrow keys move round it"><img alt=""></div>
+          <figcaption></figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</dialog>
+
 <!-- An app's Get Info window, as Tracker's: opened from the Apps window. -->
 <dialog class="app-info" id="app-info" aria-labelledby="ai-name">
   <div class="win ai-win">
@@ -573,6 +648,7 @@
     <p class="foot-weight" id="foot-weight">This page weighs what the Deskbar says, and does nothing while you read it.</p>
   </div>
   <nav class="about-links" aria-label="More">
+    <a class="button" href="assets/manual.html" data-manual>User’s Guide</a>
     <a class="button" href="https://github.com/benmyles/olo">Source</a>
     <a class="button" href="https://github.com/benmyles/olo/releases">Releases</a>
     <a class="button" href="https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md">The Olo Book</a>

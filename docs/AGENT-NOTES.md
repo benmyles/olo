@@ -4549,3 +4549,18 @@ prompts while staying sandboxed to its scratch cwd.
   `tools/dev/agent-board`) discover `session_id` and `window_id` from
   `rex block inspect "$REX_BLOCK" --json` rather than requiring
   `REX_SESSION`.
+
+**Browser quirks for `website/` SVG icons, stylesheets, and `<dialog>`** (2026-11-28):
+- Inside an `<img>`-embedded SVG, CSS `width` media queries match (driving
+  Olo's `fromN`/`uptoN` per-size icon steps), whereas `resolution` media
+  queries do not.
+- Chrome coalesces a newly inserted `<link rel="stylesheet">` onto an
+  already-pending request for the exact same URL; stylesheet retries must
+  bust the URL (e.g. `?try=N`). A `404` stylesheet response can still
+  populate `link.sheet`, so track loaded-ness explicitly via `load`/`error`
+  handlers on the element.
+- `HTMLDialogElement.prototype.close()` flips `dialog.open = false`
+  synchronously but fires its `close` event in a later task; tear down
+  in-flight loader/history state synchronously on explicit closes and guard
+  the `close` listener with `if (dialog.open) return;` so a synchronous
+  reopen cannot be cancelled by the stale queued event.

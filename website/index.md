@@ -7,6 +7,12 @@ light, measured. Made for people and their AI agents alike.
 Beta, for Fedora 44 and 45 on x86_64. It installs beside GNOME, which stays
 as it is. MIT licence. Source: <https://github.com/benmyles/olo>
 
+New to Olo? The **User's Guide to Olo** walks through the whole desktop in
+six chapters, a manual in the manner of the boxed software of the 1990s. On
+the page it opens as a book (from the desktop's User's Guide icon, the hero,
+or Deskbar; `#manual`, `#manual/p-7` and `#manual/ch-3` open it at a page or
+a chapter). For agents it is Markdown: [assets/manual.md](assets/manual.md).
+
 ## The desktop
 
 Olo keeps what BeOS got right (the window's yellow tab, Deskbar, Tracker's
@@ -174,8 +180,32 @@ Olo is beta software, developed on a few computers (a Lenovo ThinkPad P1
 Gen 9 above all). The `olo-hardware` skill has your coding agent make your
 computer one Olo knows.
 
+## The User's Guide
+
+*User's Guide to Olo*, First Edition, November 2026: thirty printed pages
+with pictures of Olo at their own size. The whole of it, as Markdown:
+[assets/manual.md](assets/manual.md); as a page of its own (every page, one
+after another): [assets/manual.html](assets/manual.html).
+
+1. **First Steps on Your Olo Desktop** (page 6): the desktop at a glance;
+   windows, tabs and menus; the command palette; workspaces, tiling and your
+   keyboard.
+2. **Files, Folders and Finding Things** (page 10): Tracker and Find; Quick
+   Look, Viewer and archives; DiskUsage, DiskBackup and DriveSetup.
+3. **Terminals, Remote Machines and Coding Agents** (page 14): Terminal and
+   Rex; agents under your tab (`olo agent`, minders, Keep It Going, Auto
+   Approve); the `olo` bridge; Agent Screens and Token Pool.
+4. **Everyday Tools and Your Phone** (page 18): StyledEdit, Calendar and
+   To-Do; Passwords, Telegram and Phone; Weather, Screenshot and the toolbox.
+5. **Making Olo Yours** (page 22): looks, colour schemes and icon sets;
+   light, dark and night; displays and sound; upgrades, Olo Doctor and Olo
+   Rescue.
+6. **Quick Reference** (page 26): two shortcut cards, two readers, the
+   index and the colophon.
+
 ## More
 
+- [The User's Guide to Olo](assets/manual.md): the whole desktop, chapter by chapter
 - [The Olo Book](https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md): how the kits work
 - [Hacking](https://github.com/benmyles/olo/blob/main/docs/HACKING.md)
 - [The brand](https://github.com/benmyles/olo/blob/main/docs/BRAND.md)

@@ -5590,5 +5590,23 @@
   "title": "Rex Activity sidebar Agent Screens & embedded ScreenPane (dark)",
   "caption": "Dark mode view of Rex Activity sidebar Agent Screens with embedded ScreenPane.",
   "image": "2026-11-28/090549-rex-activity-sidebar-agent-screens-embedded-scre.png"
+ },
+ {
+  "time": "2026-11-28T11:37:15",
+  "title": "Website hero left-aligned with native default frame (light)",
+  "caption": "Aligned hero copy flush on the Olo logo column with native default button frame and lowered glow crest.",
+  "image": "2026-11-28/113715-website-hero-left-aligned-with-native-default-fr.png"
+ },
+ {
+  "time": "2026-11-28T11:37:17",
+  "title": "Website User's Guide lightbox spread and Full Screen bar (light)",
+  "caption": "OS/2 Warp-inspired 30-page manual with 48pt Olo toolbar, Full Screen toggle, solid backdrop, and caption-aligned enlarge marks.",
+  "image": "2026-11-28/113717-website-user-s-guide-lightbox-spread-and-full-sc.png"
+ },
+ {
+  "time": "2026-11-28T11:37:19",
+  "title": "Website User's Guide dark spread with live theme tabs (dark)",
+  "caption": "Dark mode spread with paired dark look tabs and live Figure 5-2 preview.",
+  "image": "2026-11-28/113719-website-user-s-guide-dark-spread-with-live-theme.png"
  }
 ]

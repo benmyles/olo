@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:31.98px){.from32{display:none}}@media (min-width:48px){.upto32{display:none}}@media (max-width:47.98px){.from48{display:none}}</style>
 <defs>
 <radialGradient id="shadow" cx="36" cy="59.5" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.5) scale(1 .135)"><stop offset="0" stop-opacity=".34"/><stop offset="1" stop-opacity="0"/></radialGradient>
 <clipPath id="body"><path d="M12 13.5Q12 12 13.4 11.46L32.6 4.04Q34 3.5 35.48 3.73L58.02 7.2Q60 7.5 60 9.5L60 42.5Q60 45 57.57 45.61L23.46 54.14Q22 54.5 20.77 53.64L13.23 48.36Q12 47.5 12 46Z"/></clipPath>

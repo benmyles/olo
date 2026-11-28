@@ -319,15 +319,15 @@ html:not(.js) .deskbar .db-fold { display: none; }
 /* "Olo", its cap height --cap: the box is its ink's, 1738 x 772 to a cap of 730 (the rounds overshoot). */
 .logo-olo { width: calc(var(--cap) * 2.381); height: calc(var(--cap) * 1.0575); background: var(--olo-word) center / contain no-repeat; }
 /* Where Deskbar folds: just above the desktop icons under it, so the two never meet. */
-.fold-line { position: absolute; left: 0; top: 370px; width: 1px; height: 1px; pointer-events: none; }
+.fold-line { position: absolute; left: 0; top: 404px; width: 1px; height: 1px; pointer-events: none; }
 /* Desktop icons, under Deskbar as on Olo's own desktop. */
-.desk-icons { position: absolute; right: 0; width: var(--desk-w); top: 378px; display: none; flex-direction: row; justify-content: space-around; gap: 0; }
+.desk-icons { position: absolute; right: 0; width: var(--desk-w); top: 412px; display: none; flex-direction: row; justify-content: space-around; gap: 0; }
 .desk-icons a { display: grid; justify-items: center; align-content: start; gap: 4px; width: 72px; color: #fff; text-decoration: none; font: 400 12.5px/1.25 var(--f-text); text-align: center; text-shadow: none; }
 .desk-icons img { width: 48px; height: 48px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
 .desk-icons a:hover span { background: rgba(11, 30, 70, .55); border-radius: 2px; }
 :root:not([data-theme="dark"]):not([data-theme="night"]) .desk-icons a { color: #0B0D14; text-shadow: none; }
 :root:not([data-theme="dark"]):not([data-theme="night"]) .desk-icons a:hover span { background: rgba(255,255,255,.7); }
-@media (min-width: 1240px) and (min-height: 700px) { .desk-icons { display: flex; } }
+@media (min-width: 1240px) and (min-height: 780px) { .desk-icons { display: flex; } }
 /* The words, on the windows' grid: its second and third columns. */
 .hero-copy {
   --win-l: max(var(--gutter), (100cqw - var(--col)) / 2);
@@ -759,3 +759,228 @@ h1 { font-size: clamp(38px, 4.2vw, 62px); line-height: 1.03; font-weight: 800; l
 /* A list's column title, as a BListView's in a Tracker window. */
 .pick-head { grid-column: 1 / -1; margin: -3px -3px 3px; padding: 6px 12px 5px; font: 700 12.5px/1.2 var(--f-text); color: var(--ink-2); background: var(--wf-face); border-bottom: 1px solid var(--wf-shadow); box-shadow: inset 0 1px 0 var(--wf-light); }
 .looks-note { margin-top: 18px; }
+
+/* ---------- The User's Guide's ways in (the book itself: manual.css) ---------- */
+/* Four desktop icons under Deskbar, two by two. */
+@media (min-width: 1240px) and (min-height: 780px) { .desk-icons { display: grid; grid-template-columns: repeat(2, 72px); justify-content: space-evenly; row-gap: 14px; } }
+/* In Deskbar, under the page's windows: the guide, a book of its own. */
+.db-guide { display: flex; align-items: center; gap: 9px; height: 30px; margin: 0 0 4px; padding: 0 12px; border-top: 1px solid var(--frame-soft); color: var(--ink); text-decoration: none; font-size: 13.5px; }
+.db-guide:hover { background: var(--frame-soft); }
+.db-guide img { width: 16px; height: 16px; flex: none; }
+@media (max-width: 480px) { .deskbar:not(.is-folded) .db-guide { height: 44px; } }
+.button.guide { gap: 8px; padding-left: 12px; }
+.button.guide img { width: 20px; height: 20px; flex: none; }
+
+/* ---------- The hero's words on the logo's column ---------- */
+/* Under the logo, on its left edge (the windows' too), clear of it by 44
+   points; the Deskbar's column, and its icons, clear on the right. */
+.hero { padding-top: calc(clamp(20px, 3vw, 36px) + 30px * 1.9 + 44px); }
+.hero-copy { margin-left: var(--win-l); width: min(640px, 100cqw - var(--desk-w) - 24px - var(--win-l)); }
+@media (max-width: 899px), (max-width: 1199px) and (max-aspect-ratio: 4/5) {
+  .hero { padding-top: 0; }
+  .hero-copy { margin: 96px var(--gutter) 0; width: auto; }
+}
+
+/* ---------- Agent view: the Terminal window fitted to the screen ---------- */
+/* Its tab 56 points down and 24 clear at its foot; the tree scrolls inside
+   it, under a toolbar row with Back (Escape too) at its right. */
+.agent-view { box-sizing: border-box; height: 100dvh; min-height: 0; padding: calc(56px + var(--tab-h)) var(--gutter) 24px; display: flex; flex-direction: column; }
+.av-win { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; width: 100%; box-sizing: border-box; }
+.av-win .av-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.av-tools { flex: none; display: flex; justify-content: flex-end; align-items: center; padding: 5px 8px; background: var(--wf-face); border-bottom: 1px solid var(--wf-shadow); }
+.av-back { position: static; }
+.av-tree { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+
+/* ---------- The User's Guide's window (its pages: manual.css) ---------- */
+/* Over the whole screen, on a backdrop of its own (the desk under it out
+   of sight, as in full screen). Its bars, arrows and plate are Olo's dark
+   panel in every look, their buttons Olo's dark ones; what opens in it
+   (the alert while it opens) is the look's own. (Night: manual.js warms
+   the window through #mn-warm, as the top layer is over the page's
+   night light.) */
+.manual {
+  --m-full: #0A0E17;
+  --m-chrome-ink: #F2EEE6;
+  --m-chrome-ink-2: #C7C2B8;
+  --m-bar: #262D3A;              /* Olo's blue-grey panel */
+  --m-bar-light: rgba(255, 255, 255, .13);
+  --m-bar-dark: #0B0E14;
+  position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none;
+  margin: 0; padding: 0; border: 0; background: transparent; color: var(--m-chrome-ink); overflow: hidden;
+}
+:root[data-theme="dark"] .manual { --m-full: #05070C; }
+:root[data-theme="night"] .manual { --m-full: #170E06; }
+.manual::backdrop, .mn-frame:fullscreen, .mn-frame:fullscreen::backdrop { background: var(--m-full); }
+.manual[open] { display: block; }
+.mn-top, .mn-bot, .mn-arrow, .mn-plate {
+  --button-top: #3A404D; --button-bottom: #2B303B; --button-edge: #12161E; --pressed: #2C3342; --ink: #F4F6FA;
+}
+.mn-top .button, .mn-bot .button, .mn-plate .button { box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .12), inset -1px -1px 0 rgba(0, 0, 0, .3); }
+.mn-top .button:disabled, .mn-bot .button:disabled { opacity: .38; cursor: default; transform: none; background: linear-gradient(var(--button-top), var(--button-bottom)); }
+.mn-frame { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }
+.mn-filters { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* The bar above the book, a panel the width of the screen: its name, where
+   it's open, the look, Contents, Full Screen and Close. Beside two pages,
+   an arrow either side; under one page, a bar to turn it. */
+.mn-top, .mn-bot, .mn-plate-bar {
+  position: relative; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 0 16px; box-sizing: border-box;
+  background: var(--m-bar); box-shadow: inset 0 1px 0 var(--m-bar-light), inset 0 -1px 0 var(--m-bar-dark);
+}
+.mn-top { height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.mn-acts { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.mn-bot { display: none; height: 56px; justify-content: space-between; gap: 12px; }
+.manual[data-mode="single"] .mn-bot { display: flex; }
+.manual[data-mode="single"] .mn-top { display: flex; }
+.manual[data-mode="single"] .mn-name { flex: 1 1 auto; }
+.manual[data-mode="single"] .mn-acts { flex: none; }
+.manual[data-mode="single"] .mn-top .mn-progress, .manual[data-mode="single"] .mn-arrow { display: none; }
+/* Opening, or not opened: nothing to turn. */
+.manual[data-state] .mn-arrow, .manual[data-state] .mn-bot, .manual[data-state] [data-go] { display: none; }
+.mn-name { display: flex; align-items: center; gap: 9px; min-width: 0; margin: 0; font: 700 14px/1.2 var(--f-display); color: var(--m-chrome-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn-name img { width: 24px; height: 24px; flex: none; }
+.mn-name span { overflow: hidden; text-overflow: ellipsis; }
+.mn-top .button, .mn-bot .button, .mn-plate-bar .button { min-height: 28px; padding: 0 12px; font-size: 13px; }
+.mn-bot .button { min-width: 104px; }
+.mn-tray { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px; padding: 2px; border-radius: 3px; background: rgba(0, 0, 0, .35); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .4), inset -1px -1px 0 rgba(255, 255, 255, .08); }
+.mn-tray button { height: 24px; padding: 0 9px; border: 0; border-radius: 2px; background: none; color: var(--m-chrome-ink-2); font: 600 12px/1 var(--f-text); cursor: pointer; }
+.mn-tray button:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+.mn-tray button[aria-pressed="true"] { color: #fff; background: rgba(255, 255, 255, .16); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .35); }
+.mn-progress { min-width: 0; overflow: hidden; margin: 0; text-align: center; font: 600 13px/1.25 var(--f-text); color: var(--m-chrome-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mn-progress small { display: block; font-weight: 400; font-size: 11.5px; color: var(--m-chrome-ink-2); overflow: hidden; text-overflow: ellipsis; max-width: 34em; }
+.mn-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* The arrows: Olo's bevelled buttons, tall, 16 points from the screen's
+   edge, in the middle of the stage under the bar. */
+.mn-arrow {
+  position: absolute; top: calc(50% + 24px); z-index: 6; width: 36px; height: 72px; margin-top: -36px; padding: 0;
+  display: grid; place-items: center; cursor: pointer; border-radius: 3px; color: var(--ink);
+  border: 1px solid var(--button-edge); background: linear-gradient(var(--button-top), var(--button-bottom));
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .12), inset -1px -1px 0 rgba(0, 0, 0, .3);
+}
+.mn-arrow:hover { background: linear-gradient(var(--button-top), var(--button-top)); }
+.mn-arrow:active { background: var(--pressed); box-shadow: inset 1px 1px 2px rgba(0, 0, 0, .4); }
+.mn-arrow:disabled { opacity: .3; cursor: default; background: linear-gradient(var(--button-top), var(--button-bottom)); }
+.mn-arrow svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mn-arrow.prev { left: 16px; }
+.mn-arrow.next { right: 16px; }
+
+/* The stage, and the book lying open on it, 24 points under the bar and 24
+   above the screen's foot. A finger across it turns a page (manual.js); a
+   page set to scroll scrolls it, and only it. */
+.mn-stage { position: relative; display: grid; place-items: center; min-height: 0; touch-action: pinch-zoom; }
+.manual[data-fit="flow"] .mn-stage { container-type: size; place-items: start center; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y pinch-zoom; scrollbar-width: thin; padding: 8px 0 16px; }
+
+/* Opening: an Olo alert window, the guide's book at its left; slow, a way
+   to read it meanwhile and Cancel; not opened, Try Again (the default) and
+   the guide as a web page. */
+.mn-wait { position: absolute; inset: 0; display: none; place-items: center; padding: 24px; }
+.manual[data-state] .mn-wait { display: grid; }
+.mn-wait:focus { outline: none; box-shadow: none; }
+.manual[data-state="wait"] [data-for="fail"], .manual[data-state="fail"] [data-for="wait"] { display: none; }
+.mn-alert { width: min(360px, 100%); box-sizing: border-box; margin: var(--tab-h) 0 0; text-align: left; color: var(--ink); }
+.mn-alert-body { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px 14px; padding: 16px 12px 12px 16px; }
+.mn-alert-icon { grid-row: span 2; width: 32px; height: 32px; }
+.mn-alert-text p { margin: 2px 0 0; font: 700 13px/1.4 var(--f-text); color: var(--ink); }
+.mn-alert-more { display: grid; gap: 10px; font: 400 13px/1.45 var(--f-text); color: var(--ink-2); }
+.mn-alert-more p { margin: 0; }
+.mn-alert-more a { color: var(--link); }
+.mn-alert-acts { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; }
+.mn-alert-acts .button { min-height: 30px; padding: 0 14px; font-size: 13.5px; }
+.mn-alert-acts .button.primary { margin: 0; }
+/* The sunken well, its bar of slate stripes moving while the guide comes
+   (still, where motion is reduced). */
+.mn-well { position: relative; width: 100%; height: 12px; box-sizing: border-box; overflow: hidden; background: var(--surface);
+  border: 1px solid; border-color: var(--wf-shadow) var(--wf-light) var(--wf-light) var(--wf-shadow); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .12); }
+.mn-well span { position: absolute; top: 0; bottom: 0; left: -17px; width: calc(100% + 17px);
+  background: repeating-linear-gradient(45deg, #5E6E84 0 6px, #8392A6 6px 12px); animation: mn-pole .9s linear infinite; }
+:root[data-theme="dark"] .mn-well span, :root[data-theme="night"] .mn-well span { background: repeating-linear-gradient(45deg, #8C9DB3 0 6px, #6A7A90 6px 12px); }
+@keyframes mn-pole { to { transform: translateX(16.97px); } }
+.mn-wait-f { visibility: hidden; }
+.manual.is-slow .mn-wait-f { visibility: visible; }
+
+/* A picture seen whole: a bar of its own (Full Screen and Close where the
+   book's are), the picture at its own size in a framed view inside the
+   screen that scrolls (by finger, wheel or arrow keys) from the part the
+   page showed, its caption flush under it on its left edge. */
+.mn-plate { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--m-full); }
+.mn-plate[hidden] { display: none; }
+.mn-plate-bar { flex: none; height: 48px; justify-content: space-between; }
+.mn-plate-body { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.mn-plate-fig { margin: 0; display: flex; flex-direction: column; max-width: 100%; max-height: 100%; min-height: 0; }
+.mn-plate-view { flex: 0 1 auto; min-height: 0; max-width: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  border: 1px solid rgba(255, 255, 255, .24); background: #000; }
+.mn-plate-view:focus-visible { outline: 2px solid #8DB8FF; outline-offset: 2px; box-shadow: none; }
+.mn-plate-view img { display: block; max-width: none; }
+.mn-plate.can-zoom .mn-plate-view img { cursor: zoom-in; }
+.mn-plate.is-actual .mn-plate-view img { cursor: zoom-out; }
+.mn-plate-fig figcaption { flex: none; width: 0; min-width: 100%; margin-top: 10px; font: 400 13px/1.45 var(--f-text); color: var(--m-chrome-ink); text-align: left; text-wrap: pretty; }
+.mn-plate-fig figcaption .fig-n { font-weight: 700; margin-right: .35em; }
+
+/* A phone: the bars taller, round its notch and home bar, their controls
+   44 points tall; the look between Dark and Light; no Full Screen. */
+@media (max-width: 519px) {
+  .manual .mn-top, .manual .mn-plate-bar { height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 10px 0; gap: 8px; }
+  .manual .mn-bot { height: calc(60px + env(safe-area-inset-bottom)); padding: 0 10px env(safe-area-inset-bottom); gap: 8px; }
+  .mn-name span { display: none; }
+  .mn-plate-bar .mn-name span { display: inline; }
+  .mn-bot .button { flex: 0 0 100px; min-width: 0; min-height: 44px; padding: 0 6px; justify-content: center; }
+  .mn-top .button, .mn-plate-bar .button { min-height: 44px; padding: 0 12px; }
+  .manual .mn-fs { display: none; }
+  .mn-tray button { padding: 0 8px; height: 40px; }
+  .mn-progress { flex: 1; }
+  .mn-progress small { max-width: none; }
+  .mn-plate-body { padding: 16px 16px 20px; }
+}
+@media (max-width: 359px) { .mn-tray button { padding: 0 5px; } }
+@media (prefers-reduced-motion: reduce) { .mn-well span { animation: none; } }
+
+/* ---------- The default button: Olo's dark frame inside its own box ---------- */
+/* (No ring round it at rest: a ring is the keyboard's, on :focus-visible.) */
+:root { --default-frame: #1B1F27; }
+:root[data-theme="dark"], :root[data-theme="night"] { --default-frame: var(--ink); }
+.button.primary, .hero .button.primary, :root[data-theme="dark"] .hero .button.primary, :root[data-theme="night"] .hero .button.primary {
+  margin: 0; box-shadow: inset 0 0 0 1px var(--default-frame), inset 2px 2px 0 rgba(255, 255, 255, .6), inset -2px -2px 0 rgba(0, 0, 0, .08);
+}
+:root[data-theme="dark"] .button.primary, :root[data-theme="night"] .button.primary,
+:root[data-theme="dark"] .hero .button.primary, :root[data-theme="night"] .hero .button.primary {
+  box-shadow: inset 0 0 0 1px var(--default-frame), inset 2px 2px 0 rgba(255, 255, 255, .12), inset -2px -2px 0 rgba(0, 0, 0, .3);
+}
+/* (Pressed, in every look: as specific as the look's own rule, so it wins.) */
+.button.primary:active, :root[data-theme] .button.primary:active, :root[data-theme] .hero .button.primary:active { box-shadow: inset 0 0 0 1px var(--default-frame), inset 1px 1px 3px rgba(0, 0, 0, .3); }
+.hero-actions, .get-button .button { margin-left: 0; }
+
+/* ---------- The hero's glow under its words, not behind them ---------- */
+/* The wallpaper's box runs 110 points past the hero's foot (which hides
+   it), so Dunes' bright horizon sits that much lower: under the footnote
+   by 40 points or more at 1280 and 1440, the words on flat sky. */
+/* (In a window shorter than 860 points, further: the words sit lower in a
+   shorter hero, and the crest must stay under them.) */
+.hero-wall { inset: 0 0 calc(-110px - max(0px, 860px - 100svh) * .65) 0; }
+@media (max-width: 899px), (max-width: 1199px) and (max-aspect-ratio: 4/5) { .hero-wall { inset: auto; } }
+
+/* ---------- Agent view: Olo's scroll bar, and a bar at the window's foot ---------- */
+.av-tools { order: 2; margin-top: auto; justify-content: space-between; gap: 12px; padding: 6px 12px; border-bottom: 0; border-top: 1px solid var(--wf-shadow); box-shadow: inset 0 1px 0 var(--wf-light); }
+.av-status { margin: 0; min-width: 0; font: 400 12.5px/1.3 var(--f-text); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-tree { scrollbar-width: auto; }
+.av-tree::-webkit-scrollbar { width: 14px; height: 14px; }
+.av-tree::-webkit-scrollbar-track { background: var(--well); box-shadow: inset 1px 1px 0 var(--wf-shadow), inset -1px -1px 0 var(--wf-light); }
+.av-tree::-webkit-scrollbar-thumb { border: 1px solid var(--button-edge); border-radius: 2px; background: linear-gradient(to right, var(--button-top), var(--button-bottom)); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .5); }
+.av-tree::-webkit-scrollbar-thumb:horizontal { background: linear-gradient(var(--button-top), var(--button-bottom)); }
+.av-tree::-webkit-scrollbar-corner { background: var(--wf-face); }
+/* (Under the lines that fit, the terminal's own ground.) */
+.av-win .av-body { background: var(--term-bg); }
+
+/* ---------- The landing pass ---------- */
+.hero-small { text-wrap: balance; }
+/* A phone's hero: Install the width of the screen, the guide and the
+   source side by side under it, each a finger's height; Dunes fading into
+   the desktop under it, not stopping on a line. */
+@media (max-width: 599px) {
+  .hero-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-left: 0; }
+  .hero-actions .button { min-height: 44px; justify-content: center; padding: 0 10px; }
+  .hero-actions .button.primary { grid-column: 1 / -1; }
+}
+@media (max-width: 899px), (max-width: 1199px) and (max-aspect-ratio: 4/5) {
+  .hero-wall { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 62%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 62%, transparent); }
+  .hero { background: linear-gradient(to bottom, var(--wall-ground) calc(100% - 140px), var(--desk)); }
+}

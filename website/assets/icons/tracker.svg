@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}@media (max-width:47.98px){.from48{display:none}}</style>
 <defs>
 <linearGradient id="shadow" x1="33" y1="53.4" x2="34.1" y2="57.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".34"/><stop offset="1" stop-opacity="0"/></linearGradient>
 <clipPath id="back"><path d="M3 15.5L3.1 13.05Q3.2 10.6 5.63 10L20.04 6.41Q21.5 6.05 22.59 7.08L25.92 10.25Q26.5 10.8 27.28 10.61L51.06 4.68Q53 4.2 53 6.2L53 30L40 50L6.46 57.67Q5 58 4.93 56.5Z"/></clipPath>
