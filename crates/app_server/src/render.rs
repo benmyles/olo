@@ -298,13 +298,9 @@ where
         let map = layer_map_for_output(output);
         // (In Rescue, only Rescue's own. In a recording or a share, never a
         // recording's controls nor a saved picture's card: on the screen,
-        // not in what's recorded.)
-        map.layers()
-            .rev()
-            .filter(|l| crate::rescue::shows_layer(l))
-            .filter(|l| !(capturing && olo_protocol::recording::only_on_the_screen(l.namespace())))
-            .filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc)))
-            .collect()
+        // not in what's recorded; in a screenshot, never that card:
+        // `left_out`.)
+        map.layers().rev().filter(|l| crate::rescue::shows_layer(l)).filter(|l| !left_out(capturing, l.namespace())).filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
     };
     let mut out = Vec::new();
     // A layer surface with its menus, or (`tree`) a surface alone.
@@ -921,27 +917,43 @@ where
 }
 
 thread_local! {
-    /// Set while a capture session's elements are gathered (a recording's,
-    /// a screen share's: `capture_elements`, `zoomable`): what's only for
-    /// the person's screen is left out (`space_elements`: a recording's
-    /// controls). A screenshot, an agent's look included, is the screen as
-    /// it is.
-    static CAPTURING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Set while a capture's elements are gathered (`capture_elements`):
+    /// a capture session's (a recording's, a screen share's: `zoomable`,
+    /// true) or a screenshot's (an agent's look included, false); None
+    /// while the screen's own are (`left_out`).
+    static CAPTURING: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
 }
 
-/// While alive, the elements gathered are a capture session's (`on`).
+/// Whether the layer surface `namespace` names is left out of what's
+/// gathered for `capturing` (`CAPTURING`). A capture session leaves out
+/// what's only for the person's screen (a recording's controls,
+/// `only_on_the_screen`). A screenshot is the screen as it is, but for
+/// the card a Screenshot from before an upgrade puts up as it saves a
+/// picture (`AFTER_NAMESPACE`): it was in the next one taken, Screenshot
+/// putting away only the notifications' banners now. The screen itself
+/// shows everything.
+fn left_out(capturing: Option<bool>, namespace: &str) -> bool {
+    match capturing {
+        Some(true) => olo_protocol::recording::only_on_the_screen(namespace),
+        Some(false) => namespace == olo_protocol::recording::AFTER_NAMESPACE,
+        None => false,
+    }
+}
+
+/// While alive, the elements gathered are a capture's: a capture
+/// session's (`session`), or a screenshot's.
 struct Capturing;
 
 impl Capturing {
-    fn new(on: bool) -> Capturing {
-        CAPTURING.with(|c| c.set(on));
+    fn new(session: bool) -> Capturing {
+        CAPTURING.with(|c| c.set(Some(session)));
         Capturing
     }
 }
 
 impl Drop for Capturing {
     fn drop(&mut self) {
-        CAPTURING.with(|c| c.set(false));
+        CAPTURING.with(|c| c.set(None));
     }
 }
 
@@ -1304,6 +1316,20 @@ fn presel_element(output: &str, area: Rectangle<i32, Physical>) -> smithay::back
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What's only for the person's screen is never in a recording or a share; a screenshot is the screen as
+    /// it is (a recording's controls in it too), but for the card a Screenshot from before an upgrade put up
+    /// as it saved (in the next picture taken, as the new one puts away only the notifications' banners).
+    #[test]
+    fn what_each_capture_leaves_out() {
+        use olo_protocol::recording::{AFTER_NAMESPACE, CONTROLS_NAMESPACE};
+        assert!(left_out(Some(true), CONTROLS_NAMESPACE) && left_out(Some(true), AFTER_NAMESPACE));
+        assert!(!left_out(Some(false), CONTROLS_NAMESPACE) && left_out(Some(false), AFTER_NAMESPACE));
+        assert!(!left_out(None, CONTROLS_NAMESPACE) && !left_out(None, AFTER_NAMESPACE));
+        for capturing in [Some(true), Some(false), None] {
+            assert!(!left_out(capturing, "olo.notifications") && !left_out(capturing, "deskbar"));
+        }
+    }
 
     /// The frames' memory is kept warm for a while after something drew,
     /// and never on a screen nobody sits at.

@@ -2172,10 +2172,37 @@ impl<'a> WindowCx<'a> {
     /// (Wayland's data device), while the press that began it is down.
     /// What comes back resolves, when the drag is over, to what it was
     /// dropped as (None: cancelled).
-    pub fn start_drag(&self, drag: crate::OutgoingDrag) -> futures::channel::oneshot::Receiver<Option<crate::DragAction>> {
+    pub fn start_drag(&mut self, drag: crate::OutgoingDrag) -> futures::channel::oneshot::Receiver<Option<crate::DragAction>> {
+        // The press that began it is the drag's now: the display takes its
+        // release (the drag ends where it's let go of, and the window isn't
+        // told), so nothing here stays pressed waiting for it. Kept, the
+        // next release over what was pressed clicked it: a banner's picture
+        // dragged out and let go of, then a press on its Delete taken off
+        // it onto the card, opened the card.
+        self.release_presses();
         let (done, over) = futures::channel::oneshot::channel();
         self.on_display(move |window| window.start_drag(drag, done));
         over
+    }
+
+    /// Whatever is pressed let go of, unclicked (each drawn as no longer
+    /// pressed): a release that will never come.
+    fn release_presses(&mut self) {
+        for (id, _) in std::mem::take(&mut self.core.pressed) {
+            if let Some(node) = self.core.nodes.get_mut(id)
+                && node.pressed
+            {
+                node.pressed = false;
+                self.core.state_changed(id);
+            }
+        }
+    }
+
+    /// Whether anything is held pressed in the window (its release to
+    /// come): for a test that a drag took its press with it.
+    #[doc(hidden)]
+    pub fn presses_held(&self) -> usize {
+        self.core.pressed.len()
     }
 
     /// A window with no display (a headless run: the layout lint's
@@ -2225,6 +2252,25 @@ impl<'a> WindowCx<'a> {
         let (tx, rx) = std::sync::mpsc::channel();
         self.on_display(move |window| {
             window.headless_input(crate::PlatformInput::MouseMove(crate::MouseMoveEvent { position: at, pressed_button: button, modifiers }));
+            let _ = tx.send(());
+        });
+        rx
+    }
+
+    /// A press (`down`) or release of `button` at `at`, over a window with
+    /// no display, as if the person made it: through the display thread
+    /// as [`Self::headless_move`]'s moves are, the receiver hearing once
+    /// it's on the looper's queue.
+    #[doc(hidden)]
+    pub fn headless_button(&self, at: Point<Pixels>, button: crate::MouseButton, down: bool) -> std::sync::mpsc::Receiver<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.on_display(move |window| {
+            let modifiers = crate::Modifiers::default();
+            window.headless_input(if down {
+                crate::PlatformInput::MouseDown(crate::MouseDownEvent { button, position: at, modifiers, click_count: 1, first_mouse: false })
+            } else {
+                crate::PlatformInput::MouseUp(crate::MouseUpEvent { button, position: at, modifiers, click_count: 1 })
+            });
             let _ = tx.send(());
         });
         rx

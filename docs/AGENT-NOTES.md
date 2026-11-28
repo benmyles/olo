@@ -4564,3 +4564,13 @@ prompts while staying sandboxed to its scratch cwd.
   in-flight loader/history state synchronously on explicit closes and guard
   the `close` listener with `if (dialog.open) return;` so a synchronous
   reopen cannot be cancelled by the stale queued event.
+
+**Screenshot notification banners & Wayland default pointer** (2026-11-28):
+- `tools/dev/shot-note-check N` replaces the old `tools/dev/shot-card-check`
+  and runs 13 headless end-to-end assertions for Screenshot-to-Notifications
+  banners, drag-and-drop into Tracker, click-to-open, post-exit Copy/Delete,
+  stale-receipt safety, GIF recording posters, and Agent Screen suppression.
+- Olo's default system pointer drawn by `app_server` for Wayland
+  `wp_cursor_shape_device_v1::set_shape(1)` (`default`) is Haiku/BeOS's
+  hand cursor, not an arrow — do not misread it in screenshots as web
+  `PointingHand` (`FollowLink`), which is only requested over actual links.

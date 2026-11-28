@@ -57,8 +57,10 @@ const APP_ID: &str = "olo.notifications";
 /// A card's width (logical): the Deskbar's, so banners line up under
 /// it at the screen's right edge, in a column that is usually free.
 pub const WIDTH: f32 = m::DESKBAR_WIDTH;
-/// Between groups, and from the display's edges.
-pub const GAP: f32 = 8.0;
+/// Between groups, and from the display's edges: the right as well as
+/// the bottom, so a card reads as set on the screen, not slid half off
+/// it (flush right, it had one margin below, one between, none beside).
+pub const GAP: f32 = 10.0;
 /// At most this many at once; the rest wait their turn.
 pub const SHOWN: usize = 4;
 /// How long a click waits for its activation token before the action
@@ -83,7 +85,20 @@ enum Msg {
     Refresh,
     /// Look for cards whose time is up (asked for then, `expire_at`).
     Expire(Instant),
+    /// Waits for the screen may have gone on too long (frames no longer
+    /// coming: the display asleep): those that have are given up, their
+    /// askers told so (`away_late`).
+    AwayLate,
 }
+
+/// How long a put-away waits for the screen to show its banners gone, at
+/// most: two frames at 60 Hz are 33 ms.
+const AWAY_MOST: Duration = Duration::from_millis(1000);
+/// After a put-away, an app's new banners wait this long before they
+/// show: whatever asked is taking a picture of the screen (Screenshot's
+/// capture takes a frame or two once it's asked), and a picture saved a
+/// moment before by another Screenshot would otherwise come up in it.
+const HOLD: Duration = Duration::from_millis(400);
 
 pub struct Card {
     pub note: Note,
@@ -103,6 +118,14 @@ struct Pending {
     /// Say it closed, after the action.
     close: bool,
     since: Instant,
+    /// What sent the note, and what the action does without it (its
+    /// desktop entry, its name and the arguments for its program,
+    /// `x-olo-runs`): gone before the action is sent, that is done.
+    sender: Option<String>,
+    fallback: Option<(Option<String>, String, Vec<String>)>,
+    /// The generation of the note the action is on (`Note::generation`): its
+    /// close is told only while that's still the note its sender has.
+    generation: Option<u64>,
 }
 
 pub struct Notifications {
@@ -115,12 +138,27 @@ pub struct Notifications {
     dirty: bool,
     /// The banners' layer surface.
     win: Option<WindowHandle<banners::Banners>>,
+    /// Waits for the screen to show the banners as they are now (two
+    /// frames: `banners::Told::Shown`) under way, by tag: when each began,
+    /// and the put-away's asker that waits on it, if one does. One for
+    /// every card that leaves: until its going is on the screen, a
+    /// put-away waits too. The surface, its last card gone, closes once
+    /// none is. One timer for them all (`away_timer`, `away_late`).
+    away: HashMap<u64, (Instant, Option<server::Done>)>,
+    next_away: u64,
+    away_timer: bool,
+    /// Apps whose new banners wait until then (`HOLD`, after a put-away),
+    /// and the banners waiting.
+    holds: HashMap<String, Instant>,
+    held: Vec<Note>,
     /// Oldest first.
     pub cards: Vec<Card>,
     /// How many of them are on screen: up to SHOWN, as many as fit.
     pub fits: usize,
     /// The card under the pointer: it stays while it is.
     pub hovered: Option<u32>,
+    /// The card whose picture is being dragged out: it stays while it is.
+    pub dragging: Option<u32>,
     /// When the cards are next looked at for one whose time is up.
     expiry: Option<Instant>,
     pending: HashMap<u64, Pending>,
@@ -137,6 +175,9 @@ pub struct Notifications {
     /// ([`Notifications::sender_gone`]). Not kept: after a restart none is
     /// open at its app.
     senders: HashMap<u32, String>,
+    /// The generation of each note its sender has now (`Note::generation`), for
+    /// telling its close (`queue_closed`).
+    gens: HashMap<u32, u64>,
     /// What has left the history (faded away, dismissed, cleared,
     /// forgotten): the History window's Archived view.
     pub archive: History,
@@ -153,7 +194,7 @@ pub struct Notifications {
     clear_batches: VecDeque<ClearBatch>,
     /// `NotificationClosed` signals queued while holding the model lock and
     /// emitted only after `Mutex<Notifications>` is released ([`with`]).
-    pending_closes: Vec<(u32, Reason)>,
+    pending_closes: Vec<(u32, Option<u64>, Reason)>,
     /// The History window, and what it shows.
     history_win: Option<WindowHandle<history::HistoryWindow>>,
     pub view: history::HistoryState,
@@ -165,6 +206,14 @@ pub struct Notifications {
     told: Option<NotificationState>,
     /// The screen is being shared (`SharingState`).
     sharing: bool,
+    /// A recording is asked for or going on this display (from its
+    /// recorder's reservation, through its countdown, to its last frame):
+    /// Screenshot's own banners (of a picture taken meanwhile) wait in the
+    /// list, whatever Preferences says of others', so that none is in the
+    /// recording.
+    recording: bool,
+    /// What the screen is as last read, off the UI's thread (`ScreenNow`).
+    screen: SharedScreen,
     /// The app whose window the person is in (its app id), once they've
     /// stayed there a moment (`follow_visits`); None between windows.
     in_front: Option<String>,
@@ -246,7 +295,15 @@ impl Notifications {
     /// Queue a `NotificationClosed` signal to be emitted after releasing the
     /// model lock ([`with`]) on the bus signal worker.
     pub fn queue_closed(&mut self, id: u32, reason: Reason) {
-        self.pending_closes.push((id, reason));
+        // (Told it's closed, its app no longer has it open: what sent it
+        // isn't followed for it now. Kept, a note cleared from the list
+        // and put back by Undo was taken to be open at an app that had
+        // let it go, and its first click went to nobody.)
+        self.senders.remove(&id);
+        // (The generation of it that closes: a close queued here for one
+        // its sender has sent again since reaches nobody, `Bus::closed`.)
+        let generation = self.gens.remove(&id);
+        self.pending_closes.push((id, generation, reason));
     }
 
     /// Read `notifications.json` again if it changed.
@@ -280,8 +337,25 @@ impl Notifications {
     /// is to be quiet then), the banners on screen go into the history, as
     /// if they had timed out.
     fn refresh_sharing(&mut self) {
-        let recording = olo_protocol::recording::going_on(&olo_protocol::recording::this_display()).is_some_and(|g| g.recording);
-        let sharing = !olo_protocol::sharing::SharingState::load().shares.is_empty() || recording;
+        // (As last read off this thread: no file is read here.)
+        let screen = *self.screen.lock().unwrap();
+        // A recording asked for: Screenshot's banners off the screen now,
+        // before its first frame, as if put away; and none comes up until
+        // it's over (`add_card`).
+        if screen.reserved && !self.recording {
+            let ids: Vec<u32> = self.cards.iter().filter(|c| waits_out_recording(true, c.note.desktop_entry.as_deref())).map(|c| c.note.id).collect();
+            for &id in &ids {
+                self.take(id);
+                if let Some(e) = self.history.newest_mut(id) {
+                    e.shown = false;
+                }
+            }
+            if !ids.is_empty() {
+                self.publish(true);
+            }
+        }
+        self.recording = screen.reserved;
+        let sharing = screen.shared || screen.recording;
         if sharing == self.sharing {
             return;
         }
@@ -312,7 +386,7 @@ impl Notifications {
         if gone.is_empty() {
             return;
         }
-        if gone.iter().any(|(_, e)| Some(e.id) == self.view.selected) {
+        if gone.iter().any(|(_, e)| Some(e.uid) == self.view.selected) {
             self.view.selected = None;
         }
         self.steps.done(if at.is_some() { "Delete" } else { "Delete All" }, Gone::Deleted(gone));
@@ -333,7 +407,7 @@ impl Notifications {
             (e.archived, e.why, e.unread, e.live, e.shown) = (0, None, false, false, false);
             // (Read now: it has its time in the list again before it's tidied away.)
             e.read_at = now_secs();
-            if self.view.selected == Some(e.id) {
+            if self.view.selected == Some(e.uid) {
                 self.view.selected = None;
             }
             let entries = self.history.entries_mut();
@@ -437,12 +511,19 @@ impl Notifications {
 
     fn show(&mut self, mut note: Note) {
         self.refresh_settings();
+        // (Whether the screen is shared or recorded now, as it comes: a
+        // recording's own notification, sent as it ends, came before the
+        // tick for its status file's going, and went to the list alone,
+        // the recording taken to be going on.)
+        self.refresh_sharing();
         match &note.sender {
             Some(s) => {
                 self.senders.insert(note.id, s.clone());
+                self.gens.insert(note.id, note.generation);
             }
             None => {
                 self.senders.remove(&note.id);
+                self.gens.remove(&note.id);
             }
         }
         // One of each (Preferences ▸ Notifications): the same again from
@@ -477,7 +558,11 @@ impl Notifications {
             && note.via.is_none()
             && note.show.is_empty()
             && self.in_front.as_deref().is_some_and(|front| store::is_app(&store::app_ids(note.desktop_entry.as_deref(), &note.app_name), front));
-        let banner = app.banners && ((!quiet && !never) || (note.urgent && !self.sharing_quiet())) && !snoozed && !there;
+        // (Screenshot's, while the screen is recorded: a picture of what
+        // was taken meanwhile would be in the recording, as its card of
+        // before was kept out of it.)
+        let recorded = waits_out_recording(self.recording, note.desktop_entry.as_deref());
+        let banner = app.banners && ((!quiet && !never) || (note.urgent && !self.sharing_quiet())) && !snoozed && !there && !recorded;
         if app.sounds
             && !quiet
             && !snoozed
@@ -512,6 +597,26 @@ impl Notifications {
     }
 
     fn add_card(&mut self, note: Note) {
+        let on_screen = self.cards.iter().any(|c| c.note.id == note.id);
+        // Screenshot's while the screen is recorded, from the recorder's
+        // asking for it to its last frame: never on the screen (a picture
+        // taken meanwhile would be in the recording), whatever Preferences
+        // says of others'; in the list, as if put away. New, woken from a
+        // snooze or brought back at a start, all come here.
+        if !on_screen && waits_out_recording(self.recording, note.desktop_entry.as_deref()) {
+            if let Some(e) = self.history.newest_mut(note.id) {
+                e.shown = false;
+            }
+            return;
+        }
+        // An app whose banners were just put away (`put_away`): this one
+        // waits until its hold is over (`release_held`).
+        let app = note.desktop_entry.as_deref().map(|e| e.trim_end_matches(".desktop").to_owned());
+        if !on_screen && app.as_ref().and_then(|a| self.holds.get(a)).is_some_and(|t| *t > Instant::now()) {
+            self.held.retain(|n| n.id != note.id);
+            self.held.push(note);
+            return;
+        }
         // Pinned: on screen until closed.
         let pinned = self.history.newest(note.id).is_some_and(|e| e.pinned);
         let until = note.timeout.filter(|_| !pinned).map(|t| Instant::now() + t);
@@ -558,7 +663,7 @@ impl Notifications {
         }
         let Some(shared) = self.me.upgrade() else { return };
         let options = WindowOptions::new("Notifications", WIDTH, 1.0).layer("notifications", LayerShellLayer::Top, (false, true, false, true)).layer_options(|l| {
-            l.margin = (0, 0, GAP as i32, 0);
+            l.margin = (0, GAP as i32, GAP as i32, 0);
             l.keyboard = LayerKeyboard::None;
         });
         self.win = Some(olo_kit::open_window(options.no_panel(), move |cx| banners::Banners::new(shared, cx)));
@@ -583,6 +688,17 @@ impl Notifications {
     /// nobody hears (Ben, 2026-11-18: a click on a waiting tab's note
     /// "only took me to the last active window/tab in terminal").
     fn sender_gone(&mut self, sender: &str) {
+        // An action still waiting for its token, to a program that has
+        // gone meanwhile: done as it would be for one no longer open, if
+        // the note says how (it was chosen; nobody would hear it now).
+        let orphaned: Vec<u64> = self.pending.iter().filter(|(_, p)| p.sender.as_deref() == Some(sender)).map(|(t, _)| *t).collect();
+        for tag in orphaned {
+            if let Some(Pending { fallback: Some((entry, app, args)), key, .. }) = self.pending.remove(&tag)
+                && !act_what(entry.as_deref(), &key, &args)
+            {
+                raise_app(entry.as_deref(), &app);
+            }
+        }
         let ids: Vec<u32> = self.senders.iter().filter(|(_, s)| s.as_str() == sender).map(|(id, _)| *id).collect();
         if ids.is_empty() {
             return;
@@ -597,10 +713,14 @@ impl Notifications {
                 kept = true;
             }
         }
-        // (On screen still: its buttons can't do anything now; a click on
-        // it shows what it's about.)
+        // (On screen still: its buttons can't do anything now, but for
+        // those that run something of their own (`x-olo-runs`:
+        // Screenshot's Copy and Delete, its picture saved and its program
+        // gone); a click on it shows what it's about.)
         for c in self.cards.iter_mut().filter(|c| ids.contains(&c.note.id)) {
-            c.note.actions.clear();
+            let note = &c.note;
+            let kept: Vec<(String, String)> = note.actions.iter().filter(|(k, _)| k != "default" && note.runs_for(k).is_some()).cloned().collect();
+            c.note.actions = kept;
             c.note.reply = None;
             c.replying = false;
         }
@@ -658,7 +778,7 @@ impl Notifications {
             }
             store::History::save_pair(&self.archive, &self.history, None);
             self.steps.done("Clear", Gone::Forgot { entries: gone, batch: None, only_eligible: true });
-            if self.view.selected == Some(id) {
+            if self.selected_is(id) {
                 self.view.selected = None;
             }
             self.publish(false);
@@ -672,30 +792,38 @@ impl Notifications {
     /// it was seen to elsewhere, or is no longer true); otherwise the
     /// app hears why it closed.
     pub fn remove(&mut self, id: u32, reason: Reason) {
-        self.senders.remove(&id);
         let on_screen = self.take(id);
-        let kept = self.history.get_mut(id).is_some();
+        // (Its entry whether it's open at its app or not: one whose app
+        // has quit, as Screenshot's does, has its banner go all the same.
+        // Looked for only among those open, it stayed "shown" for good,
+        // and came back on the screen at every start.)
+        let kept = self.history.newest(id).is_some();
+        if reason == Reason::Expired && kept {
+            if let Some(e) = self.history.newest_mut(id) {
+                e.shown = false;
+            }
+            // (Still open at its app: its sender is followed still, so
+            // that its going is known. Forgotten here, a note whose banner
+            // had timed out stayed open at an app that had quit, and its
+            // actions in the list went to nobody.)
+            self.publish(true);
+            return;
+        }
+        self.senders.remove(&id);
         if reason == Reason::Closed && self.history.newest(id).is_some_and(|e| e.live && !e.pinned) {
             let gone: Vec<Entry> = self.history.take_out(|_, e| e.id != id || !e.live).into_iter().map(|(_, e)| e).collect();
             if self.archive.archive(gone.into_iter().map(|e| (e, store::Why::Withdrawn)), now_secs()) {
                 self.archived_changed();
             }
             store::History::save_pair(&self.archive, &self.history, None);
-            if self.view.selected == Some(id) {
+            if self.selected_is(id) {
                 self.view.selected = None;
             }
             self.queue_closed(id, reason);
             self.publish(false);
             return;
         }
-        if reason == Reason::Expired && kept {
-            if let Some(e) = self.history.get_mut(id) {
-                e.shown = false;
-            }
-            self.publish(true);
-            return;
-        }
-        if let Some(e) = self.history.get_mut(id) {
+        if let Some(e) = self.history.newest_mut(id) {
             e.live = false;
             e.shown = false;
             if reason == Reason::Dismissed && e.unread {
@@ -710,6 +838,8 @@ impl Notifications {
 
     /// Take a card away (saying nothing); whether it was there.
     fn take(&mut self, id: u32) -> bool {
+        // (One held after a put-away goes too: it never comes up.)
+        self.held.retain(|n| n.id != id);
         let before = self.cards.len();
         self.cards.retain(|c| c.note.id != id);
         let was = self.cards.len() != before;
@@ -717,11 +847,65 @@ impl Notifications {
             self.hovered = None;
         }
         self.wake(0..self.fits);
-        if self.cards.is_empty() {
-            self.close_banners();
+        // (Gone from the model, it may still be on the screen until the
+        // banners are drawn without it and that drawing is shown: waited
+        // for, so that a put-away asked meanwhile waits too; and the
+        // surface, if it was the last, closes only then, `shown`.)
+        if was {
+            self.wait_for_screen(None);
+        } else if self.cards.is_empty() {
+            self.close_if_empty();
         }
         self.changed();
         was
+    }
+
+    /// Wait for the screen to show the banners as they are now, then
+    /// tell `done` (a put-away's asker); with no banners' surface,
+    /// there's nothing to wait for. (`AWAY_MOST` at most: frames that no
+    /// longer come, the display asleep, keep nobody waiting for good: one
+    /// timer for all the waits, `away_late`.)
+    fn wait_for_screen(&mut self, done: Option<server::Done>) {
+        let Some(win) = self.win.clone().filter(|w| w.is_open()) else {
+            if let Some(d) = done {
+                let _ = d.send(());
+            }
+            return;
+        };
+        let tag = self.next_away;
+        self.next_away += 1;
+        self.away.insert(tag, (Instant::now(), done));
+        if !self.away_timer {
+            self.away_timer = true;
+            later(&self.proxy, AWAY_MOST, Msg::AwayLate);
+        }
+        win.messenger().send(banners::Told::Shown(tag));
+    }
+
+    /// The screen has shown the banners as they were when `tag`'s wait
+    /// began (two frames): its asker is told; and the surface, if
+    /// nothing is on it and nothing else waits, closes.
+    pub fn shown(&mut self, tag: u64) {
+        if let Some((_, Some(done))) = self.away.remove(&tag) {
+            let _ = done.send(());
+        }
+        self.close_if_empty();
+    }
+
+    /// The waits that have gone on `AWAY_MOST` given up on, their askers
+    /// told they weren't seen (the answers dropped); the timer set again
+    /// for the next of those left.
+    fn away_late(&mut self) {
+        self.away_timer = false;
+        let (late, next) = give_up_late(&mut self.away, Instant::now());
+        if late > 0 {
+            tracing::info!("notifications: {late} put-away's banners weren't seen off the screen within {AWAY_MOST:?}");
+        }
+        if let Some(after) = next {
+            self.away_timer = true;
+            later(&self.proxy, after, Msg::AwayLate);
+        }
+        self.close_if_empty();
     }
 
     /// The ones waiting have their time from when they appear (a little,
@@ -737,10 +921,11 @@ impl Notifications {
         }
     }
 
-    /// A card being used: under the pointer, or a reply begun in it. It
-    /// stays, and has its time again once it isn't (`hover`, `typed`).
+    /// A card being used: under the pointer, a reply begun in it, or its
+    /// picture being dragged out. It stays, and has its time again once
+    /// it isn't (`hover`, `typed`, `drag`).
     fn held(&self, c: &Card) -> bool {
-        Some(c.note.id) == self.hovered || c.replying
+        Some(c.note.id) == self.hovered || c.replying || Some(c.note.id) == self.dragging
     }
 
     /// Cards whose time is up go (not one being used).
@@ -786,16 +971,146 @@ impl Notifications {
         if self.hovered == id {
             return;
         }
-        if let Some(left) = self.hovered
-            && let Some(card) = self.cards.iter_mut().find(|c| c.note.id == left)
+        if let Some(left) = self.hovered {
+            self.a_moment_more(left);
+        }
+        self.hovered = id;
+        self.changed();
+    }
+
+    /// Card `id`, let go of, has a moment yet before it goes (if its time
+    /// is nearly up).
+    fn a_moment_more(&mut self, id: u32) {
+        if let Some(card) = self.cards.iter_mut().find(|c| c.note.id == id)
             && card.until.is_some_and(|u| u < Instant::now() + Duration::from_secs(2))
         {
             let at = Instant::now() + Duration::from_secs(2);
             card.until = Some(at);
             self.expire_at(at);
         }
-        self.hovered = id;
+    }
+
+    /// Card `id`'s picture is being dragged out (None: the drag is
+    /// over): it stays while it is, and has a moment after, as when the
+    /// pointer leaves it. (A drag takes the pointer without its leaving
+    /// being told: it's taken to be over no card now.)
+    pub fn drag(&mut self, id: Option<u32>) {
+        let was = std::mem::replace(&mut self.dragging, id);
+        if let Some(left) = was.filter(|_| id.is_none()) {
+            self.hovered = None;
+            self.a_moment_more(left);
+        }
         self.changed();
+    }
+
+    /// Card `id`'s picture was dropped somewhere as its file: it has
+    /// been used, so it's read, and its card leaves the screen, saying
+    /// nothing to its app (still open there: its actions run from the
+    /// list).
+    pub fn dropped(&mut self, id: u32) {
+        self.dragging = None;
+        self.hovered = None;
+        self.history.set_read(id, true);
+        self.seen(&[id]);
+    }
+
+    /// Whether note `id` is open at its app: what it sent is still on
+    /// the bus, and it hasn't closed it. Its entry says, where it has one
+    /// (put back by Undo after it was closed, it isn't, whatever sent
+    /// it); one that isn't kept, while what sent it is followed.
+    fn open_at_app(&self, id: u32) -> bool {
+        let gtk = || self.bus.lock().unwrap().as_ref().is_some_and(|b| b.has_gtk(id));
+        open_at(self.history.newest(id).map(|e| e.live), self.senders.contains_key(&id), gtk)
+    }
+
+    /// What note `id`'s action `key` runs of its own, whatever its app
+    /// (`x-olo-runs`, never a click's `x-olo-show`): its desktop entry and
+    /// name, and the arguments for its program.
+    fn runs_own(&self, id: u32, key: &str) -> Option<(Option<String>, String, Vec<String>)> {
+        if key == "default" {
+            return None;
+        }
+        self.runs_of(id, key)
+    }
+
+    /// What note `id`'s action `key` does now that it isn't open at its
+    /// app (`x-olo-runs`; a click, `x-olo-show`): its desktop entry and
+    /// name, and the arguments for its program.
+    fn runs_of(&self, id: u32, key: &str) -> Option<(Option<String>, String, Vec<String>)> {
+        // (Checked again here, where it's run from, against its key and its
+        // note's file and receipt: a note or an entry from an older build
+        // never runs what its key doesn't say, an Open never a Delete.)
+        let checked = |entry: &Option<String>, look: &olo_protocol::NoteLook, args: &[String]| relaunch_for(entry.as_deref(), key, args, look.file.as_deref(), look.file_id);
+        if let Some(c) = self.cards.iter().find(|c| c.note.id == id) {
+            return c.note.runs_for(key).filter(|a| checked(&c.note.desktop_entry, &c.note.look, a)).map(|a| (c.note.desktop_entry.clone(), c.note.app_name.clone(), a.to_vec()));
+        }
+        let e = self.history.newest(id)?;
+        e.runs_for(key).filter(|a| checked(&e.desktop_entry, &e.look, a)).map(|a| (e.desktop_entry.clone(), e.app.clone(), a.to_vec()))
+    }
+
+    /// The banners of the app whose desktop entry is `app` off the
+    /// screen, as if their time had run out (`PutAway`: whatever is
+    /// about to take a picture of the screen asks it, so that its own
+    /// banner isn't in it, as Screenshot's of the picture before would
+    /// be); `done` once the screen no longer shows them: the banners
+    /// drawn again without them, and that drawing on the screen (its
+    /// surface, if they were the last, closed only after; closed at once,
+    /// it went as its looper and then the display came to it, and a
+    /// picture taken at once had the banner in it, one in eight). One
+    /// that asks while another's wait is under way, or as one of its
+    /// banners has just gone, waits for the screen too: it may still show
+    /// it. Each kept in the list as one whose time ran out, and the list
+    /// saved once for all of them.
+    fn put_away(&mut self, app: &str, done: server::Done) {
+        let app = app.trim_end_matches(".desktop");
+        let of_app = |e: Option<&str>| e.is_some_and(|e| e.trim_end_matches(".desktop") == app);
+        // Its new banners wait a moment (`HOLD`): what asked is taking a
+        // picture, and one saved by another a moment before would be in it.
+        self.holds.insert(app.to_owned(), Instant::now() + HOLD);
+        self.tick_after(HOLD);
+        // (Those waiting already go as if shown and put away.)
+        let held: Vec<u32> = self.held.iter().filter(|n| of_app(n.desktop_entry.as_deref())).map(|n| n.id).collect();
+        self.held.retain(|n| !of_app(n.desktop_entry.as_deref()));
+        let ids: Vec<u32> = self.cards.iter().filter(|c| of_app(c.note.desktop_entry.as_deref())).map(|c| c.note.id).collect();
+        // (Nothing of it on the screen, and nothing gone from it that may
+        // still be there: nothing to wait for.)
+        if ids.is_empty() && held.is_empty() && self.away.is_empty() {
+            let _ = done.send(());
+            return;
+        }
+        let mut kept = false;
+        for &id in ids.iter().chain(&held) {
+            self.take(id);
+            match self.history.newest_mut(id) {
+                Some(e) => {
+                    e.shown = false;
+                    kept = true;
+                }
+                // (One not kept goes as its time running out would have it.)
+                None => self.queue_closed(id, Reason::Expired),
+            }
+        }
+        if !ids.is_empty() || !held.is_empty() {
+            self.publish(kept);
+        }
+        self.wait_for_screen(Some(done));
+    }
+
+    /// Banners held after a put-away (`HOLD`) whose time has come, shown;
+    /// holds that are over, let go of.
+    fn release_held(&mut self) {
+        let ready = release(&mut self.holds, &mut self.held, Instant::now());
+        for note in ready {
+            self.add_card(note);
+        }
+    }
+
+    /// The banners' surface closed if nothing is on it and nothing waits
+    /// for the screen to show it as it is (`shown`).
+    pub fn close_if_empty(&mut self) {
+        if self.cards.is_empty() && self.away.is_empty() {
+            self.close_banners();
+        }
     }
 
     /// Run action `key` of notification `id` (`from`: the window clicked
@@ -804,7 +1119,86 @@ impl Notifications {
     /// the app hears it closed after the action.
     pub fn invoke(&mut self, from: Option<&WindowCx>, id: u32, key: String) {
         let resident = self.cards.iter().any(|c| c.note.id == id && c.note.resident);
-        let pending = Pending { id, key, close: !resident, since: Instant::now() };
+        match dispatch(self.open_at_app(id), self.runs_own(id, &key).is_some()) {
+            // An action that runs something of its own (`x-olo-runs`: a
+            // saved screenshot's Copy and Delete) is done that way, chosen
+            // now, its app open or not: sent to the app, a program about to
+            // end (a recording's, as its note goes out) left it unheard. Its
+            // note's life goes on as an action's would: read; and, but for
+            // a resident one, closed at its app (told so) and off the screen.
+            Dispatch::RunHere => {
+                if let Some((entry, app, args)) = self.runs_own(id, &key)
+                    && !run_what(entry.as_deref(), &args)
+                {
+                    raise_app(entry.as_deref(), &app);
+                }
+                let live = self.open_at_app(id);
+                if let Some(e) = self.history.newest_mut(id) {
+                    if e.unread {
+                        e.set_unread(false, now_secs());
+                    }
+                    if !resident {
+                        e.live = false;
+                        e.shown = false;
+                    }
+                }
+                if !resident {
+                    if live {
+                        self.queue_closed(id, Reason::Dismissed);
+                    }
+                    self.take(id);
+                }
+                self.publish(true);
+                self.changed();
+                return;
+            }
+            // No longer open at its app (it quit, or either of them started
+            // again since): what shows it (`x-olo-show`), else its app,
+            // never an action sent to nobody. Read, and off the screen.
+            Dispatch::Gone => {
+                match self.runs_of(id, &key) {
+                    Some((entry, app, args)) => {
+                        if !act_what(entry.as_deref(), &key, &args) {
+                            raise_app(entry.as_deref(), &app);
+                        }
+                    }
+                    None if key == "default" => {
+                        let whose = self.cards.iter().find(|c| c.note.id == id).map(|c| (c.note.desktop_entry.clone(), c.note.app_name.clone()));
+                        if let Some((entry, app)) = whose.or_else(|| self.history.newest(id).map(|e| (e.desktop_entry.clone(), e.app.clone()))) {
+                            raise_app(entry.as_deref(), &app);
+                        }
+                    }
+                    None => {}
+                }
+                if let Some(e) = self.history.newest_mut(id) {
+                    if e.unread {
+                        e.set_unread(false, now_secs());
+                    }
+                    e.shown = false;
+                }
+                self.take(id);
+                self.publish(true);
+                self.changed();
+                return;
+            }
+            // Open at its app: to the app, as the spec has it, its click
+            // too (`x-olo-show` is for after: Rex, Calendar, To-Do and
+            // Terminal raise their window with the token, and let go of the
+            // note as they're told it closed), below.
+            Dispatch::ToApp => {}
+        }
+        // What sent it, and what the action does if that has gone by the
+        // time it's sent (a recording's program ends as its note goes
+        // out): the action is sent then the way of one no longer open.
+        let sender = self.senders.get(&id).cloned();
+        let generation = self.gens.get(&id).copied();
+        let fallback = self.runs_of(id, &key);
+        if !resident {
+            // (Closed at its app once the action has gone: it hears so.)
+            self.senders.remove(&id);
+            self.gens.remove(&id);
+        }
+        let pending = Pending { id, key, close: !resident, since: Instant::now(), sender, fallback, generation };
         match from {
             Some(window) => {
                 let tag = self.next_tag;
@@ -816,7 +1210,7 @@ impl Notifications {
             }
             None => self.send(pending, None),
         }
-        if let Some(e) = self.history.get_mut(id) {
+        if let Some(e) = self.history.newest_mut(id) {
             if e.unread {
                 e.set_unread(false, now_secs());
             }
@@ -846,7 +1240,7 @@ impl Notifications {
             }
             b.action(p.id, &p.key);
             if p.close {
-                b.closed(p.id, Reason::Dismissed);
+                b.closed(p.id, p.generation, Reason::Dismissed);
             }
         });
     }
@@ -871,8 +1265,8 @@ impl Notifications {
     /// The History window closed: what was read while it was open moves.
     pub fn history_closed(&mut self) {
         self.history_win = None;
+        self.set_selected(None);
         self.view.held.clear();
-        self.view.selected = None;
         self.changed();
     }
 
@@ -899,8 +1293,10 @@ impl Notifications {
             return;
         }
         for &id in ids {
+            // (Open at its app or not: a dropped screenshot's, its
+            // program gone, leaves the screen as well.)
             if self.take(id)
-                && let Some(e) = self.history.get_mut(id)
+                && let Some(e) = self.history.newest_mut(id)
             {
                 e.shown = false;
             }
@@ -1020,7 +1416,7 @@ impl Notifications {
         e.snoozed_until = Some(until);
         e.shown = false;
         self.take(id);
-        if self.view.selected == Some(id) {
+        if self.selected_is(id) {
             self.view.selected = None;
         }
         self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())));
@@ -1104,7 +1500,7 @@ impl Notifications {
             if on_screen || live_ids.contains(&id) {
                 self.queue_closed(id, Reason::Dismissed);
             }
-            if self.view.selected == Some(id) {
+            if self.selected_is(id) {
                 self.view.selected = None;
             }
         }
@@ -1169,10 +1565,13 @@ impl Notifications {
     /// Time passed, or something it depends on changed.
     fn tick(&mut self) {
         self.flush_pending();
-        self.wake_snoozed();
-        // Do Not Disturb may have begun or ended (a share too).
+        // Do Not Disturb may have begun or ended (a share or a recording
+        // too): known before anything comes up.
         self.refresh_settings();
         self.refresh_sharing();
+        // (Banners held after a put-away, their hold over: on the screen.)
+        self.release_held();
+        self.wake_snoozed();
         self.fade_out();
         self.publish(false);
         self.expire();
@@ -1203,6 +1602,7 @@ impl Notifications {
             }
             Msg::In(In::Show(note)) => self.show(*note),
             Msg::In(In::Close(id)) => self.remove(id, Reason::Closed),
+            Msg::In(In::PutAway(app, done)) => self.put_away(&app, done),
             Msg::In(In::SenderGone(sender)) => self.sender_gone(&sender),
             Msg::In(In::Control(c, done)) => {
                 self.control(c);
@@ -1224,6 +1624,7 @@ impl Notifications {
                     self.send(p, token.as_deref());
                 }
             }
+            Msg::AwayLate => self.away_late(),
             // (What each note's mark is drawn from is in its key: `icons_made`.)
             Msg::Refresh => {
                 ICONS_MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1259,8 +1660,8 @@ pub fn with<R>(shared: &Shared, f: impl FnOnce(&mut Notifications) -> R) -> R {
     if let Some(bus) = bus
         && let Some(b) = bus.lock().unwrap().as_ref()
     {
-        for (id, reason) in closes {
-            b.closed(id, reason);
+        for (id, generation, reason) in closes {
+            b.closed(id, generation, reason);
         }
     }
     out
@@ -1292,12 +1693,101 @@ pub fn own_program(desktop_entry: Option<&str>) -> Option<&'static str> {
     olo_xdg::apps::OUR_APPS.iter().map(|(bin, ..)| *bin).find(|bin| *bin == entry)
 }
 
+/// What each of Olo's apps may be started again with for a notification
+/// (`x-olo-show`, `x-olo-runs`, a waiting thing's `shows`): the option it
+/// shows, or does, a note's thing with, and how many words follow it.
+/// Nothing else, and none of those words another option: anyone on the
+/// bus may say a note is Terminal's or Screenshot's, and what a click on
+/// it starts is what that app does for a note, never another of its
+/// modes (a recording, a command run).
+const RELAUNCHES: &[(&str, &str, usize)] = &[
+    ("olo-calendar", "--show", 2),
+    ("olo-todo", "--show", 1),
+    ("olo-terminal", "--show-shell", 1),
+    ("olo-rex", "--focus-block", 3),
+    ("olo-rex", "--session", 2),
+    ("olo-rex", "--focus-host", 1),
+    // `--saved ACTION PATH RECEIPT` (Screenshot makes sure of the file).
+    ("olo-screenshot", "--saved", 3),
+];
+
+/// Whether `args` are what action `key` (`default`: a click) of a note
+/// from `desktop_entry`, about `file` (known as `file_id` as it came), may
+/// start its program with ([`relaunch_allowed`]), and for Screenshot,
+/// what that very action does to that very file: `--saved VERB PATH
+/// RECEIPT`, the verb its action's own (a click opens; Copy copies;
+/// Delete deletes), the path the note's file, the receipt what that file
+/// was as it came. A note that says it's Screenshot's can't have its Open
+/// run a Delete, nor any action act on another file than the one it
+/// shows.
+pub fn relaunch_for(desktop_entry: Option<&str>, key: &str, args: &[String], file: Option<&str>, file_id: Option<olo_protocol::notifications::FileId>) -> bool {
+    if !relaunch_allowed(desktop_entry, args) {
+        return false;
+    }
+    if own_program(desktop_entry) != Some("olo-screenshot") {
+        return true;
+    }
+    let verb = match key {
+        "default" => "open",
+        "copy" | "show" | "delete" | "edit" => key,
+        _ => return false,
+    };
+    let (Some(file), Some(id)) = (file, file_id) else { return false };
+    args[1] == verb && args[2] == file && olo_protocol::notifications::FileId::parse(&args[3]) == Some(id)
+}
+
+/// What Screenshot's action `key` is called, whatever a note calls it
+/// (`relaunch_for` binds each to its own verb).
+pub fn screenshot_label(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "default" => "Open",
+        "copy" => "Copy",
+        "show" => "Show in Tracker",
+        "delete" => "Delete",
+        "edit" => "Edit",
+        _ => return None,
+    })
+}
+
+/// Whether `args` are what `desktop_entry`'s program is started again
+/// with for a note ([`RELAUNCHES`]).
+pub fn relaunch_allowed(desktop_entry: Option<&str>, args: &[String]) -> bool {
+    let Some(program) = own_program(desktop_entry) else { return false };
+    let Some((first, rest)) = args.split_first() else { return false };
+    RELAUNCHES.iter().any(|(app, option, words)| *app == program && first == option && rest.len() == *words) && rest.iter().all(|w| !w.is_empty() && !w.starts_with('-') && !w.contains('\0'))
+}
+
 /// Shows what a notification is about (`x-olo-show`): its app's own
 /// program started with those arguments, which hands them to the copy
 /// that runs. Only for Olo's own programs (anything else could have the
-/// centre run what it liked), and only arguments: never a shell's words.
-/// False if it didn't say how, or isn't ours.
+/// centre run what it liked), only arguments (never a shell's words),
+/// and only those it takes for a note ([`relaunch_allowed`]). False if it
+/// didn't say how, or isn't ours.
 pub fn show_what(desktop_entry: Option<&str>, show: &[String]) -> bool {
+    // (A click opens, whatever a note, an old History's entry or a waiting
+    // thing says: Screenshot's is `--saved open` alone, never its Delete.)
+    if own_program(desktop_entry) == Some("olo-screenshot") && show.get(1).is_some_and(|verb| verb != "open") {
+        tracing::warn!("notifications: not starting {desktop_entry:?} with {show:?} for a click: a click opens");
+        return false;
+    }
+    run_what(desktop_entry, show)
+}
+
+/// Action `key`'s `args` started: a click's as a click (`show_what`), any
+/// other's as an action (`run_what`).
+pub fn act_what(desktop_entry: Option<&str>, key: &str, args: &[String]) -> bool {
+    if key == "default" { show_what(desktop_entry, args) } else { run_what(desktop_entry, args) }
+}
+
+/// What an action runs of its own (`x-olo-runs`, checked against its key,
+/// its note's file and receipt as it's found, `runs_of`): `desktop_entry`'s
+/// own program started with `args`, if they're what it's started with for
+/// a note.
+pub fn run_what(desktop_entry: Option<&str>, show: &[String]) -> bool {
+    if !show.is_empty() && !relaunch_allowed(desktop_entry, show) {
+        tracing::warn!("notifications: not starting {desktop_entry:?} with {show:?}: not what it's started with for a note");
+        return false;
+    }
     let Some(program) = own_program(desktop_entry).filter(|_| !show.is_empty()) else { return false };
     let program = olo_xdg::find_program(program).map_or_else(|| program.into(), std::path::PathBuf::into_os_string);
     let argv: Vec<std::ffi::OsString> = std::iter::once(program).chain(show.iter().map(Into::into)).collect();
@@ -1309,6 +1799,91 @@ pub fn show_what(desktop_entry: Option<&str>, show: &[String]) -> bool {
         }
     }
 }
+
+/// The waits for the screen (`Notifications::away`) that have gone on
+/// `AWAY_MOST` at `now`, given up on (their askers' answers dropped: told
+/// they weren't seen): how many askers there were, and when the next of
+/// those left is due (one timer for them all).
+fn give_up_late<T>(away: &mut HashMap<u64, (Instant, Option<T>)>, now: Instant) -> (usize, Option<Duration>) {
+    let mut askers = 0;
+    away.retain(|_, (at, done)| {
+        let late = now.duration_since(*at) >= AWAY_MOST;
+        askers += usize::from(late && done.is_some());
+        !late
+    });
+    (askers, away.values().map(|(at, _)| AWAY_MOST.saturating_sub(now.duration_since(*at))).min())
+}
+
+/// How an action chosen on a note is done (`Notifications::invoke`).
+#[derive(Debug, PartialEq, Eq)]
+enum Dispatch {
+    /// What it runs of its own (`x-olo-runs`), started by the centre.
+    RunHere,
+    /// To its app, open there: the activation token, the action, its close.
+    ToApp,
+    /// Its app has gone: what shows it (`x-olo-show`), else its app.
+    Gone,
+}
+
+fn dispatch(open_at_app: bool, runs_own: bool) -> Dispatch {
+    if runs_own {
+        Dispatch::RunHere
+    } else if open_at_app {
+        Dispatch::ToApp
+    } else {
+        Dispatch::Gone
+    }
+}
+
+/// Whether a note is open at its app: as its entry says, where it has
+/// one; else while what sent it is followed, or it's a GTK app's note
+/// still live (GLib's interface reaches the app by its id: no connection
+/// to follow; with no History kept, its buttons did nothing).
+fn open_at(entry_live: Option<bool>, followed: bool, gtk_live: impl FnOnce() -> bool) -> bool {
+    match entry_live {
+        Some(live) => live,
+        None => followed || gtk_live(),
+    }
+}
+
+/// Whether a banner of `desktop_entry`'s waits in the list while the
+/// screen is recorded (`recording`: from the recorder's asking on):
+/// Screenshot's alone, whatever Preferences says of others' (a picture
+/// taken meanwhile would be in the recording).
+fn waits_out_recording(recording: bool, desktop_entry: Option<&str>) -> bool {
+    recording && own_program(desktop_entry) == Some("olo-screenshot")
+}
+
+/// Holds after a put-away (`HOLD`) that are over at `now` let go of, and
+/// the banners `held` that no hold keeps now, taken out to be shown.
+fn release(holds: &mut HashMap<String, Instant>, held: &mut Vec<Note>, now: Instant) -> Vec<Note> {
+    holds.retain(|_, until| *until > now);
+    let (still, ready) = std::mem::take(held).into_iter().partition(|n| n.desktop_entry.as_deref().is_some_and(|e| holds.contains_key(e.trim_end_matches(".desktop"))));
+    *held = still;
+    ready
+}
+
+/// Whether the screen is shared, and whether a recording is going on
+/// this display, or asked for (its recorder's status there from its
+/// countdown on). Read off the UI's thread, by the bus's as a note comes
+/// and by a watcher's as either file changes, and kept for the UI
+/// (`SharedScreen`): files read on it held banners, History and PutAway
+/// up while a disk was slow.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScreenNow {
+    pub shared: bool,
+    pub recording: bool,
+    pub reserved: bool,
+}
+
+impl ScreenNow {
+    pub fn read() -> ScreenNow {
+        let going = olo_protocol::recording::going_on(&olo_protocol::recording::this_display());
+        ScreenNow { shared: !olo_protocol::sharing::SharingState::load().shares.is_empty(), recording: going.as_ref().is_some_and(|g| g.recording), reserved: going.is_some() }
+    }
+}
+
+pub type SharedScreen = Arc<Mutex<ScreenNow>>;
 
 /// How long a window is in front before the person is taken to have
 /// gone to it: passing over it on the way to another (the window
@@ -1417,7 +1992,10 @@ pub fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str) -
 /// the first of `names` there is; else, for an app that gave its colour
 /// but has no icon, its initial on that colour; else the generic app's.
 pub fn paint_mark(g: &mut Painter, r: Bounds<Pixels>, app: &str, accent: Option<[u8; 3]>, via: bool, names: &[String]) {
-    if !via && names.iter().any(|n| olo_kit::icons::paint(g, r, n)) {
+    // (One named by its file's path is read as a note's picture is, by
+    // the bounded decoder, never the icon theme's loader: `paint_file_icon`.)
+    let paint = |g: &mut Painter, n: &str| if n.starts_with('/') { pictures::paint_file_icon(g, r, n) } else { olo_kit::icons::paint(g, r, n) };
+    if !via && names.iter().any(|n| paint(g, n)) {
         return;
     }
     if via || (accent.is_some() && !app.trim().is_empty()) {
@@ -1601,19 +2179,28 @@ fn main() -> std::process::ExitCode {
         let next_id = Arc::new(std::sync::atomic::AtomicU32::new(first));
         let bus_ids = next_id.clone();
         warm_app_icons(history.entries.iter().map(|e| (e.desktop_entry.clone(), e.app.clone())).collect(), || {});
+        // Whether the screen is shared or recorded, read here once and
+        // then off the UI's thread (`ScreenNow`).
+        let screen: SharedScreen = Arc::new(Mutex::new(ScreenNow::read()));
         // Another notification service may have the name (a desktop
         // started before ours): wait for it to go rather than take it.
         let (slot, to_ui, shared) = (bus.clone(), proxy.clone(), (snapshot.clone(), archived_snapshot.clone()));
+        let bus_screen = screen.clone();
         std::thread::Builder::new()
             .name("notifications-bus".into())
             .spawn(move || {
                 let mut said = false;
                 loop {
-                    let to_ui = to_ui.clone();
+                    let (to_ui, screen) = (to_ui.clone(), bus_screen.clone());
                     match Bus::serve(address.as_deref(), bus_ids.clone(), shared.clone(), move |m| {
-                        // Its app's icons, by the time it shows.
                         if let In::Show(n) = &m {
+                            // Its app's icons, by the time it shows.
                             warm_app_icons(vec![(n.desktop_entry.clone(), n.app_name.clone())], || {});
+                            // (The screen as it is as the note comes, read
+                            // here on the bus's thread: a recording's own,
+                            // sent as it ended, came before the watcher's
+                            // word that it had.)
+                            *screen.lock().unwrap() = ScreenNow::read();
                         }
                         to_ui.send(Msg::In(m))
                     }) {
@@ -1649,9 +2236,16 @@ fn main() -> std::process::ExitCode {
         watches.extend(olo_kit_base::watch::watch([path], move |_| attention()));
         initial();
         follow_visits(proxy.clone());
-        for path in [NotificationSettings::path(), olo_protocol::sharing::SharingState::path(), olo_protocol::recording::path_for(&olo_protocol::recording::this_display())] {
-            let ticker = proxy.clone();
-            watches.extend(olo_kit_base::watch::watch([path], move |_| ticker.send(Msg::Tick)));
+        let ticker = proxy.clone();
+        watches.extend(olo_kit_base::watch::watch([NotificationSettings::path()], move |_| ticker.send(Msg::Tick)));
+        // (A share or a recording begun or ended: read on the watcher's
+        // thread, never the UI's, which is told to look.)
+        for path in [olo_protocol::sharing::SharingState::path(), olo_protocol::recording::path_for(&olo_protocol::recording::this_display())] {
+            let (ticker, screen) = (proxy.clone(), screen.clone());
+            watches.extend(olo_kit_base::watch::watch([path], move |_| {
+                *screen.lock().unwrap() = ScreenNow::read();
+                ticker.send(Msg::Tick);
+            }));
         }
         let shared: Shared = Arc::new_cyclic(|me| {
             Mutex::new(Notifications {
@@ -1660,9 +2254,15 @@ fn main() -> std::process::ExitCode {
                 me: me.clone(),
                 dirty: false,
                 win: None,
+                away: HashMap::new(),
+                next_away: 0,
+                away_timer: false,
+                holds: HashMap::new(),
+                held: Vec::new(),
                 cards: Vec::new(),
                 fits: SHOWN,
                 hovered: None,
+                dragging: None,
                 expiry: None,
                 pending: HashMap::new(),
                 next_tag: 0,
@@ -1672,6 +2272,7 @@ fn main() -> std::process::ExitCode {
                 history,
                 waiting: waiting::WaitingApps::load(Some(waiting::WaitingApps::path())),
                 senders: HashMap::new(),
+                gens: HashMap::new(),
                 archive,
                 history_win: None,
                 view: history::HistoryState::default(),
@@ -1679,6 +2280,8 @@ fn main() -> std::process::ExitCode {
                 archived_snapshot,
                 told: None,
                 sharing: false,
+                recording: false,
+                screen: screen.clone(),
                 in_front: None,
                 _watches: watches,
                 steps: Default::default(),
@@ -1735,7 +2338,7 @@ fn main() -> std::process::ExitCode {
             with(&shared, |n| {
                 n.view.search = state["search"].as_str().unwrap_or_default().to_owned();
                 n.view.folded = serde_json::from_value(state["folded"].clone()).unwrap_or_default();
-                n.view.selected = state["selected"].as_u64().map(|id| id as u32);
+                n.view.selected = state["selected"].as_u64();
                 n.open_history();
             });
         }
@@ -1902,6 +2505,91 @@ mod tests {
 
     fn unread(id: u32, time: u64) -> Entry {
         Entry { id, app: "Rex".into(), summary: format!("Note {id}"), unread: true, live: true, shown: true, time, ..Default::default() }
+    }
+
+    /// How a chosen action is done: on a live note that says what a click shows (`x-olo-show`: Rex's,
+    /// Calendar's, To-Do's, Terminal's) the click goes to its app, its activation token and its close with
+    /// it, never started by the centre without them; only what a note runs of its own (`x-olo-runs`: a saved
+    /// screenshot's Copy, Delete) is started by the centre, live or not; a note whose app has gone shows
+    /// what it's about. A live GTK app's note kept nowhere in the History (its app's History off) is open at
+    /// its app: GLib's interface reaches the app by its id, and its buttons did nothing.
+    #[test]
+    fn invoke_on_a_live_show_note_and_a_gtk_note_kept_nowhere() {
+        // A live Rex note's click: its `x-olo-show` is for after, not its own run.
+        let show = vec!["--session".to_owned(), "host".into(), "s1".into()];
+        assert_eq!(server::runs_for(&[], &show, "default"), Some(show.as_slice()), "what a click shows once its app has gone");
+        let own = |key: &str| key != "default" && server::runs_for(&[("copy".into(), vec!["--saved".into()])], &show, key).is_some();
+        assert!(!own("default"));
+        assert_eq!(dispatch(true, own("default")), Dispatch::ToApp);
+        assert_eq!(dispatch(false, own("default")), Dispatch::Gone);
+        // A saved screenshot's Copy runs of its own, its app open or gone.
+        assert!(own("copy"));
+        assert_eq!((dispatch(true, own("copy")), dispatch(false, own("copy"))), (Dispatch::RunHere, Dispatch::RunHere));
+        // A GTK note, History off: open at its app while GLib's registry has it.
+        assert!(open_at(None, false, || true));
+        assert!(!open_at(None, false, || false));
+        assert_eq!(dispatch(open_at(None, false, || true), own("gtk-0")), Dispatch::ToApp);
+        // Kept, as its entry says, whatever else; followed, open.
+        assert!(!open_at(Some(false), true, || true) && open_at(Some(true), false, || false) && open_at(None, true, || false));
+    }
+
+    /// What an entry kept by an older build says it runs is checked again as it's read: a Screenshot click
+    /// that says Delete, or an action for another file or receipt, is dropped; and a click never starts a
+    /// Screenshot Delete, whatever asks (a waiting thing, an old entry), only its Open.
+    #[test]
+    fn an_old_entry_never_deletes_by_a_click() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-notes-load-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = "/home/a/Pictures/screenshot1.png";
+        let receipt = olo_protocol::notifications::FileId::parse("1-2-3").unwrap();
+        let saved = |verb: &str| vec!["--saved".to_owned(), verb.to_owned(), file.to_owned(), "1-2-3".to_owned()];
+        let mut e = Entry { desktop_entry: Some("olo-screenshot".into()), ..unread(4, 100) };
+        e.look.file = Some(file.into());
+        e.look.file_id = Some(receipt);
+        e.show = saved("delete");
+        e.runs = vec![("copy".into(), saved("copy")), ("delete".into(), saved("delete")), ("show".into(), saved("delete"))];
+        let mut other = e.clone();
+        other.uid = 0;
+        other.id = 5;
+        other.runs = vec![("copy".into(), vec!["--saved".into(), "copy".into(), "/elsewhere.png".into(), "1-2-3".into()])];
+        let path = dir.join("history.json");
+        std::fs::write(&path, serde_json::to_string(&vec![e, other]).unwrap()).unwrap();
+        let h = History::load(Some(path));
+        let (a, b) = (&h.entries[0], &h.entries[1]);
+        assert!(a.show.is_empty(), "a click that says Delete is no click");
+        assert_eq!(a.runs.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["copy", "delete"], "each kept action is its own verb");
+        assert!(b.runs.is_empty(), "an action for another file is dropped");
+        // A click is an Open, whatever asks it.
+        assert!(!show_what(Some("olo-screenshot"), &saved("delete")));
+        assert!(!act_what(Some("olo-screenshot"), "default", &saved("delete")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// After a put-away an app's new banners wait out its hold, then come up (another app's don't wait); a
+    /// Screenshot banner waits out a recording from its asking on; and the waits for the screen given up on
+    /// are those that have gone on too long, one timer set for the next of the rest.
+    #[test]
+    fn held_banners_and_late_waits() {
+        let now = Instant::now();
+        let note = |id, entry: &str| Entry { desktop_entry: Some(entry.into()), ..unread(id, 1) }.to_note(None);
+        let ids = |notes: &[Note]| notes.iter().map(|n| n.id).collect::<Vec<_>>();
+        let mut holds = HashMap::from([("olo-screenshot".to_owned(), now + HOLD)]);
+        let mut held = vec![note(1, "olo-screenshot.desktop"), note(2, "olo-mail")];
+        let ready = release(&mut holds, &mut held, now);
+        assert_eq!((ids(&ready), ids(&held)), (vec![2], vec![1]));
+        let ready = release(&mut holds, &mut held, now + HOLD);
+        assert_eq!((ids(&ready), held.len(), holds.len()), (vec![1], 0, 0), "the hold over, let go of");
+
+        assert!(waits_out_recording(true, Some("olo-screenshot.desktop")) && waits_out_recording(true, Some("olo-screenshot")));
+        assert!(!waits_out_recording(false, Some("olo-screenshot")) && !waits_out_recording(true, Some("olo-mail")) && !waits_out_recording(true, None));
+
+        let ms = Duration::from_millis;
+        let mut away: HashMap<u64, (Instant, Option<()>)> = HashMap::from([(1, (now, Some(()))), (2, (now, None)), (3, (now + ms(300), Some(())))]);
+        assert_eq!(give_up_late(&mut away, now + ms(500)), (0, Some(AWAY_MOST - ms(500))));
+        assert_eq!(give_up_late(&mut away, now + AWAY_MOST), (1, Some(ms(300))), "one asker told, the card's own wait gone too");
+        assert_eq!(away.keys().copied().collect::<Vec<_>>(), [3]);
+        assert_eq!(give_up_late(&mut away, now + AWAY_MOST + ms(300)), (1, None));
     }
 
     /// ClearMany removes matching unpinned notifications in one atomic Undo

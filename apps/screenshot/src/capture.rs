@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use olo_protocol::{Client, Reply, Request, WindowInfo};
+use olo_protocol::{Client, Reply, Request, WindowInfo, notifications::FileId};
 use serde::{Deserialize, Serialize};
 
 /// What to take; Screenshot's settings are these plus where to save.
@@ -155,8 +155,9 @@ fn windows(client: &mut Client) -> Result<Vec<WindowInfo>, String> {
 /// minimized first (and brought back after), so they aren't in it and
 /// the active window is the one behind them.
 pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
-    // (The card of the picture before is not in this one: after.rs.)
-    crate::after::put_away();
+    // (The notification of the picture before is not in this one:
+    // saved.rs.)
+    crate::saved::put_away();
     let mut client = Client::connect().map_err(|e| e.to_string())?;
     let me = std::process::id() as i32;
     let mine: Vec<u64> = if hide { windows(&mut client)?.iter().filter(|w| w.pid == Some(me) && !w.minimized).map(|w| w.id).collect() } else { Vec::new() };
@@ -170,7 +171,7 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
     if settings.delay > 0 {
         std::thread::sleep(Duration::from_secs(settings.delay.min(60) as u64));
         // (And one that came up while this waited.)
-        crate::after::put_away();
+        crate::saved::put_away();
     }
     let result = (|| {
         let window = if let Some(id) = settings.window_id {
@@ -224,7 +225,18 @@ pub fn take_output(output: Option<String>) -> Result<image::RgbaImage, String> {
 
 /// `screenshotN`, the first N not taken in `folder` in any format.
 pub fn next_name(folder: &Path) -> String {
-    (1..).map(|n| format!("screenshot{n}")).find(|stem| !Format::ALL.iter().any(|f| folder.join(format!("{stem}.{}", f.extension())).exists())).unwrap_or_else(|| "screenshot".into())
+    next_name_from(folder, 1).1
+}
+
+/// The first free name from number `from` on, and its number. Taken is
+/// anything there by that name, a link to nothing too (`symlink_metadata`:
+/// `exists` said a dangling link's name was free, and its every save, a
+/// thousand tries at that one name, failed).
+fn next_name_from(folder: &Path, from: u32) -> (u32, String) {
+    (from..)
+        .map(|n| (n, format!("screenshot{n}")))
+        .find(|(_, stem)| !Format::ALL.iter().any(|f| std::fs::symlink_metadata(folder.join(format!("{stem}.{}", f.extension()))).is_ok()))
+        .unwrap_or((from, "screenshot".into()))
 }
 
 /// The name with `format`'s extension (replacing any image extension).
@@ -243,37 +255,133 @@ pub fn file_name(name: &str, format: Format) -> String {
     format!("{stem}.{}", format.extension())
 }
 
-/// Write `shot` to `path` as `format`; whole or not at all.
-pub fn save(shot: &Shot, path: &Path, format: Format) -> Result<(), String> {
-    let mut part = path.as_os_str().to_owned();
-    part.push(".part");
-    let part = PathBuf::from(part);
-    let res = match format {
-        // Already encoded.
-        Format::Png => std::fs::copy(&shot.png, &part).map(|_| ()).map_err(|e| e.to_string()),
-        // No alpha: flatten onto white.
-        Format::Jpeg => {
-            let mut rgb = image::RgbImage::new(shot.image.width(), shot.image.height());
-            for (d, s) in rgb.pixels_mut().zip(shot.image.pixels()) {
-                let a = s.0[3] as u32;
-                *d = image::Rgb(std::array::from_fn(|k| ((s.0[k] as u32 * a + 255 * (255 - a)) / 255) as u8));
+/// `shot` written as `format` into a file of this save's own in `folder`
+/// (made new, never one that's there: two shortcuts at once each write
+/// their own), whole and synced; that file, and what it is as written,
+/// read from the descriptor it was written through (what its
+/// notification's actions act on, and nothing else, ever).
+fn write_part(shot: &Shot, folder: &Path, format: Format) -> Result<(PathBuf, FileId), String> {
+    use std::io::Write as _;
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    for _ in 0..100 {
+        let part = folder.join(format!(".olo-screenshot-{}-{}.part", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let file = match std::fs::OpenOptions::new().write(true).create_new(true).open(&part) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("{}: {e}", folder.display())),
+        };
+        let written = (|| -> Result<FileId, String> {
+            let mut w = std::io::BufWriter::new(&file);
+            match format {
+                // Already encoded.
+                Format::Png => {
+                    let mut png = std::fs::File::open(&shot.png).map_err(|e| e.to_string())?;
+                    std::io::copy(&mut png, &mut w).map_err(|e| e.to_string())?;
+                }
+                // No alpha: flatten onto white.
+                Format::Jpeg => {
+                    let mut rgb = image::RgbImage::new(shot.image.width(), shot.image.height());
+                    for (d, s) in rgb.pixels_mut().zip(shot.image.pixels()) {
+                        let a = s.0[3] as u32;
+                        *d = image::Rgb(std::array::from_fn(|k| ((s.0[k] as u32 * a + 255 * (255 - a)) / 255) as u8));
+                    }
+                    rgb.write_to(&mut w, format.image_format()).map_err(|e| e.to_string())?;
+                }
+                _ => shot.image.write_to(&mut w, format.image_format()).map_err(|e| e.to_string())?,
             }
-            rgb.save_with_format(&part, format.image_format()).map_err(|e| e.to_string())
-        }
-        _ => shot.image.save_with_format(&part, format.image_format()).map_err(|e| e.to_string()),
-    };
-    match res.and_then(|()| std::fs::rename(&part, path).map_err(|e| e.to_string())) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            let _ = std::fs::remove_file(&part);
-            Err(e)
+            w.flush().map_err(|e| e.to_string())?;
+            drop(w);
+            file.sync_all().map_err(|e| e.to_string())?;
+            FileId::of_file(&file).ok_or_else(|| "the file written couldn't be looked at".to_owned())
+        })();
+        return match written {
+            Ok(id) => Ok((part, id)),
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                Err(e)
+            }
+        };
+    }
+    Err(format!("{}: no free name to write in", folder.display()))
+}
+
+/// Write `shot` to `path` as `format` (an explicit Save: a name the
+/// person gave, put over a file of that name), whole or not at all. The
+/// file written, as it was written (whatever has its name since).
+pub fn save(shot: &Shot, path: &Path, format: Format) -> Result<FileId, String> {
+    let folder = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let (part, id) = write_part(shot, folder, format)?;
+    std::fs::rename(&part, path).map(|()| id).map_err(|e| {
+        let _ = std::fs::remove_file(&part);
+        format!("{}: {e}", path.display())
+    })
+}
+
+/// Write `shot` as `format` under the first free name in `folder` (a
+/// shortcut's: "screenshot4.png"), whole or not at all, and never over a
+/// file: another save taking that name meanwhile, the next. Where it
+/// went, and the file as written.
+pub fn save_new(shot: &Shot, folder: &Path, format: Format) -> Result<(PathBuf, FileId), String> {
+    let (part, id) = write_part(shot, folder, format)?;
+    let mut from = 1;
+    for _ in 0..1000 {
+        let (n, stem) = next_name_from(folder, from);
+        let path = folder.join(file_name(&stem, format));
+        match crate::saved::rename_new(&part, &path) {
+            Ok(()) => return Ok((path, id)),
+            // (Taken meanwhile: the next number on, never that one again.)
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                from = n + 1;
+                continue;
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                return Err(format!("{}: {e}", path.display()));
+            }
         }
     }
+    let _ = std::fs::remove_file(&part);
+    Err(format!("{}: no free name", folder.display()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A shortcut's save takes the first free name and never a file's that's there; each writes a file of its
+    /// own first (two at once each keep their own picture), and what's said of it is the file as written. An
+    /// explicit Save is put over a file of its name.
+    #[test]
+    fn a_shortcuts_save_never_takes_a_files_place() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-shot-save-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("taken.png");
+        let image = image::RgbaImage::from_pixel(4, 3, image::Rgba([9, 8, 7, 255]));
+        image.save(&png).unwrap();
+        let shot = Shot { png: png.clone(), image: Arc::new(image) };
+        std::fs::write(dir.join("screenshot1.png"), b"someone's").unwrap();
+        let (a, ida) = save_new(&shot, &dir, Format::Png).unwrap();
+        let (b, idb) = save_new(&shot, &dir, Format::Png).unwrap();
+        assert_eq!((a.file_name().unwrap().to_str(), b.file_name().unwrap().to_str()), (Some("screenshot2.png"), Some("screenshot3.png")));
+        assert_ne!(ida, idb);
+        assert_eq!((FileId::of(&a), FileId::of(&b)), (Some(ida), Some(idb)));
+        assert_eq!(std::fs::read(dir.join("screenshot1.png")).unwrap(), b"someone's");
+        assert_eq!(std::fs::read(&a).unwrap(), std::fs::read(&png).unwrap());
+        // A link to nothing by the next name is a taken name: passed over, the save going to the one after
+        // (taken for free, a thousand tries at it failed, and the picture was lost).
+        std::os::unix::fs::symlink(dir.join("nowhere.png"), dir.join("screenshot4.png")).unwrap();
+        let (c, _) = save_new(&shot, &dir, Format::Png).unwrap();
+        assert_eq!(c.file_name().unwrap().to_str(), Some("screenshot5.png"));
+        assert!(std::fs::symlink_metadata(dir.join("screenshot4.png")).unwrap().file_type().is_symlink());
+        // (Each wrote its own file first, and none is left.)
+        assert!(!std::fs::read_dir(&dir).unwrap().flatten().any(|e| e.file_name().to_string_lossy().ends_with(".part")));
+        // An explicit Save: over the file of its name, said as written.
+        let id = save(&shot, &dir.join("screenshot1.png"), Format::Jpeg).unwrap();
+        assert_eq!(FileId::of(&dir.join("screenshot1.png")), Some(id));
+        assert_ne!(std::fs::read(dir.join("screenshot1.png")).unwrap(), b"someone's");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A name is given its format's ending, whatever letters it is in.
     #[test]

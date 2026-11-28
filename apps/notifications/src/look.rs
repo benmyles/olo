@@ -7,10 +7,17 @@
 //! the app's colour is only in its badge, its tile and its bar.
 //! [`lay`] measures (so a stack or a grid can be arranged first),
 //! [`paint`] draws.
+//!
+//! The large picture is shown whole, so that what it is of can be told
+//! (`pictures::shown`: a screenshot fitted whole, never cut to fill its
+//! place; a few pixels as blocks; a strip from its start, its far end
+//! fading out), a texture pixel to a device pixel inside a frame of one
+//! line on whole device pixels. Where it is a file that can be dragged
+//! out (`NoteLook::dragged`), [`Painted::image`] says where it is.
 
 use olo_kit::{
     BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, Painter, Pixels, Point, RenderImage, SharedString, TextAlign, TextRun, UnderlineStyle, WindowCx, WrappedLine, agent, fill,
-    outline, point, px, size, style, theme, widgets,
+    linear_color_stop, linear_gradient, outline, point, px, size, style, theme, widgets,
 };
 use olo_kit_base::metrics as m;
 use olo_protocol::{NoteLook, NoteStyle};
@@ -18,7 +25,7 @@ use olo_theme::Rgba;
 
 use crate::{
     markup::Span,
-    pictures::{self, Shape, Source},
+    pictures::{self, Cut, Shape, Shown, Source},
 };
 
 /// Between the picture and the text, and between blocks.
@@ -32,6 +39,13 @@ const BAR: f32 = 10.0;
 /// The stop sign before an error's title, and the room it takes.
 const MARK: f32 = 12.0;
 pub const MARK_ROOM: f32 = MARK + 4.0;
+/// A strip's cut end goes out into the face's ground over this much (its
+/// frame open there: closed, its edge said "the picture stops here"
+/// where the fading says "it goes on"). Short: over 24 points, its lines
+/// fading one by one read as a fault in the drawing.
+const FADE: f32 = 12.0;
+/// A large picture whose size isn't known is laid out as a screen's.
+const SCREEN: (u32, u32) = (1280, 800);
 
 /// What a note shows.
 pub struct Face<'a> {
@@ -42,6 +56,10 @@ pub struct Face<'a> {
     pub picture: Option<Source>,
     /// It reports a failure: its title starts with a stop sign.
     pub failed: bool,
+    /// The pointer is over its large picture, which can be dragged out
+    /// (its frame lights, in the keyboard's colour: it can be taken
+    /// hold of).
+    pub lit: bool,
 }
 
 /// Colours for a face on its background.
@@ -58,9 +76,12 @@ pub struct Ink {
     pub balloon_edge: Hsla,
     /// The app's colour (for its badge and bar).
     pub accent: Option<Rgba>,
+    /// What the face is drawn on (a strip's cut end fades into it).
+    pub paper: Hsla,
 }
 
 /// How much room a face has.
+#[derive(Clone, Copy)]
 pub struct Room {
     pub width: f32,
     pub title_rows: usize,
@@ -72,6 +93,57 @@ pub struct Room {
     /// The large picture's greatest height.
     pub image_max: f32,
     pub fields_max: usize,
+    /// A large picture narrower than the room starts where the text does
+    /// (a card in the list, wide, its picture on the text's edge); else
+    /// it's centred (a banner's, a phone-shaped one in its middle).
+    pub image_start: bool,
+    /// The large picture shown in a sunken well as wide as the room (a
+    /// card in the list): every picture, wide, tall or a strip, one block
+    /// across the card, itself fitted and centred in it.
+    pub well: bool,
+}
+
+/// A well's height at least (a strip in it), and its bevel and the gap
+/// inside it round its picture (points): the picture's frame 4 points
+/// clear of the bevel's inner line at least, as the layout review holds
+/// lines to (`LINE_ROOM`: a point and a half or three points from it,
+/// the two read as one, crowded), at every scale as it falls on device
+/// pixels (at 6, 1.25× put it a hair under 4); 8, so that the ring round a
+/// lit picture (3 points) clears the bevel by 4 (a picture 104 points at
+/// most in a 120-point well).
+const WELL_LEAST: f32 = 20.0;
+const WELL_IN: f32 = 8.0;
+/// Between the words over a large picture and it (their box: what's
+/// seen, from the words' lowest letters to the picture, is 8 points).
+const IMAGE_GAP: f32 = 4.0;
+
+/// `s` as wide as `width` at most (`size`, `font`): whole if it fits, else
+/// cut in its middle, its start and its end kept (a file's name its
+/// extension and the end of its stem: "Screen Rec…demo.gif"); and
+/// whether it was cut.
+pub fn middle_cut(s: &str, size: f32, font: &Font, width: f32) -> (String, bool) {
+    let fits = |t: &str| f32::from(style::text_width(t.to_owned(), size, font.clone())) <= width;
+    if fits(s) {
+        return (s.to_owned(), false);
+    }
+    let chars: Vec<char> = s.chars().collect();
+    let n = chars.len();
+    // (The end kept: its extension and a few of the stem's last letters.)
+    let ext = s.rfind('.').map(|i| s[i..].chars().count()).filter(|&e| e > 1 && e <= 8 && e < n).unwrap_or(0);
+    for tail in [(ext + 4).min(n / 2), ext.min(n / 2), 0] {
+        // The most of its start that fits beside that end.
+        let end: String = chars[n - tail..].iter().collect();
+        let (mut lo, mut hi) = (0usize, n - tail);
+        while lo < hi {
+            let mid = (lo + hi).div_ceil(2);
+            let t: String = chars[..mid].iter().collect::<String>() + "…" + &end;
+            if fits(&t) { lo = mid } else { hi = mid - 1 }
+        }
+        if lo > 0 {
+            return (chars[..lo].iter().collect::<String>() + "…" + &end, true);
+        }
+    }
+    ("…".to_owned(), true)
 }
 
 /// Text wraps at a width rounded down to a multiple of this: as a window
@@ -316,6 +388,13 @@ pub fn title(cx: &WindowCx, s: &str, failed: bool, size: f32, font: Font, color:
 
 /// The body with its markup (bold, italics, underlines, links).
 pub fn body(cx: &WindowCx, spans: &[Span], ink: &Ink, width: f32, rows: usize) -> Text {
+    body_in(cx, spans, ink.soft, style::PLAIN_SIZE, ink, width, rows)
+}
+
+/// A body in `color` at `size` (links in the link colour all the same):
+/// what's said of a file under its name ("1280 × 800 · 41 KB") is the
+/// detail it is, in the labels' ink and size, below the name.
+pub fn body_in(cx: &WindowCx, spans: &[Span], color: Hsla, size: f32, ink: &Ink, width: f32, rows: usize) -> Text {
     let mut s = String::new();
     let mut runs = Vec::new();
     for sp in spans {
@@ -327,7 +406,7 @@ pub fn body(cx: &WindowCx, spans: &[Span], ink: &Ink, width: f32, rows: usize) -
         if sp.italic {
             font.style = FontStyle::Italic;
         }
-        let color = if sp.link.is_some() { ink.link } else { ink.soft };
+        let color = if sp.link.is_some() { ink.link } else { color };
         let mut r = run(sp.text.len(), font, color);
         if sp.underline || sp.link.is_some() {
             r.underline = Some(UnderlineStyle { thickness: px(1.0), color: Some(color), wavy: false });
@@ -335,7 +414,7 @@ pub fn body(cx: &WindowCx, spans: &[Span], ink: &Ink, width: f32, rows: usize) -
         s.push_str(&sp.text);
         runs.push(r);
     }
-    lay_runs(cx, s.into(), runs, style::PLAIN_SIZE, width, rows)
+    lay_runs(cx, s.into(), runs, size, width, rows)
 }
 
 /// The link at byte `at` of a body made of `spans`.
@@ -357,14 +436,70 @@ pub struct Laid {
     picture: f32,
     round: bool,
     title: Text,
+    /// Its title (a file's name) cut short to its one line: the whole of
+    /// it is its tip (`title_at`).
+    pub title_cut: bool,
     badge: Option<f32>,
     subtitle: Option<Text>,
     body: Option<Text>,
     balloon: bool,
     fields: Vec<(Text, Text)>,
     label_w: f32,
-    image: Option<f32>,
+    image: Option<Large>,
+    /// Where the large picture's frame begins, down from the face's top.
+    image_top: f32,
+    /// Whether it starts where the text does (`Room::image_start`).
+    image_start: bool,
+    /// The sunken well it's shown in, as wide as the face: its height
+    /// (`Room::well`).
+    well: Option<f32>,
     pub height: f32,
+}
+
+impl Laid {
+    /// Where its large picture's frame is drawn (near enough: before it's
+    /// put on the device grid), the face's top left at `at`, `width`
+    /// wide: for what takes hold of it where the drawing is kept.
+    pub fn image_at(&self, at: Point<Pixels>, width: f32) -> Option<Bounds<Pixels>> {
+        let (fw, fh) = self.image?.frame;
+        Some(Bounds::new(point(at.x + px(self.image_in(width, fw)), at.y + px(self.image_top + self.image_down(fh))), size(px(fw), px(fh))))
+    }
+
+    /// Where its title is, the face's top left at `at` (its tip's place
+    /// when it was cut short).
+    pub fn title_at(&self, at: Point<Pixels>) -> Bounds<Pixels> {
+        let x = if self.picture > 0.0 { self.picture + GAP } else { 0.0 };
+        Bounds::new(point(at.x + px(x), at.y), size(px(self.title.width), px(self.title.height)))
+    }
+
+    /// How far in from the face's left its large picture's frame, `fw`
+    /// wide, begins in a face `width` wide: centred in its well, if it
+    /// has one.
+    fn image_in(&self, width: f32, fw: f32) -> f32 {
+        if self.image_start && self.well.is_none() { 0.0 } else { ((width - fw) / 2.0).max(0.0) }
+    }
+
+    /// How far down from the top of its place its frame, `fh` tall, is:
+    /// centred in its well, if it has one.
+    fn image_down(&self, fh: f32) -> f32 {
+        self.well.map_or(0.0, |h| ((h - fh) / 2.0).max(0.0))
+    }
+}
+
+/// A large picture laid out: how it's shown at the scale laid out for,
+/// and its frame's size (points: the picture's device pixels and a line
+/// each side, on whole device pixels).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Large {
+    pub shown: Shown,
+    pub frame: (f32, f32),
+}
+
+/// The large picture of one `w` × `h` pixels in `room` at `scale`.
+pub fn large(w: u32, h: u32, scale: f32, room: &Room) -> Large {
+    let lines = pictures::frame_lines(scale);
+    let shown = pictures::shown(w, h, scale, room.width, room.image_max, lines);
+    Large { shown, frame: ((shown.pixels.0 + lines) as f32 / scale, (shown.pixels.1 + lines) as f32 / scale) }
 }
 
 /// Measure `face` for `room`.
@@ -380,14 +515,22 @@ pub fn lay(cx: &WindowCx, face: &Face, ink: &Ink, room: &Room) -> Laid {
     let text_w = room.width - text_x;
     let bold = style::ui_font(FontWeight::BOLD);
     let small = style::ui_font(FontWeight::NORMAL);
-    let title = title(cx, face.title, face.failed, style::PLAIN_SIZE, bold, ink.text, text_w - room.title_reserve, room.title_rows);
+    // (One about a file, its picture shown large: what's said under its
+    // name is the file's details, quieter than the name.)
+    let about_file = look.file.is_some() && look.image.is_some() && look.style == NoteStyle::Standard;
+    // A file's name on one line, cut in its middle if it must be (its
+    // start and its extension kept; the whole of it a tip over it): wrapped,
+    // a recording's took two bold lines, its card taller than the rest.
+    let (title_s, title_cut) =
+        if about_file { middle_cut(face.title, style::PLAIN_SIZE, &bold, text_w - room.title_reserve - if face.failed { MARK_ROOM } else { 0.0 }) } else { (face.title.to_owned(), false) };
+    let title = title(cx, &title_s, face.failed, style::PLAIN_SIZE, bold, ink.text, text_w - room.title_reserve, if about_file { 1 } else { room.title_rows });
     let badge = look.badge.as_deref().filter(|b| !b.trim().is_empty()).map(|b| style::pill_width(b, style::DETAIL_SIZE, &small).min(text_w));
     let subtitle_w = text_w - badge.map_or(0.0, |w| w + 5.0);
     let subtitle = look.subtitle.as_deref().filter(|s| !s.trim().is_empty()).map(|s| text(cx, s, style::DETAIL_SIZE, small.clone(), ink.dim, subtitle_w, 1));
     let has_body = face.body.iter().any(|s| !s.text.trim().is_empty());
     let balloon = has_body && look.style == NoteStyle::Message;
     let body_w = if balloon { text_w - 2.0 * BALLOON_PAD.0 } else { text_w };
-    let body = has_body.then(|| body(cx, face.body, ink, body_w, room.body_rows));
+    let body = has_body.then(|| if about_file { body_in(cx, face.body, ink.dim, style::DETAIL_SIZE, ink, body_w, room.body_rows) } else { body(cx, face.body, ink, body_w, room.body_rows) });
     let fields: Vec<(String, String)> = look.fields.iter().take(room.fields_max).cloned().collect();
     let label_w = fields.iter().map(|(l, _)| f32::from(style::text_width(l.clone(), style::DETAIL_SIZE, small.clone()))).fold(0.0, f32::max).min(text_w * LABEL_SHARE).ceil();
     let fields: Vec<(Text, Text)> = fields
@@ -400,7 +543,7 @@ pub fn lay(cx: &WindowCx, face: &Face, ink: &Ink, room: &Room) -> Laid {
         column += 2.0 + style::pill_height(style::DETAIL_SIZE);
     }
     if let Some(b) = &body {
-        column += m::TIGHT + b.height + if balloon { 2.0 * BALLOON_PAD.1 } else { 0.0 };
+        column += body_gap(about_file, balloon) + b.height + if balloon { 2.0 * BALLOON_PAD.1 } else { 0.0 };
     }
     if !fields.is_empty() {
         column += m::TIGHT + fields.iter().map(|(l, v)| l.height.max(v.height) + 1.0).sum::<f32>();
@@ -409,14 +552,48 @@ pub fn lay(cx: &WindowCx, face: &Face, ink: &Ink, room: &Room) -> Laid {
         column += m::TIGHT + BAR;
     }
     let mut height = column.max(picture);
+    // (In a well, the picture fitted inside its bevel and a point round it.)
+    let inside = if room.well { Room { width: room.width - 2.0 * WELL_IN, image_max: room.image_max - 2.0 * WELL_IN, ..*room } } else { *room };
     let image = look.image.as_ref().map(|_| {
-        let (w, h) = look.image_size.unwrap_or((16, 10));
-        (room.width * h as f32 / w.max(1) as f32).min(room.image_max).round()
+        let (w, h) = look.image_size.filter(|(w, h)| *w > 0 && *h > 0).unwrap_or(SCREEN);
+        large(w, h, cx.scale_factor(), &inside)
     });
-    if let Some(h) = image {
-        height += GAP + h;
+    let image_top = height + IMAGE_GAP;
+    let well = image.filter(|_| room.well).map(|l| (l.frame.1 + 2.0 * WELL_IN).clamp(WELL_LEAST, room.image_max));
+    if let Some(l) = image {
+        height += IMAGE_GAP + well.unwrap_or(l.frame.1);
     }
-    Laid { picture, round: look.style == NoteStyle::Message, title, badge, subtitle, body, balloon, fields, label_w, image, height: height.ceil() }
+    Laid {
+        picture,
+        round: look.style == NoteStyle::Message,
+        title,
+        title_cut,
+        badge,
+        subtitle,
+        body,
+        balloon,
+        fields,
+        label_w,
+        image,
+        image_top,
+        image_start: room.image_start,
+        well,
+        height: height.ceil(),
+    }
+}
+
+/// Between a title and what's said under it: a file's details right
+/// under its name, the two read as one (equal gaps made name, details
+/// and picture three things); a message's words a little under it; a
+/// chat's balloon, its own gap.
+fn body_gap(about_file: bool, balloon: bool) -> f32 {
+    if about_file {
+        0.0
+    } else if balloon {
+        m::TIGHT
+    } else {
+        2.0
+    }
 }
 
 /// A stop sign before the first row of `title` (laid out by [`title`]
@@ -430,10 +607,95 @@ pub fn paint_stop(g: &mut Painter, title: &Text, at: Point<Pixels>, size: f32) {
 }
 
 /// Where the body went, for finding links under the pointer, and where
-/// its links are (each row of each).
+/// its links are (each row of each); and where its large picture is,
+/// where it can be dragged out as its file.
 pub struct Painted {
     pub body: Option<(Point<Pixels>, Text)>,
     pub links: Vec<Bounds<Pixels>>,
+    /// The large picture's frame, where a press on it drags out its file
+    /// (`NoteLook::dragged`).
+    pub image: Option<Bounds<Pixels>>,
+}
+
+/// A ring round `frame` (on whole device pixels), outside it: a point's
+/// gap in `ground`, then two points of `color`, on whole device pixels
+/// at every scale.
+fn paint_halo(g: &mut Painter, frame: Bounds<Pixels>, ground: Hsla, color: Hsla) {
+    let s = g.scale_factor();
+    let device = |pt: f32| px((pt * s).round().max(1.0) / s);
+    let (gap, line) = (device(1.0), device(2.0));
+    let ring = |g: &mut Painter, r: Bounds<Pixels>, w: Pixels, c: Hsla| {
+        g.paint_quad(fill(Bounds::new(r.origin, size(r.size.width, w)), c));
+        g.paint_quad(fill(Bounds::new(point(r.left(), r.bottom() - w), size(r.size.width, w)), c));
+        g.paint_quad(fill(Bounds::new(point(r.left(), r.top() + w), size(w, r.size.height - w - w)), c));
+        g.paint_quad(fill(Bounds::new(point(r.right() - w, r.top() + w), size(w, r.size.height - w - w)), c));
+    };
+    let grow = |r: Bounds<Pixels>, by: Pixels| Bounds::new(point(r.left() - by, r.top() - by), size(r.size.width + by + by, r.size.height + by + by));
+    ring(g, grow(frame, gap), gap, ground);
+    ring(g, grow(frame, gap + line), line, color);
+}
+
+/// How wide a close box's × is (points): the banners', the History's
+/// rows' and cards'.
+pub const CLOSE: f32 = 8.0;
+
+/// A close box's ×, `CLOSE` points across, centred on `centre` (on whole
+/// device pixels), its lines a point wide at every scale: two device
+/// pixels at 2×. (Drawn a device pixel at a time at whole scales and as
+/// lines at others, it was a hairline at 2× and twice as heavy at 1.5×.)
+pub fn close_cross(g: &mut Painter, centre: Point<Pixels>, color: Hsla) {
+    let r = style::snap_centred(g, centre, CLOSE, CLOSE);
+    // (Its ends half a line in from the box's corners: what's drawn ends
+    // at the box's edges.)
+    let k = px(0.35);
+    g.paint_segment(point(r.left() + k, r.top() + k), point(r.right() - k, r.bottom() - k), px(1.0), false, color);
+    g.paint_segment(point(r.right() - k, r.top() + k), point(r.left() + k, r.bottom() - k), px(1.0), false, color);
+}
+
+/// `m:ss` (or `h:mm:ss`).
+pub fn length(seconds: u32) -> String {
+    let s = seconds;
+    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+}
+
+/// The badge a recording's picture has: a play mark and how long it
+/// plays ("▶ 0:04"), 9 points bold in white on a ground 60% black, in
+/// its lower left corner 4 points in (`inner`: the picture inside its
+/// frame); none on a picture too small for it. The mark drawn, not a
+/// glyph (the interface's face has none): on whole device pixels.
+fn paint_length(g: &mut Painter, inner: Bounds<Pixels>, seconds: u32) {
+    const SIZE: f32 = 9.0;
+    const MARK: f32 = 5.0;
+    const PAD: (f32, f32) = (3.0, 1.5);
+    let said = length(seconds);
+    let font = style::ui_font(FontWeight::BOLD);
+    let tw = f32::from(style::text_width(said.clone(), SIZE, font.clone())).ceil();
+    let (w, h) = (PAD.0 + MARK + 3.0 + tw + PAD.0, (SIZE * style::LINE_HEIGHT).round() + 2.0 * PAD.1);
+    if w + 8.0 > f32::from(inner.size.width) || h + 8.0 > f32::from(inner.size.height) {
+        return;
+    }
+    let r = style::snap(g, Bounds::new(point(inner.left() + px(4.0), inner.bottom() - px(4.0 + h)), size(px(w), px(h))));
+    g.paint_quad(fill(r, Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.6 }));
+    let white = Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 };
+    // (A point over the box's middle: digits have no descenders, and
+    // centred as a line they sat low, more ground over them than under.)
+    let middle = r.center().y - px(1.0);
+    let left = style::snap_coord(g, r.left() + px(PAD.0));
+    let mut mark = olo_kit::PathBuilder::fill();
+    mark.move_to(point(left, middle - px(3.5)));
+    mark.line_to(point(left + px(MARK), middle));
+    mark.line_to(point(left, middle + px(3.5)));
+    mark.close();
+    if let Ok(mark) = mark.build() {
+        g.paint_path(mark, white);
+    }
+    style::label(g, left + px(MARK + 3.0), middle, style::Align::Left, said.clone(), SIZE, font, white);
+    agent::record(g, agent::Node::label(format!("Plays for {said}"), r));
+}
+
+/// A large picture's source: its file as the note came.
+pub fn large_source(look: &NoteLook) -> Option<Source> {
+    look.image.as_deref().map(|p| Source::Large(p.into(), look.image_id))
 }
 
 /// `img` drawn at its own size centred in `r`, from a whole device pixel.
@@ -502,9 +764,10 @@ pub fn paint(g: &mut Painter, face: &Face, laid: &Laid, ink: &Ink, at: Point<Pix
         y += px(2.0 + h);
     }
     // The body, in a balloon for a message.
-    let mut painted = Painted { body: None, links: Vec::new() };
+    let mut painted = Painted { body: None, links: Vec::new(), image: None };
     if let Some(b) = &laid.body {
-        y += px(m::TIGHT);
+        let about_file = face.look.file.is_some() && face.look.image.is_some() && face.look.style == NoteStyle::Standard;
+        y += px(body_gap(about_file, laid.balloon));
         let origin = if laid.balloon {
             let r = style::snap(g, Bounds::new(point(text_x, y), size(px((b.width + 2.0 * BALLOON_PAD.0).min(text_w)), px(b.height + 2.0 * BALLOON_PAD.1))));
             // Its corner by the sender's picture is the speaker's.
@@ -548,21 +811,88 @@ pub fn paint(g: &mut Painter, face: &Face, laid: &Laid, ink: &Ink, at: Point<Pix
         widgets::level_bar(g, Bounds::new(point(text_x, y), size(px(text_w), px(BAR))), f, ink.accent.map(style::c), &p);
         y += px(BAR);
     }
-    // The large picture, under it all.
-    if let (Some(h), Some(path)) = (laid.image, face.look.image.as_deref()) {
-        let top = (at.y + px(laid.picture)).max(y) + px(GAP);
-        let r = style::snap(g, Bounds::new(point(at.x, top), size(px(width), px(h))));
-        match pictures::get(g, &Source::File(path.into()), device(g, r), Shape::Cover) {
+    // The large picture, under it all: whole (never cut to fill its
+    // place), a texture pixel to a device pixel, in a frame of one line
+    // on whole device pixels round exactly its pixels, centred.
+    if let (Some(l), Some(src), Some(path)) = (laid.image, large_source(face.look), face.look.image.as_deref()) {
+        let place = (at.y + px(laid.picture)).max(y) + px(IMAGE_GAP);
+        let p = theme::palette();
+        // In a well (a card in the list): a sunken well as wide as the
+        // face, the picture fitted and centred in it; what a strip fades
+        // into, its ground.
+        let ground = match laid.well {
+            Some(h) => {
+                let well = style::snap(g, Bounds::new(point(at.x, place), size(px(width), px(h))));
+                // (Darker than the card it's sunk in, in both looks: in the
+                // light one, the panel a step darker, never a text field's
+                // white, which outshone the picture it holds.)
+                let fill_with = if p.mode == olo_theme::ThemeMode::Dark { style::c(p.document_background) } else { style::tint(p.panel_background, 1.147) };
+                g.paint_quad(fill(well, fill_with));
+                style::sunken(g, well, &p, false);
+                fill_with
+            }
+            None => ink.paper,
+        };
+        let (fw, fh) = l.frame;
+        let left = at.x + px(laid.image_in(width, fw));
+        let top = place + px(laid.image_down(fh));
+        let frame = Bounds::new(point(style::snap_coord(g, left), style::snap_coord(g, top)), size(px(fw), px(fh)));
+        let inner = style::inset(g, frame, 1.0);
+        match pictures::get(g, &src, l.shown.pixels, Shape::Shown(l.shown)) {
             Some(img) => {
-                let _ = g.paint_image(r, Corners::all(px(4.0)), img, 0, false);
+                let _ = g.paint_image(inner, Corners::default(), img, 0, false);
             }
             // Still loading (or gone): its place.
-            None => g.paint_quad(fill(r, ink.balloon).corner_radii(px(4.0))),
+            None => style::fill_rect(g, inner, ink.balloon),
         }
-        // Edged, so a picture as pale (or dark) as the note doesn't run into it.
-        g.paint_quad(outline(r, ink.balloon_edge, BorderStyle::Solid).corner_radii(px(4.0)).border_widths(style::hairline(g)));
-        let name = path.rsplit('/').next().unwrap_or(path);
-        agent::record(g, agent::Node { role: "Image", name: Some(format!("Picture: {name}").into()), bounds: r, enabled: true, ..Default::default() });
+        let dragged = face.look.dragged();
+        // Its edge, so a picture as pale (or dark) as the note doesn't run
+        // into it.
+        style::frame_rect(g, frame, ink.balloon_edge);
+        // While the pointer is over one that can be taken hold of and
+        // dragged out: a ring round it, outside it, a gap of the ground
+        // and two points of the keyboard's blue (on its own edge, a line
+        // of blue was lost on a picture of the blue desktop).
+        if face.lit && dragged.is_some() {
+            paint_halo(g, frame, ground, style::c(p.keyboard_navigation));
+        }
+        // A strip's far end fades out into the face's ground inside its
+        // frame, the frame drawn whole over it: a picture cut short, there
+        // being more of it (the fade over the frame's line too, it read as
+        // a progress bar).
+        let clear = Hsla { a: 0.0, ..ground };
+        match l.shown.cut {
+            Cut::Right => {
+                let fade = px(FADE.min(fw / 2.0));
+                g.paint_quad(fill(
+                    Bounds::new(point(inner.right() - fade, inner.origin.y), size(fade, inner.size.height)),
+                    linear_gradient(90.0, linear_color_stop(clear, 0.0), linear_color_stop(ground, 1.0)),
+                ));
+                style::frame_rect(g, frame, ink.balloon_edge);
+            }
+            Cut::Bottom => {
+                let fade = px(FADE.min(fh / 2.0));
+                g.paint_quad(fill(
+                    Bounds::new(point(inner.origin.x, inner.bottom() - fade), size(inner.size.width, fade)),
+                    linear_gradient(180.0, linear_color_stop(clear, 0.0), linear_color_stop(ground, 1.0)),
+                ));
+                style::frame_rect(g, frame, ink.balloon_edge);
+            }
+            Cut::None => {}
+        }
+        // A recording's length, on its picture as a player says it.
+        if let Some(seconds) = face.look.length {
+            paint_length(g, inner, seconds);
+        }
+        let name = |p: &str| p.rsplit('/').next().unwrap_or(p).to_owned();
+        // (To an agent: what it is, and, where it can be, that it drags
+        // out as its file.)
+        let said = match dragged {
+            Some((file, _)) => format!("Picture: {} (drag it out as the file)", name(file)),
+            None => format!("Picture: {}", name(path)),
+        };
+        agent::record(g, agent::Node { role: "Image", name: Some(said.into()), bounds: frame, enabled: true, ..Default::default() });
+        painted.image = dragged.map(|_| frame);
     }
     painted
 }

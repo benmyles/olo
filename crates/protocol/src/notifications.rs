@@ -204,6 +204,97 @@ pub mod hint {
     /// tab an agent's note was about. Open still, its `default` action is
     /// run as ever.
     pub const SHOW: &str = "x-olo-show";
+    /// The file a notification is about (a path, or a `file://` URI):
+    /// its large picture pressed and dragged out of the notification is
+    /// that file (a screenshot into a chat, a recording into a mail).
+    /// Without it, a large picture (`IMAGE`) is dragged out as its own
+    /// file. Only a picture or a video is dragged out so: a name that
+    /// says it's one, of a file that is one (not a link to another).
+    pub const FILE: &str = "x-olo-file";
+    /// What each of its actions does of its own: for an action's key,
+    /// arguments (`a{sas}`) for the sending app's own program, one of
+    /// Olo's (its `desktop-entry`), which the notifications centre starts
+    /// with them when that action is chosen, the app open or not (a
+    /// screenshot's program ends once its picture is saved and the
+    /// clipboard it held is taken; an action sent to it as it ended went
+    /// unheard), the note then closed at its app but for a resident one.
+    /// Its buttons stay where they would have gone once its app has gone.
+    /// Only for an action needing nothing of the running app; a click is
+    /// `SHOW`, for after. The program is to make sure of what it's asked
+    /// to act on (Screenshot acts only on a file it saved itself, and
+    /// only while it's still that file): what any program on the bus says
+    /// it is, is what is started.
+    pub const RUNS: &str = "x-olo-runs";
+    /// The key of the action that stands apart from the rest, at the
+    /// start of their row (as a BAlert's leftmost button with
+    /// `B_OFFSET_SPACING`, a Cancel set apart from Save): a Delete away
+    /// from the Copy a person reaches for.
+    pub const APART: &str = "x-olo-apart";
+    /// How long what its large picture shows plays, in seconds (`u`): a
+    /// recording's, said on its picture ("▶ 0:04") as a player would.
+    pub const LENGTH: &str = "x-olo-length";
+    /// What its file (`FILE`) is, as its sender wrote it (`s`,
+    /// `dev-ino-born`, [`FileId`]): the service takes the file only if
+    /// it's still that (another given its name between the save and the
+    /// note is not dragged out as it).
+    pub const FILE_ID: &str = "x-olo-file-id";
+    /// Its file and picture are shown, never handed on (`b`): a file its
+    /// sender can't vouch for (Screenshot told of one it didn't save
+    /// itself), which no drag offers as itself.
+    pub const SHOWN_ONLY: &str = "x-olo-shown-only";
+}
+
+/// A file as it was when it was found: its device, its number there and
+/// when it was made, in nanoseconds (where the file system doesn't say,
+/// when it was last written: a number is given again once its file is
+/// gone, and this tells the next one given it apart). Another file given
+/// its name since (a screenshot deleted and taken again, which has the
+/// first free name) is another file. Written `[dev, ino, born]`; said
+/// `dev-ino-born` ([`FileId::parse`]: a saved file's actions carry it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FileId(pub u64, pub u64, pub u64);
+
+impl FileId {
+    /// The file at `path` as it is now (a link followed); None if there
+    /// is none.
+    pub fn of(path: &std::path::Path) -> Option<FileId> {
+        std::fs::metadata(path).ok().map(|m| FileId::of_meta(&m))
+    }
+
+    /// An open file's (`fstat`: the very file read, whatever has its
+    /// name since).
+    pub fn of_file(file: &std::fs::File) -> Option<FileId> {
+        file.metadata().ok().map(|m| FileId::of_meta(&m))
+    }
+
+    /// What `m` says of its file.
+    pub fn of_meta(m: &std::fs::Metadata) -> FileId {
+        use std::os::unix::fs::MetadataExt as _;
+        let nanos = |t: std::io::Result<std::time::SystemTime>| {
+            t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs().wrapping_mul(1_000_000_000).wrapping_add(u64::from(d.subsec_nanos())))
+        };
+        FileId(m.dev(), m.ino(), nanos(m.created()).or_else(|| nanos(m.modified())).unwrap_or(0))
+    }
+
+    /// From `dev-ino-born` (its [`Display`](std::fmt::Display)).
+    pub fn parse(s: &str) -> Option<FileId> {
+        let mut parts = s.split('-').map(|p| (!p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())).then(|| p.parse::<u64>().ok()).flatten());
+        let id = FileId(parts.next()??, parts.next()??, parts.next()??);
+        parts.next().is_none().then_some(id)
+    }
+}
+
+impl std::fmt::Display for FileId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}-{}", self.0, self.1, self.2)
+    }
+}
+
+/// Whether a file's name says it is a picture or a video (what a
+/// notification's file may be dragged out as: [`hint::FILE`]).
+pub fn shows_as_media(path: &std::path::Path) -> bool {
+    let Some(ext) = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()) else { return false };
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "avif" | "heic" | "heif" | "jxl" | "svg" | "mp4" | "m4v" | "mov" | "webm" | "mkv" | "avi" | "ogv")
 }
 
 /// How a notification is laid out.
@@ -288,16 +379,60 @@ pub struct NoteLook {
     /// A picture to show large (a path), and its size in pixels.
     pub image: Option<String>,
     pub image_size: Option<(u32, u32)>,
+    /// The picture's file as the notification came (the service finds
+    /// it): what shows is that file's picture, not that of another given
+    /// its name since.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_id: Option<FileId>,
     pub style: NoteStyle,
     pub size: CardSize,
     /// Where in the app it came from (a website's address, an account).
     pub source: Option<String>,
+    /// The file it is about (a path, [`hint::FILE`]): what its large
+    /// picture dragged out is; and that file as the notification came.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<FileId>,
+    /// The action that stands apart at the start of its row
+    /// ([`hint::APART`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub apart: Option<String>,
+    /// How long what its large picture shows plays, in seconds
+    /// ([`hint::LENGTH`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub length: Option<u32>,
+    /// Its file and picture are shown, never handed on
+    /// ([`hint::SHOWN_ONLY`]).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub shown_only: bool,
 }
 
 impl NoteLook {
     /// Whether it says nothing beyond the standard.
     pub fn is_plain(&self) -> bool {
         *self == NoteLook::default()
+    }
+
+    /// The file its large picture, dragged out, is (and that file as the
+    /// notification came): its own file where it says one
+    /// ([`hint::FILE`]), else the picture's. None for a picture that
+    /// isn't shown large, a file that isn't a picture or a video by its
+    /// name ([`shows_as_media`]), or one not known as it came (kept from
+    /// before files were, or not there yet when it came): nothing says
+    /// it may be dragged that can't be.
+    pub fn dragged(&self) -> Option<(&str, FileId)> {
+        // (Shown only, its sender couldn't vouch for it: never handed on.)
+        if self.shown_only {
+            return None;
+        }
+        self.image.as_ref()?;
+        let (path, id) = match &self.file {
+            Some(file) => (file.as_str(), self.file_id),
+            None => (self.image.as_deref()?, self.image_id),
+        };
+        let id = id?;
+        (path.starts_with('/') && shows_as_media(std::path::Path::new(path))).then_some((path, id))
     }
 }
 
@@ -615,6 +750,74 @@ mod tests {
         let look = NoteLook { badge: Some("PR #42".into()), fields: vec![("Branch".into(), "main".into())], ..Default::default() };
         let back: NoteLook = serde_json::from_str(&serde_json::to_string(&look).unwrap()).unwrap();
         assert_eq!(back, look);
+        // (Nothing of a file written where there is none: a note kept before them reads the same.)
+        assert!(!serde_json::to_string(&look).unwrap().contains("file"));
+    }
+
+    /// What a notification's picture dragged out is: its file where it says one, else the picture's own;
+    /// only a picture or a video, by a whole path.
+    #[test]
+    fn what_a_picture_dragged_out_is() {
+        let id = Some(FileId(1, 2, 3));
+        let shot = NoteLook { image: Some("/home/a/Pictures/screenshot4.png".into()), image_id: id, ..Default::default() };
+        assert_eq!(shot.dragged(), Some(("/home/a/Pictures/screenshot4.png", FileId(1, 2, 3))));
+        // A recording: its poster shown, its video dragged out.
+        let video =
+            NoteLook { image: Some("/home/a/.cache/olo/screenshot/poster.png".into()), file: Some("/home/a/Videos/Screen Recording.mp4".into()), file_id: Some(FileId(1, 9, 0)), ..Default::default() };
+        assert_eq!(video.dragged(), Some(("/home/a/Videos/Screen Recording.mp4", FileId(1, 9, 0))));
+        // Not a picture or a video, not a whole path, or no picture shown: nothing dragged.
+        let key = NoteLook { image: Some("/home/a/p.png".into()), file: Some("/home/a/.ssh/id_ed25519".into()), file_id: id, ..Default::default() };
+        assert_eq!(key.dragged(), None);
+        assert_eq!(NoteLook { image: Some("p.png".into()), image_id: id, ..Default::default() }.dragged(), None);
+        assert_eq!(NoteLook { file: Some("/home/a/v.mp4".into()), file_id: id, ..Default::default() }.dragged(), None);
+        // Not known as it came (kept from before, or not there yet): nothing offered that would fail.
+        assert_eq!(NoteLook { image: Some("/home/a/Pictures/screenshot4.png".into()), ..Default::default() }.dragged(), None);
+        assert_eq!(NoteLook { file_id: None, ..video.clone() }.dragged(), None);
+        // Shown only (its sender couldn't vouch for its file): never handed on, nor its picture as itself.
+        assert_eq!(NoteLook { shown_only: true, ..video.clone() }.dragged(), None);
+        assert_eq!(NoteLook { shown_only: true, ..shot.clone() }.dragged(), None);
+        assert!(!serde_json::to_string(&shot).unwrap().contains("shown_only"));
+        assert!(shows_as_media(std::path::Path::new("/a/B.PNG")) && shows_as_media(std::path::Path::new("/a/r.webm")) && !shows_as_media(std::path::Path::new("/a/notes.txt")));
+        // Kept and read back as it was; a note from before them, without.
+        let back: NoteLook = serde_json::from_str(&serde_json::to_string(&video).unwrap()).unwrap();
+        assert_eq!(back, video);
+        assert!(serde_json::to_string(&video).unwrap().contains(r#""file_id":[1,9,0]"#));
+        let old: NoteLook = serde_json::from_str(r#"{"image":"/a.png","image_size":[4,3]}"#).unwrap();
+        assert_eq!((old.image_id, old.file, old.file_id), (None, None, None));
+    }
+
+    /// A file is known as itself: another given its name since is another.
+    #[test]
+    fn a_file_is_known_from_another_of_its_name() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-file-id-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("screenshot1.png");
+        std::fs::write(&path, b"one").unwrap();
+        let was = FileId::of(&path);
+        assert!(was.is_some() && FileId::of(&path) == was);
+        // Moved away (to the Trash, say), and another made under its name.
+        std::fs::rename(&path, dir.join("kept.png")).unwrap();
+        assert_eq!(FileId::of(&path), None);
+        std::fs::write(&path, b"two").unwrap();
+        assert!(FileId::of(&path).is_some() && FileId::of(&path) != was);
+        // The open file's is the file's, whatever has its name since.
+        let open = std::fs::File::open(&path).unwrap();
+        let now = FileId::of(&path);
+        std::fs::rename(&path, dir.join("moved.png")).unwrap();
+        std::fs::write(&path, b"three").unwrap();
+        assert!(FileId::of_file(&open) == now && FileId::of(&path) != now);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A file's identity said and read back (what a saved file's actions carry); nothing else reads as one.
+    #[test]
+    fn a_file_id_is_said_and_read_back() {
+        let id = FileId(66305, 1_234_567, 1_764_312_345_123_456_789);
+        assert_eq!(id.to_string(), "66305-1234567-1764312345123456789");
+        assert_eq!(FileId::parse(&id.to_string()), Some(id));
+        for bad in ["", "1-2", "1-2-3-4", "1--3", "a-2-3", "1-2-3 ", "-1-2-3", "+1-2-3", "1-2-99999999999999999999", "--record"] {
+            assert_eq!(FileId::parse(bad), None, "{bad:?}");
+        }
     }
 
     /// Upgrade compatibility of `InboxCard::pinned` and `InboxCard::instance`

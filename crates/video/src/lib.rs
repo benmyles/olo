@@ -636,7 +636,15 @@ impl Mp4 {
     /// [`Mp4::create`] for a video coded as `codec` (what [`Mp4::add`]
     /// is given is that encoder's).
     pub fn create_for(path: &Path, width: u32, height: u32, timescale: u32, codec: Codec) -> std::io::Result<Mp4> {
-        let mut file = BufWriter::new(File::create(path)?);
+        Mp4::create_in(File::create(path)?, width, height, timescale, codec)
+    }
+
+    /// [`Mp4::create_for`] into `file`, already open for writing (and
+    /// empty): one its caller made itself, exclusively, under a name of
+    /// its own (two recorders never share one, and nothing given its name
+    /// first is written over). [`Mp4::finish_file`] gives it back.
+    pub fn create_in(file: File, width: u32, height: u32, timescale: u32, codec: Codec) -> std::io::Result<Mp4> {
+        let mut file = BufWriter::new(file);
         let brand: &[u8] = match codec {
             Codec::H264 => b"avc1",
             Codec::Hevc => b"iso4",
@@ -845,7 +853,14 @@ impl Mp4 {
     }
 
     /// The index written, the file whole and playable.
-    pub fn finish(mut self) -> std::io::Result<()> {
+    pub fn finish(self) -> std::io::Result<()> {
+        self.finish_file().map(|_| ())
+    }
+
+    /// [`Mp4::finish`], the file given back, whole and synced: what it is
+    /// (its identity) read from it, never from its name, which another may
+    /// have taken by then.
+    pub fn finish_file(mut self) -> std::io::Result<File> {
         // Each sample entry from its first sample (one with none left out),
         // one the same as the one before joined to it.
         let mut entries = std::mem::take(&mut self.entries);
@@ -937,7 +952,8 @@ impl Mp4 {
         let mut file = self.file.into_inner().map_err(|e| e.into_error())?;
         file.seek(SeekFrom::Start(self.mdat_size_at))?;
         file.write_all(&mdat_size.to_be_bytes())?;
-        file.sync_all()
+        file.sync_all()?;
+        Ok(file)
     }
 }
 

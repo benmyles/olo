@@ -227,6 +227,65 @@ fn going_path() -> PathBuf {
     olo_protocol::recording::path_for(&olo_protocol::recording::this_display())
 }
 
+/// The recording's status said (`going_path`), whole: written beside it
+/// and put in its place, so that whoever reads it as it's paused or goes
+/// on (Notifications, deciding whether a recording is going) reads what
+/// was or what is, never half of it (read half written, it was no
+/// recording, and a banner came up in one).
+/// (Written first to a file of this recorder's own, its pid in its name:
+/// never one another is writing.)
+fn write_going(g: &Going) -> std::io::Result<()> {
+    write_going_at(&going_path(), g)
+}
+
+fn write_going_at(path: &Path, g: &Going) -> std::io::Result<()> {
+    let mut part = path.to_owned().into_os_string();
+    part.push(format!(".{}.part", std::process::id()));
+    let part = PathBuf::from(part);
+    let written = serde_json::to_vec(g).map_err(std::io::Error::other).and_then(|json| std::fs::write(&part, json)).and_then(|()| std::fs::rename(&part, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&part);
+    }
+    written
+}
+
+/// This display's recorder's lock (`lock_path_for`), taken: held from
+/// the look at whether a recording is going to the status gone, so that
+/// two started at once can't both find none. One whose recorder is
+/// finishing (its status gone, Restart's new one started) is waited for
+/// a moment; one that's recording, not.
+fn recorder_lock() -> Result<std::fs::File, String> {
+    recorder_lock_at(&olo_protocol::recording::lock_path_for(&olo_protocol::recording::this_display()), || going().is_some(), Duration::from_secs(2))
+}
+
+fn recorder_lock_at(path: &Path, recording: impl Fn() -> bool, finishing: Duration) -> Result<std::fs::File, String> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|e| format!("can't lock {}: {e}", path.display()))?;
+    let deadline = Instant::now() + finishing;
+    loop {
+        // SAFETY: flock on a descriptor of our own.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(file);
+        }
+        let e = std::io::Error::last_os_error();
+        if e.raw_os_error() != Some(libc::EWOULDBLOCK) {
+            return Err(format!("can't lock {}: {e}", path.display()));
+        }
+        if recording() || Instant::now() >= deadline {
+            return Err("this display is being recorded already (olo-screenshot --stop)".into());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
 }
@@ -320,6 +379,99 @@ pub struct Made {
     /// its chapters.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub marks: Vec<Mark>,
+    /// The file as written (`publish`): what its notification's actions
+    /// act on. None: not known (it changed as it took its name), and they
+    /// offer nothing.
+    #[serde(skip)]
+    pub id: Option<olo_protocol::notifications::FileId>,
+}
+
+/// A file of its own to write a recording, a GIF or a trimmed copy into,
+/// beside `dst` (on its file system, to be renamed there): made
+/// exclusively under a name of its own (`.olo-recording-PID-N.part`), so
+/// two writers never share one (two sessions' recorders choosing the same
+/// second's name truncated each other's), and nothing given that name
+/// first, a link or another's file, is followed or written over.
+pub(crate) fn part_beside(dst: &Path) -> Result<(PathBuf, std::fs::File), String> {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let dir = dst.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    for _ in 0..1000 {
+        let part = dir.join(format!(".olo-recording-{}-{}.part", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&part) {
+            Ok(file) => return Ok((part, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("{}: {e}", part.display())),
+        }
+    }
+    Err(format!("no free name to write in {}", dir.display()))
+}
+
+/// A part being written, removed however its writing ends but in its place
+/// (`done`): a recording, a GIF or a copy that failed leaves nothing.
+pub(crate) struct Part(pub PathBuf, bool);
+
+impl Part {
+    pub(crate) fn new(path: PathBuf) -> Part {
+        Part(path, false)
+    }
+
+    /// Put where it goes: kept.
+    pub(crate) fn done(mut self) {
+        self.1 = true;
+    }
+}
+
+impl Drop for Part {
+    fn drop(&mut self) {
+        if !self.1 {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+}
+
+/// `part`, written whole by `written` (its descriptor, synced), put where
+/// it goes: at `path`, over what's there only if `replace` (a name the
+/// person gave); else, that name taken, the next free one ("… (2).mp4"),
+/// never over another file. Where it went, and what it is: read from the
+/// descriptor that wrote it, never from a name, and that file found where
+/// it went (another put in its place by name meanwhile is no recording of
+/// this one's: a program waiting for it to end could have).
+fn publish(part: &Path, written: &std::fs::File, path: &Path, replace: bool) -> Result<(PathBuf, Option<olo_protocol::notifications::FileId>), String> {
+    use olo_protocol::notifications::FileId;
+    let id = written.metadata().ok().filter(|m| m.is_file()).and_then(|_| FileId::of_file(written));
+    let to = if replace {
+        std::fs::rename(part, path).map_err(|e| format!("{}: {e}", path.display()))?;
+        path.to_path_buf()
+    } else {
+        let mut to = None;
+        for n in 1..1000u32 {
+            let candidate = if n == 1 { path.to_path_buf() } else { numbered(path, n) };
+            match crate::saved::rename_new(part, &candidate) {
+                Ok(()) => {
+                    to = Some(candidate);
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(format!("{}: {e}", candidate.display())),
+            }
+        }
+        to.ok_or_else(|| format!("no free name beside {}", path.display()))?
+    };
+    let there = std::fs::symlink_metadata(&to).ok().filter(|m| m.file_type().is_file()).map(|m| FileId::of_meta(&m));
+    if id.is_some() && there != id {
+        return Err(format!("{}: another file took the recording's place as it was put there", to.display()));
+    }
+    Ok((to, id))
+}
+
+/// `path` with ` (N)` before its extension: "Screen Recording … (2).mp4".
+fn numbered(path: &Path, n: u32) -> PathBuf {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = match path.extension() {
+        Some(ext) => format!("{stem} ({n}).{}", ext.to_string_lossy()),
+        None => format!("{stem} ({n})"),
+    };
+    path.with_file_name(name)
 }
 
 /// A moment of a recording marked.
@@ -354,12 +506,17 @@ pub fn trim(args: &[String]) -> i32 {
             },
             PathBuf::from,
         );
-        let part = dst.with_extension("mp4.part");
-        let t = olo_video::trim::trim(&src, &part, start, end).inspect_err(|_| {
-            let _ = std::fs::remove_file(&part);
-        })?;
-        std::fs::rename(&part, &dst).map_err(|e| format!("{}: {e}", dst.display()))?;
-        Ok(serde_json::json!({ "path": dst, "seconds": t.seconds, "frames": t.frames, "sound": t.sound }))
+        // (Into a name of its own, made exclusively, never another's;
+        // then beside its video at the first free name, over a file only at
+        // a name the person gave.)
+        let (part, file) = part_beside(&dst)?;
+        let part = Part::new(part);
+        drop(file);
+        let t = olo_video::trim::trim(&src, &part.0, start, end)?;
+        let written = std::fs::File::open(&part.0).map_err(|e| format!("{}: {e}", part.0.display()))?;
+        let (to, _) = publish(&part.0, &written, &dst, option(args, "--to").is_some())?;
+        part.done();
+        Ok(serde_json::json!({ "path": to, "seconds": t.seconds, "frames": t.frames, "sound": t.sound }))
     };
     match run() {
         Ok(v) => {
@@ -473,9 +630,11 @@ pub fn gif(args: &[String]) -> i32 {
     if let Some(w) = option(args, "--width").and_then(|v| v.parse().ok()) {
         opts.width = w;
     }
-    match make_gif(&src, &dst, &opts) {
-        Ok(g) => {
-            println!("{}", serde_json::json!({ "path": dst, "frames": g.frames, "width": g.width, "height": g.height, "bytes": g.bytes }));
+    // (Over a file only at a name the person gave: beside its video, the
+    // next free name.)
+    match make_gif(&src, &dst, option(args, "--to").is_some(), &opts) {
+        Ok((g, to, _)) => {
+            println!("{}", serde_json::json!({ "path": to, "frames": g.frames, "width": g.width, "height": g.height, "bytes": g.bytes }));
             0
         }
         Err(e) => {
@@ -485,20 +644,16 @@ pub fn gif(args: &[String]) -> i32 {
     }
 }
 
-/// `src` made a GIF at `dst` (written beside it, then put in place);
-/// stopped by SIGINT/SIGTERM as a recording is.
-fn make_gif(src: &Path, dst: &Path, opts: &olo_video::gif::Options) -> Result<GifMade, String> {
-    let part = dst.with_extension("gif.part");
-    let made = olo_video::gif::from_mp4(src, &part, opts, &STOP, &|_| {});
-    let made = match made {
-        Ok(m) => m,
-        Err(e) => {
-            let _ = std::fs::remove_file(&part);
-            return Err(e);
-        }
-    };
-    std::fs::rename(&part, dst).map_err(|e| format!("{}: {e}", dst.display()))?;
-    Ok(GifMade { frames: made.frames, width: made.width, height: made.height, bytes: made.bytes })
+/// `src` made a GIF at `dst` (written beside it, then put in place, with
+/// what it is as written: `publish`); stopped by SIGINT/SIGTERM as a
+/// recording is.
+fn make_gif(src: &Path, dst: &Path, replace: bool, opts: &olo_video::gif::Options) -> Result<(GifMade, PathBuf, Option<olo_protocol::notifications::FileId>), String> {
+    let (part, file) = part_beside(dst)?;
+    let part = Part::new(part);
+    let (made, written) = olo_video::gif::from_mp4_into(src, file, opts, &STOP, &|_| {})?;
+    let (to, id) = publish(&part.0, &written, dst, replace)?;
+    part.done();
+    Ok((GifMade { frames: made.frames, width: made.width, height: made.height, bytes: made.bytes }, to, id))
 }
 
 /// `--record`: record until told to stop; what it made printed. Exit 0
@@ -583,10 +738,14 @@ const ZOOM: f64 = 2.0;
 
 /// A recording, or None: a region was to be picked, and none was.
 fn record(args: &[String]) -> Result<Option<Made>, String> {
-    // (A card still up from the picture or the recording before goes
-    // first: after.rs. Before the look at whether one is going, not
-    // between that and the start.)
-    crate::after::put_away();
+    // (The notification of the picture or the recording before goes from
+    // the screen first: saved.rs. Before the look at whether one is
+    // going, not between that and the start.)
+    crate::saved::put_away();
+    // (Locked from this look to the status gone, `_lock` going last: two
+    // started at once can't both find none and record, one's status in
+    // place of the other's, and either's end taking the other's away.)
+    let _lock = recorder_lock()?;
     if let Some(g) = going() {
         return Err(format!("this display is being recorded already (into {}; olo-screenshot --stop)", g.path.display()));
     }
@@ -725,7 +884,9 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         args: again(args, picked, crop, scale_of(capture.name())),
         output: shown_on(&source, capture.name()),
     };
-    let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
+    // (Not said, there'd be a recording nobody could find: no controls,
+    // no Stop, banners in it. Said before any of it is.)
+    write_going(&g).map_err(|e| format!("can't say that a recording is going ({}: {e})", going_path().display()))?;
     // The status says it goes until what it makes is whole (a GIF made
     // from it too, or it deleted when discarded), however this ends.
     let _status = Status;
@@ -779,7 +940,10 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
             }
         },
     };
-    let result = record_into(&mut capture, &path, fps, seconds, (choice, codec), crop, backdrop, inset, sound, countdown.min(10), &g, woken.as_raw_fd());
+    // (At a name the person gave, over what's there; else at the first free
+    // one, over nothing: two recorders a second apart don't take one name.)
+    let chosen = option(args, "--to").is_some();
+    let result = record_into(&mut capture, &path, fps, seconds, (choice, codec), crop, backdrop, inset, sound, countdown.min(10), &g, woken.as_raw_fd(), chosen);
     if showing {
         set_showing(false, false, 1.0, false, 0.0);
     }
@@ -800,16 +964,18 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         // Made a GIF beside it, the video gone (a stop now stops this).
         STOP.store(false, Ordering::SeqCst);
         let gif_path = made.path.with_extension("gif");
-        let g = make_gif(&made.path, &gif_path, &olo_video::gif::Options::default())?;
-        // (Not where the video was given the GIF's own name, `--to
-        // demo.gif`: the GIF has taken its place, and removing "the
-        // video" removed what was made.)
-        if made.path != gif_path {
+        // (In the video's place when it has the GIF's own name, `--to
+        // demo.gif`; else beside it, at the first free name, over nothing.)
+        let (g, to, id) = make_gif(&made.path, &gif_path, made.path == gif_path, &olo_video::gif::Options::default())?;
+        // (Not where the video was given the GIF's own name: the GIF has
+        // taken its place, and removing "the video" removed what was made.)
+        if made.path != to {
             let _ = std::fs::remove_file(&made.path);
         }
-        made.path = gif_path;
+        made.path = to;
         (made.width, made.height) = (g.width, g.height);
         made.gif = Some(g);
+        made.id = id;
     }
     Ok(Some(made))
 }
@@ -871,6 +1037,7 @@ fn record_into(
     countdown: u32,
     going: &Going,
     woken: i32,
+    chosen: bool,
 ) -> Result<Made, String> {
     // The encoder opened first, on its worker (NVENC's CUDA context takes
     // over two seconds to make, and belongs to the thread that made it):
@@ -889,7 +1056,11 @@ fn record_into(
     let ended = Arc::new(AtomicBool::new(false));
     // Where the video ends (milliseconds of it), for its last frame.
     let end = Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let part = path.with_extension("mp4.part");
+    // Written into a file of its own, made exclusively (two recorders
+    // choosing one second's name never share one), removed however the
+    // recording ends but in its place.
+    let (part, file) = part_beside(path)?;
+    let part = Part::new(part);
     // Frames lent to the encoder as they are, in the GPU's memory (see
     // the top): the whole display, as it is, on the encoder's GPU. Till
     // the encoder can't take one: then copied.
@@ -899,10 +1070,10 @@ fn record_into(
     // (The encoder's GPU, if it encodes pictures in its memory.)
     let (ready_tx, ready) = std::sync::mpsc::channel::<Result<Option<u64>, String>>();
     let worker = {
-        let (slot, ended, end, part, sound_in, marks, copy_only) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone(), marks.clone(), copy_only.clone());
+        let (slot, ended, end, sound_in, marks, copy_only) = (slot.clone(), ended.clone(), end.clone(), sound_in.clone(), marks.clone(), copy_only.clone());
         std::thread::Builder::new()
             .name("recording encoder".into())
-            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), inset, &ready_tx, &sound_in, &marks, &copy_only))
+            .spawn(move || encode(&slot, &ended, &end, file, fps, (choice, codec), size, backdrop.as_ref(), inset, &ready_tx, &sound_in, &marks, &copy_only))
             .map_err(|e| e.to_string())?
     };
     // The countdown meanwhile, a number a second (a stop ends it).
@@ -932,7 +1103,9 @@ fn record_into(
     let start = Instant::now();
     // Said where Deskbar and agents look: recording from now.
     let going = &Going { recording: true, recorded_ms: 0, as_of: now_ms(), ..going.clone() };
-    let _ = std::fs::write(going_path(), serde_json::to_vec(going).unwrap_or_default());
+    if let Err(e) = write_going(going) {
+        eprintln!("olo-screenshot: the recording's status not said as it began: {e}");
+    }
     // The sound from now, if any asked for and there's a way.
     let (sound, sound_note) = match which {
         crate::sound::Which::Nothing => (None, None),
@@ -981,7 +1154,9 @@ fn record_into(
                     None => paused_at = Some(Instant::now()),
                 }
                 let g = Going { paused, recorded_ms: recorded(paused_for, paused_at).as_millis() as u64, as_of: now_ms(), ..going.clone() };
-                let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
+                if let Err(e) = write_going(&g) {
+                    eprintln!("olo-screenshot: the recording's status not said: {e}");
+                }
             }
             if paused {
                 // Nothing asked for (one asked for before is let go), and
@@ -1066,11 +1241,15 @@ fn record_into(
     slot.1.notify_one();
     let made = worker.join().map_err(|_| "the encoder failed".to_string())?;
     result?;
-    let (frames, frames_on_gpu, (width, height), encoder, codec, stopped_early, encoder_note) = made?;
-    // The file finished by the worker, then put where it goes.
-    std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (frames, frames_on_gpu, (width, height), encoder, codec, stopped_early, encoder_note, written) = made?;
+    // The file finished by the worker, then put where it goes (at the name
+    // the person gave, else the first free one), with what it is as
+    // written, read from the very descriptor that wrote it.
+    let (to, id) = publish(&part.0, &written, path, chosen)?;
+    part.done();
     Ok(Made {
-        path: path.to_path_buf(),
+        id,
+        path: to,
         seconds: (total.as_millis() as f64 / 1000.0),
         frames,
         width,
@@ -1114,7 +1293,7 @@ fn encode(
     slot: &(Mutex<Option<Waiting>>, std::sync::Condvar),
     ended: &AtomicBool,
     end: &std::sync::atomic::AtomicU64,
-    part: &Path,
+    file: std::fs::File,
     fps: u32,
     (choice, codec): (olo_video::Choice, olo_video::Codec),
     size: Option<(u32, u32)>,
@@ -1125,6 +1304,9 @@ fn encode(
     marks: &Mutex<Vec<(u64, String)>>,
     copy_only: &AtomicBool,
 ) -> Result<Encoded, String> {
+    // (The file the video goes into, its own, made exclusively: given to
+    // the MP4 as it opens, once.)
+    let mut file = Some(file);
     // The sound's access units so far, into the file beside the pictures
     // (its description given the file the first time).
     let mut described = false;
@@ -1147,7 +1329,7 @@ fn encode(
     // A window on a background: the video its size (made with the
     // encoder, before the recording starts).
     let mut backdrop: Option<crate::backdrop::Backdrop> = None;
-    let open = |w: u32, h: u32, backdrop: &mut Option<crate::backdrop::Backdrop>| -> Result<(olo_video::Encoder, olo_video::Mp4, Vec<u8>), String> {
+    let mut open = |w: u32, h: u32, backdrop: &mut Option<crate::backdrop::Backdrop>| -> Result<(olo_video::Encoder, olo_video::Mp4, Vec<u8>), String> {
         let (vw, vh) = match look {
             Some(look) => {
                 let b = crate::backdrop::Backdrop::new(w, h, look);
@@ -1158,7 +1340,8 @@ fn encode(
             None => olo_video::even(w, h),
         };
         let enc = olo_video::Encoder::for_recording(vw, vh, fps, choice, codec)?;
-        let mut mp4 = olo_video::Mp4::create_for(part, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
+        let into = file.take().ok_or("the recording's file was opened already")?;
+        let mut mp4 = olo_video::Mp4::create_in(into, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
         // (Olo's: a library knows it whatever it's named.)
         mp4.mark_olo();
         Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
@@ -1260,9 +1443,9 @@ fn encode(
     add_sound(&mut mp4)?;
     mp4.chapters(marks.lock().unwrap_or_else(|e| e.into_inner()).clone());
     let made = mp4.size();
-    mp4.finish().map_err(|e| e.to_string())?;
+    let written = mp4.finish_file().map_err(|e| e.to_string())?;
     let note = (!notes.is_empty()).then(|| notes.join("; "));
-    Ok((frames, on_gpu.min(frames), made, enc.name(), enc.codec(), stopped, note))
+    Ok((frames, on_gpu.min(frames), made, enc.name(), enc.codec(), stopped, note, written))
 }
 
 /// A picture encoded: its bits, whether a key frame, and, when an
@@ -1403,7 +1586,11 @@ impl Drop for CameraBubble {
 /// What the encoder's worker made: frames, the video's size, which encoder
 /// and codec, why it stopped early if it did, and which encoders took
 /// over from one that failed.
-type Encoded = (usize, usize, (u32, u32), &'static str, olo_video::Codec, Option<String>, Option<String>);
+/// What the encoder made: frames, frames on the GPU, the video's size,
+/// the encoder and its codec, why it stopped early, a note of encoders
+/// that took over, and the file written, whole and synced (its identity
+/// read from it).
+type Encoded = (usize, usize, (u32, u32), &'static str, olo_video::Codec, Option<String>, Option<String>, std::fs::File);
 
 /// The sound's description, and its access units as they come.
 type SoundIn = (olo_video::aac::Track, Arc<Mutex<Vec<Vec<u8>>>>);
@@ -1447,22 +1634,18 @@ pub fn toggle(args: &[String]) -> i32 {
     match record(&args) {
         Ok(Some(made)) => {
             println!("{}", serde_json::to_string_pretty(&made).unwrap_or_default());
-            // What it made, in a card in the corner (`after.rs`); told in
-            // a notification if that can't start, or something went wrong
-            // on the way (it says what).
-            let card = (crate::after::shown_here() && made.encoder_note.is_none() && made.stopped_early.is_none()).then(|| std::env::current_exe().ok()).flatten().and_then(|exe| {
-                std::process::Command::new(exe)
-                    .arg("--after")
-                    .arg(&made.path)
-                    .args(made.display.as_deref().map(|d| ["--display", d]).into_iter().flatten())
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .spawn()
-                    .ok()
-            });
-            if card.is_none() {
-                tell(&made);
-            }
+            // What it made, in a notification (saved.rs): its picture, a
+            // moment in, its video dragged out of it, what can be done
+            // with it, and what went wrong on the way, if anything did.
+            // Its actions are Screenshot started again for each once
+            // this has ended, as it does once it's sent; they act on the
+            // file as it was written (`Made::id`), and no other: not
+            // known, they offer nothing. A GIF is one by what made it,
+            // not by its name.
+            let identity = made.id.map_or(crate::saved::Identity::Unknown, crate::saved::Identity::Written);
+            let kind = if made.gif.is_some() { crate::saved::Kind::Gif } else { crate::saved::Kind::Recording };
+            let notes = crate::saved::tell(&made.path, identity, kind, Some(&made));
+            crate::saved::sent(notes.as_ref());
             0
         }
         Ok(None) => 0,
@@ -1471,46 +1654,6 @@ pub fn toggle(args: &[String]) -> i32 {
             1
         }
     }
-}
-
-/// A notification that the recording was saved, with Show in Tracker
-/// (a person's recording; an agent's is said on its command line).
-fn tell(made: &Made) {
-    use olo_kit::notify::{Note, NoteEvent, Notifier};
-    let (tx, rx) = std::sync::mpsc::channel();
-    let notes = Notifier::with_events("Screenshot", "olo-screenshot", move |e| {
-        let _ = tx.send(e);
-    });
-    let name = made.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let secs = made.seconds.round() as u64;
-    let long = if secs >= 60 { format!("{} min {} s", secs / 60, secs % 60) } else { format!("{secs} s") };
-    notes.show(None, Note::new("Screen recording saved").body(body(made, &name, &long)).icon("screenshot").action("default", "Show").action("show", "Show in Tracker"));
-    // Waited for here (nothing polled): a click shows it, else it goes.
-    let path = made.path.clone();
-    while let Ok(e) = rx.recv_timeout(Duration::from_secs(60)) {
-        match e {
-            NoteEvent::Action { .. } => {
-                let _ = olo_kit::tracker::open(&path);
-                return;
-            }
-            NoteEvent::Closed { .. } => return,
-            NoteEvent::Replied { .. } => {}
-        }
-    }
-}
-
-/// The saved notification's words: the file, how long and how big, and
-/// what went wrong on the way (an encoder that failed and the one that
-/// went on; the recording stopped early).
-fn body(made: &Made, name: &str, long: &str) -> String {
-    let mut out = format!("{name}\n{long}, {} × {}", made.width, made.height);
-    if made.encoder_note.is_some() {
-        out.push_str(&format!("\nAn encoder failed; finished on {}.", made.encoder));
-    }
-    if made.stopped_early.is_some() {
-        out.push_str("\nStopped early: the encoder failed. What was recorded is kept.");
-    }
-    out
 }
 
 /// `--stop`: the recording on this display asked to finish; waits for it
@@ -1709,6 +1852,75 @@ mod tests {
         assert_eq!(stretches("x"), None);
         assert_eq!(kept_less(vec![], &[(2.0, 3.0), (5.0, 6.0)], 8.0), vec![(0.0, 2.0), (3.0, 5.0), (6.0, 8.0)]);
         assert_eq!(kept_less(vec![(1.0, 7.0)], &[(0.0, 2.0)], 8.0), vec![(2.0, 7.0)]);
+    }
+
+    /// Two recorders writing beside one name never share a file (each its own, made exclusively); the one
+    /// done second goes to the next free name, over nothing; what's published is known by the descriptor that
+    /// wrote it, so a file put in its part's place by name before it's published is found out, not taken for
+    /// the recording; and a part that isn't published is gone however it ends.
+    #[test]
+    fn recordings_never_share_a_file_nor_take_anothers_place() {
+        use std::io::Write as _;
+        let dir = PathBuf::from(format!("/var/tmp/olo-recording-parts-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dst = dir.join("Screen Recording 2026-11-28 at 10.00.00.mp4");
+        let (a_path, mut a) = part_beside(&dst).unwrap();
+        let (b_path, mut b) = part_beside(&dst).unwrap();
+        assert_ne!(a_path, b_path);
+        a.write_all(b"first").unwrap();
+        b.write_all(b"second").unwrap();
+        a.sync_all().unwrap();
+        b.sync_all().unwrap();
+        let (a_to, a_id) = publish(&a_path, &a, &dst, false).unwrap();
+        let (b_to, b_id) = publish(&b_path, &b, &dst, false).unwrap();
+        assert_eq!(a_to, dst);
+        assert_eq!(b_to, dir.join("Screen Recording 2026-11-28 at 10.00.00 (2).mp4"));
+        assert_eq!((std::fs::read(&a_to).unwrap(), std::fs::read(&b_to).unwrap()), (b"first".to_vec(), b"second".to_vec()));
+        assert!(a_id.is_some() && a_id != b_id);
+        // Another file put in a part's place by name before it's published: found out, not published as it.
+        let (c_path, mut c) = part_beside(&dst).unwrap();
+        c.write_all(b"third").unwrap();
+        c.sync_all().unwrap();
+        let other = dir.join("other");
+        std::fs::write(&other, b"not the recording").unwrap();
+        std::fs::rename(&other, &c_path).unwrap();
+        assert!(publish(&c_path, &c, &dir.join("c.mp4"), true).is_err(), "a substituted part was taken for the recording");
+        // Not published: gone.
+        let (d_path, _) = part_beside(&dst).unwrap();
+        drop(Part::new(d_path.clone()));
+        assert!(!d_path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// One recorder at a time on a display: another started while the first holds its lock is refused, at once
+    /// if the first is recording, after a moment if it's finishing; the status is written through a file of
+    /// the recorder's own and put in place whole, and its writing failing is said (before any recording).
+    #[test]
+    fn one_recorder_a_display() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-recorder-lock-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let lock = dir.join("recording-test.lock");
+        let first = recorder_lock_at(&lock, || false, Duration::from_millis(100)).unwrap();
+        // (flock's lock is an open file's: another open, here, meets it as another recorder's would.)
+        let started = Instant::now();
+        assert!(recorder_lock_at(&lock, || true, Duration::from_secs(5)).is_err());
+        assert!(started.elapsed() < Duration::from_secs(1), "refused at once while it records");
+        let started = Instant::now();
+        assert!(recorder_lock_at(&lock, || false, Duration::from_millis(100)).is_err());
+        assert!(started.elapsed() >= Duration::from_millis(100), "waited for one finishing");
+        drop(first);
+        let _second = recorder_lock_at(&lock, || true, Duration::from_millis(100)).expect("free once the first has gone");
+        let status = dir.join("recording-test.json");
+        let g = Going { pid: 7, path: "/v/a.mp4".into(), started: 1, what: "display".into(), paused: false, recording: true, recorded_ms: 0, as_of: 0, args: vec![], output: None };
+        write_going_at(&status, &g).unwrap();
+        assert_eq!(serde_json::from_slice::<Going>(&std::fs::read(&status).unwrap()).unwrap(), g);
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["recording-test.json", "recording-test.lock"], "nothing of its writing left beside it");
+        assert!(write_going_at(&dir.join("gone").join("recording-test.json"), &g).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Restart records the region that was dragged out, in points, on its

@@ -106,6 +106,60 @@ pub fn picture(cx: &WindowCx, icon: &str, logical: f32, label: Option<&str>, hot
     Some(DragImage { rgba: Arc::from(out), width: cw as u32, height: ch as u32, scale, hotspot })
 }
 
+/// What a drag of a picture carries under the pointer when what's
+/// dragged is the picture (a screenshot out of its notification): the
+/// picture itself, small (128 points at most on its long side; one of a
+/// few pixels made larger as blocks of whole device pixels, 48 points or
+/// so, never smoothed) and seven tenths opaque, as the kit's own drags
+/// are, the pointer in its middle. `picture` straight (not
+/// premultiplied). Its size in device pixels is a whole number of points
+/// times the whole scale its buffer has: a buffer whose size isn't a
+/// multiple of its scale is an error to the display (a 1000 × 667
+/// window's at 2× was 256 × 171). Its edge a line a point wide in `edge`
+/// (the frame its picture had where it was shown), wholly opaque: over
+/// a ground of its own colours (a picture of the desktop over the
+/// desktop), it doesn't melt into it. Milliseconds for a large picture:
+/// made off the window's looper, ahead of the drag.
+pub fn picture_of(picture: &image::RgbaImage, scale: f32, edge: [u8; 4]) -> Option<DragImage> {
+    let (size, by, blocks) = picture_size(picture.width(), picture.height(), scale)?;
+    let small = if blocks { image::imageops::resize(picture, size.0, size.1, image::imageops::FilterType::Nearest) } else { image::imageops::thumbnail(picture, size.0, size.1) };
+    let mut rgba = small.into_raw();
+    let (w, h, line) = (size.0 as usize, size.1 as usize, by as usize);
+    // (Premultiplied, at seven tenths; its edge whole.)
+    for (i, p) in rgba.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+        let (x, y) = (i % w, i / w);
+        if x < line || y < line || x + line >= w || y + line >= h {
+            *p = [edge[0], edge[1], edge[2], 255];
+            continue;
+        }
+        let a = p[3] as f32 / 255.0 * 0.7;
+        for c in &mut p[..3] {
+            *c = (*c as f32 * a).round() as u8;
+        }
+        p[3] = (a * 255.0).round() as u8;
+    }
+    Some(DragImage { rgba: Arc::from(rgba), width: size.0, height: size.1, scale: by, hotspot: olo_interface::point(px(size.0 as f32 / by as f32 / 2.0), px(size.1 as f32 / by as f32 / 2.0)) })
+}
+
+/// [`picture_of`]'s size for a picture of `w` × `h` pixels: in device
+/// pixels, the whole scale its buffer has, and whether it is made of
+/// blocks (a picture smaller than 48 points, made larger).
+fn picture_size(w: u32, h: u32, scale: f32) -> Option<((u32, u32), u32, bool)> {
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let by = scale.ceil().max(1.0) as u32;
+    let long = w.max(h);
+    // (In points, whole: then times the scale.)
+    let points = |pixels: f32| ((pixels / by as f32).round() as u32).max(1);
+    if long < 48 * by {
+        let times = (48 * by).div_ceil(long);
+        return Some(((points((w * times) as f32) * by, points((h * times) as f32) * by), by, true));
+    }
+    let shrink = ((128 * by) as f32 / long as f32).min(1.0);
+    Some(((points(w as f32 * shrink) * by, points(h as f32 * shrink) * by), by, false))
+}
+
 /// Drags `drag` out of the view's window (while the press that began it
 /// is down); the view is sent what `done` makes of what it was dropped
 /// as (None: cancelled) when it's over.
@@ -119,4 +173,37 @@ where
         to.send(done(action));
     })
     .detach();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A drag's picture has a size its buffer may have: a whole number of points times its scale.
+    #[test]
+    fn a_drags_picture_is_whole_points() {
+        // (A 1000 × 667 window's at 2× was 256 × 171: no multiple of 2.)
+        for (w, h, scale) in [(1000, 667, 2.0), (1000, 667, 1.5), (1280, 800, 1.0), (333, 1001, 1.75), (3, 1001, 2.0), (4, 8, 2.0), (1, 1, 3.0), (2560, 1600, 1.25)] {
+            let ((dw, dh), by, _) = picture_size(w, h, scale).unwrap();
+            assert!(dw > 0 && dh > 0 && dw % by == 0 && dh % by == 0 && by == scale.ceil() as u32, "{w} × {h} at {scale}: {dw} × {dh}, scale {by}");
+            assert!(dw.max(dh) <= 128 * by + by, "{w} × {h} at {scale}: {dw} × {dh}");
+        }
+        // A few pixels are carried as blocks, large enough to see; nothing is nothing.
+        assert_eq!(picture_size(4, 8, 1.0), Some(((24, 48), 1, true)));
+        assert_eq!(picture_size(0, 8, 1.0), None);
+        let tiny = image::RgbaImage::from_pixel(4, 8, image::Rgba([10, 20, 30, 255]));
+        let edge = [90, 100, 110, 255];
+        let carried = picture_of(&tiny, 2.0, edge).unwrap();
+        assert_eq!((carried.width, carried.height, carried.scale, carried.rgba.len()), (48, 96, 2, 48 * 96 * 4));
+        // Seven tenths opaque, premultiplied, inside an edge a point wide (two device pixels at 2×), wholly
+        // opaque; the pointer in its middle (points).
+        let at = |x: usize, y: usize| &carried.rgba[(y * 48 + x) * 4..][..4];
+        assert_eq!((at(0, 0), at(1, 1), at(47, 95), at(1, 50)), (&edge[..], &edge[..], &edge[..], &edge[..]));
+        assert_eq!(at(2, 2), &[7, 14, 21, 179]);
+        assert_eq!((f32::from(carried.hotspot.x), f32::from(carried.hotspot.y)), (12.0, 24.0));
+        // A screen's picture: 128 points on its long side, its shape kept.
+        let screen = image::RgbaImage::from_pixel(2560, 1600, image::Rgba([200, 200, 200, 255]));
+        let carried = picture_of(&screen, 2.0, edge).unwrap();
+        assert_eq!((carried.width, carried.height), (256, 160));
+    }
 }

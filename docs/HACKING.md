@@ -1803,8 +1803,22 @@ and offers actions; where it is dropped picks the type and the action.
   `dnd::start(cx, drag, done)` from a view, where `done` makes the
   message the view is sent when the drag is over (the pointer left the
   window with the drag and its leaving isn't told: a view that tracks
-  hovering puts that right then, as Screenshot's after-recording card
-  does). Viewer and Quick Look drag their file out from the
+  hovering puts that right then, as Notifications' banners do). A drag
+  begun takes the press that began it with it (`WindowCx::start_drag`
+  lets go of what's pressed, unclicked: the display takes the release,
+  and a later release over what was pressed clicked it, a banner opened
+  by a press on its Delete taken off onto it). Where
+  what's dragged is a picture itself (a screenshot out of its
+  notification), `dnd::picture_of(&rgba, scale, edge)` makes it the
+  picture under the pointer: 128 points at most on its long side, a few
+  pixels made larger as blocks of whole device pixels (never smoothed),
+  seven tenths opaque, edged with a wholly opaque line a point wide in
+  `edge` (the frame it had where it was shown, so a picture of the
+  desktop dragged over the desktop doesn't melt into it), its size a
+  whole number of points times the whole
+  scale its buffer has (a buffer that isn't is an error to the
+  display); milliseconds for a large one, so make it on a worker ahead
+  of the drag. Viewer and Quick Look drag their file out from the
   picture when it fits (a drag that doesn't pan), Quick Look also from
   its footer's icon, Get Info from its icon. Tracker's folders are
   spring-loaded: a drag resting on one for 1 s opens it. Deskbar takes
@@ -3172,7 +3186,11 @@ it.
   `Control::pointing` (the pointing hand: a link).
 - The BeOS controls (see them all in the kit's `gallery`, `controls`
   and `widgets` examples, `crates/kit/examples`, run in a test
-  session): `Button` (`default`, `pushed`, `small`, `on_click`;
+  session): `Button` (`default`, `pushed`, `small`, `on_click`; a
+  `small` one's 11-point label is raised over its middle by whole device
+  pixels, up to a point and no further than keeps its capitals within
+  the point of centre the layout review allows, so a "Copy"'s p and y
+  clear its bottom bevel (Opus's look at the notification banners);
   `menu()`: it opens a menu, a triangle pointing down after its label,
   the filter bar's own, the button `MENU_MARK_ROOM` (14 points) wider,
   so it isn't taken for doing what it says at once (Opus's look at
@@ -13087,10 +13105,11 @@ does the same undimmed, with a loupe by the pointer.
 Saved with no window (`--silent`, `--region`), it prints the file's path
 and puts it on the clipboard (`olo_kit::held_clipboard::hold`), staying until
 something else is copied. ⌘⇧5 opens the app. However a picture is saved
-(a shortcut's, or Save in the window), its card comes up in the screen's
-lower left, to drag out as the file ("After", under Screen recording
-below); not with `--no-card` (a script's own picture) nor for the
-Screenshot portal's `--for-app`.
+(a shortcut's, or Save in the window), it's told of in a notification
+in the screen's lower right, its picture to drag out as the file
+("Saved", under Screen recording below); not with `--no-notification`
+(`--no-card` too: a script's own picture) nor for the Screenshot
+portal's `--for-app`.
 
 ## Screen recording (apps/screenshot recording.rs, crates/video)
 
@@ -13565,7 +13584,9 @@ Screens' Export Video uses too).
   Notifications ▸ "While sharing or recording the screen"): no banners
   (errors wait too) from the moment it records to its end, those on
   screen put in the history; the recording's file is watched with the
-  sharing's. Record ▸ Countdown sets the seconds counted down first
+  sharing's, and read again as each notification comes (the recording's
+  own, sent as it ends, came before the tick for its file's going, and
+  went to the list with no banner). Record ▸ Countdown sets the seconds counted down first
   (None, 3, 5, 10; the settings' `screen_recording.countdown`).
 - **For people**: ⌘⇧6 (Ctrl+Alt+Print with the Windows and BeOS
   profiles; `Shortcut::ScreenRecording`, "Record the screen, or stop")
@@ -13602,117 +13623,165 @@ Screens' Export Video uses too).
   1.5× and 2×, light and dark (`tsession review --all`: nothing found);
   each button clicked; a frame of the video decoded where the bar was
   shows the wallpaper.
-- **After** (`after.rs`, `olo-screenshot --after PATH`, which
-  `--toggle-record` starts once the file is whole, in the saved
-  notification's place; the notification only when it can't start, or
-  when the recording has something to say: an encoder that failed, a
-  recording stopped early): a card in the screen's lower left, as
-  CleanShot X's quick-access overlay, on the Top layer (never in front of
-  a full-screen app's Overlay) and never taking the keyboard. The
-  recording's picture (a tenth of the way in, at most a second: past a
-  countdown; decoded by `olo_preview::video::picture_at` on a worker,
-  made at the window's scale with `preview_of`, one pixel to a device
-  pixel, again when the scale changes), its name, then its length, its
-  size in pixels and its bytes, and Show in Tracker (`tracker::open`,
-  the file selected), Copy (the file as file managers copy one,
-  `clipboard::files`, served by `clipboard::hold` with no window until
-  something else is copied) and Delete (to the freedesktop Trash, which
-  Tracker restores from), Edit (the recording in the Viewer's editor,
-  `olo-viewer --edit`, below), with a close box. The picture pressed and
-  moved 4 points drags the file out (`dnd::files`: a folder copies it, a
-  chat or a mail attaches it); dropped somewhere, the card goes. It goes
-  by itself 20 s after the pointer left it, the window asked then
-  whether the pointer is over it (`is_window_hovered`: a drag out of it
-  takes the pointer without the leaving being told), and stays while it
-  is. Checked headless at 1×, 1.5× and 2×, light and dark (`tsession
-  review --all`: nothing found); dragged into a Tracker window (the file
-  copied there), Copy pasted as the path, Delete in the Trash, Show in
-  Tracker its folder; idle, 0 wakeups.
-  **A screenshot has the same card** (Ben, 2026-11-27: "after taking a
-  screenshot please make it send a notification that comes up in the
-  bottom left with a thumbnail of the screenshot and the thumbnail
-  should support drag and drop so i can drag it into an app i want to
-  use the screenshot in (just like in macos)"): a picture saved by a
-  shortcut (`--silent`, `--region`) or by Save in the window starts
-  `--after PATH --picture` for it (`show_card`, main.rs: detached, on
-  the display that was pictured, said when the picture is taken (the
-  pointer's then; the region picker's own), once the path is on the
-  clipboard, so that a Copy pressed on the card at once is not
-  overwritten by it). **Not on an Agent Screen** (`after::shown_here`,
-  `OLO_SCREEN`; a recording's card neither): who watches one sees its
-  picture as a recording has it, the card left out, and a click meant
-  for what shows there would land on the card's Delete.
-  Its card says its size in pixels and bytes, and has Open (in the
-  program that opens its kind) where a recording has Edit; Copy offers
-  the picture itself first (its own type, what a chat or an editor
-  pastes), then the file as file managers copy one. **The picture is
-  shown so that it can be told what it is of** (`shown`, for both
-  kinds): fitted whole in the card's column where it is larger (a
-  16:10 screen's fills it); a few pixels dragged out of the screen as
-  blocks, each pixel a whole number of device pixels and never
-  smoothed, until it is 44 points tall; a strip from its start at its
-  own size, its far end fading into the card (fitted whole it was a
-  line). **The frame is the picture's own edge**: built on whole device
-  pixels round a picture made for exactly its inside (`frame_size`,
-  `made`), so nothing stands between them at any scale (a picture made
-  for "the frame less four points" left a line of the frame's fill at
-  1.25×, 1.5× and 1.75×). The name is bold, cut **in its middle** to
-  its room with its end kept (`middle_cut`, as Tracker cuts one: where
-  names differ, a number, a date, its kind); the facts are small under
-  it, 8 points from the frame, 12 from the buttons. The buttons span
-  the column: Delete by itself at its start, far from the close box,
-  then Show in Tracker, Open and Copy at its end; **the column is as
-  wide as the buttons' words need in the person's language**
-  (`column_for`, the kit's `button_width`: 304 points in French, 322
-  in Russian, where 280 had Delete run into the rest). What the card
-  deletes, copies and drags out is **the file it came up for**
-  (`identity`: its device and number; another file that has its name
-  by now is left alone). The pointer over the
-  picture is the open hand and the frame's edge lights (the keyboard's
-  colour): it can be taken hold of; a drag carries the picture itself
-  (128 points at most, seven tenths opaque). One wait for its going,
-  armed as the pointer leaves and dropped as it comes back (under a
-  resting pointer it woke every twenty seconds to ask). **One card at
-  a time, and never in a picture** (`after::put_away`): a screenshot
-  is the screen as it is, so the card of the shot before was in the
-  next one, and two cards stood on each other. A new card, and
-  whatever is about to take a picture of the screen (`capture::take`,
-  again after a delayed shot's wait; the region picker's freeze; a
-  recording's start, before it looks whether one is going), tells the
-  card showing to go (a launch on its own instance socket,
-  `olo.screenshot-after`, by the display's name as the card listens on
-  it) and waits for its process's end on a pidfd, a second and a half
-  at most; the card decides on its window's own looper, where Copy
-  is: one that only holds the clipboard (Copy: no window) stays, and
-  an upgrade in place waits for it (`upgrade_waits_while`). And
-  app_server leaves the card's layer out of every recording and share
-  (`olo_protocol::recording::only_on_the_screen`: the controls' rule,
-  for the card's namespace too): a picture taken while the screen was
-  being recorded brought its card into the recording. Tried headless
-  by `tools/dev/shot-card-check` (a card after a shot, asked of the
-  compositor: one process, its layer the only card's; fifteen more
-  shots in a row, none with a card in its picture and its own card
-  standing after each; `--no-card`, its picture's pixels too; the
-  picture dragged onto a Tracker window is the file there, whole, and
-  the card goes; a recording made as a GIF onto a name that ends in
-  .gif is there after: the recorder removed "the video", which was the
-  GIF by then, an old fault of `--as-gif --to X.gif`; no card on an
-  Agent Screen): it fails at the second shot with the putting away
-  taken out, and at the GIF with that one line put back. Pictured in seven states (a screen's picture with the
-  scale changed under it, a window's, a few pixels, a strip, a long
-  name, the close box lit, the picture lit), light and dark, at 1×,
-  1.25×, 1.5×, 1.75× and 2× (`tsession review --all`: nothing found
-  in any). At rest on release builds: 0.0% of a core, 0 wakeups a
-  second, no frames in ten seconds (`tools/dev/cost`). The compositor
-  while a display is recorded (release, a pointer moved for forty
-  seconds, its own `timings`): a whole look 102 µs before the card's
-  namespace was left out and 60 µs after, two runs under different
-  loads: what one more comparison of a layer's name costs a frame is
-  not in what was measured (the stopwatch for the upper layers starts
-  after the list is made), and can't be told from the whole. A plain
-  screenshot, an agent's look and Agent Screens' history are the
-  screen as it is, the card with it: only recordings and shares leave
-  it out.
+- **Saved** (`saved.rs`; Ben, 2026-11-28: "when i take a screenshot
+  the thumbnail appears in the bottom left like it's not a proper
+  notification it should have been a notification in the bottom right
+  that uses the existing notification paths and it should support
+  dragging and dropping into the destintaion"; before, a card of its
+  own in the screen's lower left, `after.rs`, gone): whatever Screenshot
+  saves, a picture by a shortcut (`--silent`, `--region`) or by Save in
+  the window, or a recording finished from the shortcut
+  (`--toggle-record`), is told of in a notification, through the
+  desktop's notifications (`olo_kit::notify`, Olo's in
+  apps/notifications): in the screen's lower right with the rest,
+  Screenshot's (its name and icon, its own choices in Preferences ▸
+  Notifications, Do Not Disturb, quiet while the screen is recorded or
+  shared), and kept in the list. Its name, then what it is in the
+  labels' quieter ink and size ("2560 × 1600 · 412 KB"; what went wrong
+  on the way, an encoder that failed, under it); its picture large and
+  whole (a recording's a moment in, a tenth of the way, at most a
+  second: past a countdown; a GIF's the frame that shows then; made
+  small into Screenshot's cache, `poster`, old ones going after a month
+  but for recordings Screenshot still keeps), a recording's with its
+  length on it as a player has it ("▶ 0:04", `x-olo-length`); pressed
+  and dragged out of the banner or of its card in the list, the
+  picture is the file (`x-olo-file`: a recording's video or GIF), to a
+  folder, a chat, a mail; dropped somewhere, it's read and off the
+  screen (Notifications, "Dragged out of a banner or a card"). A click
+  opens it (in the program that opens its kind; a recording plays);
+  its row has Delete, set apart at its start (`x-olo-apart`), and Copy
+  at its end; its menu and its row in the list have Show in Tracker
+  (the file selected) too, and a video's Edit (the Viewer's editor; not
+  a GIF's, which Viewer opens as a picture: a recording's kind is
+  carried from its encoder, `saved::Kind`, never guessed from its
+  name). In the list its row's and its card's buttons are laid out as
+  its banner's: `Delete ··· Copy · Show in Tracker` (a double-click or
+  Return opens it; Open is in its menu). Copy puts the picture
+  itself on the clipboard first (its own type, what a chat or an editor
+  pastes; read from the very file saved, opened once and looked at as
+  opened, 128 MB at most; a recording's never), then the file as file
+  managers copy one, held by a program of its own, with no window,
+  until something else is copied; Delete puts it in the freedesktop
+  Trash, which Tracker restores from. **Its actions work as long as
+  it's in the list**: Copy, Show in Tracker, Delete and Edit are started
+  by the notifications centre whenever they're chosen, Screenshot's
+  program running or not (`x-olo-runs`: `olo-screenshot --saved copy |
+  show | delete | edit PATH RECEIPT`, those four words alone and first),
+  from a banner, a card or a row, an hour on as at once; a click goes
+  to the program that told of it while it runs (holding the path it put
+  on the clipboard), and once it has gone starts Screenshot again
+  (`x-olo-show`: `--saved open PATH RECEIPT`); either way the same
+  (`saved::act`). **Only on the very file that save
+  made, and only while it's still that file**: its receipt is the file
+  as it was written (`FileId`, its device, number and making, said
+  `dev-ino-born`; read from the very descriptor that wrote it: a
+  shortcut's picture written to a file of its own made exclusively,
+  `.olo-screenshot-PID-N.part`, then given the first free name with no
+  replacing, again if another took it meanwhile (`capture::save_new`;
+  Save in the window replaces what it was told to); a recording's from
+  its writer before it's published, carried through its GIF), kept with what it is (a
+  picture or a recording) as it's saved (`remember`: a line in
+  `$XDG_STATE_HOME/olo/screenshot/saved.jsonl`, written whole and put
+  in its place under a lock; lines that aren't whole passed over; past
+  a thousand, those no longer there go first, past twenty thousand the
+  oldest), and carried by every action, live or relaunched: `--saved`
+  acts only on that receipt's file, at that path, still that file. Any
+  program on the bus may send a note saying it's Screenshot's, its
+  Delete naming any file, and that file stays; and a screenshot deleted
+  and the next given its name, the first free one, is another file
+  with another receipt, so the old note's Delete leaves it alone.
+  Delete looks first (`symlink_metadata`, its receipt: another file
+  there is never moved), then moves the file aside under a short name of
+  its own (`renameat2` `RENAME_NOREPLACE`), looks again, and only if
+  that is the very file saved does it go to the Trash; anything else
+  goes back (never over a file that has come since; taken meanwhile,
+  under a name of its own beside it). Into the Trash by a slot of its
+  own: its `.trashinfo` made exclusively, a taken name passed over
+  (`saved::reserve_slot_in`), the file moved in with no replacing,
+  copied only across file systems (`EXDEV`, into a file it makes
+  exclusively), and nothing removed but what it made. Its program, about to end, waits a
+  moment for its notification to have been sent (`Notifier::sync`,
+  which says if it wasn't). What its notification says is made where
+  the file is saved, so the clipboard, ready, only sends it.
+  `olo-screenshot --after PATH [--picture]` (asked by Screenshot of
+  itself before; a recorder started before an upgrade may still) tells
+  of PATH, but keeps nothing as Screenshot's: whoever asks names the
+  file, so it's offered as Screenshot's only if Screenshot already kept
+  that very file there (its own entry, not a link: its receipt then, and
+  its actions); else it carries no receipt and is shown only
+  (`x-olo-shown-only`: no actions, its picture not dragged out as a
+  file, nor dragged as one in its place). What a note says (its size, its picture, a GIF or not
+  by its bytes) is read from the file opened once, without waiting and
+  never through a link (`saved::prepare`): a pipe given its name holds
+  nothing up, and a probe that fails sends the plain note. Not on an
+  Agent Screen (`saved::shown_here`, `OLO_SCREEN`; a recording's
+  neither): who watches one sees its picture as a recording has it, and
+  a click meant for what shows there would land on a banner's Delete.
+  Nor for the Screenshot portal's `--for-app`, nor with
+  `--no-notification` (`--no-card` too: a script's own picture). From
+  a recording's asking (its status written, through its countdown) to
+  its last frame, Screenshot's banners wait in the list whatever
+  Preferences says of others': new ones, ones woken from a snooze, ones
+  brought back at a start, and those up as it's asked put away (the
+  status read off the centre's own thread, `ScreenNow`, as a note comes
+  and as the file changes). One recorder a display: its lock
+  (`recording-DISPLAY.lock`, `flock`) held from its look at whether one
+  is going to its status gone, its status written through a file of its
+  own and put in place whole; not written, no recording. The card of
+  before's layer (`screenshot-after`) is kept out of every capture and
+  every screenshot (app_server's `render::left_out`), for one from
+  before an upgrade. **Never in a
+  picture** (`saved::put_away`): a screenshot is the screen as it is,
+  so the banner of the shot before would be in the next one. Whatever
+  is about to take a picture of the screen (`capture::take`, again
+  after a delayed shot's wait; the region picker's freeze; a
+  recording's start, before it looks whether one is going) has
+  Screenshot's banners put away first (`olo_kit::notify::put_away`, the
+  centre's `PutAway`: off the screen as if their time had run out,
+  still in the list, unread, their actions as they were) and waits
+  until the screen no longer shows them, a second and a half at most
+  (all of it given up with it: the bus's socket, opened by its own
+  thread, is shut as the caller stops waiting, its handshake and its
+  call with it; a bus that took the socket and said nothing kept the
+  thread and the socket for good). The centre answers once the banners are
+  drawn without them and that drawing is on the screen: the second
+  frame after it, asked for as the drawing is sent (from `after_flush`,
+  the drawing went without asking for a frame, and with nothing to
+  draw again, a card of the same height in its place, none came). Every
+  banner that leaves is waited off the screen so (two frames), so one
+  that asks while any wait is under way waits too; after it, that app's
+  new banners wait 400 ms before they show (`HOLD`: its picture is
+  being taken, and another Screenshot's, saved a moment before, would
+  be in it). The banners' surface closes only once the screen has shown
+  it empty, and a wait that no frame ends (the display asleep) is given
+  up after a second, its asker told it failed (one timer for all the
+  waits). Other apps' banners stay where they
+  are, in the next picture as on the screen: a picture of one may be
+  what's wanted. Tried headless by `tools/dev/shot-note-check` (its own
+  desktop, the notifications service on that desktop's own bus, its
+  programs' state, caches and data in a home of its own, in a folder
+  of its own it alone removes): a shot told of in the lower right,
+  Screenshot's, its picture the file, each action with its receipt;
+  twelve more shots in a row, each taken while the banner before it
+  was up, none with a banner in its picture, each told of; with
+  another app's notification up, the next picture that one's alone;
+  `--no-notification` telling nothing; the banner's picture (found by
+  the agent tree) dragged onto a Tracker window the file there, whole,
+  its note read and off the screen; pressed and let go of, a click, the
+  file opened in the viewer the test's home chose for a PNG; a right
+  click on Delete opening the card's menu (Delete last) and deleting
+  nothing; once Screenshot had gone (its clipboard taken), Copy holding
+  the file and Delete putting it in the Trash, the note read and off
+  the screen; the next picture, given the deleted one's name, left
+  alone by the old Delete, its helper waited for until it said how it
+  ended (the centre runs from a folder of the check's own, Screenshot's
+  program there a wrapper that keeps that); a note saying it was
+  Screenshot's with no file of its own keeping none of its actions,
+  and one naming a file Screenshot never saved, with that file's real
+  receipt, deleting nothing; a recording made as a GIF
+  told of with its picture and length, and once put away no longer
+  shown; a History card's picture dragged onto Tracker; nothing told on
+  an Agent Screen.
 - **Recordings** (`library.rs`, `olo-screenshot --library`; Record ▸
   Recordings…, Deskbar's recording menu; one window, a second
   `--library` brings it forward): every screen recording in the Videos
@@ -20889,6 +20958,29 @@ A program without windows (a helper app_server starts) uses
 `Notifier::with_events(app, entry, |e: NoteEvent| …)` instead; the
 callback runs on the notifier's thread. Tracker's "Finished copying…" (jobs
 of 10 s or more; `OLO_TRACKER_NOTIFY_AFTER_MS` in debug builds) uses it.
+A program about to end says `notes.sync(within)` first: it returns once
+what was asked before it has been sent (its last note would otherwise
+go unsent with it), and whether all of it was since it last asked
+(false with no bus, or a service that refused it). The notifier hears
+a signal (an action chosen, a note closed, a token) only from the
+service's own connection, the one that answered its last note: anyone
+on the bus may send one that says a Delete was chosen on a note of
+yours. Another service answering (it started again), the ids of the
+one before are forgotten; and an update, a close or a read goes to the
+service that has the note, by its own connection, never to whichever
+has the name now (its numbers are its own: another's may be another
+app's note): that one gone (`ServiceUnknown`, `NameHasNoOwner`), its
+numbers are forgotten and the note is sent anew. The service, for its
+part, keeps each note its sender's: replaced or closed only by the
+connection that sent it (another naming its number gets a note of its
+own), what's done with it told to that connection alone, and a sender
+gone, its notes nobody's. And `olo_kit::notify::put_away(desktop_entry,
+within)` takes an app's own banners off the screen as if their time had
+run out (still in the list, unread, their actions as they were),
+returning once the screen no longer shows them (`within` at most, its
+bus call given up with it): Screenshot asks it before every picture of
+the screen, so that the banner of the picture before isn't in it
+(below).
 
 A note can say how it looks, so each app's cards are its own:
 `.accent([r, g, b])` (the app's colour: its badge, its monogram when
@@ -20896,15 +20988,133 @@ it has no icon, its progress bar; never a band or edge), `.subtitle(…)` (a lin
 under the title: from whom, a channel, an album), `.badge("PR #42")` (a
 pill beside the title), `.field(label, value)` (a little table),
 `.image(path)` (a picture shown large: a screenshot, a photo),
+`.file(path)` (the file it's about: its large picture dragged out is
+that file, a recording's video; without one, the picture's own file),
+`.apart(key)` (that action stands apart at the start of its row, as a
+BAlert's leftmost with `B_OFFSET_SPACING`: a Delete away from Copy;
+last in its menus, a separator before it; at the far end of its row in
+the list), `.length(seconds)` (how long what its large picture shows
+plays: "▶ 0:04" on it, a recording's),
 `.style(NoteStyle::Message)` (the sender's picture round, the body in a
 balloon) or `Media` (the artwork large), and `.size(CardSize::Small |
 Medium | Large)` (how big its card is in the history; `Auto` lets it
 choose). Each is a `Notify` hint (`olo_protocol::notifications::hint`:
 `x-olo-accent` "#rrggbb", `x-olo-subtitle`, `x-olo-badge`, `x-olo-fields`
-as `a(ss)` or `a{ss}`, `x-olo-image`, `x-olo-style`, `x-olo-size`,
+as `a(ss)` or `a{ss}`, `x-olo-image` and `x-olo-file` (a whole path, or
+a `file://` URI of this computer's: no host or `localhost`, its escapes
+read once; anything else is no file), `x-olo-file-id` (`.file_as(path,
+id)`: the file's receipt as its sender wrote it, `dev-ino-born`; the
+service takes the file, and the picture as that file, only if what's
+there now is a file of its own, never a link, and that one), `x-olo-shown-only`
+(`.shown_only()`: its picture shown, never dragged out or offered as a
+file: one whose sender can't vouch for its file), `x-olo-apart`, `x-olo-length`
+(`u`), `x-olo-style`, `x-olo-size`,
 `x-olo-source` for where in the app it came from, `x-olo-type`), so any
 program can send them (`notify-send -h string:x-olo-accent:#e5534b …`)
 and other services ignore them.
+
+**The large picture is shown whole** (Ben, 2026-11-28, of a
+screenshot's: "it should have been a notification in the bottom right
+that uses the existing notification paths and it should support
+dragging and dropping into the destination"; it was cut to fill a
+120-point band, `Shape::Cover`). `pictures::shown`, Screenshot's own
+card's rule brought here: fitted whole where it's larger than its place
+(a banner's 156 points across and at most 98 tall, a 16:10 screen's: a
+phone-shaped picture is that tall, narrower, centred; a card's in the
+list), its shape kept, where that leaves its short side 44 points; a
+few pixels dragged out of the screen as blocks of whole device pixels
+until it's that tall (never smoothed); a strip from its start, a pixel
+a point (blocks of whole device pixels at 2×, the nearest whole number
+where a point isn't one), so it shows the same part of it, as tall, at
+every scale, its far end fading into the card (fitted whole it was a
+line); smaller than its place, a pixel to a device pixel, a point at
+least. It is made on a worker for exactly that (`Shape::Shown`), drawn
+a texel to a device pixel inside a frame of one line on whole device
+pixels, centred, square (a rounded corner cut the picture). The note's
+file is the file it came with: the service finds what it is as the
+note comes (`FileId`, its device, number and making, the picture's
+read from the file opened, without waiting, and only a file of its
+own: a pipe given as a picture would have held the bus's thread for
+ever; `image_id`, `file_id` in its look), and a picture of another
+file given its name since (a screenshot deleted and taken again has
+the first free name, the same) shows nothing and isn't dragged out
+(before, the history's card of the one deleted showed the new one); a
+picture that isn't there as it comes isn't shown at all. What's shown
+is read from the file opened and looked at as opened, at most 256 MB
+both as decoded and as the straight RGBA made of it, told by its header
+before any of it is decoded (`pictures::open_file`, `decode`), and made
+premultiplied in place, never copied whole again. An icon named by a
+file's path (an `app_icon`, a GTK note's file icon) is read the same
+way, on a worker (`pictures::paint_file_icon`), never by the icon
+theme's loader, which reads whatever it's given whole and waits on a
+pipe; an `image-path` that isn't a picture isn't the icon either, and a
+GTK note's icon bytes are decoded within the same bound. Under the name of a note
+about a file with its picture large, what's said is its details, in
+the labels' ink and size, right under the name (the two read as one),
+the name on one line (cut in its middle if it must be, its start and
+its extension kept, "Screen Reco…demo.gif", measured against the whole
+width but where a card's own × is to show, one of several of its app's
+up at once; the whole of it a tip over
+it on a banner, and to agents always). A banner's words, picture and
+buttons stand 10 points in from its sides and its bottom; its header's
+name is quiet (11 points, secondary ink: the title is what's bold); its
+×, a banner's and a card's and a row's, is 8 points across with a
+point-wide line at every scale (`look::close_cross`), its end and the
+icon's drawing on the words' edges. In the list a card's picture sits
+in a sunken well as wide as the card (120 points at most, 20 at least),
+fitted and centred in it 8 points clear of its bevel, the well darker
+than the card in both looks (in the light, the panel a step darker:
+a text field's white outshone the picture), its buttons 8 points under
+it, as a banner's are under its picture; an unread card's dot leads its
+header, on the card's text column, the app's mark after it. A card's ×
+is always there (it can't be
+forgotten while its banner is up), and a press on one of its buttons
+is that button's alone (never the card selected and tinted by it).
+While the pointer is over a picture that drags out, a ring is drawn
+round it, outside it: a point of the ground, then two of the
+keyboard's blue (a line on its own edge was lost on a blue picture). A
+strip's cut end fades over 12 points into what's under it inside its
+frame, the frame drawn whole over the fade (a picture cut short, not a
+progress bar); a recording's length (▶ 0:05) sits a point over its
+badge's middle. The History window with nothing in it keeps the list's
+frame and its bar (no thumb: the first note doesn't make it jump 14
+points narrower), and shows the app's icon at 48 points, grey and half
+see-through, over its words, two fifths of the way down; with nothing
+cleared, no "Cleared" link.
+
+**Dragged out of a banner or a card** (`banners.rs`, history.rs's
+Cards view): a large picture that is a file, the note's own
+(`NoteLook::dragged`: its `file`, else the picture's; a picture or a
+video by its name, a whole path, known as it came: one kept from
+before files were, or not there yet when it came, says nothing of
+dragging) is the open hand under the pointer, and its frame lights in
+the keyboard's colour (the pointer crossing its edge is heard,
+`note_pointer_edge`; nothing else moves it). Pressed and moved 4
+points (heard wherever the pointer goes while it's held,
+`on_drag_move`, the press forgotten as it's let go of), its file is
+dragged out (`dnd::files`: a folder copies it, a chat or a mail
+attaches it, Terminal types its path), under the pointer its picture
+made small, seven tenths opaque inside an opaque edge a point wide in
+the banner's frame colour (`dnd::picture_of`, made on the worker with
+the picture shown, from the same pixels, and made again as the
+pointer comes onto the picture if it was let go of: there when it's
+pressed, `pictures::drag_image`), and the pointer the closed hand
+while it's held (app_server, for every drag: the program's own wishes
+for it wait). Only the file the
+note came with, and a file of its own, not a link to another
+(`banners::draggable`: a note naming `~/.ssh`'s key as its file is
+refused by its name, a link named like a picture by being one). While
+it's dragged the banner stays, as under the pointer (`dragging`, in
+`held`), its face tinted the list's selection colour paled into the
+panel's, header and all, its picture and buttons as they are (a card
+of several, that card alone: `banners::drag_tint`, as a Cards card's
+while it's dragged); dropped somewhere it was used: read, and off the screen
+(`Notifications::dropped`, as `seen`: still open at its app); let go
+of nowhere, it has a moment more, as when the pointer leaves it. A
+press that drags isn't a click (no Open on letting go), and a press
+let go of where it was is the card's click. In the Cards view a click
+on a card acts as it's pressed; on its picture, as it's let go of
+(`Hit::Picture`, `held_moved`, `release`).
 
 A note about one thing among several (a tab, a conversation) says how
 to show it for as long as it's in the history: `.shows(args)`, the
@@ -20926,6 +21136,62 @@ the first window in front: the note clicked after the agent had been
 answered, and after the centre was ended and started again, each
 brought the second window forward with that tab selected (before:
 nothing moved).
+
+**Each action, after its app has gone** (`x-olo-runs`, `a{sas}`:
+`Note::runs(key, args)`; for a click, `x-olo-show`; Haiku's
+BNotification has its notifications say what to launch, `SetOnClickApp`
+and `AddOnClickArg`, for the same reason). A program that tells of
+something and ends (Screenshot, once its picture is saved and the
+clipboard it held is taken) says for each action what it runs: the
+centre starts the app's own program with those arguments when the
+action is chosen (`invoke`, `dispatch`, `runs_own`), from a banner, a
+card or a row, an hour on as at once, its app open or not (sent to a
+program about to end, a recording's as its note goes out, an action
+went unheard), and the note's life goes on as an action's would: read,
+and, but for a resident one, closed at its app and off the screen. A
+click (`x-olo-show`) and every other action of a note still open at its
+app go to the app as the spec has it: its activation token, the action,
+its closing (Rex, Calendar, To-Do and Terminal raise their window with
+the token and let go of the note as they're told it closed; started by
+the centre instead, they had neither). Once it isn't open at its app,
+a click shows what `x-olo-show` says, else brings the app forward. A
+GTK app's note is open at its app while GLib's interface has it, kept
+in the History or not (`open_at`).
+Those buttons stay where they were (`sender_gone` keeps the actions
+that run something; `Entry::actions_now`), and they're kept with the
+note through the history's file. As `x-olo-show`: only for Olo's own
+programs by the note's desktop entry, only as arguments, never a
+shell's words, and **only what that app is started with for a note**
+(`RELAUNCHES`, `relaunch_allowed`: its option and how many words
+follow it, none of them another option: Terminal's `--show-shell ID`,
+Calendar's and To-Do's `--show`, Rex's `--focus-block`, `--session`,
+`--focus-host`, Screenshot's `--saved ACTION PATH RECEIPT`; anything
+else is dropped as the note comes and refused if it's asked, so that a
+note saying it's Screenshot's can't have a click start a recording).
+Screenshot's are bound tighter (`relaunch_for`): each action's own verb
+(its click `open`, `copy`, `show`, `delete`, `edit`: a click that says
+Open never runs `--saved delete`), on the note's own file (`x-olo-file`)
+by the receipt it came with (`x-olo-file-id`), each button's label said
+as that verb says; a note with no file of its own keeps none. And as
+any program on the bus may send a note that says it's an Olo app's,
+the program started makes sure of what it's asked to act on
+(Screenshot acts only on the very file that save made, by its
+receipt). At most 16 actions, 32 arguments each, 4 KB an argument
+(`RUNS_MOST`), at most 64 of a hint's entries looked at, 64 bytes a
+key, each looked at where it lies in the message before anything's
+copied, the actions it may run indexed once.
+(A note whose banner timed out stayed open at an app that had quit,
+forever: its sender was forgotten as the banner went, so its going
+was never heard, and its actions in the list went to nobody. `remove`
+keeps it now for a banner that times out, `Reason::Expired`, as the
+note is still open there; and the sender is let go of whenever the
+note is closed to its app (`queue_closed`: cleared, tidied, replaced),
+and a note in the list is open at its app as its entry says: put back
+by Undo after it was closed, it isn't.) A note whose app has gone
+leaves the screen, is read and is no longer "shown" as any other does
+(each lifecycle step finds its entry whether it's open at its app or
+not, `newest_mut`: looked for among the open only, a recording's
+stayed "shown" for good and came back on the screen at every start).
 
 **Open at its app only while its sender is** (Ben, 2026-11-18: a
 click on a waiting tab's note "only took me to the last active
@@ -21106,14 +21372,45 @@ or fitted whole), kept, and the windows drawn again as each comes.
   own the site's mark is a monogram tile (`web::tile`: the last word's
   first letter on its colour, or on one its name picks).
 - A banner's actions (`banners::lay_buttons`, when the card is
-  measured, so its height counts them): side by side from the right at
-  their own widths (`widgets::button_width`, which measures a label in
-  the language its button shows it in, as `Button::new` looks it up:
-  buttons sized to match were sized for their English), as in an alert, when
-  they fit Deskbar's width; else one above another, each the card's
-  width, the last at the bottom, and a label cut short with "…" only if
-  even that is too narrow. (Before, a label wider than its share pushed
-  its button past the card's edge.)
+  measured, so its height counts them): in one row, side by side from
+  the right at their own widths (`widgets::button_width`, which
+  measures a label in the language its button shows it in, as
+  `Button::new` looks it up: buttons sized to match were sized for their
+  English), as in an alert, when they fit Deskbar's width; else as
+  small buttons, a little closer (as the History's cards have them: two
+  or three short words fit where two of the alert's size don't, the
+  card being a little more than two wide); else as many of those as fit,
+  in the app's order, the rest in the card's menu (a right click), where
+  all of a note's actions are, Open first, then Pin and Snooze; one
+  alone too wide is cut short with "…". The one the note says stands
+  apart (`x-olo-apart`) is at the row's start, at least a spacing from
+  the rest at its end, as a BAlert's leftmost with `B_OFFSET_SPACING`,
+  but only with at least the first of the rest beside it: alone it
+  would sit where the one a person reaches for goes, so then it's in
+  the menu alone. In every menu of a note it comes last, a separator
+  before it, as Tracker's Move to Trash (Open, its actions | Pin,
+  Snooze | Delete); a note whose app has gone keeps Open in its menu
+  when it says what shows it. (Before, a label wider than its share
+  pushed its button past the card's edge; then they went one above
+  another, each the card's width, and three of Screenshot's took more of
+  the card than its picture.) A click is a left one (or the keyboard,
+  `ClickEvent::standard_click`), on a card, its close boxes and every
+  button on a banner or in the History window: the kit hears a right
+  press and release as a click too, and a right click on a banner ran
+  its default action as its menu came up (a screenshot's picture
+  opened, its note read), and on its Delete, deleted the file. In the
+  History's selected row, the app's actions are under its text in
+  their order, 6 points apart, and the one set apart at the row's far
+  end, under the time (the row's × clears it: there's no Clear); in a
+  card, as on a banner (the one apart at its start, the rest at its
+  end); in the Cleared list, that list's: Open, Put Back and Delete
+  (set apart). Each acts on the entry as it was drawn (`EntryKey`,
+  found again as it's pressed: one that has left or moved since is
+  never another's), as does a press on a card's picture. A row's and a
+  card's buttons are laid out at whole
+  even points, as a button rounds its own width (an odd one came out a
+  point wider than laid out, and the gap after it a point short: the
+  layout review's "crowded").
 - look.rs: what a note shows, the same on screen and in the history's
   cards: its picture (square; round for a `Message`; large for `Media`),
   the title, a line with its badge and subtitle, the body (in a balloon
@@ -21121,8 +21418,11 @@ or fitted whole), kept, and the windows drawn again as each comes.
   all and a progress bar. `look::lay` measures in a `Room` (width, title
   and body rows, picture sizes) so a stack or a grid is arranged before
   `look::paint` draws.
-- main.rs: one layer surface (Top layer, anchored bottom right, flush
-  with the edge) opened for the first card and closed with the last,
+- main.rs: one layer surface (Top layer, anchored bottom right, `GAP`,
+  10 points, from the right as from the bottom and between groups: flush
+  with the right edge, a card read as slid half off the screen, one
+  margin below, one between, none beside) opened for the first card and
+  closed once the screen has shown it without its last (`shown`),
   resized to the stack. Cards are `metrics::DESKBAR_WIDTH` wide, so they
   stack in the Deskbar's column, usually free space. Up
   to four cards show, as many as fit in the screen's height (at least
@@ -21188,17 +21488,30 @@ or fitted whole), kept, and the windows drawn again as each comes.
   with a count. A row is two lines: a 16 px icon, the title with the app
   and time on its line, one line of body. Unread wears a dot (in the
   keyboard's blue) and a bold title; read, the title
-  goes regular and the dot goes. A click selects and reads it (the row
-  opens to its whole body, the rest of its conversation and its actions
-  as buttons, the default one always Open, or Show APP once it closed,
-  then Dismiss, which forgets it and the rest of its conversation); what
+  goes regular and the dot goes (selected too: bold says only
+  "unread"). A click selects it (the row opens to its whole
+  body, the rest of its conversation and its actions as small buttons,
+  a card's size, the
+  default one always Open, or Show APP once it closed, the one set apart
+  at the far end; its × forgets it and the rest of its conversation;
+  on the selection the time and the × are nearer its text's colour, and
+  the × stands 6 points in from the list's edge); an unread one stays
+  as it was while it's open, bold with its dot under *Unread*, counted
+  there, and is read as it closes (the selection moving on: read as it
+  opened, it sat read under an *Unread* that no longer counted it).
+  The rows' times, an open row's last button and Mark All Read end on
+  one column. A line parts one row from the next, none under a
+  section's last (nor so over the heading after it) nor the list's.
+  The section headings are a step darker than the rows
+  in the light, the panel's colour, a step lighter, in the dark; what
   was read while the window is open keeps its place until it closes, so
   nothing jumps under the pointer. A double click or Return runs the
   default action while the note is open, else brings the app forward.
   Edit ▸ Mark as Read/Unread (⌘U, `toggle-read`) and Mark All as Read
   (`read-all`). × or Delete forgets one; Clear All forgets all but those
   on screen, pinned or snoozed. A right click on a row or card opens its
-  menu (`entry_menu`): Open, Mark as Read/Unread, Pin, Snooze ▸, Forget.
+  menu (`entry_menu`): Open, its actions, Mark as Read/Unread, Pin,
+  Snooze ▸, then the one set apart (a Delete) and Clear.
   With fading on, each row and card is painted at its
   `strength` (`with_element_opacity`), the newest strongest, back to full
   while selected or under the pointer. *Cards* packs cards of different
@@ -21206,12 +21519,21 @@ or fitted whole), kept, and the windows drawn again as each comes.
   spans two when its app asks (`CardSize::Large`) or, left to choose,
   for a large picture, three fields or more, or a long body, and so does
   the newest unread one when there are three columns or more; `Small`
-  keeps to one line of body. Each card is a `style::card` (selected, in
-  the selection's colours): a quiet head of its app's mark and name with
-  the time on the right (an unread dot before it, in the keyboard's
-  blue, not the tab's yellow; a close box in their place under the
-  pointer), its face laid out by look.rs, its actions as
-  `Button::small`s; one click on a card runs its default action (or
+  keeps to one line of body. Each card is the banner it was (Opus'
+  review, 2026-11-28: the web card of before, rounded and white, "a
+  Bootstrap card dropped into a BeOS window"): the panel's grey,
+  square, a frame a line round it and raised inside; its title row a
+  banner's, 22 points, its app's mark and name and the time on the
+  right, a line under it; unread, a dot first in it, on the card's text
+  column, the mark a clear gap after it (in the keyboard's blue, not the
+  tab's yellow; in the 10 points before that column it was pressed
+  against the card's edge and the mark); under the pointer a close box
+  beside the time, which stays;
+  selected, the list's selection colour, square. Its face is laid out
+  by look.rs in a banner's colours, 12 points in on every side (the
+  arrangement's own gap above the first: it was drawn a gap lower
+  again), its actions as `Button::small`s as on a banner (the one set
+  apart at its start); one click on a card runs its default action (or
   brings the app forward), as a banner does, and selects it; ⌘- or
   Shift-click only selects it; the arrow keys move by where
   cards are (`masonry::neighbour`). The search field (⌘F) takes every
@@ -21299,8 +21621,26 @@ or fitted whole), kept, and the windows drawn again as each comes.
   `ClearMany(targets: Vec<(u32, u64)>, unread_only: bool) -> (Vec<u32>, String)`,
   `UndoClear(batch: String) -> Vec<u32>`, `SetRead(id, read)`, `MarkAllRead`,
   `SetPinned(id, pinned)`, `Snooze(id, minutes)`, `ClearHistory`,
-  `ShowHistory`, `SetDoNotDisturb`, `VisitedSite(host)`, `ListArchived`;
+  `ShowHistory`, `SetDoNotDisturb`, `VisitedSite(host)`, `ListArchived`,
+  `PutAway(desktop_entry)`;
   the names are `olo_protocol::notifications::CONTROL`, `CONTROL_PATH`).
+  `PutAway` takes that app's banners off the screen as if their time had
+  run out and returns once the screen no longer shows them: the banners
+  drawn again without them and that drawing on the screen (the second
+  frame after it, `on_next_frame` asked for as the message is handled,
+  before the drawing is sent: from `after_flush` it went without asking
+  for a frame, and with a card of the same height taking the place of
+  the one put away none came; `banners::Told::Shown`, `shown`). The
+  surface, its last banner gone, is kept, drawn empty, until then, and
+  closed once no wait is under way. One asked while another's wait is
+  under way, or just after one of that app's banners left
+  (`GONE_RECENTLY`), waits for its own frames too; with nothing of
+  that app's on the screen and nothing under way, it returns at once.
+  A wait no frame ends (the display asleep) is given up after a second
+  (`AWAY_MOST`, `AwayLate`), and the call fails, so its asker knows; its
+  banners are taken out of the list's "shown" and the list saved once
+  for all of them. Other apps' banners stay where they are: a picture
+  of one may be what's wanted.
   Each returns once the UI has applied it (and for `ClearMany` / `UndoClear`,
   after crash-safe ordered persistence completes), so a `List` straight after
   sees the change. `ClearMany` accepts at most 512 `(id, instance)` targets

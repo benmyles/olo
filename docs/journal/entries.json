@@ -5608,5 +5608,23 @@
   "title": "Website User's Guide dark spread with live theme tabs (dark)",
   "caption": "Dark mode spread with paired dark look tabs and live Figure 5-2 preview.",
   "image": "2026-11-28/113719-website-user-s-guide-dark-spread-with-live-theme.png"
+ },
+ {
+  "time": "2026-11-28T12:20:43",
+  "title": "Screenshot notification banner",
+  "caption": "Bottom-right drag-capable capture banner replacing Screenshot's custom after-card",
+  "image": "2026-11-28/122043-screenshot-notification-banner.png"
+ },
+ {
+  "time": "2026-11-28T12:20:44",
+  "title": "Notification banner Wayland file drag",
+  "caption": "Dragging a saved screenshot preview directly from the tinted notification banner",
+  "image": "2026-11-28/122044-notification-banner-wayland-file-drag.png"
+ },
+ {
+  "time": "2026-11-28T12:20:45",
+  "title": "Notifications History List polish",
+  "caption": "Aligned Mark All Read right edge, compact open-row buttons, read-on-close, and clean section dividers",
+  "image": "2026-11-28/122045-notifications-history-list-polish.png"
  }
 ]

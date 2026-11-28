@@ -156,6 +156,11 @@ pub struct Entry {
     /// app: arguments for the app's own program (`x-olo-show`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub show: Vec<String>,
+    /// What its actions do once it's no longer open at its app: for an
+    /// action's key, arguments for the app's own program (`x-olo-runs`).
+    /// Those actions stay its own after the app has gone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<(String, Vec<String>)>,
     /// Its picture, kept small in `pictures/` (a PNG; it may take a moment
     /// to appear).
     pub picture: Option<String>,
@@ -201,6 +206,7 @@ impl Entry {
             look: n.look.clone(),
             via: n.via.clone(),
             show: n.show.clone(),
+            runs: n.runs.clone(),
             picture: None,
             pinned: false,
             snoozed_until: None,
@@ -228,12 +234,27 @@ impl Entry {
         self.snoozed_until.is_some()
     }
 
+    /// What action `key` does once it's no longer open at its app (a
+    /// click: what shows what it's about).
+    pub fn runs_for(&self, key: &str) -> Option<&[String]> {
+        crate::server::runs_for(&self.runs, &self.show, key)
+    }
+
+    /// Its actions as they can be chosen now: all of them while it's
+    /// open at its app; after, those that run something of their own
+    /// (`runs`).
+    pub fn actions_now(&self) -> Vec<(String, String)> {
+        self.actions.iter().filter(|(k, _)| self.live || (k != "default" && self.runs_for(k).is_some())).cloned().collect()
+    }
+
     /// It as a notification to show again (back from snoozing): its
-    /// actions only while still open at its app.
+    /// actions only while still open at its app (and those that run
+    /// something of their own after).
     pub fn to_note(&self, timeout: Option<std::time::Duration>) -> Note {
         Note {
             id: self.id,
             sender: None,
+            generation: 0,
             replaces: false,
             app_name: self.app.clone(),
             desktop_entry: self.desktop_entry.clone(),
@@ -241,7 +262,7 @@ impl Entry {
             picture: None,
             summary: self.summary.clone(),
             body: self.body.clone(),
-            actions: if self.live { self.actions.clone() } else { Vec::new() },
+            actions: self.actions_now(),
             kind: self.kind.into(),
             urgent: self.urgent,
             progress: self.progress,
@@ -255,6 +276,7 @@ impl Entry {
             look: self.look.clone(),
             via: self.via.clone(),
             show: self.show.clone(),
+            runs: self.runs.clone(),
         }
     }
 }
@@ -514,6 +536,15 @@ impl History {
             // (Back on screen: what was there to stay. One with a time of
             // its own had it.)
             e.shown &= e.pinned || (e.stays && e.unread);
+            // What it runs, checked again as it's read, as a note's are as it
+            // comes (`relaunch_for`): one kept by an older build, or written
+            // by anyone, never runs what its key doesn't say (an Open that
+            // ran a Delete), nor for a file it didn't come with.
+            let (entry, file, file_id) = (e.desktop_entry.clone(), e.look.file.clone(), e.look.file_id);
+            if !e.show.is_empty() && !crate::relaunch_for(entry.as_deref(), "default", &e.show, file.as_deref(), file_id) {
+                e.show.clear();
+            }
+            e.runs.retain(|(key, args)| crate::relaunch_for(entry.as_deref(), key, args, file.as_deref(), file_id));
         }
         let max_uid = entries.iter().map(|e| e.uid).max().unwrap_or(0);
         let next_uid = Arc::new(AtomicU64::new(max_uid.saturating_add(1).max(1)));

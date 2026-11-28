@@ -6,6 +6,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-28
 
+### Notifications History List polish
+
+*12:20* — Aligned Mark All Read right edge, compact open-row buttons, read-on-close, and clean section dividers
+
+![Notifications History List polish](2026-11-28/122045-notifications-history-list-polish.png)
+
+### Notification banner Wayland file drag
+
+*12:20* — Dragging a saved screenshot preview directly from the tinted notification banner
+
+![Notification banner Wayland file drag](2026-11-28/122044-notification-banner-wayland-file-drag.png)
+
+### Screenshot notification banner
+
+*12:20* — Bottom-right drag-capable capture banner replacing Screenshot's custom after-card
+
+![Screenshot notification banner](2026-11-28/122043-screenshot-notification-banner.png)
+
 ### Website User's Guide dark spread with live theme tabs (dark)
 
 *11:37* — Dark mode spread with paired dark look tabs and live Figure 5-2 preview.

@@ -249,7 +249,7 @@ impl Library {
             "show" => {
                 let _ = olo_kit::tracker::open(&path);
             }
-            "delete" => match crate::after::to_trash(&path) {
+            "delete" => match crate::saved::to_trash(&path) {
                 Ok(at) => self.history.done("Delete", Change::Trashed { from: path, at }),
                 Err(e) => eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", path.display()),
             },
@@ -268,7 +268,7 @@ impl Library {
         let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
         let done = match step.change {
             Change::Trashed { at, .. } => olo_xdg::trash::put_back(&at).map(Change::PutBack),
-            Change::PutBack(path) => crate::after::to_trash(&path).map(|at| Change::Trashed { from: path, at }),
+            Change::PutBack(path) => crate::saved::to_trash(&path).map(|at| Change::Trashed { from: path, at }),
             Change::Renamed { from, to } => {
                 if from.exists() {
                     Err(std::io::Error::other(format!("“{}” is taken", from.file_name().unwrap_or_default().to_string_lossy())))

@@ -123,7 +123,7 @@ struct Overlay {
 /// `image` as it's drawn (BGRA), made on the worker that took it.
 fn drawn(image: &image::RgbaImage) -> Option<Arc<RenderImage>> {
     let mut bgra = image.as_raw().clone();
-    for p in bgra.chunks_exact_mut(4) {
+    for p in bgra.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
     }
     let buffer = image::RgbaImage::from_raw(image.width(), image.height(), bgra)?;
@@ -427,8 +427,9 @@ fn loupe(g: &mut Painter, b: Bounds<Pixels>, image: &image::RgbaImage, p: Point<
 /// Freezes every output and lets the person drag out a part, or pick a
 /// colour (`pick`): runs until they're done.
 fn freeze(cut: Arc<Mutex<Option<Cut>>>, pick: Option<Arc<Mutex<Option<[u8; 3]>>>>) {
-    // (The card of the picture before is not in what is frozen: after.rs.)
-    crate::after::put_away();
+    // (The notification of the picture before is not in what is frozen:
+    // saved.rs.)
+    crate::saved::put_away();
     olo_kit::run(APP_ID, move |app| {
         let mut outputs: Vec<Option<String>> = olo_kit::display_names().into_iter().flatten().map(Some).collect();
         if outputs.is_empty() {
@@ -478,9 +479,9 @@ fn freeze(cut: Arc<Mutex<Option<Cut>>>, pick: Option<Arc<Mutex<Option<[u8; 3]>>>
     });
 }
 
-/// Run the region picker; save what was chosen. Returns the file and the
-/// display it was cut from, or None if cancelled.
-pub fn run() -> Result<Option<(PathBuf, Option<String>)>, String> {
+/// Run the region picker; save what was chosen. Returns the file, as it
+/// was written, and the display it was cut from, or None if cancelled.
+pub fn run() -> Result<Option<(PathBuf, olo_protocol::notifications::FileId, Option<String>)>, String> {
     let cut: Arc<Mutex<Option<Cut>>> = Arc::default();
     freeze(cut.clone(), None);
     let Some((image, [x, y, w, h], display)) = cut.lock().unwrap_or_else(|e| e.into_inner()).take() else { return Ok(None) };
@@ -489,10 +490,9 @@ pub fn run() -> Result<Option<(PathBuf, Option<String>)>, String> {
     let png = capture::scratch_path();
     crop.save_with_format(&png, image::ImageFormat::Png).map_err(|e| e.to_string())?;
     let folder = settings.folder();
-    let path = folder.join(capture::file_name(&capture::next_name(&folder), settings.format));
-    let r = capture::save(&Shot { png: png.clone(), image: Arc::new(crop) }, &path, settings.format);
+    let r = capture::save_new(&Shot { png: png.clone(), image: Arc::new(crop) }, &folder, settings.format);
     let _ = std::fs::remove_file(&png);
-    r.map(|()| Some((path, display)))
+    r.map(|(path, id)| Some((path, id, display)))
 }
 
 /// Drag out the part of the screen to record (`--record --region`): the

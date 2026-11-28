@@ -25,7 +25,7 @@ use smithay::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, DndTarget, GrabType, Source},
         keyboard::{Keysym, LedState, XkbConfig},
-        pointer::{CursorImageStatus, Focus, PointerHandle},
+        pointer::{CursorIcon, CursorImageStatus, Focus, PointerHandle},
         tablet::TabletSeatHandler,
     },
     output::Output,
@@ -465,6 +465,11 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
         self.dragging = true;
         match type_ {
             GrabType::Pointer => {
+                // Held: the closed hand, for as long as it's held (the
+                // open one was over what could be taken hold of; the
+                // pointer kept the program's own as it went, a pointing
+                // hand over a picture dragged out of a notification).
+                self.cursor_status = CursorImageStatus::Named(CursorIcon::Grabbing);
                 let pointer = seat.get_pointer().unwrap();
                 let start_data = pointer.grab_start_data().unwrap();
                 pointer.set_grab(self, DnDGrab::new_pointer(&self.display_handle, start_data, source, seat), serial, Focus::Keep);
@@ -488,15 +493,11 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
 
 impl<BackendData: Backend> DndGrabHandler for AnvilState<BackendData> {
     fn dropped(&mut self, _target: Option<DndTarget<'_, Self>>, _validated: bool, _seat: Seat<Self>, _location: Point<f64, Logical>) {
-        self.dnd_icon = None;
-        self.dragging = false;
-        self.spring = None;
+        self.drag_over();
     }
 
     fn cancelled(&mut self, _seat: Seat<Self>, _location: Point<f64, Logical>) {
-        self.dnd_icon = None;
-        self.dragging = false;
-        self.spring = None;
+        self.drag_over();
     }
 }
 
@@ -562,6 +563,12 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
         }
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        // (While something is dragged out, the closed hand it's held by:
+        // the program it came from keeps the pointer, and its own wishes
+        // for it wait until it's let go of.)
+        if self.dragging && matches!(self.cursor_status, CursorImageStatus::Named(CursorIcon::Grabbing)) {
+            return;
+        }
         // (A program's wish to hide the pointer is weighed: `pointer_hide`.)
         self.client_cursor(image);
     }
@@ -709,6 +716,18 @@ impl<BackendData: Backend> TextInputActivation for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
+    /// A drag and drop over (dropped, or let go of onto nothing): its
+    /// icon goes, and the pointer is the arrow again until the program
+    /// under it says otherwise (as it does as the pointer comes to it).
+    fn drag_over(&mut self) {
+        self.dnd_icon = None;
+        self.dragging = false;
+        self.spring = None;
+        if matches!(self.cursor_status, CursorImageStatus::Named(CursorIcon::Grabbing)) {
+            self.cursor_status = CursorImageStatus::default_named();
+        }
+    }
+
     /// Whether `surface` belongs to one of Olo's own programs.
     fn is_our_program(&self, surface: &WlSurface) -> bool {
         let Some(pid) = surface.client().and_then(|c| client_pid(&c, &self.display_handle)) else {

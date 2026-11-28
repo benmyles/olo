@@ -445,6 +445,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("notifications.view-apps", NOTIFICATIONS, "view-apps", "By App", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
     k("notifications.view-cards", NOTIFICATIONS, "view-cards", "Cards", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
     k("notifications.view-conversations", NOTIFICATIONS, "view-conversations", "Conversations", &["Cmd+4"], &["Ctrl+4"], &["Alt+4"]),
+    k("notifications.archived", NOTIFICATIONS, "archived", "Cleared", &["Cmd+5"], &["Ctrl+5"], &["Alt+5"]),
     k("palette.alternate", PALETTE, "alternate", "Do the result's other action", &["Cmd+Return"], &["Ctrl+Return"], &["Alt+Return"]),
     // Telegram: Telegram Desktop's where it has them.
     k("telegram.contacts", TELEGRAM, "contacts", "Contacts", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),

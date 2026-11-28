@@ -57,16 +57,30 @@ impl Going {
 /// the screen but never in the recording (or a share).
 pub const CONTROLS_NAMESPACE: &str = "olo-recording-controls";
 
-/// The namespace of the card that comes up after a screenshot or a
-/// recording is saved (Screenshot's `--after`, a layer surface): left
-/// out of every capture as the controls are. A picture taken while the
-/// screen is being recorded brought its card into the recording.
+/// The namespace of the card that came up after a screenshot or a
+/// recording was saved, before that was told in a notification
+/// (Screenshot's `--after` of before, a layer surface of its own): left
+/// out of every capture as the controls are, and of screenshots too, as
+/// each is drawn for it (app_server's `render::left_out`), for one still
+/// running from before an upgrade. (A headless desktop's own picture of
+/// its display, `as_shown`, is the display as it is: what an agent sees.)
 pub const AFTER_NAMESPACE: &str = "screenshot-after";
 
 /// A layer surface that is for the person's screen alone, never in a
-/// recording or a share of it.
+/// recording or a share of it. (What tells of a saved screenshot or
+/// recording now is a notification, Screenshot's, in the notifications'
+/// own surface: those of Screenshot never show while the screen is
+/// recorded, and no banners while it's shared, as Preferences has it.)
 pub fn only_on_the_screen(namespace: &str) -> bool {
     namespace == CONTROLS_NAMESPACE || namespace == AFTER_NAMESPACE
+}
+
+/// Beside the status file: locked (`flock`, exclusively) by the recorder
+/// of `display` from its look at whether one is going there to its status
+/// gone, so that two started at once can't both find none and record,
+/// one's status put in place of the other's.
+pub fn lock_path_for(display: &str) -> PathBuf {
+    path_for(display).with_extension("lock")
 }
 
 /// Beside the status file while a recording is being discarded

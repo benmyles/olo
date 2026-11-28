@@ -615,6 +615,19 @@ pub fn button_face(g: &mut Painter, r: Bounds<Pixels>, s: ControlState) {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// How far a small button's label is raised over `middle`, its button's
+/// middle: whole device pixels, a point's worth at most, and no more than
+/// keeps the label's capitals, as `style::label` puts them on the pixels,
+/// within a point of `middle`.
+fn small_lift(g: &Painter, middle: Pixels, font_size: f32) -> Pixels {
+    let s = g.scale_factor();
+    let half_caps = px(font_size * style::CAP_HEIGHT / 2.0);
+    // Where the label falls unraised, against where it's asked to (device
+    // pixels: the baseline goes to the nearest).
+    let off = f32::from(style::snap_coord(g, middle + half_caps) - (middle + half_caps)) * s;
+    px((s + off).floor().max(0.0) / s)
+}
+
 fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str, default: bool, pushed: bool, font_size: f32, menu: bool) {
     let p = theme::palette();
     let bg = p.panel_background;
@@ -673,10 +686,17 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     let tw = if menu { style::text_width_app(label, font_size, &style::ui_font(weight)) } else { 0.0 };
     let unit_left = c.x - px((tw + GAP + MARK) / 2.0);
     let label_x = if menu { unit_left + px(tw / 2.0) } else { c.x };
-    let text = style::label(g, label_x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(weight), color);
+    // (A small one's words raised over its middle: centred in its 20
+    // points, a "Copy"'s p and y sat a pixel or two off its bottom bevel.
+    // By whole device pixels, as many as keep their capitals' middle
+    // within a point of the button's, as the layout review holds a
+    // label centred: a point at 1× and 2×; at 1.25× a whole point, put
+    // on the pixels there, went a hair past it.)
+    let lift = if font_size < style::PLAIN_SIZE { small_lift(g, c.y, font_size) } else { px(0.0) };
+    let text = style::label(g, label_x + off, c.y - lift + off, style::Align::Center, label.to_string(), font_size, style::ui_font(weight), color);
     if menu {
         let ax = style::snap_coord(g, unit_left + px(tw + GAP + MARK / 2.0)) + off;
-        let ay = px(f32::from(c.y).round()) + off;
+        let ay = px(f32::from(c.y - lift).round()) + off;
         let mut path = olo_interface::PathBuilder::fill();
         path.move_to(point(ax - px(4.0), ay - px(2.0)));
         path.line_to(point(ax + px(4.0), ay - px(2.0)));

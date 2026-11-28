@@ -17,7 +17,11 @@
 //! A note can say how it should look (the `x-olo-*` hints of
 //! [`olo_protocol::notifications::hint`]): `.accent(rgb)`, `.subtitle()`,
 //! `.badge()`, `.field(label, value)`, `.image(path)` (a picture shown
-//! large), `.style(NoteStyle::Message)` and `.size(CardSize::Large)`.
+//! large), `.style(NoteStyle::Message)` and `.size(CardSize::Large)`;
+//! what it is about, `.file(path)` (its picture dragged out is that
+//! file); and what each of its actions does once this app has gone,
+//! `.runs(key, args)`, for a program that doesn't stay (Screenshot's
+//! saved picture: Open, Copy, Delete from the history an hour on).
 
 use olo_sync::Mutex;
 use std::{
@@ -27,6 +31,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
         mpsc,
     },
+    time::Duration,
 };
 
 use olo_protocol::{CardSize, NoteLook, NoteStyle, notifications::hint};
@@ -81,6 +86,9 @@ pub struct Note {
     pub look: NoteLook,
     /// What shows the thing it's about ([`Note::shows`]).
     pub shows: Vec<String>,
+    /// What its actions do once it's no longer open at this app
+    /// ([`Note::runs`]): (key, arguments).
+    pub runs: Vec<(String, Vec<String>)>,
 }
 
 impl Note {
@@ -122,6 +130,63 @@ impl Note {
 
     pub fn action(mut self, key: impl Into<String>, label: impl Into<String>) -> Note {
         self.actions.push((key.into(), label.into()));
+        self
+    }
+
+    /// What action `key` does, run by the centre whatever this app is
+    /// doing: arguments for this app's own program, which the
+    /// notifications centre starts with them when the action is chosen,
+    /// the app open or not (sent to an app about to end, an action went
+    /// unheard), and the note then closed here ([`NoteEvent::Closed`])
+    /// but for a resident one; once the app has gone its button stays.
+    /// Only for an action that needs nothing of the running app (a saved
+    /// file's Copy or Delete): one that does is an ordinary action, and
+    /// a click is [`Note::shows`]. The program started is to make sure of
+    /// what it's asked to act on (any program may send a note that says
+    /// it's this app's).
+    pub fn runs(mut self, key: impl Into<String>, args: impl IntoIterator<Item = impl Into<String>>) -> Note {
+        let key = key.into();
+        self.runs.retain(|(k, _)| *k != key);
+        self.runs.push((key, args.into_iter().map(Into::into).collect()));
+        self
+    }
+
+    /// The file the note is about (a screenshot, a recording): its large
+    /// picture ([`Note::image`]) pressed and dragged out of it is that
+    /// file. Without one, the picture's own file is.
+    pub fn file(mut self, path: impl AsRef<std::path::Path>) -> Note {
+        self.look.file = Some(path.as_ref().to_string_lossy().into_owned());
+        self
+    }
+
+    /// Action `key` stands apart from the rest, at the start of their
+    /// row, as a BAlert's leftmost button with `B_OFFSET_SPACING`: a
+    /// Delete away from the Copy a person reaches for.
+    pub fn apart(mut self, key: impl Into<String>) -> Note {
+        self.look.apart = Some(key.into());
+        self
+    }
+
+    /// How long what its large picture shows plays (a recording's), said
+    /// on the picture as a player would ("▶ 0:04").
+    pub fn length(mut self, seconds: f64) -> Note {
+        self.look.length = Some(seconds.max(0.0).round().min(f64::from(u32::MAX)) as u32);
+        self
+    }
+
+    /// The file it's about ([`Note::file`]) as this program wrote it
+    /// (`x-olo-file-id`): the service takes the file only if it's still
+    /// that one.
+    pub fn file_as(mut self, path: impl AsRef<std::path::Path>, id: olo_protocol::notifications::FileId) -> Note {
+        self.look.file = Some(path.as_ref().to_string_lossy().into_owned());
+        self.look.file_id = Some(id);
+        self
+    }
+
+    /// Its file and picture shown, never handed on (`x-olo-shown-only`):
+    /// one this program can't vouch for.
+    pub fn shown_only(mut self) -> Note {
+        self.look.shown_only = true;
         self
     }
 
@@ -198,6 +263,9 @@ enum Ask {
     Seen(NoteId),
     /// The count, and what waits where it's said (None: a count alone).
     Badge(u32, Option<Vec<olo_protocol::notifications::Waits>>),
+    /// Told once what was asked before it has been sent ([`Notifier::sync`]):
+    /// whether all of it was, since the last time asked.
+    Sync(mpsc::Sender<bool>),
 }
 
 /// Shows an app's notifications. Cheap to clone; one thread per notifier.
@@ -261,14 +329,119 @@ impl Notifier {
     pub fn waiting(&self, waits: Vec<olo_protocol::notifications::Waits>) {
         let _ = self.to.send(Ask::Badge(u32::try_from(waits.len()).unwrap_or(u32::MAX), Some(waits)));
     }
+
+    /// Waits until what was asked before this has been sent to the
+    /// notifications service (`within` at most): a program about to end,
+    /// whose last note would go with it unsent. Whether all of it was
+    /// (since the last `sync`): false with no bus to send it on, or a
+    /// service that refused it.
+    pub fn sync(&self, within: Duration) -> bool {
+        let (done, sent) = mpsc::channel();
+        self.to.send(Ask::Sync(done)).is_ok() && sent.recv_timeout(within).unwrap_or(false)
+    }
 }
 
-/// Ours ↔ the service's ids, both ways.
+/// Takes `desktop_entry`'s banners off the screen now, as if their time
+/// had run out (they stay in the list as they were, unread, their
+/// actions as they were), and returns once the screen no longer shows
+/// them, `within` at most: whether they were (true with none there).
+/// Whatever is about to take a picture of the screen, so that a banner
+/// of its own isn't in it (Screenshot's, of the picture before, as each
+/// new one comes). Only Olo's notifications do this; elsewhere nothing
+/// is asked of them, and other apps' banners stay where they are (a
+/// picture of one may be what's wanted). On a thread of its own: a
+/// service that doesn't answer holds up nothing past `within`.
+pub fn put_away(desktop_entry: &str, within: Duration) -> bool {
+    put_away_via(session_stream, desktop_entry, within)
+}
+
+/// [`put_away`], asked over the socket `connect` opens.
+fn put_away_via(connect: impl FnOnce() -> std::io::Result<std::os::unix::net::UnixStream> + Send + 'static, desktop_entry: &str, within: Duration) -> bool {
+    let (tx, rx) = mpsc::channel();
+    // (Whether the caller has given up, and a hold on the socket.)
+    let cut: Arc<Mutex<(bool, Option<std::os::unix::net::UnixStream>)>> = Arc::default();
+    let entry = desktop_entry.to_owned();
+    let theirs = cut.clone();
+    let spawned = std::thread::Builder::new().name("notify-put-away".into()).spawn(move || {
+        // The bus's socket opened here, and a hold on it left for the
+        // caller: the whole of it (the bus's handshake, which comes
+        // before any call's time runs, as well as the call) is cut off
+        // when the caller gives up, and the thread and its socket go then
+        // too, never waiting on a bus that took the socket and said nothing.
+        let asked = connect().and_then(|s| {
+            let mut cut = theirs.lock().unwrap();
+            if cut.0 {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "given up on"));
+            }
+            cut.1 = Some(s.try_clone()?);
+            Ok(s)
+        });
+        let asked = asked.map_err(zbus::Error::from).and_then(|s| zbus::blocking::connection::Builder::async_io_unix_stream(s).method_timeout(within).build()).and_then(|c| {
+            let r = c.call_method(Some(NAME), olo_protocol::notifications::CONTROL_PATH, Some(olo_protocol::notifications::CONTROL), "PutAway", &(entry.as_str(),)).map(|_| ());
+            let _ = c.close();
+            r
+        });
+        if let Err(e) = &asked {
+            tracing::debug!("notifications: their banners not put away: {e}");
+        }
+        let _ = tx.send(asked.is_ok());
+    });
+    let answered = spawned.is_ok() && rx.recv_timeout(within).unwrap_or(false);
+    // (Answered or given up on, done with: whatever it's still doing ends.)
+    let mut cut = cut.lock().unwrap();
+    cut.0 = true;
+    if let Some(socket) = cut.1.take() {
+        let _ = socket.shutdown(std::net::Shutdown::Both);
+    }
+    answered
+}
+
+/// The session bus's socket, connected: a path's, or an abstract one's,
+/// as its address says (the only kinds Olo's session has).
+fn session_stream() -> std::io::Result<std::os::unix::net::UnixStream> {
+    use zbus::address::transport::{Transport, UnixSocket};
+    let unsupported = || std::io::Error::new(std::io::ErrorKind::Unsupported, "the session bus isn't at a unix socket");
+    let address = zbus::Address::session().map_err(|_| unsupported())?;
+    let Transport::Unix(unix) = address.transport() else { return Err(unsupported()) };
+    match unix.path() {
+        UnixSocket::File(path) => std::os::unix::net::UnixStream::connect(path),
+        UnixSocket::Abstract(name) => {
+            use std::os::linux::net::SocketAddrExt as _;
+            std::os::unix::net::UnixStream::connect_addr(&std::os::unix::net::SocketAddr::from_abstract_name(name.as_encoded_bytes())?)
+        }
+        _ => Err(unsupported()),
+    }
+}
+
+/// Ours ↔ the service's ids, both ways; and who the service is.
 #[derive(Default)]
 struct Ids {
     server: HashMap<NoteId, u32>,
     ours: HashMap<u32, NoteId>,
     tokens: HashMap<u32, String>,
+    /// The service's connection (its unique name): the one that answered
+    /// the last note sent. Only its signals are its: anyone on the bus
+    /// may send one that says it's an action on a note of ours.
+    service: Option<String>,
+}
+
+impl Ids {
+    /// `service` answered a note just sent: if it's another than before
+    /// (the service started again), the ids of the one before are no
+    /// longer anything's.
+    fn answered_by(&mut self, service: Option<String>) {
+        if service != self.service {
+            self.server.clear();
+            self.ours.clear();
+            self.tokens.clear();
+            self.service = service;
+        }
+    }
+
+    /// Whether a signal from `sender` is the service's.
+    fn is_service(&self, sender: Option<&str>) -> bool {
+        sender.is_some() && sender == self.service.as_deref()
+    }
 }
 
 /// The service's markup is not wanted for plain text.
@@ -302,7 +475,7 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
     if let Some([r, g, b]) = look.accent {
         hints.insert(hint::ACCENT, Value::from(format!("#{r:02x}{g:02x}{b:02x}")));
     }
-    for (key, text) in [(hint::SUBTITLE, &look.subtitle), (hint::BADGE, &look.badge), (hint::IMAGE, &look.image), (hint::SOURCE, &look.source)] {
+    for (key, text) in [(hint::SUBTITLE, &look.subtitle), (hint::BADGE, &look.badge), (hint::IMAGE, &look.image), (hint::SOURCE, &look.source), (hint::FILE, &look.file), (hint::APART, &look.apart)] {
         if let Some(t) = text {
             hints.insert(key, Value::from(t.clone()));
         }
@@ -316,8 +489,21 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
     if look.size != CardSize::Auto {
         hints.insert(hint::SIZE, Value::from(look.size.name()));
     }
+    if let Some(s) = look.length {
+        hints.insert(hint::LENGTH, Value::from(s));
+    }
+    if let Some(id) = look.file_id.filter(|_| look.file.is_some()) {
+        hints.insert(hint::FILE_ID, Value::from(id.to_string()));
+    }
+    if look.shown_only {
+        hints.insert(hint::SHOWN_ONLY, Value::from(true));
+    }
     if !note.shows.is_empty() {
         hints.insert(hint::SHOW, Value::from(note.shows.clone()));
+    }
+    if !note.runs.is_empty() {
+        let runs: HashMap<String, Vec<String>> = note.runs.iter().cloned().collect();
+        hints.insert(hint::RUNS, Value::from(runs));
     }
     let mut actions: Vec<String> = note.actions.iter().flat_map(|(k, l)| [k.clone(), l.clone()]).collect();
     if let Some(placeholder) = &note.reply {
@@ -330,40 +516,76 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
 type Events = Arc<dyn Fn(NoteEvent) + Send + Sync>;
 
 fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
+    serve(from, proxy, app, entry, connect);
+}
+
+/// [`run`], connecting with `connect` (a test's: none).
+fn serve(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String, connect: impl Fn(&Arc<Mutex<Ids>>, &Events) -> Option<zbus::blocking::Connection>) {
     let ids = Arc::new(Mutex::new(Ids::default()));
     let mut conn: Option<zbus::blocking::Connection> = None;
     let icon = crate::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == entry).map(|(_, _, icon)| icon.to_string()).unwrap_or_default();
+    // Whether something asked since the last `sync` wasn't sent.
+    let mut unsent = false;
     for ask in from {
+        // (Everything before it sent, or not sendable: said either way,
+        // the asker's wait ending.)
+        if let Ask::Sync(done) = ask {
+            let _ = done.send(!std::mem::take(&mut unsent));
+            continue;
+        }
         if conn.is_none() {
             conn = connect(&ids, &proxy);
         }
-        let Some(c) = &conn else { continue };
+        let Some(c) = &conn else {
+            unsent = true;
+            continue;
+        };
         let r = match ask {
+            Ask::Sync(_) => Ok(()),
             Ask::Show(id, note) => {
-                let replaces = ids.lock().unwrap().server.get(&id).copied().unwrap_or(0);
+                // An update goes to the service that has the note, by its
+                // own connection: one started again since knows nothing of
+                // its number (another app's note may have it now). Gone, the
+                // note is sent anew, to whichever service there is.
+                let (replaces, service) = known(&ids, id);
                 let (body, actions, hints, timeout) = args(&note, &entry);
                 let note_icon = note.icon.clone().unwrap_or_else(|| icon.clone());
-                c.call_method(Some(NAME), PATH, Some(NAME), "Notify", &(app.as_str(), replaces, note_icon.as_str(), note.summary.as_str(), body.as_str(), actions, hints, timeout))
-                    .and_then(|r| r.body().deserialize::<u32>())
-                    .map(|server| {
-                        let mut ids = ids.lock().unwrap();
-                        ids.server.insert(id, server);
-                        ids.ours.insert(server, id);
-                    })
+                let notify = |to: &str, replaces: u32| {
+                    c.call_method(Some(to), PATH, Some(NAME), "Notify", &(app.as_str(), replaces, note_icon.as_str(), note.summary.as_str(), body.as_str(), actions.clone(), hints.clone(), timeout))
+                        .and_then(|r| Ok((r.header().sender().map(|s| s.to_string()), r.body().deserialize::<u32>()?)))
+                };
+                let sent = match &service {
+                    Some(to) if replaces != 0 => match notify(to, replaces) {
+                        Err(e) if no_such_peer(&e) => {
+                            ids.lock().unwrap().answered_by(None);
+                            notify(NAME, 0)
+                        }
+                        other => other,
+                    },
+                    _ => notify(NAME, 0),
+                };
+                sent.map(|(service, server)| {
+                    let mut ids = ids.lock().unwrap();
+                    ids.answered_by(service);
+                    ids.server.insert(id, server);
+                    ids.ours.insert(server, id);
+                })
             }
-            // (The map let go before the call: the signals' thread uses it.)
-            Ask::Close(id) => match { ids.lock().unwrap().server.get(&id).copied() } {
-                Some(server) => c.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ()),
-                None => Ok(()),
+            // (The map let go before the call: the signals' thread uses it.
+            // To the service that has the note: another's numbers aren't
+            // this note's; gone, there's nothing to close.)
+            Ask::Close(id) => match known(&ids, id) {
+                (server, Some(to)) if server != 0 => forget_if_gone(&ids, c.call_method(Some(to.as_str()), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ())),
+                _ => Ok(()),
             },
-            Ask::Seen(id) => match { ids.lock().unwrap().server.get(&id).copied() } {
-                Some(server) => {
+            Ask::Seen(id) => match known(&ids, id) {
+                (server, Some(to)) if server != 0 => {
                     // (Read first: closed, it's no longer open at its app,
                     // but stays in the history, and must be read there.)
-                    let _ = c.call_method(Some(NAME), olo_protocol::notifications::CONTROL_PATH, Some(olo_protocol::notifications::CONTROL), "SetRead", &(server, true));
-                    c.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ())
+                    let _ = c.call_method(Some(to.as_str()), olo_protocol::notifications::CONTROL_PATH, Some(olo_protocol::notifications::CONTROL), "SetRead", &(server, true));
+                    forget_if_gone(&ids, c.call_method(Some(to.as_str()), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ()))
                 }
-                None => Ok(()),
+                _ => Ok(()),
             },
             Ask::Badge(count, waits) => {
                 use zbus::zvariant::Value;
@@ -379,6 +601,7 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
         };
         if let Err(e) = r {
             tracing::info!("notifications: {e}");
+            unsent = true;
             // A connection that is gone is let go of whole, and another
             // made at the next ask: closed, so that its listener's
             // thread ends and its socket goes with it. (Only dropped,
@@ -394,6 +617,11 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
                 && let Some(old) = conn.take()
             {
                 let _ = old.close();
+                // (Unique names are a bus's own, for its life: another bus,
+                // or this one again, may give the service's name to another,
+                // and this sender is another sender to it. Its numbers and
+                // tokens go with the connection, before another listens.)
+                forget_connection(&ids);
             }
         }
     }
@@ -409,6 +637,47 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
 /// service, a call refused): only the first wants another connection.
 fn lost(error: &zbus::Error) -> bool {
     matches!(error, zbus::Error::InputOutput(_))
+}
+
+/// The connection dropped (lost): every number, token and the service's
+/// name it knew forgotten, so that a note is sent anew (never by a number
+/// another note may have now, nor marked read on another service).
+fn forget_connection(ids: &Arc<Mutex<Ids>>) {
+    let mut ids = ids.lock().unwrap();
+    ids.server.clear();
+    ids.ours.clear();
+    ids.tokens.clear();
+    ids.service = None;
+}
+
+/// Note `id`'s number at the service, and that service's connection (0
+/// and None: not sent, or forgotten).
+fn known(ids: &Arc<Mutex<Ids>>, id: NoteId) -> (u32, Option<String>) {
+    let ids = ids.lock().unwrap();
+    (ids.server.get(&id).copied().unwrap_or(0), ids.service.clone())
+}
+
+/// Whether `error` says the connection a call was addressed to isn't on
+/// the bus (the service that had a note has gone: started again, or
+/// stopped).
+fn no_such_peer(error: &zbus::Error) -> bool {
+    match error {
+        zbus::Error::FDO(e) => matches!(**e, zbus::fdo::Error::ServiceUnknown(_) | zbus::fdo::Error::NameHasNoOwner(_)),
+        zbus::Error::MethodError(name, ..) => matches!(name.as_str(), "org.freedesktop.DBus.Error.ServiceUnknown" | "org.freedesktop.DBus.Error.NameHasNoOwner"),
+        _ => false,
+    }
+}
+
+/// `r`, a call to the service that had a note; if it has gone, its
+/// numbers are forgotten (they're nothing's now) and that's no error.
+fn forget_if_gone(ids: &Arc<Mutex<Ids>>, r: zbus::Result<()>) -> zbus::Result<()> {
+    match r {
+        Err(e) if no_such_peer(&e) => {
+            ids.lock().unwrap().answered_by(None);
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 /// The session bus, listening for what happens to ours.
@@ -431,6 +700,11 @@ fn listen(signals: zbus::blocking::MessageIterator, ids: &Arc<Mutex<Ids>>, proxy
             let Ok(msg) = msg else { break };
             let header = msg.header();
             let mut ids = ids.lock().unwrap();
+            // (Only the service's: another's that says a Delete was
+            // chosen is nobody's choice.)
+            if !ids.is_service(header.sender().map(|s| s.as_str())) {
+                continue;
+            }
             match header.member().map(|m| m.as_str()) {
                 Some("ActivationToken") => {
                     if let Ok((server, token)) = msg.body().deserialize::<(u32, String)>()
@@ -483,6 +757,58 @@ mod tests {
         assert!(!lost(&zbus::Error::FDO(Box::new(zbus::fdo::Error::ServiceUnknown("org.freedesktop.Notifications".into())))));
         assert!(!lost(&zbus::Error::Failure("refused".into())));
         assert!(!lost(&zbus::Error::InvalidReply));
+        // The service that had a note gone from the bus (started again): its numbers are forgotten, and the
+        // note is sent anew to whichever service there is, never by a number another note may have now.
+        assert!(no_such_peer(&zbus::Error::FDO(Box::new(zbus::fdo::Error::ServiceUnknown(":1.42".into())))));
+        assert!(no_such_peer(&zbus::Error::FDO(Box::new(zbus::fdo::Error::NameHasNoOwner(":1.42".into())))));
+        assert!(!no_such_peer(&zbus::Error::Failure("refused".into())));
+        let ids = Arc::new(Mutex::new(Ids::default()));
+        {
+            let mut i = ids.lock().unwrap();
+            i.answered_by(Some(":1.42".into()));
+            i.server.insert(NoteId(3), 7);
+            i.ours.insert(7, NoteId(3));
+        }
+        assert_eq!(known(&ids, NoteId(3)), (7, Some(":1.42".to_owned())));
+        assert!(forget_if_gone(&ids, Err(zbus::Error::FDO(Box::new(zbus::fdo::Error::ServiceUnknown(":1.42".into()))))).is_ok());
+        assert_eq!(known(&ids, NoteId(3)), (0, None));
+        // The connection itself lost: everything it knew forgotten with it, its tokens too (a new bus may give
+        // the same unique name to another service).
+        {
+            let mut i = ids.lock().unwrap();
+            i.answered_by(Some(":1.7".into()));
+            i.server.insert(NoteId(4), 9);
+            i.ours.insert(9, NoteId(4));
+            i.tokens.insert(9, "token".into());
+        }
+        forget_connection(&ids);
+        let i = ids.lock().unwrap();
+        assert!(i.server.is_empty() && i.ours.is_empty() && i.tokens.is_empty() && i.service.is_none());
+    }
+
+    /// A put-away given up on is given up on whole: a bus that takes the socket and then says nothing (in its
+    /// handshake, before any call's time runs) keeps neither the caller past its time nor the thread and its
+    /// socket after (they piled up, one a capture, while it said nothing).
+    #[test]
+    fn a_put_away_given_up_on_keeps_nothing() {
+        use std::io::Read as _;
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-put-away-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bus");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let started = std::time::Instant::now();
+        let to = path.clone();
+        assert!(!put_away_via(move || std::os::unix::net::UnixStream::connect(&to), "olo-screenshot", Duration::from_millis(200)));
+        assert!(started.elapsed() < Duration::from_secs(2), "the caller waited {:?}", started.elapsed());
+        // The bus's end: what the client said (its handshake's start), then the end of it, the socket let go of.
+        let (mut s, _) = listener.accept().unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut said = Vec::new();
+        let read = s.read_to_end(&mut said);
+        assert!(read.is_ok(), "the socket was kept open: {read:?}");
+        assert!(said.starts_with(b"\0AUTH"), "{said:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The listener's thread ends when its connection is closed, and the
@@ -509,6 +835,45 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(listener.is_finished(), "the listener outlived its connection");
+    }
+
+    /// A signal is the service's only from the service (the connection that answered the last note sent): one
+    /// from another connection saying a Delete was chosen on a note of ours is nobody's choice. Another
+    /// service answering (it started again), the ids of the one before are no longer anything's.
+    #[test]
+    fn only_the_services_signals_are_heard() {
+        use zbus::blocking::connection::Builder;
+        let (a, b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let guid = zbus::Guid::generate();
+        let server = std::thread::spawn(move || Builder::async_io_unix_stream(a).server(guid).unwrap().p2p().build().unwrap());
+        let client = Builder::async_io_unix_stream(b).p2p().build().unwrap();
+        let server = server.join().unwrap();
+        let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(NAME).unwrap().path(PATH).unwrap().build();
+        let signals = zbus::blocking::MessageIterator::for_match_rule(rule, &client, Some(64)).unwrap();
+        let ids = Arc::new(Mutex::new(Ids::default()));
+        {
+            let mut ids = ids.lock().unwrap();
+            ids.answered_by(Some(":1.5".into()));
+            ids.server.insert(NoteId(1), 7);
+            ids.ours.insert(7, NoteId(1));
+        }
+        let (tx, rx) = mpsc::channel();
+        let events: Events = Arc::new(move |e| {
+            let _ = tx.send(e);
+        });
+        let _listener = listen(signals, &ids, &events).unwrap();
+        let send = |sender: &str, key: &str| {
+            let m = zbus::Message::signal(PATH, NAME, "ActionInvoked").unwrap().sender(sender).unwrap().build(&(7u32, key)).unwrap();
+            server.send(&m).unwrap();
+        };
+        send(":1.9", "delete");
+        send(":1.5", "copy");
+        let heard = rx.recv_timeout(Duration::from_secs(5)).expect("the service's action wasn't heard");
+        assert!(matches!(&heard, NoteEvent::Action { id: NoteId(1), key, .. } if key == "copy"), "another's was heard first");
+        assert!(rx.recv_timeout(Duration::from_millis(200)).is_err(), "another's was heard");
+        ids.lock().unwrap().answered_by(Some(":1.6".into()));
+        assert!(ids.lock().unwrap().ours.is_empty() && ids.lock().unwrap().server.is_empty());
+        client.close().unwrap();
     }
 
     #[test]
@@ -540,5 +905,58 @@ mod tests {
         let agent = Note::new("Claude Code needs your answer").action("default", "Show").shows(["--show-shell", "17"]);
         let (_, _, hints, _) = args(&agent, "olo-terminal");
         assert_eq!(hints[hint::SHOW], zbus::zvariant::Value::from(vec!["--show-shell".to_owned(), "17".to_owned()]));
+        assert!(!hints.contains_key(hint::RUNS) && !hints.contains_key(hint::FILE));
+        // What each action does once the app has gone (the last said for a key is what's kept), and the file
+        // it's about.
+        let saved = Note::new("screenshot4.png")
+            .image("/p/screenshot4.png")
+            .file("/p/screenshot4.png")
+            .action("copy", "Copy")
+            .runs("copy", ["--saved", "copy"])
+            .runs("copy", ["--saved", "copy", "/p/screenshot4.png"])
+            .action("delete", "Delete")
+            .runs("delete", ["--saved", "delete", "/p/screenshot4.png"]);
+        let (_, actions, hints, _) = args(&saved, "olo-screenshot");
+        assert_eq!(actions, ["copy", "Copy", "delete", "Delete"]);
+        assert_eq!(hints[hint::FILE], zbus::zvariant::Value::from("/p/screenshot4.png"));
+        let runs: HashMap<String, Vec<String>> = HashMap::try_from(hints[hint::RUNS].try_clone().unwrap()).unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs["copy"], ["--saved", "copy", "/p/screenshot4.png"]);
+        assert_eq!(runs["delete"], ["--saved", "delete", "/p/screenshot4.png"]);
+    }
+
+    /// `sync` is answered by the notifier's thread in its turn, without a connection made for it (a test
+    /// asks nothing else of it, so no bus is reached: nothing goes to a desktop's notifications), and a
+    /// notifier whose thread has gone doesn't wait.
+    #[test]
+    fn sync_is_answered_in_its_turn() {
+        let (to, from) = mpsc::channel();
+        let events: Events = Arc::new(|_| {});
+        let thread = std::thread::spawn(move || run(from, events, "Screenshot".into(), "olo-screenshot".into()));
+        let notes = Notifier { to, next: Arc::new(AtomicU64::new(1)) };
+        let started = std::time::Instant::now();
+        assert!(notes.sync(Duration::from_secs(5)), "sync said nothing");
+        assert!(notes.sync(Duration::from_secs(5)));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        let (to, from) = mpsc::channel::<Ask>();
+        drop(from);
+        assert!(!Notifier { to, next: Arc::new(AtomicU64::new(1)) }.sync(Duration::from_secs(5)));
+        drop(notes);
+        thread.join().unwrap();
+    }
+
+    /// A note that couldn't be sent (no bus to send it on: a test's, which reaches none) is said by the next
+    /// `sync`, and only by it.
+    #[test]
+    fn sync_says_a_note_went_unsent() {
+        let (to, from) = mpsc::channel();
+        let events: Events = Arc::new(|_| {});
+        let thread = std::thread::spawn(move || serve(from, events, "Screenshot".into(), "olo-screenshot".into(), |_, _| None));
+        let notes = Notifier { to, next: Arc::new(AtomicU64::new(1)) };
+        notes.show(None, Note::new("screenshot1.png"));
+        assert!(!notes.sync(Duration::from_secs(5)), "an unsent note was said sent");
+        assert!(notes.sync(Duration::from_secs(5)), "nothing asked since");
+        drop(notes);
+        thread.join().unwrap();
     }
 }

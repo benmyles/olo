@@ -44,6 +44,16 @@ const TRAIN: usize = 16;
 
 /// The MP4 at `src` as a GIF at `dst`; `progress` told how far (0 to 1).
 pub fn from_mp4(src: &Path, dst: &Path, opts: &Options, cancel: &AtomicBool, progress: &dyn Fn(f32)) -> Result<Made, String> {
+    let out = File::create(dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+    from_mp4_into(src, out, opts, cancel, progress).map(|(made, _)| made)
+}
+
+/// [`from_mp4`] into `out`, already open for writing (and empty): one its
+/// caller made itself, exclusively, under a name of its own (two writers
+/// never share one, and nothing given its name first is written over).
+/// The file is given back whole and synced: what it is (its identity)
+/// read from it, never from its name, which another may have taken.
+pub fn from_mp4_into(src: &Path, out: File, opts: &Options, cancel: &AtomicBool, progress: &dyn Fn(f32)) -> Result<(Made, File), String> {
     let video = crate::read::Video::open(src)?;
     let (vw, vh) = (video.width, video.height);
     let (ow, oh) = if opts.width > 0 && vw > opts.width { (opts.width, ((u64::from(vh) * u64::from(opts.width) / u64::from(vw)) as u32).max(1)) } else { (vw, vh) };
@@ -78,7 +88,6 @@ pub fn from_mp4(src: &Path, dst: &Path, opts: &Options, cancel: &AtomicBool, pro
     };
     // Pass two: each change a frame, written once the next comes (its
     // delay is till then).
-    let out = File::create(dst).map_err(|e| format!("{}: {e}", dst.display()))?;
     let mut gif = gif::Encoder::new(BufWriter::new(out), ow as u16, oh as u16, &palette).map_err(|e| e.to_string())?;
     gif.set_repeat(gif::Repeat::Infinite).map_err(|e| e.to_string())?;
     // (Olo's mark: a comment, so a library knows it whatever it's named.)
@@ -120,10 +129,13 @@ pub fn from_mp4(src: &Path, dst: &Path, opts: &Options, cancel: &AtomicBool, pro
         write(&mut gif, p, (last_k + 1).max(shown), fps)?;
         frames += 1;
     }
-    drop(gif);
-    let bytes = std::fs::metadata(dst).map(|m| m.len()).unwrap_or(0);
+    // (Its end written, and all of it on the disk, read from the file
+    // itself.)
+    let file = gif.into_inner().map_err(|e| e.to_string())?.into_inner().map_err(|e| e.into_error().to_string())?;
+    file.sync_all().map_err(|e| e.to_string())?;
+    let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
     progress(1.0);
-    Ok(Made { frames, width: ow, height: oh, seconds, bytes })
+    Ok((Made { frames, width: ow, height: oh, seconds, bytes }, file))
 }
 
 /// Frame `f`, shown from moment `from` till `to` (at `fps`), written.

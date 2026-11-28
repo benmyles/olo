@@ -191,6 +191,58 @@ fn ui_lint_due_wakes_once_at_its_time() {
     window.close();
 }
 
+/// Something pressed that may be dragged out (a banner's picture): a
+/// press on it begins a drag while `drags` says so; a click on it counts.
+#[derive(Default)]
+struct Draggable {
+    drags: bool,
+    dragged: u32,
+    clicks: u32,
+}
+
+impl View for Draggable {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        use olo_kit::{ClickEvent, InteractiveElement as _, MouseButton, MouseDownEvent};
+        div().id("card").size_full().on_click(cx.listener(|v: &mut Draggable, _: &ClickEvent, _| v.clicks += 1)).on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|v: &mut Draggable, _: &MouseDownEvent, cx| {
+                if v.drags {
+                    v.dragged += 1;
+                    let drag = olo_kit::OutgoingDrag { types: vec![("text/plain".into(), std::sync::Arc::from(&b"picture"[..]))], copy: true, move_: false, ask: false, icon: None };
+                    olo_kit::dnd::start(cx, drag, |_| ());
+                }
+            }),
+        )
+    }
+}
+
+/// A drag takes the press that began it with it: the display takes its release (never told to the window),
+/// and a later release over what was pressed is no click of it (a banner's picture dragged out and let go
+/// of, then a press on its Delete taken off it onto the card, opened the card); a click is still one.
+#[test]
+fn ui_lint_a_drag_takes_its_press_with_it() {
+    use olo_kit::{MouseButton, point};
+    let _lint = Lint::new();
+    let window = olo_kit::open_window(WindowOptions::new("Draggable", 120.0, 60.0), |_| Draggable { drags: true, ..Default::default() });
+    let at = point(px(30.0), px(20.0));
+    let queued = |rx: std::sync::mpsc::Receiver<()>| rx.recv_timeout(std::time::Duration::from_secs(10)).expect("the display thread takes it");
+    let on_display = |f: Box<dyn FnOnce(&mut Cx<Draggable>) -> std::sync::mpsc::Receiver<()> + Send>| queued(ask(&window, move |_, cx| f(cx)));
+    on_display(Box::new(move |cx| cx.headless_move(at, None, Default::default())));
+    on_display(Box::new(move |cx| cx.headless_button(at, MouseButton::Left, true)));
+    assert_eq!(ask(&window, |v, cx| (v.dragged, cx.presses_held())), (1, 0), "the drag took its press");
+    // (Its release, the display's: as if let go of where it was dropped, then back over the card.)
+    ask(&window, |v, _| v.drags = false);
+    on_display(Box::new(move |cx| cx.headless_button(at, MouseButton::Left, false)));
+    assert_eq!(ask(&window, |v, _| v.clicks), 0, "a release after a drag clicked what began it");
+    // A click is one.
+    on_display(Box::new(move |cx| cx.headless_button(at, MouseButton::Left, true)));
+    on_display(Box::new(move |cx| cx.headless_button(at, MouseButton::Left, false)));
+    assert_eq!(ask(&window, |v, cx| (v.clicks, cx.presses_held())), (1, 0));
+    window.close();
+}
+
 /// A window's menu bar over a tab strip (Terminal's), along the top or
 /// down the side: two groups, a tab in none, one tab faded, New Tab.
 struct Strip {

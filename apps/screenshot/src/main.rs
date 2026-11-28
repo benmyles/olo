@@ -9,12 +9,12 @@
 //! `--silent [--window [ID]]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
 //! straight into the folder, as `screenshotN`, with no window; `--region`
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
-//! it is saved, the file's path goes on the clipboard, and its picture
-//! comes up in a card in the screen's lower left, to drag out as the
-//! file, copy, open, show in Tracker or delete (after.rs; not with
-//! `--no-card`, a script's, nor for the Screenshot portal's `--for-app`).
+//! it is saved, the file's path goes on the clipboard, and it is told of
+//! in a notification in the screen's lower right, its picture to drag
+//! out as the file, open, copy, show in Tracker or delete (saved.rs; not
+//! with `--no-notification`, a script's, nor for the Screenshot portal's
+//! `--for-app`).
 
-mod after;
 mod backdrop;
 mod bubble;
 mod capture;
@@ -23,6 +23,7 @@ mod inset;
 mod library;
 mod recording;
 mod region;
+mod saved;
 mod sound;
 
 use std::{
@@ -58,7 +59,8 @@ enum Msg {
     /// The picture made small for the preview: which picture, the size in
     /// device pixels it was made for, and it.
     Preview(u64, (u32, u32), Arc<RenderImage>),
-    Saved(Result<PathBuf, String>),
+    /// Saved: where, and the file written (its notification's receipt).
+    Saved(Result<(PathBuf, olo_protocol::notifications::FileId), String>),
     Copied(Result<Vec<u8>, String>),
     /// The first free name in a folder.
     Named(PathBuf, String),
@@ -166,7 +168,7 @@ fn folder_label(path: &Path) -> String {
 fn preview_of(image: &image::RgbaImage, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let small = image::imageops::thumbnail(image, w.max(1), h.max(1));
     let mut bgra = small.into_raw();
-    for p in bgra.chunks_exact_mut(4) {
+    for p in bgra.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
     }
     let buffer = image::RgbaImage::from_raw(w.max(1), h.max(1), bgra)?;
@@ -500,7 +502,7 @@ impl Screenshot {
         let path = self.settings.folder().join(capture::file_name(&self.name_text(cx), self.settings.format));
         let format = self.settings.format;
         self.busy = Some(Busy::Saving);
-        cx.work(move || capture::save(&shot, &path, format).map(|()| path), Msg::Saved);
+        cx.work(move || capture::save(&shot, &path, format).map(|id| (path, id)), Msg::Saved);
         cx.invalidate();
     }
 
@@ -616,25 +618,26 @@ impl View for Screenshot {
                     // picture went is on the clipboard (held, with no
                     // window, until something else is copied; then the
                     // app ends).
-                    Ok(path) => {
+                    Ok((path, id)) => {
                         self.holding = true;
                         cx.close_window();
                         let _ = std::fs::remove_file(capture::scratch_path());
                         std::thread::spawn(move || {
-                            // (The card once the path is on the clipboard,
-                            // or with no clipboard at all: `saved`. Where
-                            // the person is, who has just pressed Save.)
-                            let display = recording::pointer_display();
-                            let mut card = Some(path.clone());
-                            let mut show = || {
-                                if let Some(path) = card.take() {
-                                    show_card(&path, display.as_deref());
+                            // (Told of once the path is on the clipboard,
+                            // or with no clipboard at all, as `saved`:
+                            // what it says made first, here.)
+                            let mut prepared = saved::prepare(&path, saved::Identity::Written(id), saved::Kind::Picture, None);
+                            let mut notes = None;
+                            let mut tell = || {
+                                if let Some(p) = prepared.take() {
+                                    notes = Some(p.send());
                                 }
                             };
-                            if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&path.display().to_string()), &mut show) {
+                            if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&path.display().to_string()), &mut tell) {
                                 tracing::warn!("couldn't put where it went on the clipboard: {e}");
                             }
-                            show();
+                            tell();
+                            saved::sent(notes.as_ref());
                             olo_kit::quit();
                         });
                     }
@@ -825,17 +828,16 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
     settings.window = window;
     settings.window_id = window_id;
     settings.delay = 0;
-    // (The display that is about to be pictured: the pointer's, now.)
-    let display = recording::pointer_display();
     let result = capture::take(&settings, false).and_then(|shot| {
         let folder = settings.folder();
-        let path = folder.join(capture::file_name(&capture::next_name(&folder), settings.format));
-        let r = capture::save(&shot, &path, settings.format).map(|()| path);
+        // (Under the first free name, never over a file: two shortcuts at
+        // once each keep their own picture.)
+        let r = capture::save_new(&shot, &folder, settings.format);
         let _ = std::fs::remove_file(&shot.png);
         r
     });
     match result {
-        Ok(path) => saved(&path, display),
+        Ok((path, id)) => saved(&path, id),
         Err(e) => {
             eprintln!("olo-screenshot: {e}");
             std::process::ExitCode::FAILURE
@@ -843,52 +845,50 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
     }
 }
 
-/// The card for a picture just saved (after.rs: its thumbnail in the
-/// screen's lower left, to drag out as the file), in a process of its
-/// own, detached: it outlives this one's window, and this one may go on
-/// holding the clipboard. On `display`, the one that was pictured (said
-/// by whoever took the picture, when it was taken: asked for here, the
-/// pointer had moved on, and the asking stood between the clipboard and
-/// the card). Not for the Screenshot portal's (`--for-app`: the app that
-/// asked has the picture), nor where whoever runs this says so
-/// (`--no-card`: a script's own picture), nor on an Agent Screen
-/// (`after::shown_here`).
-fn show_card(path: &Path, display: Option<&str>) {
-    if !after::shown_here() || std::env::args().any(|a| a == "--for-app" || a == "--no-card") {
-        return;
-    }
-    let Ok(exe) = std::env::current_exe() else { return };
-    let mut argv: Vec<std::ffi::OsString> = vec![exe.into_os_string(), "--after".into(), path.as_os_str().to_owned(), "--picture".into()];
-    if let Some(display) = display {
-        argv.extend(["--display".into(), display.into()]);
-    }
-    if let Err(e) = olo_xdg::open::spawn(&argv) {
-        eprintln!("olo-screenshot: couldn't show the saved picture's card: {e}");
-    }
-}
-
 /// Saved with no window: say where, and put that on the clipboard, held
 /// until something else is copied (not with `--for-app`: the Screenshot
-/// portal's, which hands the file to the app that asked). Its card comes
-/// up once the path is on the clipboard (before, a Copy pressed on the
-/// card at once was overwritten by the path).
-fn saved(path: &Path, display: Option<String>) -> std::process::ExitCode {
+/// portal's, which hands the file to the app that asked). It's told of
+/// in a notification once the path is on the clipboard (before, a Copy
+/// pressed at once was overwritten by the path), its actions coming
+/// back here while this holds it (saved.rs), and sent before this ends.
+/// What it says is made first (the file `id` kept as Screenshot's, read
+/// for its size): the clipboard, ready, only sends it.
+fn saved(path: &Path, id: olo_protocol::notifications::FileId) -> std::process::ExitCode {
     let said = path.display().to_string();
     println!("{said}");
     if std::env::args().any(|a| a == "--for-app") {
         return std::process::ExitCode::SUCCESS;
     }
-    let mut card = Some(path.to_owned());
-    let mut show = || {
-        if let Some(path) = card.take() {
-            show_card(&path, display.as_deref());
+    let mut prepared = saved::prepare(path, saved::Identity::Written(id), saved::Kind::Picture, None);
+    let mut notes = None;
+    let mut tell = || {
+        if let Some(p) = prepared.take() {
+            notes = Some(p.send());
         }
     };
-    if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&said), &mut show) {
+    if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&said), &mut tell) {
         eprintln!("olo-screenshot: couldn't copy where it went: {e}");
     }
-    // (No clipboard to hold: the card all the same.)
-    show();
+    // (No clipboard to hold: told all the same.)
+    tell();
+    saved::sent(notes.as_ref());
+    std::process::ExitCode::SUCCESS
+}
+
+/// `--after PATH [--picture]`: what Screenshot asked of itself before a
+/// saved file was told of in a notification (a recorder started before
+/// an upgrade may still ask it): its notification. Whoever asks names
+/// the file, so nothing is kept as Screenshot's here: its actions are
+/// offered only if Screenshot already kept that very file; otherwise
+/// it's shown, with nothing to do to it.
+fn after(args: &[String]) -> std::process::ExitCode {
+    let Some(path) = args.iter().position(|a| a == "--after").and_then(|i| args.get(i + 1)).map(PathBuf::from) else {
+        eprintln!("olo-screenshot: --after takes the recording's or the picture's path");
+        return std::process::ExitCode::from(2);
+    };
+    let kind = if args.iter().any(|a| a == "--picture") { saved::Kind::Picture } else { saved::Kind::Recording };
+    let notes = saved::tell(&path, saved::Identity::Named, kind, None);
+    saved::sent(notes.as_ref());
     std::process::ExitCode::SUCCESS
 }
 
@@ -897,6 +897,13 @@ fn main() -> std::process::ExitCode {
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // What a saved file's notification does (saved.rs), here or once
+    // the program that told of it has gone: `--saved ACTION PATH
+    // RECEIPT`, first and alone (what it's given is a notification's,
+    // which anyone may send: nothing in it is read as another option).
+    if args.first().is_some_and(|a| a == "--saved") {
+        std::process::exit(saved::act_on(&args));
+    }
     // Recording the screen (recording.rs): no window, for people's
     // shortcuts and agents alike.
     if args.iter().any(|a| a == "--record") {
@@ -929,8 +936,12 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--controls") {
         return controls::run();
     }
+    if args.iter().any(|a| a == "--saved") {
+        eprintln!("olo-screenshot: --saved comes first, with what to do, the file's path and its receipt");
+        return std::process::ExitCode::from(2);
+    }
     if args.iter().any(|a| a == "--after") {
-        return after::run(&args);
+        return after(&args);
     }
     if args.iter().any(|a| a == "--library") {
         return library::run(&args);
@@ -973,7 +984,7 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--region") {
         return match region::run() {
-            Ok(Some((path, display))) => saved(&path, display),
+            Ok(Some((path, id, _))) => saved(&path, id),
             Ok(None) => std::process::ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("olo-screenshot: {e}");

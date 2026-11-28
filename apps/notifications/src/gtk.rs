@@ -169,6 +169,7 @@ pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap
         id: number,
         // (GLib's interface reaches the app however it is: by its id.)
         sender: None,
+        generation: 0,
         replaces,
         app_name,
         desktop_entry: Some(app_id.to_owned()),
@@ -190,6 +191,7 @@ pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap
         look: Default::default(),
         via: None,
         show: Vec::new(),
+        runs: Vec::new(),
     };
     (note, Origin { app_id: app_id.to_owned(), gtk_id: gtk_id.to_owned(), default, buttons })
 }
@@ -231,9 +233,11 @@ fn icon(v: &OwnedValue) -> (Option<String>, Option<Picture>) {
     }
 }
 
-/// Image bytes (PNG, JPEG, …) as a picture, at most 256 px.
+/// Image bytes (PNG, JPEG, …) as a picture, at most 256 px. (Decoded
+/// as a file's picture is, within its bound: a few bytes can say a
+/// picture of thousands of millions of pixels.)
 fn decode(bytes: &[u8]) -> Option<Picture> {
-    let img = image::load_from_memory(bytes).ok()?;
+    let img = crate::pictures::decode_bytes(bytes)?;
     let img = if img.width() > 256 || img.height() > 256 { img.thumbnail(256, 256) } else { img };
     let rgba = img.to_rgba8();
     Some(Picture { width: rgba.width() as usize, height: rgba.height() as usize, rgba: rgba.into_raw() })
